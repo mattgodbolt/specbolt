@@ -9,9 +9,9 @@ jobs:
         build_type: [ Debug, RelWithDebInfo ]
     steps:
       - uses: actions/checkout@v4
-      - name: setup X11
+      - name: setup SDL2
         run: |
-          sudo apt-get install -y libx11-dev libxext-dev
+          sudo apt-get install -y libsdl2-dev
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
         with:
