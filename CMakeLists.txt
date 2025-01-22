@@ -17,5 +17,12 @@ include(colors)
 
 add_subdirectory(test)
 
+add_library(specbolt_lib
+        Z80.cpp
+        Z80.hpp
+        RegisterFile.cpp
+        RegisterFile.hpp
+        Disassembler.cpp
+        Disassembler.hpp)
 add_executable(specbolt main.cpp)
-target_link_libraries(specbolt SDL2::SDL2)
+target_link_libraries(specbolt specbolt_lib SDL2::SDL2)
