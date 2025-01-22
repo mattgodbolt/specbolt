@@ -6,9 +6,11 @@
 
 namespace specbolt {
 
+class Memory;
+
 class Disassembler {
 public:
-  explicit Disassembler(std::array<std::uint8_t, 65536> &memory) : memory_(memory) {}
+  explicit Disassembler(Memory &memory) : memory_(memory) {}
 
   struct Instruction {
     uint16_t address{};
@@ -22,7 +24,7 @@ public:
   Instruction disassemble(std::uint16_t address) const;
 
 private:
-  std::array<std::uint8_t, 65536> &memory_;
+  Memory &memory_;
 };
 
 } // namespace specbolt

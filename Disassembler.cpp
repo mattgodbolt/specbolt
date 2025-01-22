@@ -1,8 +1,9 @@
 #include "Disassembler.hpp"
 
-#include <format>
-
+#include "Memory.hpp"
 #include "Opcodes.hpp"
+
+#include <format>
 
 namespace specbolt {
 
@@ -21,23 +22,23 @@ uint8_t parse_length(std::string_view opcode) {
 } // namespace
 
 Disassembler::Instruction Disassembler::disassemble(const std::uint16_t address) const {
-  const auto first_byte = memory_[address];
+  const auto first_byte = memory_.read(address);
   if (first_byte == 0xdd || first_byte == 0xfd || first_byte == 0xed || first_byte == 0xcb) {
-    const auto second_byte = memory_[(address + 1) & 0xffff];
+    const auto second_byte = memory_.read(address + 1);
     const auto opcode = first_byte == 0xdd   ? GetOpcodeDD(second_byte)
                         : first_byte == 0xfd ? GetOpcodeFD(second_byte)
                         : first_byte == 0xed ? GetOpcodeED(second_byte)
                                              : OpcodesCB[second_byte];
     const auto length = static_cast<uint8_t>(parse_length(opcode) + 1);
     return {address, length,
-        {first_byte, second_byte, static_cast<std::uint8_t>(length > 2 ? memory_[(address + 2) & 0xffff] : 0),
-            static_cast<std::uint8_t>(length > 3 ? memory_[(address + 3) & 0xffff] : 0)}};
+        {first_byte, second_byte, static_cast<std::uint8_t>(length > 2 ? memory_.read(address + 2) : 0),
+            static_cast<std::uint8_t>(length > 3 ? memory_.read(address + 3) : 0)}};
   }
   const auto opcode = Opcodes[first_byte];
   const auto length = parse_length(opcode);
   return {address, length,
-      {first_byte, static_cast<std::uint8_t>(length > 1 ? memory_[(address + 1) & 0xffff] : 0),
-          static_cast<std::uint8_t>(length > 2 ? memory_[(address + 2) & 0xffff] : 0)}};
+      {first_byte, static_cast<std::uint8_t>(length > 1 ? memory_.read(address + 1) : 0),
+          static_cast<std::uint8_t>(length > 2 ? memory_.read(address + 2) : 0)}};
 }
 
 std::string Disassembler::Instruction::to_string() const {
