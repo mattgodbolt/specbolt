@@ -5,6 +5,10 @@
 #include <memory>
 #include <stdexcept>
 
+#include "Disassembler.hpp"
+#include "Memory.hpp"
+#include "Z80.hpp"
+
 namespace {
 
 struct SdlError final : std::runtime_error {
@@ -53,6 +57,17 @@ void Main() {
   bool quit = false;
   SDL_Event e;
   unsigned char rgb = 0xff;
+
+  specbolt::Memory memory;
+  memory.load("48.rom", 0, 16 * 1024);
+  specbolt::Z80 z80(memory);
+  const specbolt::Disassembler dis(memory);
+  std::uint16_t pc = 0;
+  for (int i = 0; i < 100; ++i) {
+    const auto disassembled = dis.disassemble(pc);
+    std::cout << disassembled.to_string() << "\n";
+    pc += disassembled.length;
+  }
 
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {

@@ -18,6 +18,8 @@ private:
   RegisterFile regs_;
   Memory &memory_;
   std::size_t now_tstates_{};
+  bool iff1_{};
+  bool iff2_{};
 
   [[nodiscard]] std::uint8_t read_and_inc_pc();
   [[nodiscard]] std::uint16_t read16_and_inc_pc();
