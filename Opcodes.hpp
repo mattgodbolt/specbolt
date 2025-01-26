@@ -5,6 +5,54 @@
 
 namespace specbolt {
 
+struct Instruction {
+  enum class Operand {
+    None,
+    A,
+    B,
+    C,
+    D,
+    E,
+    H,
+    L,
+    AF,
+    BC,
+    DE,
+    HL,
+    BC_Indirect,
+    DE_Indirect,
+    HL_Indirect,
+    SP,
+    IX,
+    IY,
+    AF_,
+    ByteImmediate,
+    WordImmediate,
+    Offset,
+    One
+  };
+  enum class Operation {
+    None,
+    Load,
+    Add,
+    Subtract,
+  };
+  std::string_view opcode;
+  uint8_t length;
+  Operation operation;
+  Operand source{Operand::None};
+  Operand dest{Operand::None};
+};
+
+// Python program? then show it can be done with a constexpr function?
+constexpr Instruction nop{"nop", 1, Instruction::Operation::None};
+constexpr Instruction ld_bc_nnnn{
+    "ld bc, nnnn", 3, Instruction::Operation::Load, Instruction::Operand::BC, Instruction::Operand::WordImmediate};
+constexpr Instruction ld_bc_a{
+    "ld (bc), a", 1, Instruction::Operation::Load, Instruction::Operand::BC_Indirect, Instruction::Operand::A};
+constexpr Instruction inc_bc{
+    "inc bc", 1, Instruction::Operation::Add, Instruction::Operand::BC, Instruction::Operand::One};
+
 constexpr std::array<std::string_view, 256> Opcodes = {"nop", "ld bc, nnnn", "ld (bc), a", "inc bc", "inc b", "dec b",
     "ld b, nn", "rlca", "ex af, af'", "add hl, bc", "ld a, (bc)", "dec bc", "inc c", "dec c", "ld c, nn", "rrca",
     "djnz offset", "ld de, nnnn", "ld (de), a", "inc de", "inc d", "dec d", "ld d, nn", "rla", "jr offset",
