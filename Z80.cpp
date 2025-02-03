@@ -17,7 +17,6 @@ void Z80::execute_one() {
     case 0x00: // NOP
       break;
     case 0x01: { // LD BC, nnnn
-      execute(ld_bc_nnnn);
       regs_.set(RegisterFile::R16::BC, read16_and_inc_pc());
       pass_time(6);
       break;
@@ -86,60 +85,43 @@ std::uint16_t Z80::read(Instruction::Operand operand) const {
       return read16(regs_.get(RegisterFile::R16::DE));
     case Instruction::Operand::HL_Indirect:
       return read16(regs_.get(RegisterFile::R16::HL));
-    case Instruction::Operand::One:
+    case Instruction::Operand::Const_1:
       return 1;
+    case Instruction::Operand::Const_2:
+      return 2;
+    case Instruction::Operand::Const_4:
+      return 4;
+    case Instruction::Operand::Const_8:
+      return 8;
+    case Instruction::Operand::Const_16:
+      return 16;
+    case Instruction::Operand::Const_32:
+      return 32;
+    case Instruction::Operand::Const_64:
+      return 64;
+    case Instruction::Operand::Const_128:
+      return 128;
     default:
       break; // TODO NOT THIS
   }
   throw std::runtime_error("bad operand");
 }
 
-
 void Z80::execute(const Instruction &instr) {
   const auto source = read(instr.source);
   const auto dest_before = read(instr.dest);
-  const auto dest = apply(instr.operation, dest_before, source);
-  write(instr.dest, dest);
+  const auto result = Instruction::apply(
+      instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), regs_.get(RegisterFile::R8::F)});
+  regs_.pc(result.pc);
+  regs_.sp(result.sp);
+  regs_.set(RegisterFile::R8::F, result.flags);
+  write(instr.dest, result.value);
 }
 
-// Possible inputs:
-// all registers, memory, flags, immediate values, offsets
-// Possible outputs
-// all registers, memory, flags, program counter, stack pointer.
-struct InstructionInput {
-  std::uint16_t dest;
-  std::uint16_t source;
-  std::uint16_t pc;
-  std::uint16_t sp;
-  std::uint8_t flags;
-};
-struct InstructionOutput {
-  std::uint16_t value;
-  std::uint16_t pc;
-  std::uint16_t sp;
-  std::uint8_t flags;
-};
-std::uint16_t Z80::apply(const Instruction::Operation operation, const std::uint16_t dest, const std::uint16_t source) {
-  switch (operation) {
-    case Instruction::Operation::None:
-      return 0;
-    case Instruction::Operation::Load:
-      return source;
-    case Instruction::Operation::Add:
-      // TODO flags
-      return dest + source;
-    case Instruction::Operation::Subtract:
-      // TODO flags
-      return dest - source;
-    default:
-      throw std::runtime_error("bad operation"); // TODO NOT THIS
-  }
-}
-
-void Z80::write(Instruction::Operand operand, std::uint16_t value) {
+void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
   switch (operand) {
     case Instruction::Operand::A:
-      regs_.set(RegisterFile::R8::A, value);
+      regs_.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value));
       break;
     default:
       break; // TODO NOT THIS

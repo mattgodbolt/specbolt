@@ -29,7 +29,6 @@ private:
   [[nodiscard]] std::uint16_t read16_and_inc_pc();
   [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand) const;
-  [[nodiscard]] std::uint16_t apply(Instruction::Operation operation, std::uint16_t dest, std::uint16_t source);
   void write(Instruction::Operand operand, std::uint16_t value);
   void pass_time(std::size_t tstates);
   void execute(const Instruction &instr);

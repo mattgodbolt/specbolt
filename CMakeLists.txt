@@ -25,6 +25,10 @@ add_library(specbolt_lib
         Disassembler.cpp
         Disassembler.hpp
         Memory.cpp
-        Memory.hpp)
+        Memory.hpp
+        Instruction.cpp
+        Instruction.hpp
+        Opcodes.cpp
+        Opcodes.hpp)
 add_executable(specbolt main.cpp)
 target_link_libraries(specbolt specbolt_lib SDL2::SDL2)

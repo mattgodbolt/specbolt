@@ -1,6 +1,7 @@
 #include "../Disassembler.hpp"
 
 #include "../Memory.hpp"
+#include "../Instruction.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -14,14 +15,14 @@ TEST_CASE("Disassembler tests") {
     SECTION("at address 0") {
       const auto instr = dis.disassemble(0);
       CHECK(instr.address == 0);
-      CHECK(instr.length == 1);
+      CHECK(instr.instruction.length == 1);
       CHECK(instr.bytes == std::array<std::uint8_t, 4>{0, 0, 0, 0});
       CHECK(instr.to_string() == "0000  00           nop");
     }
     SECTION("at address 123") {
       const auto instr = dis.disassemble(0x123);
       CHECK(instr.address == 0x123);
-      CHECK(instr.length == 1);
+      CHECK(instr.instruction.length == 1);
       CHECK(instr.bytes == std::array<std::uint8_t, 4>{0, 0, 0, 0});
       CHECK(instr.to_string() == "0123  00           nop");
     }
@@ -31,14 +32,14 @@ TEST_CASE("Disassembler tests") {
     memory.raw_write(0x201, 0x5f);
     memory.raw_write(0x202, 0x5c);
     const auto instr = dis.disassemble(0x200);
-    CHECK(instr.length == 3);
+    CHECK(instr.instruction.length == 3);
     CHECK(instr.to_string() == "0200  22 5f 5c     ld (0x5c5f), hl");
   }
   SECTION("8-bit operands") {
     memory.raw_write(0x200, 0x3e); // LD a, nn
     memory.raw_write(0x201, 0xbd);
     const auto instr = dis.disassemble(0x200);
-    CHECK(instr.length == 2);
+    CHECK(instr.instruction.length == 2);
     CHECK(instr.to_string() == "0200  3e bd        ld a, 0xbd");
   }
   SECTION("Offset operands") {
@@ -46,24 +47,24 @@ TEST_CASE("Disassembler tests") {
       memory.raw_write(0xe, 0x18); // jr offset
       memory.raw_write(0xf, 0x43);
       const auto instr = dis.disassemble(0xe);
-      CHECK(instr.length == 2);
+      CHECK(instr.instruction.length == 2);
       CHECK(instr.to_string() == "000e  18 43        jr 0x0053");
     }
     SECTION("backward") {
       memory.raw_write(0x23, 0x18); // jr offset
       memory.raw_write(0x24, 0xf7);
       const auto instr = dis.disassemble(0x23);
-      CHECK(instr.length == 2);
+      CHECK(instr.instruction.length == 2);
       CHECK(instr.to_string() == "0023  18 f7        jr 0x001c");
     }
   }
   SECTION("Indexed") {
     memory.raw_write(0x55, 0xfd); // prefix
     memory.raw_write(0x56, 0x75); // ld (iy), l
-    memory.raw_write(0x57, 0x00);
+    memory.raw_write(0x57, 0x12);
     const auto instr = dis.disassemble(0x55);
-    CHECK(instr.length == 3);
-    CHECK(instr.to_string() == "0055  fd 75 00     ld (iy+0x00), l");
+    CHECK(instr.instruction.length == 3);
+    CHECK(instr.to_string() == "0055  fd 75 12     ld (iy+0x12), l");
   }
   SECTION("Extended with offset") {
     memory.raw_write(0x58, 0xed); // prefix
@@ -71,15 +72,15 @@ TEST_CASE("Disassembler tests") {
     memory.raw_write(0x5a, 0x3d);
     memory.raw_write(0x5b, 0x5c);
     const auto instr = dis.disassemble(0x58);
-    CHECK(instr.length == 4);
+    CHECK(instr.instruction.length == 4);
     CHECK(instr.to_string() == "0058  ed 7b 3d 5c  ld sp, (0x5c3d)");
   }
   SECTION("cb prefixes") {
     memory.raw_write(0x270, 0xcb); // prefix
     memory.raw_write(0x271, 0x5e); // bit 3. (hl)
     const auto instr = dis.disassemble(0x270);
-    CHECK(instr.length == 2);
+    CHECK(instr.instruction.length == 2);
     CHECK(instr.to_string() == "0270  cb 5e        bit 3, (hl)");
   }
-  // TODO the other prefix bytes... cb dd ed fd
+  // TODO the other prefix bytes... cb dd ed fd, bit prefixes
 }

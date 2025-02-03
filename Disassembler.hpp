@@ -7,21 +7,23 @@
 namespace specbolt {
 
 class Memory;
+struct Instruction;
 
 class Disassembler {
 public:
   explicit Disassembler(Memory &memory) : memory_(memory) {}
 
-  struct Instruction {
+  struct Disassembled {
+    const Instruction &instruction;
     uint16_t address{};
-    uint8_t length{};
     std::array<uint8_t, 4> bytes{};
-    bool operator==(const Instruction &other) const = default;
-    std::string to_string() const;
+    // bool operator==(const Disassembled &other) const = default;
+    [[nodiscard]] std::string to_string() const;
     // TODO std::format specialisation
+    [[nodiscard]] std::uint16_t immediate_operand() const;
   };
 
-  Instruction disassemble(std::uint16_t address) const;
+  [[nodiscard]] Disassembled disassemble(std::uint16_t address) const;
 
 private:
   Memory &memory_;
