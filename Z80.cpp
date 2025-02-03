@@ -31,7 +31,7 @@ std::uint16_t Z80::read16_and_inc_pc() {
   return static_cast<std::uint16_t>(high << 8) | low;
 }
 std::uint16_t Z80::read16(const std::uint16_t address) const {
-  return static_cast<uint16_t>(memory_.read(address) << 8) | memory_.read(address + 1);
+  return static_cast<uint16_t>(memory_.read(address + 1) << 8) | memory_.read(address);
 }
 
 void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
@@ -85,6 +85,8 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return 64;
     case Instruction::Operand::Const_128:
       return 128;
+    case Instruction::Operand::ByteImmediate:
+      return memory_.read(regs_.pc() - 1);
     case Instruction::Operand::WordImmediate:
       return read16(regs_.pc() - 2);
     default:
@@ -97,10 +99,13 @@ void Z80::execute(const Instruction &instr) {
   const auto source = read(instr.source);
   const auto dest_before = read(instr.dest);
   const auto result = Instruction::apply(
-      instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), regs_.get(RegisterFile::R8::F)});
+      instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), regs_.get(RegisterFile::R8::F), iff1_, iff2_});
   regs_.pc(result.pc);
   regs_.sp(result.sp);
   regs_.set(RegisterFile::R8::F, result.flags);
+  iff1_ = result.iff1;
+  iff2_ = result.iff2;
+  pass_time(result.extra_t_states);
   write(instr.dest, result.value);
 }
 
@@ -108,6 +113,27 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
   switch (operand) {
     case Instruction::Operand::A:
       regs_.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::B:
+      regs_.set(RegisterFile::R8::B, static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::C:
+      regs_.set(RegisterFile::R8::C, static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::D:
+      regs_.set(RegisterFile::R8::D, static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::E:
+      regs_.set(RegisterFile::R8::E, static_cast<std::uint8_t>(value));
+      break;
+    // case Instruction::Operand::F:
+    //   regs_.set(RegisterFile::R8::F, static_cast<std::uint8_t>(value));
+    //   break;
+    case Instruction::Operand::H:
+      regs_.set(RegisterFile::R8::H, static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::L:
+      regs_.set(RegisterFile::R8::L, static_cast<std::uint8_t>(value));
       break;
     case Instruction::Operand::AF:
       regs_.set(RegisterFile::R16::AF, value);

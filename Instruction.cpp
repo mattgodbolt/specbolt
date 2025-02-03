@@ -5,8 +5,9 @@
 
 namespace specbolt {
 
-Instruction::Output Instruction::apply(Operation operation, const Input &input) {
-  Output result{input.dest, input.pc, input.sp, input.flags};
+Instruction::Output Instruction::apply(const Operation operation, const Input &input) {
+  Output result{input.dest, input.pc, input.sp, input.flags, input.iff1, input.iff2, 0};
+  // TODO tstates
   switch (operation) {
     case Operation::None:
       break;
@@ -21,6 +22,9 @@ Instruction::Output Instruction::apply(Operation operation, const Input &input) 
       result.value = input.source;
       break;
     case Operation::Jump:
+      // TODO conditions?
+      result.extra_t_states = 6;
+      result.pc = input.source;
       break;
     case Operation::Bit:
       break;
@@ -29,7 +33,8 @@ Instruction::Output Instruction::apply(Operation operation, const Input &input) 
       // TODO flags
       break;
     case Operation::Irq:
-      // TODO iff1 and iff2
+      // OR todo "iff1 and 2" destination and load?
+      result.iff1 = result.iff2 = input.source;
       break;
     case Operation::Invalid:
       // TODO better

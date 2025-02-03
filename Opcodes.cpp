@@ -116,9 +116,19 @@ const Instruction &decode(const std::uint8_t opcode, const std::uint8_t nextOpco
           Instruction::Operand::ByteImmediate};
       return ld_a_nn;
     }
+    case 0x47: {
+      static constexpr Instruction instr{
+          "ld b, a", 1, Instruction::Operation::Load, Instruction::Operand::B, Instruction::Operand::A};
+      return instr;
+    }
     case 0xaf: {
       static constexpr Instruction instr{
           "xor a", 1, Instruction::Operation::Xor, Instruction::Operand::A, Instruction::Operand::A};
+      return instr;
+    }
+    case 0xc3: {
+      static constexpr Instruction instr{"jp 0x{:04x}", 3, Instruction::Operation::Jump, Instruction::Operand::None,
+          Instruction::Operand::WordImmediate};
       return instr;
     }
     case 0xcb:

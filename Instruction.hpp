@@ -65,12 +65,17 @@ struct Instruction {
     std::uint16_t pc;
     std::uint16_t sp;
     std::uint8_t flags;
+    bool iff1;
+    bool iff2;
   };
   struct Output {
     std::uint16_t value;
     std::uint16_t pc;
     std::uint16_t sp;
     std::uint8_t flags;
+    bool iff1;
+    bool iff2;
+    std::uint8_t extra_t_states{};
   };
 
   [[nodiscard]] static Output apply(Operation operation, const Input &input);
