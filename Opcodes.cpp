@@ -5,6 +5,7 @@ namespace specbolt {
 using namespace std::literals;
 
 constexpr Instruction invalid{"??", 1, Instruction::Operation::Invalid};
+constexpr Instruction invalid_2{"??", 2, Instruction::Operation::Invalid};
 
 template<bool isIy>
 const Instruction &decode_ddfd(const std::uint8_t opcode, [[maybe_unused]] std::uint8_t nextOpcode) {
@@ -46,7 +47,7 @@ doing the constexpr 2-step
     default:
       break;
   }
-  return invalid;
+  return invalid_2;
 }
 
 const Instruction &decode_cb(const std::uint8_t opcode) {
@@ -59,11 +60,16 @@ const Instruction &decode_cb(const std::uint8_t opcode) {
     default:
       break;
   }
-  return invalid;
+  return invalid_2;
 }
 
 const Instruction &decode_ed(const std::uint8_t opcode) {
   switch (opcode) {
+    case 0x47: {
+      static constexpr Instruction instr{"ld i, a", 2, Instruction::Operation::Load, Instruction::Operand::I,
+          Instruction::Operand::A};
+      return instr;
+    }
     case 0x7b: {
       static constexpr Instruction instr{"ld sp, (0x{:04x})", 4, Instruction::Operation::Load, Instruction::Operand::SP,
           Instruction::Operand::WordImmediateIndirect};
@@ -72,7 +78,7 @@ const Instruction &decode_ed(const std::uint8_t opcode) {
     default:
       break;
   }
-  return invalid;
+  return invalid_2;
 }
 
 const Instruction &decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, const std::uint8_t nextNextOpcode) {
@@ -137,6 +143,11 @@ const Instruction &decode(const std::uint8_t opcode, const std::uint8_t nextOpco
       return decode_ddfd<false>(nextOpcode, nextNextOpcode);
     case 0xed:
       return decode_ed(nextOpcode);
+    case 0xd3: {
+      static constexpr Instruction instr{"out (0x{:02x}), a", 2, Instruction::Operation::Out,
+          Instruction::Operand::ByteImmediate, Instruction::Operand::A};
+      return instr;
+    }
     case 0xf3: {
       static constexpr Instruction instr{
           "di", 1, Instruction::Operation::Irq, Instruction::Operand::None, Instruction::Operand::Const_0};

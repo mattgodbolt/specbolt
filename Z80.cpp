@@ -60,6 +60,8 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return regs_.get(RegisterFile::R16::DE);
     case Instruction::Operand::HL:
       return regs_.get(RegisterFile::R16::HL);
+    case Instruction::Operand::I:
+      return regs_.i();
     case Instruction::Operand::BC_Indirect:
       return read16(regs_.get(RegisterFile::R16::BC));
     case Instruction::Operand::DE_Indirect:
@@ -147,8 +149,16 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::HL:
       regs_.set(RegisterFile::R16::HL, value);
       break;
+    case Instruction::Operand::I:
+      regs_.i(static_cast<std::uint8_t>(value));
+      break;
     case Instruction::Operand::None:
       break;
+    case Instruction::Operand::ByteImmediate: {
+      // Does nothing; this is (currently) used in OUT (nn), a instruction.
+      // perhaps the operand should be ByteImmediateOut? But then how about IN?
+      break;
+    }
     default:
       // TODO NOT THIS
       throw std::runtime_error("bad operand");

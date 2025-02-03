@@ -28,6 +28,7 @@ struct Instruction {
     IX_Offset_Indirect,
     IY_Offset_Indirect, // TODO decide on naming
     AF_,
+    I,
     ByteImmediate,
     WordImmediate,
     WordImmediateIndirect,
@@ -53,6 +54,7 @@ struct Instruction {
     Jump,
     Invalid,
     Irq,
+    Out, // what to do about this?
   };
   std::string_view opcode;
   uint8_t length;

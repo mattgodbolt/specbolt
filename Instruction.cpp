@@ -1,13 +1,14 @@
 #include "Instruction.hpp"
 
 #include <format>
+#include <iostream>
 #include <stdexcept>
 
 namespace specbolt {
 
 Instruction::Output Instruction::apply(const Operation operation, const Input &input) {
   Output result{input.dest, input.pc, input.sp, input.flags, input.iff1, input.iff2, 0};
-  // TODO tstates
+  // TODO tstates ... like ED executes take longer etc
   switch (operation) {
     case Operation::None:
       break;
@@ -35,6 +36,10 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
     case Operation::Irq:
       // OR todo "iff1 and 2" destination and load?
       result.iff1 = result.iff2 = input.source;
+      break;
+    case Operation::Out:
+      // YUCK
+      std::print(std::cout, "zomg OUT({:02x}, {:02x})\n", input.dest, input.source);
       break;
     case Operation::Invalid:
       // TODO better
