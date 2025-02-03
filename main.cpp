@@ -66,7 +66,7 @@ void Main() {
   for (int i = 0; i < 100; ++i) {
     const auto disassembled = dis.disassemble(pc);
     std::cout << disassembled.to_string() << "\n";
-    pc += disassembled.length;
+    pc += disassembled.instruction.length;
   }
 
   while (!quit) {
