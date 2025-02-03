@@ -2,6 +2,8 @@
 
 #include "Opcodes.hpp"
 
+#include <format>
+#include <iostream>
 #include <stdexcept>
 
 namespace specbolt {
@@ -10,35 +12,11 @@ namespace specbolt {
 // TODO consider making instructions out of composable objects? or templated functions? arg or is that too close to
 //   the C++26 thing I want to demo?
 void Z80::execute_one() {
-  const auto opcode = read_and_inc_pc();
+  const auto initial_pc = regs_.pc();
+  const auto decoded = decode(memory_.read(initial_pc), memory_.read(initial_pc + 1), memory_.read(initial_pc + 2));
   pass_time(4);
-
-  switch (opcode) {
-    case 0x00: // NOP
-      break;
-    case 0x01: { // LD BC, nnnn
-      regs_.set(RegisterFile::R16::BC, read16_and_inc_pc());
-      pass_time(6);
-      break;
-    }
-    case 0x11: { // LD DE, nnnn
-      regs_.set(RegisterFile::R16::DE, read16_and_inc_pc());
-      pass_time(6);
-      break;
-    }
-    case 0xaf: { // XOR A, A
-      regs_.set(RegisterFile::R8::A, 0);
-      regs_.set(RegisterFile::R8::F, 0x80); // TODO look up in table[0];? not this anyway
-      break;
-    }
-    case 0xf3: { // DI
-      iff1_ = false;
-      iff2_ = false;
-      break;
-    }
-    default:
-      throw std::runtime_error("bad opcode");
-  }
+  regs_.pc(initial_pc + decoded.length); // NOT RIGHT
+  execute(decoded);
 }
 
 std::uint8_t Z80::read_and_inc_pc() {
@@ -52,10 +30,13 @@ std::uint16_t Z80::read16_and_inc_pc() {
   const auto high = read_and_inc_pc();
   return static_cast<std::uint16_t>(high << 8) | low;
 }
+std::uint16_t Z80::read16(const std::uint16_t address) const {
+  return static_cast<uint16_t>(memory_.read(address) << 8) | memory_.read(address + 1);
+}
 
-void Z80::pass_time(size_t tstates) { now_tstates_ += tstates; }
+void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
 
-std::uint16_t Z80::read(Instruction::Operand operand) const {
+std::uint16_t Z80::read(const Instruction::Operand operand) const {
   switch (operand) {
     case Instruction::Operand::A:
       return regs_.get(RegisterFile::R8::A);
@@ -85,6 +66,9 @@ std::uint16_t Z80::read(Instruction::Operand operand) const {
       return read16(regs_.get(RegisterFile::R16::DE));
     case Instruction::Operand::HL_Indirect:
       return read16(regs_.get(RegisterFile::R16::HL));
+    case Instruction::Operand::Const_0:
+    case Instruction::Operand::None:
+      return 0;
     case Instruction::Operand::Const_1:
       return 1;
     case Instruction::Operand::Const_2:
@@ -101,6 +85,8 @@ std::uint16_t Z80::read(Instruction::Operand operand) const {
       return 64;
     case Instruction::Operand::Const_128:
       return 128;
+    case Instruction::Operand::WordImmediate:
+      return read16(regs_.pc() - 2);
     default:
       break; // TODO NOT THIS
   }
@@ -123,10 +109,34 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::A:
       regs_.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value));
       break;
+    case Instruction::Operand::AF:
+      regs_.set(RegisterFile::R16::AF, value);
+      break;
+    case Instruction::Operand::BC:
+      regs_.set(RegisterFile::R16::BC, value);
+      break;
+    case Instruction::Operand::DE:
+      regs_.set(RegisterFile::R16::DE, value);
+      break;
+    case Instruction::Operand::HL:
+      regs_.set(RegisterFile::R16::HL, value);
+      break;
+    case Instruction::Operand::None:
+      break;
     default:
-      break; // TODO NOT THIS
+      // TODO NOT THIS
+      throw std::runtime_error("bad operand");
   }
-  throw std::runtime_error("bad operand");
+}
+
+void Z80::dump() const {
+  std::print(std::cout, "Z80 dump:\n");
+  std::print(std::cout, "PC: {:04x}\n", regs_.pc());
+  std::print(std::cout, "SP: {:04x}\n", regs_.sp());
+  std::print(std::cout, "AF: {:04x}\n", regs_.get(RegisterFile::R16::AF));
+  std::print(std::cout, "BC: {:04x}\n", regs_.get(RegisterFile::R16::BC));
+  std::print(std::cout, "DE: {:04x}\n", regs_.get(RegisterFile::R16::DE));
+  std::print(std::cout, "HL: {:04x}\n", regs_.get(RegisterFile::R16::HL));
 }
 
 } // namespace specbolt

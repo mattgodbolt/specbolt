@@ -46,7 +46,7 @@ void Main() {
     throw SdlError("SDL_CreateRenderer failed");
   }
 
-  std::unique_ptr<SDL_Texture, decltype(SDL_DestroyTexture) *> texture(
+  const std::unique_ptr<SDL_Texture, decltype(SDL_DestroyTexture) *> texture(
       SDL_CreateTexture(
           renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WindowWidth, WindowHeight),
       SDL_DestroyTexture);
@@ -62,11 +62,16 @@ void Main() {
   memory.load("48.rom", 0, 16 * 1024);
   specbolt::Z80 z80(memory);
   const specbolt::Disassembler dis(memory);
-  std::uint16_t pc = 0;
-  for (int i = 0; i < 100; ++i) {
-    const auto disassembled = dis.disassemble(pc);
-    std::cout << disassembled.to_string() << "\n";
-    pc += disassembled.instruction.length;
+  try {
+    for (int i = 0; i < 100; ++i) {
+      const auto disassembled = dis.disassemble(z80.pc());
+      std::cout << disassembled.to_string() << "\n";
+      z80.execute_one();
+    }
+  }
+  catch (const std::runtime_error &runtime_error) {
+    std::print(std::cout, "Error: {}\n", runtime_error.what());
+    z80.dump();
   }
 
   while (!quit) {

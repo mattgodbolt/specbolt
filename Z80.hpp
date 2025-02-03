@@ -18,6 +18,12 @@ public:
 
   void execute_one();
 
+  [[nodiscard]] bool iff1() const { return iff1_; }
+  [[nodiscard]] bool iff2() const { return iff2_; }
+  [[nodiscard]] std::uint16_t pc() const { return regs_.pc(); }
+
+  void dump() const;
+
 private:
   RegisterFile regs_;
   Memory &memory_;

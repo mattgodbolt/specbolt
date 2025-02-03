@@ -33,6 +33,7 @@ struct Instruction {
     WordImmediateIndirect,
     Offset,
     PcOffset,
+    Const_0,
     Const_1,
     Const_2,
     Const_4,
@@ -47,9 +48,11 @@ struct Instruction {
     Load,
     Add,
     Subtract,
+    Xor,
     Bit, // Maybe and?
     Jump,
     Invalid,
+    Irq,
   };
   std::string_view opcode;
   uint8_t length;
