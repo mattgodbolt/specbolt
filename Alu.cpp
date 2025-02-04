@@ -26,6 +26,18 @@ Alu::R8 Alu::add8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
   return {result, sz53_8(result) | carry | half_carry | overflow};
 }
 
+Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool carry_in) {
+  const auto result = add8(lhs, ~rhs, !carry_in);
+  return {result.result, (result.flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
+}
+
+Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs, const bool carry_in) {
+  const auto result = sub8(lhs, rhs, carry_in);
+  // Per http://www.z80.info/z80sflag.htm; F5 and F3 are copied from the operand, not the result
+  const auto mask53 = Flags::Flag5() | Flags::Flag3();
+  return {result.result, result.flags & ~mask53 | Flags(lhs) & mask53};
+}
+
 Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in) {
   const std::uint32_t intermediate = lhs + rhs + (carry_in ? 1 : 0);
   const auto carry = intermediate > 0xffff ? Flags::Carry() : Flags();
@@ -33,6 +45,11 @@ Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const bool
   const auto half_carry = (lhs & 0xf00) + (rhs & 0xf00) > 0xf00 ? Flags::HalfCarry() : Flags();
   const auto overflow = (lhs ^ result) & (rhs ^ result) & 0x8000 ? Flags::Overflow() : Flags();
   return {result, sz53_16(result) | carry | half_carry | overflow};
+}
+
+Alu::R16 Alu::sub16(const std::uint16_t lhs, std::uint16_t rhs, bool carry_in) {
+  const auto result = add16(lhs, ~rhs, !carry_in);
+  return {result.result, (result.flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
 Alu::R8 Alu::xor8(const std::uint8_t lhs, const std::uint8_t rhs) {

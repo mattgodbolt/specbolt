@@ -27,20 +27,44 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       result.flags = alu_result.flags;
     } break;
 
-    case Operation::Add16:
-    case Operation::Add16WithCarry:
-      throw std::runtime_error("todo");
-      break;
-    case Operation::Subtract8:
-    case Operation::Subtract8WithCarry: {
-      // const std::uint16_t result = input.dest - input.source;
-      result.value = input.dest - input.source; // TODO flags in some cases
+    case Operation::Add16: {
+      const auto alu_result = Alu::add16(input.dest, input.source, false);
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
     } break;
-    case Operation::Subtract16:
-      result.value = input.dest - input.source;
-      break;
-    case Operation::Subtract16WithCarry:
-      throw std::runtime_error("todo");
+    case Operation::Add16WithCarry: {
+      const auto alu_result = Alu::add16(input.dest, input.source, input.flags.carry());
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+    case Operation::Compare: {
+      const auto alu_result =
+          Alu::cmp8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source), false);
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+    case Operation::Subtract8: {
+      const auto alu_result =
+          Alu::sub8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source), false);
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+    case Operation::Subtract8WithCarry: {
+      const auto alu_result = Alu::sub8(
+          static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source), input.flags.carry());
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+    case Operation::Subtract16: {
+      const auto alu_result = Alu::sub16(input.dest, input.source, false);
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+    case Operation::Subtract16WithCarry: {
+      const auto alu_result = Alu::sub16(input.dest, input.source, input.flags.carry());
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
     case Operation::And:
       throw std::runtime_error("todo");
       break;

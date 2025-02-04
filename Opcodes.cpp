@@ -242,7 +242,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xbd:
     case 0xbe:
     case 0xbf:
-      return {"cp {1}", 1, Instruction::Operation::Subtract8, Instruction::Operand::None, source_operand_for(opcode)};
+      return {"cp {1}", 1, Instruction::Operation::Compare, Instruction::Operand::None, source_operand_for(opcode)};
 
     case 0x2b:
       return {"dec {}", 1, Instruction::Operation::Subtract16, Instruction::Operand::HL, Instruction::Operand::Const_1};

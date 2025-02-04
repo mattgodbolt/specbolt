@@ -13,6 +13,8 @@ public:
 
   constexpr Flags operator&(const Flags rhs) const { return Flags(value_ & rhs.value_); }
   constexpr Flags operator|(const Flags rhs) const { return Flags(value_ | rhs.value_); }
+  constexpr Flags operator^(const Flags rhs) const { return Flags(value_ ^ rhs.value_); }
+  constexpr Flags operator~() const { return Flags(~value_); }
 
   [[nodiscard]] static constexpr Flags Carry() { return Flags(Flag::carry); }
   [[nodiscard]] static constexpr Flags Subtract() { return Flags(Flag::subtract); }

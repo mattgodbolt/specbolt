@@ -84,6 +84,17 @@ TEST_CASE("ALU tests") {
       CHECK(Alu::add16(0x0100, 0x7f00, false).flags.overflow());
     }
   }
+
+  SECTION("8 bit subtraction") {
+    // Handy dandy: http://visual6502.org/JSSim/expert-z80.html?steps=60&logmore=f,a,bc&a=0&d=3e000e01910000
+    SECTION("no carry in") {
+      CHECK(Alu::sub8(0, 0, false) == Alu::R8{0, Flags::Zero() | Flags::Subtract()});
+      CHECK(Alu::sub8(1, 0, false) == Alu::R8{1, Flags::Subtract()});
+      CHECK(Alu::sub8(0, 1, false) == Alu::R8{0xff, Flags::Sign() | Flags::Subtract() | Flags::Flag5() |
+                                                        Flags::Flag3() | Flags::HalfCarry() | Flags::Carry()});
+    }
+  }
+
   SECTION("Exclusive or") {
     CHECK(Alu::xor8(0, 0) == Alu::R8{0, Flags::Zero() | Flags::Parity()});
     CHECK(Alu::xor8(0, 0xff) == Alu::R8{0xff, Flags::Sign() | Flags::Flag5() | Flags::Flag3() | Flags::Parity()});

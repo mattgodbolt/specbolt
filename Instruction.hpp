@@ -53,6 +53,7 @@ struct Instruction {
     Add16,
     Add16WithCarry,
     Subtract8,
+    Compare, // compare is subtly different to subtract8 as the undocumented flag bits come from the operand, not result
     Subtract8WithCarry,
     Subtract16,
     Subtract16WithCarry,
