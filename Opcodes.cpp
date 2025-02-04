@@ -112,6 +112,8 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x02:
       return {"ld {}, {}", 1, Instruction::Operation::Load, Instruction::Operand::BC_Indirect, Instruction::Operand::A};
     case 0x03:
+      // TODO: inc dec 16 doesn't affect flags, but this will if we're not careful...maybe add16/sub16 with const 1 is
+      // dumb
       return {"inc {}", 1, Instruction::Operation::Add16, Instruction::Operand::BC, Instruction::Operand::Const_1};
     case 0x11:
       return {
@@ -164,6 +166,26 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x6f:
       return {"ld {}, {}", 1, Instruction::Operation::Load, dest_operand_for(opcode), source_operand_for(opcode)};
 
+    case 0x80:
+    case 0x81:
+    case 0x82:
+    case 0x83:
+    case 0x84:
+    case 0x85:
+    case 0x86:
+    case 0x87:
+      return {"add {}, {}", 1, Instruction::Operation::Add8, Instruction::Operand::A, source_operand_for(opcode)};
+    case 0x88:
+    case 0x89:
+    case 0x8a:
+    case 0x8b:
+    case 0x8c:
+    case 0x8d:
+    case 0x8e:
+    case 0x8f:
+      return {
+          "adc {}, {}", 1, Instruction::Operation::Add8WithCarry, Instruction::Operand::A, source_operand_for(opcode)};
+
     case 0x90:
     case 0x91:
     case 0x92:
@@ -172,8 +194,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x95:
     case 0x96:
     case 0x97:
-      return {"sub {1}", 1, Instruction::Operation::Subtract8, Instruction::Operand::A, source_operand_for(opcode)};
-
+      return {"sub {}, {}", 1, Instruction::Operation::Subtract8, Instruction::Operand::A, source_operand_for(opcode)};
     case 0x98:
     case 0x99:
     case 0x9a:
@@ -202,7 +223,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xad:
     case 0xae:
     case 0xaf:
-      return {"xor {1}", 1, Instruction::Operation::Xor, Instruction::Operand::A, source_operand_for(opcode)};
+      return {"xor {}, {}", 1, Instruction::Operation::Xor, Instruction::Operand::A, source_operand_for(opcode)};
 
     case 0xb0:
     case 0xb1:
@@ -212,7 +233,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xb5:
     case 0xb6:
     case 0xb7:
-      return {"or {1}", 1, Instruction::Operation::Or, Instruction::Operand::A, source_operand_for(opcode)};
+      return {"or {}, {}", 1, Instruction::Operation::Or, Instruction::Operand::A, source_operand_for(opcode)};
     case 0xb8:
     case 0xb9:
     case 0xba:

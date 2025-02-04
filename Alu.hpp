@@ -8,13 +8,17 @@ namespace specbolt {
 
 class Alu {
 public:
-  struct Result {
-    std::uint8_t result;
+  template<typename ResultType>
+  struct ResultT {
+    ResultType result;
     Flags flags;
-    constexpr bool operator==(const Result &rhs) const = default;
+    constexpr bool operator==(const ResultT &rhs) const = default;
   };
-  static Result add8(std::uint8_t lhs, std::uint8_t rhs, bool carry_in);
-  static Result xor8(std::uint8_t lhs, std::uint8_t rhs);
+  using R8 = ResultT<std::uint8_t>;
+  using R16 = ResultT<std::uint16_t>;
+  static R8 add8(std::uint8_t lhs, std::uint8_t rhs, bool carry_in);
+  static R16 add16(std::uint16_t lhs, std::uint16_t rhs, bool carry_in);
+  static R8 xor8(std::uint8_t lhs, std::uint8_t rhs);
   // add to SP alledgely updates flags, bit 11 to 12? not done in jsspeccy?
   // https://stackoverflow.com/questions/57958631/game-boy-half-carry-flag-and-16-bit-instructions-especially-opcode-0xe8
 };
