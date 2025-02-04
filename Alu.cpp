@@ -31,8 +31,8 @@ Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
   return {result.result, (result.flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
-Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs, const bool carry_in) {
-  const auto result = sub8(lhs, rhs, carry_in);
+Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs) {
+  const auto result = sub8(lhs, rhs, false);
   // Per http://www.z80.info/z80sflag.htm; F5 and F3 are copied from the operand, not the result
   const auto mask53 = Flags::Flag5() | Flags::Flag3();
   return {result.result, result.flags & ~mask53 | Flags(lhs) & mask53};
@@ -54,6 +54,14 @@ Alu::R16 Alu::sub16(const std::uint16_t lhs, std::uint16_t rhs, bool carry_in) {
 
 Alu::R8 Alu::xor8(const std::uint8_t lhs, const std::uint8_t rhs) {
   const auto result = static_cast<std::uint8_t>(lhs ^ rhs);
+  return {result, sz53_parity(result)};
+}
+Alu::R8 Alu::or8(const std::uint8_t lhs, const std::uint8_t rhs) {
+  const auto result = static_cast<std::uint8_t>(lhs | rhs);
+  return {result, sz53_parity(result)};
+}
+Alu::R8 Alu::and8(const std::uint8_t lhs, const std::uint8_t rhs) {
+  const auto result = static_cast<std::uint8_t>(lhs & rhs);
   return {result, sz53_parity(result)};
 }
 

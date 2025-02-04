@@ -38,10 +38,8 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       result.flags = alu_result.flags;
     } break;
     case Operation::Compare: {
-      const auto alu_result =
-          Alu::cmp8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source), false);
-      result.value = alu_result.result;
-      result.flags = alu_result.flags;
+      // Only update the flags on compare.
+      result.flags = Alu::cmp8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source)).flags;
     } break;
     case Operation::Subtract8: {
       const auto alu_result =
@@ -65,12 +63,6 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       result.value = alu_result.result;
       result.flags = alu_result.flags;
     } break;
-    case Operation::And:
-      throw std::runtime_error("todo");
-      break;
-    case Operation::Or:
-      throw std::runtime_error("todo");
-      break;
     case Operation::Load:
       result.value = input.source;
       break;
@@ -81,10 +73,21 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       break;
     case Operation::Bit:
       break;
-    case Operation::Xor:
-      result.value = input.dest ^ input.source;
-      // TODO flags
-      break;
+    case Operation::Xor: {
+      const auto alu_result = Alu::xor8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source));
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+    case Operation::And: {
+      const auto alu_result = Alu::and8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source));
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+    case Operation::Or: {
+      const auto alu_result = Alu::or8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source));
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
     case Operation::Irq:
       // OR todo "iff1 and 2" destination and load?
       result.iff1 = result.iff2 = input.source;

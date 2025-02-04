@@ -91,6 +91,8 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return memory_.read(regs_.pc() - 1);
     case Instruction::Operand::WordImmediate:
       return read16(regs_.pc() - 2);
+    case Instruction::Operand::PcOffset:
+      return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1)));
     default:
       break; // TODO NOT THIS
   }
@@ -98,10 +100,25 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
 }
 
 void Z80::execute(const Instruction &instr) {
+  const auto flags = Flags(regs_.get(RegisterFile::R8::F));
+  switch (instr.condition) {
+    case Instruction::Condition::None:
+      break;
+    // TODO time taken? :|
+    // TODO should we pass the condition?
+    case Instruction::Condition::Zero:
+      if (!flags.zero())
+        return;
+      break;
+    case Instruction::Condition::NonZero:
+      if (flags.zero())
+        return;
+      break;
+  }
   const auto source = read(instr.source);
   const auto dest_before = read(instr.dest);
-  const auto result = Instruction::apply(
-      instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), Flags(regs_.get(RegisterFile::R8::F)), iff1_, iff2_});
+  const auto result =
+      Instruction::apply(instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), flags, iff1_, iff2_});
   regs_.pc(result.pc);
   regs_.sp(result.sp);
   regs_.set(RegisterFile::R8::F, result.flags.to_u8());
@@ -181,7 +198,8 @@ void Z80::dump() const {
   std::print(std::cout, "Z80 dump:\n");
   std::print(std::cout, "PC: {:04x}\n", regs_.pc());
   std::print(std::cout, "SP: {:04x}\n", regs_.sp());
-  std::print(std::cout, "AF: {:04x}\n", regs_.get(RegisterFile::R16::AF));
+  std::print(std::cout, "AF: {:04x} - {}\n", regs_.get(RegisterFile::R16::AF),
+      Flags(regs_.get(RegisterFile::R8::F)).to_string());
   std::print(std::cout, "BC: {:04x}\n", regs_.get(RegisterFile::R16::BC));
   std::print(std::cout, "DE: {:04x}\n", regs_.get(RegisterFile::R16::DE));
   std::print(std::cout, "HL: {:04x}\n", regs_.get(RegisterFile::R16::HL));

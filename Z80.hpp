@@ -24,6 +24,8 @@ public:
 
   void dump() const;
 
+  [[nodiscard]] const auto &regs() const { return regs_; }
+
 private:
   RegisterFile regs_;
   Memory &memory_;

@@ -120,6 +120,9 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
           "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::DE, Instruction::Operand::WordImmediate};
     case 0x18:
       return {"jr {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset};
+    case 0x20:
+      return {"jr nz {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
+          Instruction::Condition::NonZero};
     case 0x22:
       return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect,
           Instruction::Operand::HL};
@@ -242,7 +245,8 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xbd:
     case 0xbe:
     case 0xbf:
-      return {"cp {1}", 1, Instruction::Operation::Compare, Instruction::Operand::None, source_operand_for(opcode)};
+      // hackily use "a" as the destination (e.g. other operand, but Compare doesn't actually update it).
+      return {"cp {1}", 1, Instruction::Operation::Compare, Instruction::Operand::A, source_operand_for(opcode)};
 
     case 0x2b:
       return {"dec {}", 1, Instruction::Operation::Subtract16, Instruction::Operand::HL, Instruction::Operand::Const_1};

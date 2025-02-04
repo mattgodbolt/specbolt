@@ -67,10 +67,13 @@ struct Instruction {
     Out, // what to do about this?
   };
   std::string_view opcode;
-  uint8_t length;
+  std::uint8_t length;
   Operation operation;
+  // CONSIDER an output, LHS and RHS, to allow "cmp" to do NONE = A - source?
   Operand dest{Operand::None};
   Operand source{Operand::None};
+  enum class Condition { None, NonZero, Zero };
+  Condition condition{Condition::None};
   struct Input {
     std::uint16_t dest;
     std::uint16_t source;

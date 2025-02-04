@@ -63,16 +63,29 @@ void Main() {
   specbolt::Z80 z80(memory);
   const specbolt::Disassembler dis(memory);
   try {
-    for (int i = 0; i < 100; ++i) {
+    int trace{};
+    for (int i = 0; i < 220'000; ++i) {
       const auto disassembled = dis.disassemble(z80.pc());
-      std::cout << disassembled.to_string() << "\n";
+      if (trace)
+        std::cout << disassembled.to_string() << "\n";
       z80.execute_one();
+      // TODO update this to trace a specific address or whatever
+      if (!trace && z80.regs().get(specbolt::RegisterFile::R16::HL) == 0x4000) {
+        trace = 9999;
+      }
+      if (trace) {
+        z80.dump();
+        if (--trace == 0) {
+          break;
+        }
+      }
     }
   }
   catch (const std::runtime_error &runtime_error) {
     std::print(std::cout, "Error: {}\n", runtime_error.what());
     z80.dump();
   }
+  z80.dump();
 
   while (!quit) {
     while (SDL_PollEvent(&e) != 0) {
