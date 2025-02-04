@@ -127,6 +127,37 @@ const Instruction &decode(const std::uint8_t opcode, const std::uint8_t nextOpco
           "ld b, a", 1, Instruction::Operation::Load, Instruction::Operand::B, Instruction::Operand::A};
       return instr;
     }
+    case 0x60: {
+      // Much better to generate the opcode from the operands?
+      static constexpr Instruction instr{
+        "ld h, b", 1, Instruction::Operation::Load, Instruction::Operand::H, Instruction::Operand::B};
+      return instr;
+    }
+    case 0x61: {
+      static constexpr Instruction instr{
+        "ld h, c", 1, Instruction::Operation::Load, Instruction::Operand::H, Instruction::Operand::C};
+      return instr;
+    }
+    case 0x62: {
+      static constexpr Instruction instr{
+        "ld h, d", 1, Instruction::Operation::Load, Instruction::Operand::H, Instruction::Operand::D};
+      return instr;
+    }
+    case 0x63: {
+      static constexpr Instruction instr{
+        "ld h, e", 1, Instruction::Operation::Load, Instruction::Operand::H, Instruction::Operand::E};
+      return instr;
+    }
+    case 0x64: {
+      static constexpr Instruction instr{
+        "ld h, h", 1, Instruction::Operation::Load, Instruction::Operand::H, Instruction::Operand::H};
+      return instr;
+    }
+    case 0x65: {
+      static constexpr Instruction instr{
+        "ld h, l", 1, Instruction::Operation::Load, Instruction::Operand::H, Instruction::Operand::L};
+      return instr;
+    }
     case 0xaf: {
       static constexpr Instruction instr{
           "xor a", 1, Instruction::Operation::Xor, Instruction::Operand::A, Instruction::Operand::A};
