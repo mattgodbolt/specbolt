@@ -32,7 +32,6 @@ struct Instruction {
     ByteImmediate,
     WordImmediate,
     WordImmediateIndirect,
-    Offset,
     PcOffset,
     Const_0,
     Const_1,
@@ -47,8 +46,13 @@ struct Instruction {
   enum class Operation {
     None,
     Load,
-    Add,
-    Subtract,
+    Add8,
+    Subtract8,
+    Subtract8WithCarry,
+    Add16,
+    Subtract16,
+    And,
+    Or,
     Xor,
     Bit, // Maybe and?
     Jump,

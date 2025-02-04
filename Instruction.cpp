@@ -12,12 +12,23 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
   switch (operation) {
     case Operation::None:
       break;
-    case Operation::Add:
-      // Consider bit width?
+    case Operation::Add8:
+    case Operation::Add16:
+      throw std::runtime_error("todo");
       break;
-    case Operation::Subtract:
-      // Consider bit width?
-      // BUT ALSO ARGH FLAGS FOR DEC BC etc unaffected
+    case Operation::Subtract8:
+    case Operation::Subtract8WithCarry: {
+      // const std::uint16_t result = input.dest - input.source;
+      result.value = input.dest - input.source; // TODO flags in some cases
+    } break;
+    case Operation::Subtract16:
+      result.value = input.dest - input.source;
+      break;
+    case Operation::And:
+      throw std::runtime_error("todo");
+      break;
+    case Operation::Or:
+      throw std::runtime_error("todo");
       break;
     case Operation::Load:
       result.value = input.source;

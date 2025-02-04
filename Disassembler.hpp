@@ -4,23 +4,23 @@
 #include <cstdint>
 #include <string>
 
+#include "Instruction.hpp"
+
 namespace specbolt {
 
 class Memory;
-struct Instruction;
 
 class Disassembler {
 public:
   explicit Disassembler(Memory &memory) : memory_(memory) {}
 
   struct Disassembled {
-    const Instruction &instruction;
+    Instruction instruction;
     uint16_t address{};
     std::array<uint8_t, 4> bytes{};
     // bool operator==(const Disassembled &other) const = default;
     [[nodiscard]] std::string to_string() const;
-    // TODO std::format specialisation
-    [[nodiscard]] std::uint16_t immediate_operand() const;
+    [[nodiscard]] std::string operand_name(Instruction::Operand operand) const;
   };
 
   [[nodiscard]] Disassembled disassemble(std::uint16_t address) const;

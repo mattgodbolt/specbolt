@@ -149,6 +149,16 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::HL:
       regs_.set(RegisterFile::R16::HL, value);
       break;
+    case Instruction::Operand::BC_Indirect:
+      // TODO are these all 8-bit?
+      write8(regs_.get(RegisterFile::R16::BC), static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::DE_Indirect:
+      write8(regs_.get(RegisterFile::R16::DE), static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::HL_Indirect:
+      write8(regs_.get(RegisterFile::R16::HL), static_cast<std::uint8_t>(value));
+      break;
     case Instruction::Operand::I:
       regs_.i(static_cast<std::uint8_t>(value));
       break;
@@ -164,6 +174,8 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
       throw std::runtime_error("bad operand");
   }
 }
+
+void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
 
 void Z80::dump() const {
   std::print(std::cout, "Z80 dump:\n");

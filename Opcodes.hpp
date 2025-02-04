@@ -7,6 +7,6 @@
 
 namespace specbolt {
 
-const Instruction &decode(std::uint8_t opcode, std::uint8_t nextOpcode, std::uint8_t nextNextOpcode);
+Instruction decode(std::uint8_t opcode, std::uint8_t nextOpcode, std::uint8_t nextNextOpcode);
 
 } // namespace specbolt
