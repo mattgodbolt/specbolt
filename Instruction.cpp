@@ -4,6 +4,8 @@
 #include <iostream>
 #include <stdexcept>
 
+#include "Alu.hpp"
+
 namespace specbolt {
 
 Instruction::Output Instruction::apply(const Operation operation, const Input &input) {
@@ -12,7 +14,12 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
   switch (operation) {
     case Operation::None:
       break;
-    case Operation::Add8:
+    case Operation::Add8: {
+      const auto alu_result = Alu::add8(static_cast<std::uint8_t>(input.dest), static_cast<std::uint8_t>(input.source), false);
+      result.value = alu_result.result;
+      result.flags = alu_result.flags;
+    } break;
+
     case Operation::Add16:
       throw std::runtime_error("todo");
       break;

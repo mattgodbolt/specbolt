@@ -101,10 +101,10 @@ void Z80::execute(const Instruction &instr) {
   const auto source = read(instr.source);
   const auto dest_before = read(instr.dest);
   const auto result = Instruction::apply(
-      instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), regs_.get(RegisterFile::R8::F), iff1_, iff2_});
+      instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), Flags(regs_.get(RegisterFile::R8::F)), iff1_, iff2_});
   regs_.pc(result.pc);
   regs_.sp(result.sp);
-  regs_.set(RegisterFile::R8::F, result.flags);
+  regs_.set(RegisterFile::R8::F, result.flags.to_u8());
   iff1_ = result.iff1;
   iff2_ = result.iff2;
   pass_time(result.extra_t_states);

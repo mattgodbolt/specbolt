@@ -29,6 +29,10 @@ add_library(specbolt_lib
         Instruction.cpp
         Instruction.hpp
         Opcodes.cpp
-        Opcodes.hpp)
+        Opcodes.hpp
+        Alu.cpp
+        Alu.hpp
+        Flags.cpp
+        Flags.hpp)
 add_executable(specbolt main.cpp)
 target_link_libraries(specbolt specbolt_lib SDL2::SDL2)

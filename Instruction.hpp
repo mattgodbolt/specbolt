@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string_view>
 
+#include "Flags.hpp"
+
 namespace specbolt {
 
 struct Instruction {
@@ -70,7 +72,7 @@ struct Instruction {
     std::uint16_t source;
     std::uint16_t pc;
     std::uint16_t sp;
-    std::uint8_t flags;
+    Flags flags;
     bool iff1;
     bool iff2;
   };
@@ -78,7 +80,7 @@ struct Instruction {
     std::uint16_t value;
     std::uint16_t pc;
     std::uint16_t sp;
-    std::uint8_t flags;
+    Flags flags;
     bool iff1;
     bool iff2;
     std::uint8_t extra_t_states{};
