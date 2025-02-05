@@ -9,10 +9,10 @@ jobs:
         build_type: [ Debug, RelWithDebInfo ]
     steps:
       - uses: actions/checkout@v4
-      - name: setup SDL2
+      - name: setup system dependencies
         run: |
           sudo apt update -y
-          sudo apt install -y libsdl2-dev
+          sudo apt install -y libsdl2-dev libreadline-dev
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
         with:
