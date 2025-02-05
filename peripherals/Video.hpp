@@ -27,6 +27,7 @@ private:
   std::size_t total_cycles_{};
   std::size_t next_line_cycles_{};
   std::size_t current_line_{};
+  std::size_t flash_counter_{};
   bool flash_on_{};
 
   void render_line(std::size_t line);

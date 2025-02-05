@@ -31,6 +31,7 @@ constexpr auto ScreenWidth = 256;
 constexpr auto ScreenHeight = 192;
 constexpr auto ScaleFactor = 2;
 constexpr auto CyclesPerScanLine = 224;
+constexpr auto FramesPerFlash = 16;
 
 constexpr auto PixelDataAddress = 0x4000;
 constexpr auto AttributeDataAddress = 0x5800;
@@ -48,6 +49,12 @@ void Video::poll(const std::size_t num_cycles) {
   while (total_cycles_ > next_line_cycles_) {
     render_line(current_line_);
     current_line_ = (current_line_ + 1) % (Height + VSyncLines);
+    if (current_line_ == 0) {
+      if (++flash_counter_ == FramesPerFlash) {
+        flash_counter_ = 0;
+        flash_on_ = !flash_on_;
+      }
+    }
     next_line_cycles_ += CyclesPerScanLine;
   }
   // TODO irqs
