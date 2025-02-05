@@ -91,6 +91,8 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return memory_.read(regs_.pc() - 1);
     case Instruction::Operand::WordImmediate:
       return read16(regs_.pc() - 2);
+    case Instruction::Operand::WordImmediateIndirect16:
+      return read16(read16(regs_.pc() - 2));
     case Instruction::Operand::PcOffset:
       return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1)));
     default:
@@ -199,6 +201,11 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
       // perhaps the operand should be ByteImmediateOut? But then how about IN?
       break;
     }
+    case Instruction::Operand::WordImmediate:
+      throw std::runtime_error("Probably didn't mean to do this");
+    case Instruction::Operand::WordImmediateIndirect16:
+      write16(read16(regs_.pc() - 2), value);
+      break;
     default:
       // TODO NOT THIS
       throw std::runtime_error("bad operand");
@@ -206,6 +213,10 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
 }
 
 void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
+void Z80::write16(const std::uint16_t address, const std::uint16_t value) {
+  memory_.write(address, static_cast<uint8_t>(value));
+  memory_.write(address + 1, static_cast<uint8_t>(value >> 8));
+}
 
 void Z80::dump() const {
   std::print(std::cout, "Z80 dump:\n");

@@ -21,7 +21,6 @@ std::string Disassembler::Disassembled::to_string() const {
   const auto source = operand_name(instruction.source);
   const auto disassembled = std::vformat(instruction.opcode, std::make_format_args(dest, source));
   switch (instruction.length) {
-    // todo something clever with spans and widths, and handle prefixes...
     case 1:
       return std::format("{:04x}  {:02x}           {}", address, bytes[0], disassembled);
     case 2:
@@ -35,7 +34,7 @@ std::string Disassembler::Disassembled::to_string() const {
       throw std::runtime_error("Should be impossible");
   }
 }
-std::string Disassembler::Disassembled::operand_name(Instruction::Operand operand) const {
+std::string Disassembler::Disassembled::operand_name(const Instruction::Operand operand) const {
   switch (operand) {
     case Instruction::Operand::None:
       return "";
@@ -44,7 +43,7 @@ std::string Disassembler::Disassembled::operand_name(Instruction::Operand operan
     case Instruction::Operand::WordImmediate:
       return std::format(
           "0x{:04x}", static_cast<uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
-    case Instruction::Operand::WordImmediateIndirect:
+    case Instruction::Operand::WordImmediateIndirect16:
       return std::format(
           "(0x{:04x})", static_cast<uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
     case Instruction::Operand::A:
@@ -112,27 +111,5 @@ std::string Disassembler::Disassembled::operand_name(Instruction::Operand operan
   }
   return "??";
 }
-
-
-// std::uint16_t Disassembler::Disassembled::immediate_operand() const {
-//   if (instruction.source == Instruction::Operand::WordImmediate ||
-//       instruction.dest == Instruction::Operand::WordImmediate ||
-//       instruction.source == Instruction::Operand::WordImmediateIndirect ||
-//       instruction.dest == Instruction::Operand::WordImmediateIndirect) {
-//     return static_cast<uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2];
-//   }
-//   if (instruction.source == Instruction::Operand::ByteImmediate ||
-//       instruction.dest == Instruction::Operand::ByteImmediate ||
-//       instruction.source == Instruction::Operand::IX_Offset_Indirect ||
-//       instruction.dest == Instruction::Operand::IX_Offset_Indirect ||
-//       instruction.source == Instruction::Operand::IY_Offset_Indirect ||
-//       instruction.dest == Instruction::Operand::IY_Offset_Indirect) {
-//     return bytes[instruction.length - 1];
-//   }
-//   if (instruction.source == Instruction::Operand::PcOffset) {
-//     return static_cast<uint16_t>(address + instruction.length + static_cast<int8_t>(bytes[instruction.length - 1]));
-//   }
-//   return 0;
-// }
 
 } // namespace specbolt

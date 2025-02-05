@@ -40,6 +40,7 @@ private:
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand) const;
   void write(Instruction::Operand operand, std::uint16_t value);
   void write8(std::uint16_t address, std::uint8_t value);
+  void write16(std::uint16_t address, std::uint16_t value);
   void pass_time(std::size_t tstates);
   void execute(const Instruction &instr);
 };

@@ -33,7 +33,7 @@ struct Instruction {
     I,
     ByteImmediate,
     WordImmediate,
-    WordImmediateIndirect,
+    WordImmediateIndirect16,
     PcOffset,
     Const_0,
     Const_1,

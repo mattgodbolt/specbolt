@@ -37,6 +37,9 @@ Instruction decode_cb(const std::uint8_t opcode) {
 
 Instruction decode_ed(const std::uint8_t opcode) {
   switch (opcode) {
+    case 0x43:
+      return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
+          Instruction::Operand::BC};
     case 0x47:
       return {"ld {}, {}", 2, Instruction::Operation::Load, Instruction::Operand::I, Instruction::Operand::A};
     case 0x52:
@@ -44,7 +47,7 @@ Instruction decode_ed(const std::uint8_t opcode) {
           Instruction::Operand::DE};
     case 0x7b:
       return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::SP,
-          Instruction::Operand::WordImmediateIndirect};
+          Instruction::Operand::WordImmediateIndirect16};
     default:
       break;
   }
@@ -127,7 +130,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {"jr nc {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::NoCarry};
     case 0x22:
-      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect,
+      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
           Instruction::Operand::HL};
     case 0x23:
       return {"inc {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::Const_1};
