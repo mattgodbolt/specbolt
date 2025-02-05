@@ -15,24 +15,11 @@ find_package(SDL2 REQUIRED)
 include(pedantic)
 include(colors)
 
-add_subdirectory(test)
+include_directories(${PROJECT_SOURCE_DIR})
 
-add_library(specbolt_lib
-        Z80.cpp
-        Z80.hpp
-        RegisterFile.cpp
-        RegisterFile.hpp
-        Disassembler.cpp
-        Disassembler.hpp
-        Memory.cpp
-        Memory.hpp
-        Instruction.cpp
-        Instruction.hpp
-        Opcodes.cpp
-        Opcodes.hpp
-        Alu.cpp
-        Alu.hpp
-        Flags.cpp
-        Flags.hpp)
-add_executable(specbolt main.cpp)
+add_subdirectory(z80)
+add_subdirectory(peripherals)
+add_subdirectory(sdl)
+
+add_executable(specbolt sdl/main.cpp)
 target_link_libraries(specbolt specbolt_lib SDL2::SDL2)

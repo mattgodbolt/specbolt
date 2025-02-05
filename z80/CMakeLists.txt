@@ -1,0 +1,19 @@
+add_subdirectory(test)
+
+add_library(z80
+        Alu.cpp
+        Alu.hpp
+        Disassembler.cpp
+        Disassembler.hpp
+        Flags.cpp
+        Flags.hpp
+        Instruction.cpp
+        Instruction.hpp
+        Opcodes.cpp
+        Opcodes.hpp
+        RegisterFile.cpp
+        RegisterFile.hpp
+        Z80.cpp
+        Z80.hpp
+)
+target_link_libraries(z80 peripherals)

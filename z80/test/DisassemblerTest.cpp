@@ -1,7 +1,7 @@
-#include "../Disassembler.hpp"
+#include "z80/Disassembler.hpp"
 
-#include "../Memory.hpp"
-#include "../Instruction.hpp"
+#include "peripherals//Memory.hpp"
+#include "z80/Instruction.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

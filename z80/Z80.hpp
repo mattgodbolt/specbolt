@@ -1,12 +1,10 @@
 #pragma once
 
-#include "RegisterFile.hpp"
-
-#include "Memory.hpp"
+#include "peripherals/Memory.hpp"
+#include "z80/Opcodes.hpp"
+#include "z80/RegisterFile.hpp"
 
 #include <cstdint>
-
-#include "Opcodes.hpp"
 
 namespace specbolt {
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Instruction.hpp"
+#include "z80/Instruction.hpp"
 
 namespace specbolt {
 

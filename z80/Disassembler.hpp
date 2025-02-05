@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <string>
 
-#include "Instruction.hpp"
+#include "z80/Instruction.hpp"
 
 namespace specbolt {
 

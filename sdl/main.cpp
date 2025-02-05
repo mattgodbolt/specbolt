@@ -5,9 +5,9 @@
 #include <memory>
 #include <stdexcept>
 
-#include "Disassembler.hpp"
-#include "Memory.hpp"
-#include "Z80.hpp"
+#include "peripherals//Memory.hpp"
+#include "z80/Disassembler.hpp"
+#include "z80/Z80.hpp"
 
 namespace {
 

@@ -1,4 +1,4 @@
-#include "../Flags.hpp"
+#include "z80/Flags.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -1,10 +1,10 @@
-#include "Instruction.hpp"
+#include "z80/Instruction.hpp"
+
+#include "z80/Alu.hpp"
 
 #include <format>
 #include <iostream>
 #include <stdexcept>
-
-#include "Alu.hpp"
 
 namespace specbolt {
 
