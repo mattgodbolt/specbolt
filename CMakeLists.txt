@@ -20,6 +20,3 @@ include_directories(${PROJECT_SOURCE_DIR})
 add_subdirectory(z80)
 add_subdirectory(peripherals)
 add_subdirectory(sdl)
-
-add_executable(specbolt sdl/main.cpp)
-target_link_libraries(specbolt specbolt_lib SDL2::SDL2)
