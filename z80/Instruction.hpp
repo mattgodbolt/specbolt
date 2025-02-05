@@ -66,6 +66,7 @@ struct Instruction {
     Irq,
     Out, // what to do about this?
     Exx,
+    Exchange,
   };
   std::string_view opcode;
   std::uint8_t length;

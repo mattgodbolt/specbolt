@@ -40,6 +40,9 @@ Instruction decode_ed(const std::uint8_t opcode) {
     case 0x43:
       return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
           Instruction::Operand::BC};
+    case 0x53:
+      return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
+          Instruction::Operand::DE};
     case 0x47:
       return {"ld {}, {}", 2, Instruction::Operation::Load, Instruction::Operand::I, Instruction::Operand::A};
     case 0x52:
@@ -116,6 +119,9 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       // TODO: inc dec 16 doesn't affect flags, but this will if we're not careful...maybe add16/sub16 with const 1 is
       // dumb
       return {"inc {}", 1, Instruction::Operation::Add16, Instruction::Operand::BC, Instruction::Operand::Const_1};
+    case 0x04:
+      // TODO consider flags
+      return {"inc {}", 1, Instruction::Operation::Add8, Instruction::Operand::B, Instruction::Operand::Const_1};
     case 0x11:
       return {
           "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::DE, Instruction::Operand::WordImmediate};
@@ -278,6 +284,8 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xd3:
       return {
           "out ({}), {}", 2, Instruction::Operation::Out, Instruction::Operand::ByteImmediate, Instruction::Operand::A};
+    case 0xeb:
+      return {"ex {}, {}", 1, Instruction::Operation::Exchange, Instruction::Operand::DE, Instruction::Operand::HL};
     case 0xf3:
       return {"di", 1, Instruction::Operation::Irq, Instruction::Operand::None, Instruction::Operand::Const_0};
     case 0xfd:

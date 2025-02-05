@@ -101,6 +101,8 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       break;
     case Operation::Exx:
       break;
+    case Operation::Exchange:
+      throw std::runtime_error("Exchange is baddd");
     case Operation::Invalid:
       // TODO better
       throw std::runtime_error("Unsupported opcode");
