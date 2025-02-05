@@ -99,6 +99,8 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       else
         std::print(std::cout, "zomg OUT({:02x}, {:02x})\n", input.dest, input.source);
       break;
+    case Operation::Exx:
+      break;
     case Operation::Invalid:
       // TODO better
       throw std::runtime_error(std::format("Unsupported opcode at {:04x}", input.pc));

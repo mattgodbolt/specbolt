@@ -65,6 +65,7 @@ struct Instruction {
     Invalid,
     Irq,
     Out, // what to do about this?
+    Exx,
   };
   std::string_view opcode;
   std::uint8_t length;
@@ -91,7 +92,7 @@ struct Instruction {
     Flags flags;
     bool iff1;
     bool iff2;
-    std::uint8_t extra_t_states{};
+    std::uint8_t extra_t_states;
     std::uint8_t port_fe;
   };
 

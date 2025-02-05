@@ -259,7 +259,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {
           "jp {1}", 3, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::WordImmediate};
     case 0xd9:
-      return {"exx", 1, Instruction::Operation::None}; // TODO arg this does not fit neatly into my world.
+      return {"exx", 1, Instruction::Operation::Exx}; // TODO arg this does not fit neatly into my world.
     case 0xcb:
       return decode_cb(nextOpcode);
     case 0xdd:

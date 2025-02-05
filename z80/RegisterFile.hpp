@@ -30,6 +30,8 @@ public:
   [[nodiscard]] std::uint8_t i() const;
   void i(std::uint8_t i);
 
+  void exx();
+
 private:
   class RegPair {
   public:

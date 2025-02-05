@@ -32,6 +32,12 @@ void RegisterFile::r(std::uint8_t r) { r_ = r; }
 std::uint8_t RegisterFile::i() const { return i_; }
 void RegisterFile::i(std::uint8_t i) { i_ = i; }
 
+void RegisterFile::exx() {
+  std::swap(reg_for(R16::BC), reg_for(R16::BC_));
+  std::swap(reg_for(R16::DE), reg_for(R16::DE_));
+  std::swap(reg_for(R16::HL), reg_for(R16::HL_));
+}
+
 uint8_t RegisterFile::RegPair::high() const { return high_; }
 void RegisterFile::RegPair::high(const uint8_t high) { high_ = high; }
 uint8_t RegisterFile::RegPair::low() const { return low_; }

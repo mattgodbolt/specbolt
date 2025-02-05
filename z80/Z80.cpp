@@ -135,6 +135,10 @@ void Z80::execute(const Instruction &instr) {
   port_fe_ = result.port_fe;
   pass_time(result.extra_t_states);
   write(instr.dest, result.value);
+  if (instr.operation == Instruction::Operation::Exx) {
+    regs_.exx();
+    // Ugly, do not like.
+  }
 }
 
 void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
@@ -207,11 +211,15 @@ void Z80::dump() const {
   std::print(std::cout, "Z80 dump:\n");
   std::print(std::cout, "PC: {:04x}\n", regs_.pc());
   std::print(std::cout, "SP: {:04x}\n", regs_.sp());
-  std::print(std::cout, "AF: {:04x} - {}\n", regs_.get(RegisterFile::R16::AF),
-      Flags(regs_.get(RegisterFile::R8::F)).to_string());
-  std::print(std::cout, "BC: {:04x}\n", regs_.get(RegisterFile::R16::BC));
-  std::print(std::cout, "DE: {:04x}\n", regs_.get(RegisterFile::R16::DE));
-  std::print(std::cout, "HL: {:04x}\n", regs_.get(RegisterFile::R16::HL));
+  std::print(std::cout, "AF: {:04x} - {} | AF': {:04x} - {}\n", regs_.get(RegisterFile::R16::AF),
+      Flags(regs_.get(RegisterFile::R8::F)).to_string(), regs_.get(RegisterFile::R16::AF_),
+      Flags(regs_.get(RegisterFile::R8::F_)).to_string());
+  std::print(
+      std::cout, "BC: {:04x} | BC': {:04x}\n", regs_.get(RegisterFile::R16::BC), regs_.get(RegisterFile::R16::BC_));
+  std::print(
+      std::cout, "DE: {:04x} | DE': {:04x}\n", regs_.get(RegisterFile::R16::DE), regs_.get(RegisterFile::R16::DE_));
+  std::print(
+      std::cout, "HL: {:04x} | HL': {:04x}\n", regs_.get(RegisterFile::R16::HL), regs_.get(RegisterFile::R16::HL_));
 }
 
 } // namespace specbolt
