@@ -9,6 +9,7 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CPM)
 CPMAddPackage("gh:catchorg/Catch2@3.8.0")
 CPMAddPackage("gh:microsoft/GSL@4.1.0")
+CPMAddPackage("gh:mattgodbolt/cpp-readline#e7461f2a429c43a742197db1e6351dcef46a09ba")
 find_package(SDL2 REQUIRED)
 
 # add these after dependencies
