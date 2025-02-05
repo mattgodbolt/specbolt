@@ -1,5 +1,5 @@
 if (MSVC)
-  # not supported 
+  # not supported
 else()
   option (FORCE_COLORED_OUTPUT "Always produce ANSI-colored output (GNU/Clang only)." ON)
   if (${FORCE_COLORED_OUTPUT})

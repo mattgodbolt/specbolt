@@ -12,7 +12,7 @@ if (MSVC)
 	add_c_and_cxx_compile_options("/W4" "/WX")
 else()
 	add_c_and_cxx_compile_options("-Wall" "-Wextra" "-pedantic" "-Wshadow" "-Wconversion" "-Werror")
-  
+
 	if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
 		add_c_and_cxx_compile_definitions("_LIBCPP_ENABLE_NODISCARD")
 	endif()
