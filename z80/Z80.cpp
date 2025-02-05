@@ -14,7 +14,14 @@ std::size_t Z80::execute_one() {
   const auto decoded = decode(memory_.read(initial_pc), memory_.read(initial_pc + 1), memory_.read(initial_pc + 2));
   pass_time(4);
   regs_.pc(initial_pc + decoded.length); // NOT RIGHT
-  execute(decoded);
+  try {
+    execute(decoded);
+  }
+  catch (...) {
+    // TODO heinous
+    regs_.pc(initial_pc);
+    throw;
+  }
   return now_tstates_ - initial_time;
 }
 

@@ -103,7 +103,7 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       break;
     case Operation::Invalid:
       // TODO better
-      throw std::runtime_error(std::format("Unsupported opcode at {:04x}", input.pc));
+      throw std::runtime_error("Unsupported opcode");
   }
   return result;
 }

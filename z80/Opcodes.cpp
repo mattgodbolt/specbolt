@@ -126,9 +126,15 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x20:
       return {"jr nz {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::NonZero};
+    case 0x28:
+      return {"jr z {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
+          Instruction::Condition::Zero};
     case 0x30:
       return {"jr nc {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::NoCarry};
+    case 0x38:
+      return {"jr c {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
+          Instruction::Condition::Carry};
     case 0x22:
       return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
           Instruction::Operand::HL};
