@@ -14,7 +14,8 @@ class Z80 {
 public:
   explicit Z80(Memory &memory) : memory_(memory) {}
 
-  void execute_one();
+  // TODO "Cycles" class?
+  std::size_t execute_one();
 
   [[nodiscard]] bool iff1() const { return iff1_; }
   [[nodiscard]] bool iff2() const { return iff2_; }
@@ -34,8 +35,6 @@ private:
   bool iff2_{};
   std::uint8_t port_fe_{};
 
-  [[nodiscard]] std::uint8_t read_and_inc_pc();
-  [[nodiscard]] std::uint16_t read16_and_inc_pc();
   [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand) const;
   void write(Instruction::Operand operand, std::uint16_t value);

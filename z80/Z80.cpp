@@ -8,28 +8,16 @@
 
 namespace specbolt {
 
-// TODO flags registers and lookups therein.
-// TODO consider making instructions out of composable objects? or templated functions? arg or is that too close to
-//   the C++26 thing I want to demo?
-void Z80::execute_one() {
+std::size_t Z80::execute_one() {
+  const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
   const auto decoded = decode(memory_.read(initial_pc), memory_.read(initial_pc + 1), memory_.read(initial_pc + 2));
   pass_time(4);
   regs_.pc(initial_pc + decoded.length); // NOT RIGHT
   execute(decoded);
+  return now_tstates_ - initial_time;
 }
 
-std::uint8_t Z80::read_and_inc_pc() {
-  const auto pc = regs_.pc();
-  regs_.pc(pc + 1);
-  return memory_.read(pc);
-}
-
-std::uint16_t Z80::read16_and_inc_pc() {
-  const auto low = read_and_inc_pc();
-  const auto high = read_and_inc_pc();
-  return static_cast<std::uint16_t>(high << 8) | low;
-}
 std::uint16_t Z80::read16(const std::uint16_t address) const {
   return static_cast<uint16_t>(memory_.read(address + 1) << 8) | memory_.read(address);
 }

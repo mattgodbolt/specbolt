@@ -17,6 +17,7 @@ include(colors)
 
 include_directories(${PROJECT_SOURCE_DIR})
 
-add_subdirectory(z80)
+add_subdirectory(console)
 add_subdirectory(peripherals)
 add_subdirectory(sdl)
+add_subdirectory(z80)
