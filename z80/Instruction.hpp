@@ -72,7 +72,7 @@ struct Instruction {
   // CONSIDER an output, LHS and RHS, to allow "cmp" to do NONE = A - source?
   Operand dest{Operand::None};
   Operand source{Operand::None};
-  enum class Condition { None, NonZero, Zero };
+  enum class Condition { None, NonZero, Zero, NoCarry, Carry };
   Condition condition{Condition::None};
   struct Input {
     std::uint16_t dest;

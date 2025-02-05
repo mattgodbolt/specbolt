@@ -114,6 +114,14 @@ void Z80::execute(const Instruction &instr) {
       if (flags.zero())
         return;
       break;
+    case Instruction::Condition::Carry:
+      if (!flags.carry())
+        return;
+      break;
+    case Instruction::Condition::NoCarry:
+      if (flags.carry())
+        return;
+      break;
   }
   const auto source = read(instr.source);
   const auto dest_before = read(instr.dest);

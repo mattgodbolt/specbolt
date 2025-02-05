@@ -35,18 +35,16 @@ Instruction decode_cb(const std::uint8_t opcode) {
   return invalid_2;
 }
 
-const Instruction &decode_ed(const std::uint8_t opcode) {
+Instruction decode_ed(const std::uint8_t opcode) {
   switch (opcode) {
-    case 0x47: {
-      static constexpr Instruction instr{
-          "ld {}, {}", 2, Instruction::Operation::Load, Instruction::Operand::I, Instruction::Operand::A};
-      return instr;
-    }
-    case 0x7b: {
-      static constexpr Instruction instr{"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::SP,
+    case 0x47:
+      return {"ld {}, {}", 2, Instruction::Operation::Load, Instruction::Operand::I, Instruction::Operand::A};
+    case 0x52:
+      return {"sbc {}, {}", 2, Instruction::Operation::Subtract16WithCarry, Instruction::Operand::HL,
+          Instruction::Operand::DE};
+    case 0x7b:
+      return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::SP,
           Instruction::Operand::WordImmediateIndirect};
-      return instr;
-    }
     default:
       break;
   }
@@ -120,12 +118,19 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
           "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::DE, Instruction::Operand::WordImmediate};
     case 0x18:
       return {"jr {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset};
+    case 0x19:
+      return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::DE};
     case 0x20:
       return {"jr nz {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::NonZero};
+    case 0x30:
+      return {"jr nc {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
+          Instruction::Condition::NoCarry};
     case 0x22:
       return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect,
           Instruction::Operand::HL};
+    case 0x23:
+      return {"inc {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::Const_1};
     case 0x06:
     case 0x16:
     case 0x26:
@@ -253,6 +258,8 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xc3:
       return {
           "jp {1}", 3, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::WordImmediate};
+    case 0xd9:
+      return {"exx", 1, Instruction::Operation::None}; // TODO arg this does not fit neatly into my world.
     case 0xcb:
       return decode_cb(nextOpcode);
     case 0xdd:
