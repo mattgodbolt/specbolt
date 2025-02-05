@@ -19,6 +19,8 @@ public:
   [[nodiscard]] bool iff1() const { return iff1_; }
   [[nodiscard]] bool iff2() const { return iff2_; }
   [[nodiscard]] std::uint16_t pc() const { return regs_.pc(); }
+  // TODO this isn't a property of the z80, we should "poke" out to a port mapper or something.
+  [[nodiscard]] std::uint8_t port_fe() const { return port_fe_; }
 
   void dump() const;
 
@@ -30,6 +32,7 @@ private:
   std::size_t now_tstates_{};
   bool iff1_{};
   bool iff2_{};
+  std::uint8_t port_fe_{};
 
   [[nodiscard]] std::uint8_t read_and_inc_pc();
   [[nodiscard]] std::uint16_t read16_and_inc_pc();

@@ -82,6 +82,7 @@ struct Instruction {
     Flags flags;
     bool iff1;
     bool iff2;
+    std::uint8_t port_fe;
   };
   struct Output {
     std::uint16_t value;
@@ -91,6 +92,7 @@ struct Instruction {
     bool iff1;
     bool iff2;
     std::uint8_t extra_t_states{};
+    std::uint8_t port_fe;
   };
 
   [[nodiscard]] static Output apply(Operation operation, const Input &input);

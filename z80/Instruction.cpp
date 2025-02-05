@@ -9,7 +9,7 @@
 namespace specbolt {
 
 Instruction::Output Instruction::apply(const Operation operation, const Input &input) {
-  Output result{input.dest, input.pc, input.sp, input.flags, input.iff1, input.iff2, 0};
+  Output result{input.dest, input.pc, input.sp, input.flags, input.iff1, input.iff2, 0, input.port_fe};
   // TODO tstates ... like ED executes take longer etc
   switch (operation) {
     case Operation::None:
@@ -93,8 +93,11 @@ Instruction::Output Instruction::apply(const Operation operation, const Input &i
       result.iff1 = result.iff2 = input.source;
       break;
     case Operation::Out:
-      // YUCK
-      std::print(std::cout, "zomg OUT({:02x}, {:02x})\n", input.dest, input.source);
+      // TODO starts to smell a bit here...
+      if (input.dest == 0xfe)
+        result.port_fe = static_cast<std::uint8_t>(input.source);
+      else
+        std::print(std::cout, "zomg OUT({:02x}, {:02x})\n", input.dest, input.source);
       break;
     case Operation::Invalid:
       // TODO better

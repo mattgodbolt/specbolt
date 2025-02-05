@@ -118,12 +118,13 @@ void Z80::execute(const Instruction &instr) {
   const auto source = read(instr.source);
   const auto dest_before = read(instr.dest);
   const auto result =
-      Instruction::apply(instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), flags, iff1_, iff2_});
+      Instruction::apply(instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), flags, iff1_, iff2_, port_fe_});
   regs_.pc(result.pc);
   regs_.sp(result.sp);
   regs_.set(RegisterFile::R8::F, result.flags.to_u8());
   iff1_ = result.iff1;
   iff2_ = result.iff2;
+  port_fe_ = result.port_fe;
   pass_time(result.extra_t_states);
   write(instr.dest, result.value);
 }

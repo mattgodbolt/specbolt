@@ -5,7 +5,8 @@
 #include <memory>
 #include <stdexcept>
 
-#include "peripherals//Memory.hpp"
+#include "peripherals/Memory.hpp"
+#include "peripherals/Video.hpp"
 #include "z80/Disassembler.hpp"
 #include "z80/Z80.hpp"
 
@@ -26,15 +27,12 @@ struct SdlInit {
   ~SdlInit() { SDL_Quit(); }
 };
 
-const int WindowWidth = 640;
-const int WindowHeight = 480;
-
 void Main() {
   SdlInit sdl_init;
 
   std::unique_ptr<SDL_Window, decltype(SDL_DestroyWindow) *> window(
-      SDL_CreateWindow("SDL Bitmap Display", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WindowWidth,
-          WindowHeight, SDL_WINDOW_SHOWN),
+      SDL_CreateWindow("SDL Bitmap Display", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, specbolt::Video::Width,
+          specbolt::Video::Height, SDL_WINDOW_SHOWN),
       SDL_DestroyWindow);
   if (!window) {
     throw SdlError("SDL_CreateWindow failed");
@@ -47,8 +45,8 @@ void Main() {
   }
 
   const std::unique_ptr<SDL_Texture, decltype(SDL_DestroyTexture) *> texture(
-      SDL_CreateTexture(
-          renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, WindowWidth, WindowHeight),
+      SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, specbolt::Video::Width,
+          specbolt::Video::Height),
       SDL_DestroyTexture);
   if (!texture) {
     throw SdlError("SDL_CreateTexture failed");
@@ -56,11 +54,12 @@ void Main() {
 
   bool quit = false;
   SDL_Event e;
-  unsigned char rgb = 0xff;
 
   specbolt::Memory memory;
+  specbolt::Video video(memory);
   memory.load("48.rom", 0, 16 * 1024);
   specbolt::Z80 z80(memory);
+
   const specbolt::Disassembler dis(memory);
   try {
     int trace{};
@@ -97,14 +96,15 @@ void Main() {
     void *pixels;
     int pitch;
     SDL_LockTexture(texture.get(), nullptr, &pixels, &pitch);
-    memset(pixels, rgb, WindowWidth * WindowHeight * 4);
+    memcpy(pixels, video.screen().data(), video.screen().size_bytes());
     SDL_UnlockTexture(texture.get());
 
     SDL_RenderClear(renderer.get());
     SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
     SDL_RenderPresent(renderer.get());
 
-    rgb++;
+    video.set_border(z80.port_fe() & 0x7);
+    video.poll((0x01ff01));
     SDL_Delay(20);
   }
 }
