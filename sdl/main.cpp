@@ -59,6 +59,7 @@ void Main() {
   specbolt::Video video(memory);
   memory.load("48.rom", 0, 16 * 1024);
   specbolt::Z80 z80(memory);
+  static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
   const specbolt::Disassembler dis(memory);
   try {
@@ -104,7 +105,7 @@ void Main() {
     SDL_RenderPresent(renderer.get());
 
     video.set_border(z80.port_fe() & 0x7);
-    video.poll((0x01ff01));
+    video.poll(cycles_per_frame);
     SDL_Delay(20);
   }
 }

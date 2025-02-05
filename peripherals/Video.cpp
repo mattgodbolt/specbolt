@@ -24,7 +24,7 @@ constexpr std::array<std::uint32_t, 16> palette{
 };
 
 constexpr auto VSyncLines = 48;
-constexpr auto HSyncPixels = 64;
+// constexpr auto HSyncPixels = 64;
 constexpr auto XBorder = 32;
 constexpr auto YBorder = 24;
 constexpr auto ScreenWidth = 256;
@@ -36,8 +36,8 @@ constexpr auto PixelDataAddress = 0x4000;
 constexpr auto AttributeDataAddress = 0x5800;
 constexpr auto ColumnCount = 32;
 
-static_assert(VSyncLines + YBorder + ScreenHeight * ScaleFactor + YBorder == Video::Height);
-static_assert(XBorder + ScreenWidth * ScaleFactor + XBorder + HSyncPixels == Video::Width);
+static_assert(YBorder + ScreenHeight * ScaleFactor + YBorder == Video::Height);
+static_assert(XBorder + ScreenWidth * ScaleFactor + XBorder == Video::Width);
 
 } // namespace
 
@@ -47,7 +47,7 @@ void Video::poll(const std::size_t num_cycles) {
   total_cycles_ += num_cycles;
   while (total_cycles_ > next_line_cycles_) {
     render_line(current_line_);
-    current_line_ = (current_line_ + 1) % Height;
+    current_line_ = (current_line_ + 1) % (Height + VSyncLines);
     next_line_cycles_ += CyclesPerScanLine;
   }
   // TODO irqs
@@ -75,7 +75,7 @@ void Video::render_line(std::size_t line) {
   std::ranges::fill(line_span.subspan(0, XBorder), palette[border_]);
   std::ranges::fill(line_span.subspan(XBorder + ScreenWidth * ScaleFactor, XBorder), palette[border_]);
 
-  auto display_span = line_span.subspan(XBorder, ScreenWidth * ScaleFactor);
+  const auto display_span = line_span.subspan(XBorder, ScreenWidth * ScaleFactor);
   const auto screen_line = line / ScaleFactor;
   const auto y76 = screen_line >> 8;
   const auto y543 = screen_line >> 3 & 0x07;

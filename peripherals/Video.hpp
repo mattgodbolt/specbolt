@@ -10,8 +10,8 @@ namespace specbolt {
 
 class Video {
 public:
-  static constexpr auto Width = 640;
-  static constexpr auto Height = 480;
+  static constexpr auto Width = 640 - 64;
+  static constexpr auto Height = 480 - 48;
 
   explicit Video(const Memory &memory);
 
