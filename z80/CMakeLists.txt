@@ -1,4 +1,6 @@
-add_subdirectory(test)
+if (SPECBOLD_TESTS)
+  add_subdirectory(test)
+endif()
 
 add_library(z80
         Alu.cpp

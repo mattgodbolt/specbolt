@@ -1,7 +1,7 @@
 include(FindPackageHandleStandardArgs)
 
 if (Readline_INCLUDE_DIR)
-    set(READLINE_FOUND TRUE)
+    set(Readline_FOUND TRUE)
 else ()
     find_path(
             Readline_ROOT_DIR
@@ -21,7 +21,7 @@ else ()
     )
 
     if (Readline_INCLUDE_DIR AND Readline_LIBRARY AND Ncurses_LIBRARY)
-        set(READLINE_FOUND TRUE)
+        set(Readline_FOUND TRUE)
     else (Readline_INCLUDE_DIR AND Readline_LIBRARY AND Ncurses_LIBRARY)
         FIND_LIBRARY(Readline_LIBRARY NAMES readline)
         include(FindPackageHandleStandardArgs)
