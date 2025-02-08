@@ -10,6 +10,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <sstream>
 
 #include <readline/history.h>
 #include <readline/readline.h>
