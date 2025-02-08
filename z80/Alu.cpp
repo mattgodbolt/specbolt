@@ -1,4 +1,5 @@
 #include "z80/Alu.hpp"
+#include <bit>
 
 namespace specbolt {
 

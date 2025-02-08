@@ -1,4 +1,6 @@
 #include "peripherals/Video.hpp"
+#include <ranges>
+#include <algorithm>
 
 namespace specbolt {
 
