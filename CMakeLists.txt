@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.30)
 project(specbolt VERSION 0.1 LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 26)
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# add dependencies before we fiddle with compilation options
 include(CPM)
 include(dependency)
+include(pedantic-and-modern)
+include(colors)
 
 option(SPECBOLD_TESTS "Build and run tests" ON)
 option(SPECBOLD_CONSOLE "Build specbold console" ON)
@@ -16,10 +16,6 @@ option(SPECBOLD_PREFER_SYSTEM_DEPS "Prefer using system dependencies" OFF)
 specbold_dependency(Readline "gh:mattgodbolt/cpp-readline#e7461f2a429c43a742197db1e6351dcef46a09ba")
 #specbold_dependency(GSL "gh:microsoft/GSL@4.1.0") # GSL is not needed
 find_package(SDL2 REQUIRED) # just find_package?
-
-# add these after dependencies
-include(pedantic)
-include(colors)
 
 if (SPECBOLD_TESTS)
   enable_testing()

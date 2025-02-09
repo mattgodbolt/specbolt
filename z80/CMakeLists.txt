@@ -18,4 +18,5 @@ add_library(z80
         Z80.cpp
         Z80.hpp
 )
-target_link_libraries(z80 peripherals)
+target_link_libraries(z80 PUBLIC peripherals)
+modern_and_pedantic_settings(z80 PUBLIC)

@@ -3,3 +3,5 @@ add_library(peripherals
         Memory.hpp
         Video.cpp
         Video.hpp)
+
+modern_and_pedantic_settings(peripherals PUBLIC)
