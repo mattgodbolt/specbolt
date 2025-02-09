@@ -1,7 +1,13 @@
-add_library(peripherals
-        Memory.cpp
-        Memory.hpp
-        Video.cpp
-        Video.hpp)
+add_library(peripherals)
 
-modern_and_pedantic_settings(peripherals PUBLIC)
+target_link_libraries(peripherals PUBLIC opt::pedantic opt::c++26)
+
+target_sources(peripherals PRIVATE
+  Memory.cpp
+  Video.cpp
+)
+
+target_sources(peripherals PUBLIC FILE_SET interface TYPE HEADERS FILES
+  Memory.hpp
+  Video.hpp
+)
