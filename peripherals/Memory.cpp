@@ -21,15 +21,14 @@ void Memory::load(const std::filesystem::path &filename, const uint16_t address,
   }
 
   if ((static_cast<size_t>(address) + size) > memory_.size()) {
-    throw std::runtime_error(std::format(
-        "Trying to load outside of available memory {} + {} > {}", address, size, memory_.size()));
+    throw std::runtime_error(
+        std::format("Trying to load outside of available memory {} + {} > {}", address, size, memory_.size()));
   }
 
   load_stream.read(reinterpret_cast<char *>(memory_.data() + address), size);
 
   if (!load_stream) {
-    throw std::runtime_error(
-        std::format("Unable to read file '{}' (read size = {} bytes)", filename.c_str(), size));
+    throw std::runtime_error(std::format("Unable to read file '{}' (read size = {} bytes)", filename.c_str(), size));
   }
 }
 

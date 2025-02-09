@@ -7,10 +7,10 @@
 #include <functional>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <sstream>
 
 #include <readline/history.h>
 #include <readline/readline.h>
@@ -48,9 +48,7 @@ struct App {
       }
       return 0;
     };
-    commands["quit"] = [](const std::vector<std::string> &) {
-      return 1;
-    };
+    commands["quit"] = [](const std::vector<std::string> &) { return 1; };
     commands["step"] = [this](const std::vector<std::string> &args) {
       step(get_number_arg(args));
       return 0;
