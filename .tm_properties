@@ -1,1 +1,2 @@
 excludeDirectories = "{$excludeDirectories,build}"
+includeDirectories = "{$includeDirectories,.github,.idea}"
