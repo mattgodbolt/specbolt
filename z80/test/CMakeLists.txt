@@ -1,4 +1,4 @@
-specbold_dependency(Catch2 "gh:catchorg/Catch2@3.8.0")
+specbolt_dependency(Catch2 "gh:catchorg/Catch2@3.8.0")
 
 add_executable(
         z80_test

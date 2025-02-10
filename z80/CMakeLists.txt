@@ -1,4 +1,4 @@
-if (SPECBOLD_TESTS)
+if (SPECBOLT_TESTS)
   add_subdirectory(test)
 endif()
 
@@ -14,7 +14,7 @@ target_sources(z80 PRIVATE
   Instruction.cpp
   Opcodes.cpp
   RegisterFile.cpp
-  Z80.cpp  
+  Z80.cpp
 )
 
 # you can also have private headers not accessible from outside, later you can use sets to change it nicely to modules
@@ -27,4 +27,3 @@ target_sources(z80 PUBLIC FILE_SET interface TYPE HEADERS FILES
   RegisterFile.hpp
   Z80.hpp
 )
-

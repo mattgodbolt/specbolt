@@ -6,7 +6,7 @@ if (MSVC)
   target_compile_options(opt_pedantic INTERFACE "/W4" "/WX")
 else()
   target_compile_options(opt_pedantic INTERFACE "-Wall" "-Wextra" "-pedantic" "-Wshadow" "-Wconversion" "-Werror")
-  
+
   if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
     target_compile_definitions(opt_pedantic INTERFACE "_LIBCPP_ENABLE_NODISCARD")
 	endif()
