@@ -49,7 +49,7 @@ Instruction::Output Instruction::apply(Input input, Z80 &cpu) const {
     }
 
     case Operation::Load:
-      return {input.lhs, input.flags, 0}; // TODO is 0 right?
+      return {input.rhs, input.flags, 0}; // TODO is 0 right?
     case Operation::Jump:
       if (taken)
         cpu.registers().pc(input.rhs);
