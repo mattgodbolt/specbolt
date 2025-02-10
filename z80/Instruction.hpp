@@ -63,6 +63,7 @@ struct Instruction {
     Jump,
     Invalid,
     Irq,
+    IrqMode,
     Out, // what to do about this?
     Exx,
     Exchange,

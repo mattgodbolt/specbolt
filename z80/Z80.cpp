@@ -55,6 +55,12 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return regs_.get(RegisterFile::R16::DE);
     case Instruction::Operand::HL:
       return regs_.get(RegisterFile::R16::HL);
+    case Instruction::Operand::SP:
+      return regs_.sp();
+    case Instruction::Operand::IX:
+      return regs_.ix();
+    case Instruction::Operand::IY:
+      return regs_.iy();
     case Instruction::Operand::I:
       return regs_.i();
     case Instruction::Operand::BC_Indirect:
@@ -142,6 +148,15 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::HL:
       regs_.set(RegisterFile::R16::HL, value);
       break;
+    case Instruction::Operand::IX:
+      regs_.ix(value);
+      break;
+    case Instruction::Operand::IY:
+      regs_.iy(value);
+      break;
+    case Instruction::Operand::SP:
+      regs_.sp(value);
+      break;
     case Instruction::Operand::BC_Indirect:
       // TODO are these all 8-bit?
       write8(regs_.get(RegisterFile::R16::BC), static_cast<std::uint8_t>(value));
@@ -178,6 +193,8 @@ void Z80::write16(const std::uint16_t address, const std::uint16_t value) {
   memory_.write(address, static_cast<uint8_t>(value));
   memory_.write(address + 1, static_cast<uint8_t>(value >> 8));
 }
+
+void Z80::irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
 
 void Z80::out(const std::uint16_t port, const std::uint8_t value) {
   // TODO starts to smell a bit here... also , even / odd ports?

@@ -18,6 +18,9 @@ Instruction decode_ddfd(const std::uint8_t opcode, [[maybe_unused]] std::uint8_t
       return {"ld {}, {}", 3, Instruction::Operation::Load,
           isIy ? Instruction::Operand::IY_Offset_Indirect : Instruction::Operand::IX_Offset_Indirect,
           Instruction::Operand::L};
+    case 0x21:
+      return {"ld {}, {}", 4, Instruction::Operation::Load, isIy ? Instruction::Operand::IY : Instruction::Operand::IX,
+          Instruction::Operand::WordImmediate};
     default:
       break;
   }
@@ -52,6 +55,12 @@ Instruction decode_ed(const std::uint8_t opcode) {
     case 0x7b:
       return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::SP,
           Instruction::Operand::WordImmediateIndirect16};
+    case 0x46:
+      return {"im 0", 2, Instruction::Operation::IrqMode, Instruction::Operand::None, Instruction::Operand::Const_0};
+    case 0x56:
+      return {"im 1", 2, Instruction::Operation::IrqMode, Instruction::Operand::None, Instruction::Operand::Const_1};
+    case 0x5e:
+      return {"im 2", 2, Instruction::Operation::IrqMode, Instruction::Operand::None, Instruction::Operand::Const_2};
     case 0xa0:
     case 0xa1:
     case 0xa2:
@@ -158,9 +167,15 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x20:
       return {"jr nz {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::NonZero};
+    case 0x21:
+      return {
+          "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::HL, Instruction::Operand::WordImmediate};
     case 0x28:
       return {"jr z {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::Zero};
+    case 0x2a:
+      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::HL,
+          Instruction::Operand::WordImmediateIndirect16};
     case 0x30:
       return {"jr nc {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::NoCarry};
@@ -171,7 +186,11 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
           Instruction::Operand::HL};
     case 0x23:
+      // TODO all the increments flags are wrong
       return {"inc {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::Const_1};
+    case 0x32:
+      return {
+          "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::ByteImmediate, Instruction::Operand::A};
     case 0x06:
     case 0x16:
     case 0x26:
@@ -314,8 +333,12 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {"ex {}, {}", 1, Instruction::Operation::Exchange, Instruction::Operand::DE, Instruction::Operand::HL};
     case 0xf3:
       return {"di", 1, Instruction::Operation::Irq, Instruction::Operand::None, Instruction::Operand::Const_0};
+    case 0xfb:
+      return {"ei", 1, Instruction::Operation::Irq, Instruction::Operand::None, Instruction::Operand::Const_1};
     case 0xfd:
       return decode_ddfd<true>(nextOpcode, nextNextOpcode);
+    case 0xf9:
+      return {"ld {}, {}", 1, Instruction::Operation::Load, Instruction::Operand::SP, Instruction::Operand::HL};
     default:
       break;
   }

@@ -81,6 +81,9 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       cpu.iff1(input.rhs);
       cpu.iff2(input.rhs);
       return {0, input.flags, 0};
+    case Operation::IrqMode:
+      cpu.irq_mode(static_cast<std::uint8_t>(input.rhs));
+      return {0, input.flags, 4};
     case Operation::Out:
       cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs));
       return {0, input.flags, 7};
@@ -106,7 +109,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto hl = cpu.registers().get(RegisterFile::R16::HL);
       cpu.registers().set(RegisterFile::R16::HL, hl + add);
       const auto bc = cpu.registers().get(RegisterFile::R16::BC);
-      bool should_continue = bc == 0 && repeat;
+      bool should_continue = bc != 0 && repeat;
       cpu.registers().set(RegisterFile::R16::BC, bc - 1);
       auto flags = input.flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow());
       if (bc == 1)

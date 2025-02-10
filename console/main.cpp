@@ -54,6 +54,10 @@ struct App {
       step(get_number_arg(args));
       return 0;
     };
+    commands["next"] = [this](const std::vector<std::string> &args) {
+      next(get_number_arg(args));
+      return 0;
+    };
     commands["trace"] = [this](const std::vector<std::string> &args) {
       trace(get_number_arg(args));
       return 0;
@@ -118,9 +122,35 @@ struct App {
     return false;
   }
 
+  bool _next() {
+    try {
+      const auto prev_pc = z80.pc();
+      do {
+        const auto cycles_elapsed = z80.execute_one();
+        video.poll(cycles_elapsed);
+      }
+      while (z80.pc() == prev_pc);
+    }
+    catch (const std::exception &e) {
+      std::print(std::cout, "Exception: {}\n", e.what());
+      return true;
+    }
+    if (breakpoints.contains(z80.pc())) {
+      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", z80.pc());
+      return true;
+    }
+    return false;
+  }
+
   void step(const int num_steps) {
     for (int i = 0; i < num_steps; ++i)
       if (_step())
+        break;
+  }
+
+  void next(const int num_instructions) {
+    for (int i = 0; i < num_instructions; ++i)
+      if (_next())
         break;
   }
 
@@ -131,7 +161,7 @@ struct App {
 
   void trace(const int num_steps) {
     for (int i = 0; i < num_steps; ++i) {
-      if (_step())
+      if (_next())
         break;
       if (i != num_steps - 1)
         report();
