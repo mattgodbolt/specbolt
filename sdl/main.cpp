@@ -31,8 +31,8 @@ void Main() {
   SdlInit sdl_init;
 
   std::unique_ptr<SDL_Window, decltype(SDL_DestroyWindow) *> window(
-      SDL_CreateWindow("SDL Bitmap Display", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, specbolt::Video::Width,
-          specbolt::Video::Height, SDL_WINDOW_SHOWN),
+      SDL_CreateWindow("Specbolt ZX Spectrum Emulator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
+          specbolt::Video::Width, specbolt::Video::Height, SDL_WINDOW_SHOWN),
       SDL_DestroyWindow);
   if (!window) {
     throw SdlError("SDL_CreateWindow failed");
