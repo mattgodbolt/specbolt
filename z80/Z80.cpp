@@ -223,7 +223,7 @@ void Z80::dump() const {
       std::cout, "HL: {:04x} | HL': {:04x}\n", regs_.get(RegisterFile::R16::HL), regs_.get(RegisterFile::R16::HL_));
 }
 
-void Z80::push16(std::uint16_t value) {
+void Z80::push16(const std::uint16_t value) {
   push8(static_cast<std::uint8_t>(value >> 8));
   push8(static_cast<std::uint8_t>(value));
 }
@@ -234,7 +234,7 @@ std::uint16_t Z80::pop16() {
   return static_cast<std::uint16_t>(high << 8) | low;
 }
 
-void Z80::push8(std::uint8_t value) {
+void Z80::push8(const std::uint8_t value) {
   // todo maybe account for time here instead of in the instructions?
   const auto new_sp = static_cast<std::uint16_t>(regs_.sp() - 1);
   write8(new_sp, value);

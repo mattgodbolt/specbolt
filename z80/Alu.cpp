@@ -48,7 +48,7 @@ Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const bool
   return {result, sz53_16(result) | carry | half_carry | overflow};
 }
 
-Alu::R16 Alu::sub16(const std::uint16_t lhs, std::uint16_t rhs, bool carry_in) {
+Alu::R16 Alu::sub16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in) {
   const auto result = add16(lhs, ~rhs, !carry_in);
   return {result.result, (result.flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
