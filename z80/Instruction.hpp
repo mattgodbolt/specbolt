@@ -70,6 +70,7 @@ struct Instruction {
     Exchange,
     EdOp,
     Add16NoFlags,
+    Shift,
   };
   std::string_view opcode;
   std::uint8_t length;
@@ -84,7 +85,13 @@ struct Instruction {
     bool increment{false};
     bool repeat{false};
   };
-  std::variant<std::monostate, WithCarry, Condition, EdOpArgs> args{};
+  struct ShiftArgs {
+    enum class Direction { Left, Right };
+    Direction direction;
+    enum class Type { RotateThroughCarry = 0x00, Rotate = 0x01, ShiftArithmetic = 0x02, Shift = 0x03 };
+    Type type;
+  };
+  std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs> args{};
   struct Input {
     std::uint16_t lhs;
     std::uint16_t rhs;

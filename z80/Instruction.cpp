@@ -146,6 +146,12 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       }
       return {0, flags, 12};
     }
+    case Operation::Shift: {
+
+      const auto [result, flags] =
+          Alu::shift(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs));
+      return {result, flags, 0};
+    }
     case Operation::Bit:
     case Operation::Invalid:
       break;

@@ -11,32 +11,67 @@ using namespace std::literals;
 constexpr Instruction invalid{"??", 1, Instruction::Operation::Invalid};
 constexpr Instruction invalid_2{"??", 2, Instruction::Operation::Invalid};
 
-template<bool isIy>
-Instruction decode_ddfd(const std::uint8_t opcode, [[maybe_unused]] std::uint8_t nextOpcode) {
+struct RegisterSetUnshifted {
+  static constexpr auto direct = Instruction::Operand::HL;
+  static constexpr auto indirect = Instruction::Operand::HL_Indirect;
+  static constexpr auto extra_bytes = 0u;
+};
+
+struct RegisterSetIx {
+  static constexpr auto direct = Instruction::Operand::IX;
+  static constexpr auto indirect = Instruction::Operand::IX_Offset_Indirect8;
+  static constexpr auto extra_bytes = 1u;
+};
+
+struct RegisterSetIy {
+  static constexpr auto direct = Instruction::Operand::IY;
+  static constexpr auto indirect = Instruction::Operand::IY_Offset_Indirect8;
+  static constexpr auto extra_bytes = 1u;
+};
+
+template<typename RegisterSet>
+Instruction decode_bit(const std::uint8_t opcode) {
+  if (opcode < 0x40) {
+    // it's a shift
+    static constexpr std::array registers_from_opcode = {Instruction::Operand::B, Instruction::Operand::C,
+        Instruction::Operand::D, Instruction::Operand::E, Instruction::Operand::H, Instruction::Operand::L,
+        RegisterSet::indirect, Instruction::Operand::A};
+    const auto operand = (RegisterSet::indirect == Instruction::Operand::HL_Indirect)
+                             ? registers_from_opcode[opcode & 0x07]
+                             : RegisterSet::indirect;
+    const auto direction =
+        opcode & 0x08 ? Instruction::ShiftArgs::Direction::Right : Instruction::ShiftArgs::Direction::Left;
+    const auto type = static_cast<Instruction::ShiftArgs::Type>((opcode & 0x30) >> 4);
+    std::array<std::string_view, 8> names = {
+        "rlc {}", "rrc {}", "rl {}", "rr {}", "sla {}", "sra {}", "sll {}", "srl {}"};
+    return {
+        names[(static_cast<std::size_t>(type) << 1) | (direction == Instruction::ShiftArgs::Direction::Right ? 1 : 0)],
+        2 + RegisterSet::extra_bytes, Instruction::Operation::Shift, operand, operand,
+        Instruction::ShiftArgs{direction, type}};
+  }
   switch (opcode) {
-    case 0x75:
-      return {"ld {}, {}", 3, Instruction::Operation::Load,
-          isIy ? Instruction::Operand::IY_Offset_Indirect8 : Instruction::Operand::IX_Offset_Indirect8,
-          Instruction::Operand::L};
-    case 0x21:
-      return {"ld {}, {}", 4, Instruction::Operation::Load, isIy ? Instruction::Operand::IY : Instruction::Operand::IX,
-          Instruction::Operand::WordImmediate};
-    case 0x35:
-      return {"dec {}", 3, Instruction::Operation::Add16NoFlags,
-          isIy ? Instruction::Operand::IY_Offset_Indirect8 : Instruction::Operand::IX_Offset_Indirect8,
-          Instruction::Operand::Const_ffff};
+    case 0x5e:
+      // TODO is this a good way to bit?
+      return {"bit 3, {1}", 2 + RegisterSet::extra_bytes, Instruction::Operation::Bit, Instruction::Operand::Const_8,
+          RegisterSet::indirect};
     default:
       break;
   }
   return invalid_2;
 }
 
-Instruction decode_cb(const std::uint8_t opcode) {
+template<typename RegisterSet>
+Instruction decode_ddfd(const std::uint8_t opcode, const std::uint8_t nextOpcode) {
   switch (opcode) {
-    case 0x5e:
-      // TODO is this a good way to bit?
-      return {"bit 3, {1}", 2, Instruction::Operation::Bit, Instruction::Operand::Const_8,
-          Instruction::Operand::HL_Indirect};
+    case 0x75:
+      return {"ld {}, {}", 3, Instruction::Operation::Load, RegisterSet::indirect, Instruction::Operand::L};
+    case 0x21:
+      return {"ld {}, {}", 4, Instruction::Operation::Load, RegisterSet::direct, Instruction::Operand::WordImmediate};
+    case 0x35:
+      return {
+          "dec {}", 3, Instruction::Operation::Add16NoFlags, RegisterSet::indirect, Instruction::Operand::Const_ffff};
+    case 0xcb:
+      return decode_bit<RegisterSet>(nextOpcode);
     default:
       break;
   }
@@ -327,9 +362,9 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xd9:
       return {"exx", 1, Instruction::Operation::Exx}; // TODO arg this does not fit neatly into my world.
     case 0xcb:
-      return decode_cb(nextOpcode);
+      return decode_bit<RegisterSetUnshifted>(nextOpcode);
     case 0xdd:
-      return decode_ddfd<false>(nextOpcode, nextNextOpcode);
+      return decode_ddfd<RegisterSetIx>(nextOpcode, nextNextOpcode);
     case 0xed:
       return decode_ed(nextOpcode);
     case 0xd3:
@@ -342,7 +377,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0xfb:
       return {"ei", 1, Instruction::Operation::Irq, Instruction::Operand::None, Instruction::Operand::Const_1};
     case 0xfd:
-      return decode_ddfd<true>(nextOpcode, nextNextOpcode);
+      return decode_ddfd<RegisterSetIy>(nextOpcode, nextNextOpcode);
     case 0xf9:
       return {"ld {}, {}", 1, Instruction::Operation::Load, Instruction::Operand::SP, Instruction::Operand::HL};
     default:
