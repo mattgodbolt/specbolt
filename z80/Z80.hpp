@@ -29,6 +29,11 @@ public:
 
   void irq_mode(std::uint8_t mode);
 
+  void push16(std::uint16_t value);
+  [[nodiscard]] std::uint16_t pop16();
+  void push8(std::uint8_t value);
+  [[nodiscard]] std::uint8_t pop8();
+
   // TODO this isn't a property of the z80, we should "poke" out to a port mapper or something.
   void out(std::uint16_t port, std::uint8_t value);
   [[nodiscard]] std::uint8_t port_fe() const { return port_fe_; }

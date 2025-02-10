@@ -387,6 +387,9 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"exx", 1, Instruction::Operation::Exx}; // TODO arg this does not fit neatly into my world.
     case 0xcb:
       return decode_bit<RegisterSetUnshifted>(operands);
+    case 0xcd:
+      return {
+          "call {1}", 3, Instruction::Operation::Call, Instruction::Operand::None, Instruction::Operand::WordImmediate};
     case 0xdd:
       return decode_ddfd<RegisterSetIx>(operands);
     case 0xed:

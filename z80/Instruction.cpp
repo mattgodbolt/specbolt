@@ -74,6 +74,14 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       // TODO t-states not right for jp vs jr
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 6 : 3)};
     }
+    case Operation::Call: {
+      const auto taken = should_execute(input.flags);
+      if (taken) {
+        cpu.push16(cpu.registers().pc());
+        cpu.registers().pc(input.rhs);
+      }
+      return {0, input.flags, static_cast<std::uint8_t>(taken ? 17 : 10)};
+    }
     case Operation::Xor:
       return alu8(input, &Alu::xor8);
     case Operation::And:

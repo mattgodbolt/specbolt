@@ -63,6 +63,7 @@ struct Instruction {
     Reset,
     Set,
     Jump,
+    Call,
     Invalid,
     Irq,
     IrqMode,
