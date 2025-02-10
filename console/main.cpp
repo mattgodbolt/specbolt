@@ -62,8 +62,18 @@ struct App {
       trace(get_number_arg(args));
       return 0;
     };
-    commands["dump"] = [this](const std::vector<std::string> &) {
-      z80.dump();
+    commands["dump"] = [this](const std::vector<std::string> &args) {
+      if (args.empty())
+        z80.dump();
+      else {
+        const auto address = parse_num(args[0]);
+        std::print(std::cout, "0x{:04x}: 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x}\n",
+            address, memory.read(static_cast<std::uint16_t>(address + 0)),
+            memory.read(static_cast<std::uint16_t>(address + 1)), memory.read(static_cast<std::uint16_t>(address + 2)),
+            memory.read(static_cast<std::uint16_t>(address + 3)), memory.read(static_cast<std::uint16_t>(address + 4)),
+            memory.read(static_cast<std::uint16_t>(address + 4)), memory.read(static_cast<std::uint16_t>(address + 6)),
+            memory.read(static_cast<std::uint16_t>(address + 7)));
+      }
       return 0;
     };
     commands["break"] = [this](const std::vector<std::string> &args) {

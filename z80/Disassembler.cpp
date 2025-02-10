@@ -86,10 +86,12 @@ std::string Disassembler::Disassembled::operand_name(const Instruction::Operand 
       return "sp";
     case Instruction::Operand::PcOffset:
       return std::format("0x{:04x}", address + instruction.length + static_cast<int8_t>(bytes[instruction.length - 1]));
-    case Instruction::Operand::IX_Offset_Indirect:
-      return std::format("(ix+0x{:02x})", bytes[instruction.length - 1]);
-    case Instruction::Operand::IY_Offset_Indirect:
-      return std::format("(iy+0x{:02x})", bytes[instruction.length - 1]);
+    case Instruction::Operand::IX_Offset_Indirect8:
+    case Instruction::Operand::IY_Offset_Indirect8: {
+      const auto offset = static_cast<std::int8_t>(bytes[instruction.length - 1]);
+      return std::format("({}{}0x{:02x})", operand == Instruction::Operand::IX_Offset_Indirect8 ? "ix" : "iy",
+          offset < 0 ? "-" : "+", offset < 0 ? -offset : offset);
+    }
     case Instruction::Operand::Const_0:
       return "0";
     case Instruction::Operand::Const_1:
@@ -108,6 +110,8 @@ std::string Disassembler::Disassembled::operand_name(const Instruction::Operand 
       return "64";
     case Instruction::Operand::Const_128:
       return "128";
+    case Instruction::Operand::Const_ffff:
+      return "0xffff";
   }
   return "??";
 }

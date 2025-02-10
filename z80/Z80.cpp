@@ -63,7 +63,7 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return regs_.iy();
     case Instruction::Operand::I:
       return regs_.i();
-    case Instruction::Operand::BC_Indirect:
+    case Instruction::Operand::BC_Indirect: // TODO 16 vs 8 bit?! and for write
       return read16(regs_.get(RegisterFile::R16::BC));
     case Instruction::Operand::DE_Indirect:
       return read16(regs_.get(RegisterFile::R16::DE));
@@ -88,6 +88,8 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return 64;
     case Instruction::Operand::Const_128:
       return 128;
+    case Instruction::Operand::Const_ffff:
+      return 0xffff;
     case Instruction::Operand::ByteImmediate:
       return memory_.read(regs_.pc() - 1);
     case Instruction::Operand::WordImmediate:
@@ -96,10 +98,14 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return read16(read16(regs_.pc() - 2));
     case Instruction::Operand::PcOffset:
       return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1)));
+    case Instruction::Operand::IX_Offset_Indirect8:
+      return memory_.read(static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))));
+    case Instruction::Operand::IY_Offset_Indirect8:
+      return memory_.read(static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))));
     default:
       break; // TODO NOT THIS
   }
-  throw std::runtime_error("bad operand");
+  throw std::runtime_error("bad operand for read");
 }
 
 void Z80::execute(const Instruction &instr) {
@@ -182,9 +188,17 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::WordImmediateIndirect16:
       write16(read16(regs_.pc() - 2), value);
       break;
+    case Instruction::Operand::IX_Offset_Indirect8:
+      write8(static_cast<std::uint16_t>(regs_.ix() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))),
+          static_cast<std::uint8_t>(value));
+      break;
+    case Instruction::Operand::IY_Offset_Indirect8:
+      write8(static_cast<std::uint16_t>(regs_.iy() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))),
+          static_cast<std::uint8_t>(value));
+      break;
     default:
       // TODO NOT THIS
-      throw std::runtime_error("bad operand");
+      throw std::runtime_error("bad operand for write");
   }
 }
 
@@ -206,8 +220,8 @@ void Z80::out(const std::uint16_t port, const std::uint8_t value) {
 
 void Z80::dump() const {
   std::print(std::cout, "Z80 dump:\n");
-  std::print(std::cout, "PC: {:04x}\n", regs_.pc());
-  std::print(std::cout, "SP: {:04x}\n", regs_.sp());
+  std::print(std::cout, "PC: {:04x} | SP: {:04x}\n", regs_.pc(), regs_.sp());
+  std::print(std::cout, "IX: {:04x} | IY: {:04x}\n", regs_.ix(), regs_.iy());
   std::print(std::cout, "AF: {:04x} - {} | AF': {:04x} - {}\n", regs_.get(RegisterFile::R16::AF),
       Flags(regs_.get(RegisterFile::R8::F)).to_string(), regs_.get(RegisterFile::R16::AF_),
       Flags(regs_.get(RegisterFile::R8::F_)).to_string());

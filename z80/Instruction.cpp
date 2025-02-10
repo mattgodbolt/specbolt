@@ -47,7 +47,10 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
 
     case Operation::Add16: {
       const auto [result, flags] = Alu::add16(input.lhs, input.rhs, carry);
-      return {result, flags, 7}; //
+      return {result, flags, 7};
+    }
+    case Operation::Add16NoFlags: {
+      return {static_cast<std::uint16_t>(input.lhs + input.rhs), input.flags, 2};
     }
     case Operation::Compare:
       // Only update the flags on compare.

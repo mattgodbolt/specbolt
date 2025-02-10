@@ -30,8 +30,8 @@ struct Instruction {
     SP,
     IX,
     IY,
-    IX_Offset_Indirect,
-    IY_Offset_Indirect, // TODO decide on naming
+    IX_Offset_Indirect8,
+    IY_Offset_Indirect8, // TODO decide on naming
     AF_,
     I,
     ByteImmediate,
@@ -47,6 +47,7 @@ struct Instruction {
     Const_32,
     Const_64,
     Const_128,
+    Const_ffff,
   };
   enum class Operation {
     None,
@@ -68,6 +69,7 @@ struct Instruction {
     Exx,
     Exchange,
     EdOp,
+    Add16NoFlags,
   };
   std::string_view opcode;
   std::uint8_t length;

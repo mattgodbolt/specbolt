@@ -16,11 +16,15 @@ Instruction decode_ddfd(const std::uint8_t opcode, [[maybe_unused]] std::uint8_t
   switch (opcode) {
     case 0x75:
       return {"ld {}, {}", 3, Instruction::Operation::Load,
-          isIy ? Instruction::Operand::IY_Offset_Indirect : Instruction::Operand::IX_Offset_Indirect,
+          isIy ? Instruction::Operand::IY_Offset_Indirect8 : Instruction::Operand::IX_Offset_Indirect8,
           Instruction::Operand::L};
     case 0x21:
       return {"ld {}, {}", 4, Instruction::Operation::Load, isIy ? Instruction::Operand::IY : Instruction::Operand::IX,
           Instruction::Operand::WordImmediate};
+    case 0x35:
+      return {"dec {}", 3, Instruction::Operation::Add16NoFlags,
+          isIy ? Instruction::Operand::IY_Offset_Indirect8 : Instruction::Operand::IX_Offset_Indirect8,
+          Instruction::Operand::Const_ffff};
     default:
       break;
   }
@@ -151,11 +155,9 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x02:
       return {"ld {}, {}", 1, Instruction::Operation::Load, Instruction::Operand::BC_Indirect, Instruction::Operand::A};
     case 0x03:
-      // TODO: inc dec 16 doesn't affect flags, but this will if we're not careful...maybe add16/sub16 with const 1 is
-      // dumb
-      return {"inc {}", 1, Instruction::Operation::Add16, Instruction::Operand::BC, Instruction::Operand::Const_1};
+      return {
+          "inc {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::BC, Instruction::Operand::Const_1};
     case 0x04:
-      // TODO consider flags
       return {"inc {}", 1, Instruction::Operation::Add8, Instruction::Operand::B, Instruction::Operand::Const_1};
     case 0x11:
       return {
@@ -186,11 +188,14 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
           Instruction::Operand::HL};
     case 0x23:
-      // TODO all the increments flags are wrong
-      return {"inc {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::Const_1};
-    case 0x32:
       return {
-          "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::ByteImmediate, Instruction::Operand::A};
+          "inc {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::HL, Instruction::Operand::Const_1};
+    case 0x32:
+      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
+          Instruction::Operand::A};
+    case 0x35:
+      return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::HL_Indirect,
+          Instruction::Operand::Const_ffff};
     case 0x06:
     case 0x16:
     case 0x26:
@@ -314,7 +319,8 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {"cp {1}", 1, Instruction::Operation::Compare, Instruction::Operand::A, source_operand_for(opcode)};
 
     case 0x2b:
-      return {"dec {}", 1, Instruction::Operation::Subtract16, Instruction::Operand::HL, Instruction::Operand::Const_1};
+      return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::HL,
+          Instruction::Operand::Const_ffff};
     case 0xc3:
       return {
           "jp {1}", 3, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::WordImmediate};
