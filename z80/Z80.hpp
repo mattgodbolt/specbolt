@@ -1,7 +1,7 @@
 #pragma once
 
 #include "peripherals/Memory.hpp"
-#include "z80/Opcodes.hpp"
+#include "z80/Decoder.hpp"
 #include "z80/RegisterFile.hpp"
 
 #include <cstdint>

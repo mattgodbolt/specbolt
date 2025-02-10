@@ -1,8 +1,8 @@
 #include "z80/Disassembler.hpp"
 
 #include "peripherals/Memory.hpp"
+#include "z80/Decoder.hpp"
 #include "z80/Instruction.hpp"
-#include "z80/Opcodes.hpp"
 
 #include <format>
 

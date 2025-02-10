@@ -1,6 +1,6 @@
 #include "z80/Z80.hpp"
 
-#include "z80/Opcodes.hpp"
+#include "z80/Decoder.hpp"
 
 #include <format>
 #include <iostream>

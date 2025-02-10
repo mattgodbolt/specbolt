@@ -12,7 +12,7 @@ target_sources(z80 PRIVATE
   Disassembler.cpp
   Flags.cpp
   Instruction.cpp
-  Opcodes.cpp
+  Decoder.cpp
   RegisterFile.cpp
   Z80.cpp
 )
@@ -23,7 +23,7 @@ target_sources(z80 PUBLIC FILE_SET interface TYPE HEADERS FILES
   Disassembler.hpp
   Flags.hpp
   Instruction.hpp
-  Opcodes.hpp
+  Decoder.hpp
   RegisterFile.hpp
   Z80.hpp
 )
