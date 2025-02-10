@@ -72,7 +72,7 @@ struct Instruction {
     Add16NoFlags,
     Shift,
   };
-  std::string_view opcode;
+  std::string_view opcode; // todo rename mnemonic
   std::uint8_t length;
   Operation operation;
   Operand lhs{Operand::None};
@@ -92,6 +92,8 @@ struct Instruction {
     Type type;
   };
   std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs> args{};
+  std::int8_t index_offset{};
+
   struct Input {
     std::uint16_t lhs;
     std::uint16_t rhs;

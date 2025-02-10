@@ -20,7 +20,7 @@ public:
     std::array<uint8_t, 4> bytes{};
     // bool operator==(const Disassembled &other) const = default;
     [[nodiscard]] std::string to_string() const;
-    [[nodiscard]] std::string operand_name(Instruction::Operand operand) const;
+    [[nodiscard]] std::string operand_name(Instruction::Operand operand, std::int8_t offset) const;
   };
 
   [[nodiscard]] Disassembled disassemble(std::uint16_t address) const;

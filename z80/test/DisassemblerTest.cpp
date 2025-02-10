@@ -82,5 +82,29 @@ TEST_CASE("Disassembler tests") {
     CHECK(instr.instruction.length == 2);
     CHECK(instr.to_string() == "0270  cb 5e        bit 3, (hl)");
   }
+  SECTION("cb prefixes") {
+    memory.raw_write(0x270, 0xcb); // prefix
+    memory.raw_write(0x271, 0x5e); // bit 3. (hl)
+    const auto instr = dis.disassemble(0x270);
+    CHECK(instr.instruction.length == 2);
+    CHECK(instr.to_string() == "0270  cb 5e        bit 3, (hl)");
+  }
+  SECTION("fd prefixes") {
+    memory.raw_write(0x1276, 0xfd); // prefix
+    memory.raw_write(0x1277, 0x35); // dec []
+    memory.raw_write(0x1278, 0xc6); // -0x3a
+    const auto instr = dis.disassemble(0x1276);
+    CHECK(instr.instruction.length == 3);
+    CHECK(instr.to_string() == "1276  fd 35 c6     dec (iy-0x3a)");
+  }
+  SECTION("fdcb prefixes") {
+    memory.raw_write(0x1287, 0xfd); // fd prefix (iy+nn)
+    memory.raw_write(0x1288, 0xcb); // cb prefix (bit operations)
+    memory.raw_write(0x1289, 0x01); // offset +0x01
+    memory.raw_write(0x128a, 0xce); // set 1, [...]
+    const auto instr = dis.disassemble(0x1287);
+    CHECK(instr.instruction.length == 4);
+    CHECK(instr.to_string() == "1287  fd cb 01 ce  set 1, (iy+0x01)");
+  }
   // TODO the other prefix bytes... cb dd ed fd, bit prefixes
 }

@@ -11,7 +11,9 @@ namespace specbolt {
 std::size_t Z80::execute_one() {
   const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
-  const auto decoded = decode(memory_.read(initial_pc), memory_.read(initial_pc + 1), memory_.read(initial_pc + 2));
+  const std::array opcodes{memory_.read(initial_pc), memory_.read(initial_pc + 1), memory_.read(initial_pc + 2),
+      memory_.read(initial_pc + 3)};
+  const auto decoded = decode(opcodes);
   pass_time(4);
   regs_.pc(initial_pc + decoded.length); // NOT RIGHT
   try {
