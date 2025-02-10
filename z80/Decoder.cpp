@@ -35,14 +35,14 @@ struct RegisterSetIy {
 template<typename RegisterSet>
 Instruction decode_bit(const std::span<const std::uint8_t> opcodes) {
   const auto opcode = opcodes[0];
+  static constexpr std::array registers_from_opcode = {Instruction::Operand::B, Instruction::Operand::C,
+      Instruction::Operand::D, Instruction::Operand::E, Instruction::Operand::H, Instruction::Operand::L,
+      RegisterSet::indirect, Instruction::Operand::A};
+  const auto operand = (RegisterSet::indirect == Instruction::Operand::HL_Indirect)
+                           ? registers_from_opcode[opcode & 0x07]
+                           : RegisterSet::indirect;
   if (opcode < 0x40) {
     // it's a shift
-    static constexpr std::array registers_from_opcode = {Instruction::Operand::B, Instruction::Operand::C,
-        Instruction::Operand::D, Instruction::Operand::E, Instruction::Operand::H, Instruction::Operand::L,
-        RegisterSet::indirect, Instruction::Operand::A};
-    const auto operand = (RegisterSet::indirect == Instruction::Operand::HL_Indirect)
-                             ? registers_from_opcode[opcode & 0x07]
-                             : RegisterSet::indirect;
     const auto direction =
         opcode & 0x08 ? Instruction::ShiftArgs::Direction::Right : Instruction::ShiftArgs::Direction::Left;
     const auto type = static_cast<Instruction::ShiftArgs::Type>((opcode & 0x30) >> 4);
@@ -53,16 +53,25 @@ Instruction decode_bit(const std::span<const std::uint8_t> opcodes) {
         2 + RegisterSet::extra_bytes, Instruction::Operation::Shift, operand, operand,
         Instruction::ShiftArgs{direction, type}};
   }
-  switch (opcode) {
-    case 0x5e:
-      // TODO is this a good way to bit?
-      return {"bit 3, {1}", 2 + RegisterSet::extra_bytes, Instruction::Operation::Bit, Instruction::Operand::Const_8,
-          RegisterSet::indirect};
-    case 0xce:
-      return {"set 1, {1}", 2 + RegisterSet::extra_bytes, Instruction::Operation::Bit, Instruction::Operand::Const_1,
-          RegisterSet::indirect};
+  const std::size_t bit_offset = (opcode >> 3) & 0x07;
+  switch (opcode >> 6) {
     default:
-      break;
+      throw std::runtime_error("Not possible");
+    // WTF extra bytes crap
+    case 1:
+      return {"bit {1}, {0}", 2 + RegisterSet::extra_bytes, Instruction::Operation::Bit, operand,
+          static_cast<Instruction::Operand>(static_cast<std::size_t>(Instruction::Operand::Const_0) + bit_offset)};
+    case 2:
+      return {
+          "res {1}, {0}",
+          2 + RegisterSet::extra_bytes,
+          Instruction::Operation::Reset,
+          operand,
+          static_cast<Instruction::Operand>(static_cast<std::size_t>(Instruction::Operand::Const_0) + bit_offset),
+      };
+    case 3:
+      return {"set {1}, {0}", 2 + RegisterSet::extra_bytes, Instruction::Operation::Set, operand,
+          static_cast<Instruction::Operand>(static_cast<std::size_t>(Instruction::Operand::Const_0) + bit_offset)};
   }
   return invalid_2;
 }

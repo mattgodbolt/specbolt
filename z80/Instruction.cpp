@@ -146,6 +146,11 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       }
       return {0, flags, 12};
     }
+    case Operation::Set:
+      return {static_cast<std::uint16_t>(input.lhs | static_cast<std::uint16_t>(1u << input.rhs)), input.flags, 4};
+    case Operation::Reset:
+      return {static_cast<std::uint16_t>(input.lhs & ~static_cast<std::uint16_t>(1u << input.rhs)), input.flags, 4};
+
     case Operation::Shift:
     case Operation::Bit:
     case Operation::Invalid:

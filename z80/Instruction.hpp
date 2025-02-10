@@ -41,12 +41,11 @@ struct Instruction {
     Const_0,
     Const_1,
     Const_2,
+    Const_3,
     Const_4,
-    Const_8,
-    Const_16,
-    Const_32,
-    Const_64,
-    Const_128,
+    Const_5,
+    Const_6,
+    Const_7,
     Const_ffff,
   };
   enum class Operation {
@@ -60,7 +59,9 @@ struct Instruction {
     And,
     Or,
     Xor,
-    Bit, // Maybe and?
+    Bit,
+    Reset,
+    Set,
     Jump,
     Invalid,
     Irq,

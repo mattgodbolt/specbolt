@@ -78,18 +78,6 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return 1;
     case Instruction::Operand::Const_2:
       return 2;
-    case Instruction::Operand::Const_4:
-      return 4;
-    case Instruction::Operand::Const_8:
-      return 8;
-    case Instruction::Operand::Const_16:
-      return 16;
-    case Instruction::Operand::Const_32:
-      return 32;
-    case Instruction::Operand::Const_64:
-      return 64;
-    case Instruction::Operand::Const_128:
-      return 128;
     case Instruction::Operand::Const_ffff:
       return 0xffff;
     case Instruction::Operand::ByteImmediate:
