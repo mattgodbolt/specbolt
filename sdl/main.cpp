@@ -53,7 +53,6 @@ void Main() {
   }
 
   bool quit = false;
-  SDL_Event e;
 
   specbolt::Memory memory;
   specbolt::Video video(memory);
@@ -61,38 +60,28 @@ void Main() {
   specbolt::Z80 z80(memory);
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
-  const specbolt::Disassembler dis(memory);
-  try {
-    int trace{};
-    for (int i = 0; i < 220'000; ++i) {
-      const auto disassembled = dis.disassemble(z80.pc());
-      if (trace)
-        std::cout << disassembled.to_string() << "\n";
-      z80.execute_one();
-      // TODO update this to trace a specific address or whatever
-      if (!trace && z80.regs().get(specbolt::RegisterFile::R16::HL) == 0x4000) {
-        trace = 9999;
-      }
-      if (trace) {
-        z80.dump();
-        if (--trace == 0) {
-          break;
-        }
-      }
-    }
-  }
-  catch (const std::runtime_error &runtime_error) {
-    std::print(std::cout, "Error: {}\n", runtime_error.what());
-    z80.dump();
-  }
-  z80.dump();
-
+  bool z80_running{true};
   while (!quit) {
+    SDL_Event e{};
     while (SDL_PollEvent(&e) != 0) {
       if (e.type == SDL_QUIT) {
         quit = true;
       }
     }
+
+    if (z80_running) {
+      try {
+        for (std::size_t cycles_elapsed = 0; cycles_elapsed < cycles_per_frame; cycles_elapsed += z80.execute_one())
+          ;
+      }
+      catch (const std::exception &e) {
+        std::print(std::cout, "Exception: {}\n", e.what());
+        z80.dump();
+        z80_running = false;
+      }
+    }
+    video.set_border(z80.port_fe() & 0x7);
+    video.poll(cycles_per_frame);
 
     void *pixels;
     int pitch;
@@ -103,9 +92,6 @@ void Main() {
     SDL_RenderClear(renderer.get());
     SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
     SDL_RenderPresent(renderer.get());
-
-    video.set_border(z80.port_fe() & 0x7);
-    video.poll(cycles_per_frame);
     SDL_Delay(20);
   }
 }
