@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include <lyra/lyra.hpp>
 #include <readline/history.h>
 #include <readline/readline.h>
 
@@ -138,8 +139,15 @@ struct App {
     std::print(std::cout, "{}\n", disassembled.to_string());
   }
 
-  void main() {
+  std::vector<std::string> exec_on_startup;
+  void main(int argc, const char **argv) {
+    const auto cli =
+        lyra::cli() | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup");
+    const auto result = cli.parse({argc, argv});
     memory.load("48.rom", 0, 16 * 1024);
+
+    for (const auto &cmd: exec_on_startup)
+      execute(cmd);
 
     std::string line;
     while (true) {
@@ -155,24 +163,26 @@ struct App {
       if (line.empty())
         continue;
       add_history(line.c_str());
+      execute(line);
+    }
+  }
 
-      // Use ranges to split the string line on whitespace, making a vector of strings
-      std::vector<std::string> inputs;
-      {
-        std::istringstream iss(line);
-        std::copy(
-            std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(), std::back_inserter(inputs));
+  void execute(const std::string &line) {
+    // Use ranges to split the string line on whitespace, making a vector of strings
+    std::vector<std::string> inputs;
+    {
+      std::istringstream iss(line);
+      std::copy(
+          std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(), std::back_inserter(inputs));
+    }
+    if (const auto found = commands.find(inputs[0]); found != std::end(commands)) {
+      if (const auto result = found->second(std::vector<std::string>(std::next(std::begin(inputs)), std::end(inputs)));
+          result != 0) {
+        return;
       }
-      if (const auto found = commands.find(inputs[0]); found != std::end(commands)) {
-        if (const auto result =
-                found->second(std::vector<std::string>(std::next(std::begin(inputs)), std::end(inputs)));
-            result != 0) {
-          return;
-        }
-      }
-      else {
-        std::cout << "Unknown command\n";
-      }
+    }
+    else {
+      std::cout << "Unknown command " << inputs[0] << "\n";
     }
   }
 };
@@ -181,10 +191,10 @@ App *App::the_app{};
 
 } // namespace
 
-int main() {
+int main(int argc, const char **argv) {
   try {
     App app;
-    app.main();
+    app.main(argc, argv);
     return 0;
   }
   catch (const std::exception &e) {
