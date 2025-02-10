@@ -30,3 +30,9 @@ jobs:
           env CC=clang CXX=clang++ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           cmake --build build
           cmake --build build --target test
+
+  check-pre-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pre-commit/action@v3.0.1
