@@ -8,19 +8,33 @@
 namespace specbolt {
 
 namespace {
+
 Instruction::Output alu8(const Instruction::Input input, Alu::R8 (*operation)(std::uint8_t, std::uint8_t)) {
   const auto [result, flags] = operation(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs));
   return {result, flags, 0};
 }
+
 } // namespace
 
-Instruction::Output Instruction::apply(Input input, Z80 &cpu) const {
+bool Instruction::should_execute(const Flags flags) const {
+  if (const auto *condition = std::get_if<Condition>(&args)) {
+    switch (*condition) {
+      case Condition::NonZero:
+        return !flags.zero();
+      case Condition::Zero:
+        return flags.zero();
+      case Condition::NoCarry:
+        return !flags.carry();
+      case Condition::Carry:
+        return flags.carry();
+    }
+  }
+  return true;
+}
+
+Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
   // TODO tstates ... like ED executes take longer etc
-  const bool carry = with_carry ? input.flags.carry() : false;
-  const bool taken = condition == Condition::None || (condition == Condition::Zero && input.flags.zero()) ||
-                     (condition == Condition::NonZero && !input.flags.zero()) ||
-                     (condition == Condition::Carry && input.flags.carry()) ||
-                     (condition == Condition::NoCarry && !input.flags.carry());
+  const bool carry = std::holds_alternative<WithCarry>(args) ? input.flags.carry() : false;
   switch (operation) {
     case Operation::None:
       return {0, Flags(), 0};
@@ -50,11 +64,13 @@ Instruction::Output Instruction::apply(Input input, Z80 &cpu) const {
 
     case Operation::Load:
       return {input.rhs, input.flags, 0}; // TODO is 0 right?
-    case Operation::Jump:
+    case Operation::Jump: {
+      const auto taken = should_execute(input.flags);
       if (taken)
         cpu.registers().pc(input.rhs);
       // TODO t-states not right for jp vs jr
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 6 : 3)};
+    }
     case Operation::Xor:
       return alu8(input, &Alu::xor8);
     case Operation::And:
@@ -83,6 +99,46 @@ Instruction::Output Instruction::apply(Input input, Z80 &cpu) const {
           throw std::runtime_error("Unsupported exchange");
       }
       return {0, input.flags, 0};
+    }
+    case Operation::EdOp: {
+      const auto [op, increment, repeat] = std::get<EdOpArgs>(args);
+      const std::uint16_t add = increment ? 0x0001 : 0xffff;
+      const auto hl = cpu.registers().get(RegisterFile::R16::HL);
+      cpu.registers().set(RegisterFile::R16::HL, hl + add);
+      const auto bc = cpu.registers().get(RegisterFile::R16::BC);
+      bool should_continue = bc == 0 && repeat;
+      cpu.registers().set(RegisterFile::R16::BC, bc - 1);
+      auto flags = input.flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow());
+      if (bc == 1)
+        flags = flags | Flags::Overflow();
+
+      switch (op) {
+        case EdOpArgs::Op::Load: {
+          const auto de = cpu.registers().get(RegisterFile::R16::DE);
+          cpu.registers().set(RegisterFile::R16::DE, de + add);
+          const auto byte = cpu.memory().read(hl);
+          cpu.memory().write(de, byte);
+          break;
+        }
+        case EdOpArgs::Op::Compare: {
+          const auto byte = cpu.memory().read(hl);
+          const auto compare_flags = Alu::cmp8(cpu.registers().get(RegisterFile::R8::A), byte).flags;
+          constexpr auto flags_to_copy = Flags::HalfCarry() | Flags::Zero() | Flags::Sign();
+          flags = flags & ~flags_to_copy | (compare_flags & flags_to_copy);
+          if (flags.zero())
+            should_continue = false;
+          break;
+        }
+        case EdOpArgs::Op::In:
+          throw std::runtime_error("in not supported yet TODO");
+        case EdOpArgs::Op::Out:
+          throw std::runtime_error("out not supported yet TODO");
+      }
+      if (should_continue) {
+        cpu.registers().pc(cpu.registers().pc() - 2);
+        return {0, flags, 21};
+      }
+      return {0, flags, 12};
     }
     case Operation::Bit:
     case Operation::Invalid:

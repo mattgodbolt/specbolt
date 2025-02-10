@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string_view>
+#include <variant>
 
 namespace specbolt {
 
@@ -65,15 +66,22 @@ struct Instruction {
     Out, // what to do about this?
     Exx,
     Exchange,
+    EdOp,
   };
   std::string_view opcode;
   std::uint8_t length;
   Operation operation;
   Operand lhs{Operand::None};
   Operand rhs{Operand::None};
-  bool with_carry{false};
-  enum class Condition { None, NonZero, Zero, NoCarry, Carry };
-  Condition condition{Condition::None};
+  struct WithCarry {};
+  enum class Condition { NonZero, Zero, NoCarry, Carry };
+  struct EdOpArgs {
+    enum class Op { Load = 0x00, Compare = 0x01, In = 0x02, Out = 0x03 };
+    Op op;
+    bool increment{false};
+    bool repeat{false};
+  };
+  std::variant<std::monostate, WithCarry, Condition, EdOpArgs> args{};
   struct Input {
     std::uint16_t lhs;
     std::uint16_t rhs;
@@ -86,6 +94,7 @@ struct Instruction {
   };
 
   [[nodiscard]] Output apply(Input input, Z80 &cpu) const;
+  [[nodiscard]] bool should_execute(Flags flags) const;
 };
 
 } // namespace specbolt

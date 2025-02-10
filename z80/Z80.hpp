@@ -24,6 +24,9 @@ public:
   [[nodiscard]] std::uint16_t pc() const { return regs_.pc(); }
   const auto &registers() const { return regs_; }
   auto &registers() { return regs_; }
+  const auto &memory() const { return memory_; }
+  auto &memory() { return memory_; }
+
   // TODO this isn't a property of the z80, we should "poke" out to a port mapper or something.
   void out(std::uint16_t port, std::uint8_t value);
   [[nodiscard]] std::uint8_t port_fe() const { return port_fe_; }

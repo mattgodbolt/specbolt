@@ -1,5 +1,6 @@
 #include "z80/Opcodes.hpp"
 
+#include <array>
 #include <stdexcept>
 #include <utility>
 
@@ -47,10 +48,35 @@ Instruction decode_ed(const std::uint8_t opcode) {
       return {"ld {}, {}", 2, Instruction::Operation::Load, Instruction::Operand::I, Instruction::Operand::A};
     case 0x52:
       return {"sbc {}, {}", 2, Instruction::Operation::Subtract16, Instruction::Operand::HL, Instruction::Operand::DE,
-          true};
+          Instruction::WithCarry{}};
     case 0x7b:
       return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::SP,
           Instruction::Operand::WordImmediateIndirect16};
+    case 0xa0:
+    case 0xa1:
+    case 0xa2:
+    case 0xa3:
+    case 0xa8:
+    case 0xa9:
+    case 0xaa:
+    case 0xab:
+    case 0xb0:
+    case 0xb1:
+    case 0xb2:
+    case 0xb3:
+    case 0xb8:
+    case 0xb9:
+    case 0xba:
+    case 0xbb: {
+      const auto op = static_cast<Instruction::EdOpArgs::Op>(opcode & 0x3);
+      const auto repeat = (opcode & 0xf0) == 0xb0;
+      const auto increment = (opcode & 0x8) == 0;
+      static std::array<std::string_view, 16> names = {"ldi", "cpi", "ini", "outi", "ldd", "cpd", "ind", "outd", "ldir",
+          "cpir", "inir", "otir", "lddr", "cpdr", "indr", "otdr"};
+      return {names[static_cast<std::size_t>(op) | (increment ? 0 : 4) | (repeat ? 8 : 0)], 2,
+          Instruction::Operation::EdOp, Instruction::Operand::None, Instruction::Operand::None,
+          Instruction::EdOpArgs{op, increment, repeat}};
+    }
     default:
       break;
   }
@@ -131,16 +157,16 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::DE};
     case 0x20:
       return {"jr nz {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          false, Instruction::Condition::NonZero};
+          Instruction::Condition::NonZero};
     case 0x28:
       return {"jr z {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          false, Instruction::Condition::Zero};
+          Instruction::Condition::Zero};
     case 0x30:
       return {"jr nc {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          false, Instruction::Condition::NoCarry};
+          Instruction::Condition::NoCarry};
     case 0x38:
       return {"jr c {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          false, Instruction::Condition::Carry};
+          Instruction::Condition::Carry};
     case 0x22:
       return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
           Instruction::Operand::HL};
@@ -206,7 +232,8 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x8d:
     case 0x8e:
     case 0x8f:
-      return {"adc {}, {}", 1, Instruction::Operation::Add8, Instruction::Operand::A, source_operand_for(opcode), true};
+      return {"adc {}, {}", 1, Instruction::Operation::Add8, Instruction::Operand::A, source_operand_for(opcode),
+          Instruction::WithCarry{}};
 
     case 0x90:
     case 0x91:
@@ -226,7 +253,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x9e:
     case 0x9f:
       return {"sbc {}, {}", 1, Instruction::Operation::Subtract8, Instruction::Operand::A, source_operand_for(opcode),
-          true};
+          Instruction::WithCarry{}};
 
     case 0xa0:
     case 0xa1:
