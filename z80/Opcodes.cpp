@@ -46,8 +46,8 @@ Instruction decode_ed(const std::uint8_t opcode) {
     case 0x47:
       return {"ld {}, {}", 2, Instruction::Operation::Load, Instruction::Operand::I, Instruction::Operand::A};
     case 0x52:
-      return {"sbc {}, {}", 2, Instruction::Operation::Subtract16WithCarry, Instruction::Operand::HL,
-          Instruction::Operand::DE};
+      return {"sbc {}, {}", 2, Instruction::Operation::Subtract16, Instruction::Operand::HL, Instruction::Operand::DE,
+          true};
     case 0x7b:
       return {"ld {}, {}", 4, Instruction::Operation::Load, Instruction::Operand::SP,
           Instruction::Operand::WordImmediateIndirect16};
@@ -131,16 +131,16 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
       return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::DE};
     case 0x20:
       return {"jr nz {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          Instruction::Condition::NonZero};
+          false, Instruction::Condition::NonZero};
     case 0x28:
       return {"jr z {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          Instruction::Condition::Zero};
+          false, Instruction::Condition::Zero};
     case 0x30:
       return {"jr nc {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          Instruction::Condition::NoCarry};
+          false, Instruction::Condition::NoCarry};
     case 0x38:
       return {"jr c {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
-          Instruction::Condition::Carry};
+          false, Instruction::Condition::Carry};
     case 0x22:
       return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
           Instruction::Operand::HL};
@@ -206,8 +206,7 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x8d:
     case 0x8e:
     case 0x8f:
-      return {
-          "adc {}, {}", 1, Instruction::Operation::Add8WithCarry, Instruction::Operand::A, source_operand_for(opcode)};
+      return {"adc {}, {}", 1, Instruction::Operation::Add8, Instruction::Operand::A, source_operand_for(opcode), true};
 
     case 0x90:
     case 0x91:
@@ -226,8 +225,8 @@ Instruction decode(const std::uint8_t opcode, const std::uint8_t nextOpcode, con
     case 0x9d:
     case 0x9e:
     case 0x9f:
-      return {"sbc {}, {}", 1, Instruction::Operation::Subtract8WithCarry, Instruction::Operand::A,
-          source_operand_for(opcode)};
+      return {"sbc {}, {}", 1, Instruction::Operation::Subtract8, Instruction::Operand::A, source_operand_for(opcode),
+          true};
 
     case 0xa0:
     case 0xa1:

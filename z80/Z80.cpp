@@ -97,45 +97,11 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
 }
 
 void Z80::execute(const Instruction &instr) {
-  const auto flags = Flags(regs_.get(RegisterFile::R8::F));
-  switch (instr.condition) {
-    case Instruction::Condition::None:
-      break;
-    // TODO time taken? :|
-    // TODO should we pass the condition?
-    case Instruction::Condition::Zero:
-      if (!flags.zero())
-        return;
-      break;
-    case Instruction::Condition::NonZero:
-      if (flags.zero())
-        return;
-      break;
-    case Instruction::Condition::Carry:
-      if (!flags.carry())
-        return;
-      break;
-    case Instruction::Condition::NoCarry:
-      if (flags.carry())
-        return;
-      break;
-  }
-  const auto source = read(instr.source);
-  const auto dest_before = read(instr.dest);
-  const auto result =
-      Instruction::apply(instr.operation, {dest_before, source, regs_.pc(), regs_.sp(), flags, iff1_, iff2_, port_fe_});
-  regs_.pc(result.pc);
-  regs_.sp(result.sp);
-  regs_.set(RegisterFile::R8::F, result.flags.to_u8());
-  iff1_ = result.iff1;
-  iff2_ = result.iff2;
-  port_fe_ = result.port_fe;
-  pass_time(result.extra_t_states);
-  write(instr.dest, result.value);
-  if (instr.operation == Instruction::Operation::Exx) {
-    regs_.exx();
-    // Ugly, do not like.
-  }
+  const auto [value, flags, extra_t_states] =
+      instr.apply({read(instr.lhs), read(instr.rhs), Flags(regs_.get(RegisterFile::R8::F))}, *this);
+  regs_.set(RegisterFile::R8::F, flags.to_u8());
+  pass_time(extra_t_states);
+  write(instr.lhs, value);
 }
 
 void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
@@ -211,6 +177,14 @@ void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory
 void Z80::write16(const std::uint16_t address, const std::uint16_t value) {
   memory_.write(address, static_cast<uint8_t>(value));
   memory_.write(address + 1, static_cast<uint8_t>(value >> 8));
+}
+
+void Z80::out(const std::uint16_t port, const std::uint8_t value) {
+  // TODO starts to smell a bit here... also , even / odd ports?
+  if (port == 0xfe)
+    port_fe_ = value;
+  else
+    std::print(std::cout, "zomg OUT({:04x}, {:02x})\n", port, value);
 }
 
 void Z80::dump() const {

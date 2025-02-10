@@ -17,9 +17,9 @@ Disassembler::Disassembled Disassembler::disassemble(const std::uint16_t address
 }
 
 std::string Disassembler::Disassembled::to_string() const {
-  const auto dest = operand_name(instruction.dest);
-  const auto source = operand_name(instruction.source);
-  const auto disassembled = std::vformat(instruction.opcode, std::make_format_args(dest, source));
+  const auto lhs = operand_name(instruction.lhs);
+  const auto rhs = operand_name(instruction.rhs);
+  const auto disassembled = std::vformat(instruction.opcode, std::make_format_args(lhs, rhs));
   switch (instruction.length) {
     case 1:
       return std::format("{:04x}  {:02x}           {}", address, bytes[0], disassembled);

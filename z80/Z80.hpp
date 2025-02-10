@@ -18,10 +18,14 @@ public:
   std::size_t execute_one();
 
   [[nodiscard]] bool iff1() const { return iff1_; }
+  void iff1(const bool iff1) { iff1_ = iff1; }
   [[nodiscard]] bool iff2() const { return iff2_; }
+  void iff2(const bool iff2) { iff2_ = iff2; }
   [[nodiscard]] std::uint16_t pc() const { return regs_.pc(); }
+  const auto &registers() const { return regs_; }
+  auto &registers() { return regs_; }
   // TODO this isn't a property of the z80, we should "poke" out to a port mapper or something.
-  [[nodiscard]] std::uint8_t port_fe() const { return port_fe_; }
+  void out(std::uint16_t port, std::uint8_t value);
 
   void dump() const;
 

@@ -7,6 +7,8 @@
 
 namespace specbolt {
 
+class Z80;
+
 struct Instruction {
   enum class Operand {
     None,
@@ -49,14 +51,10 @@ struct Instruction {
     None,
     Load,
     Add8,
-    Add8WithCarry,
     Add16,
-    Add16WithCarry,
     Subtract8,
     Compare, // compare is subtly different to subtract8 as the undocumented flag bits come from the operand, not result
-    Subtract8WithCarry,
     Subtract16,
-    Subtract16WithCarry,
     And,
     Or,
     Xor,
@@ -71,33 +69,23 @@ struct Instruction {
   std::string_view opcode;
   std::uint8_t length;
   Operation operation;
-  // CONSIDER an output, LHS and RHS, to allow "cmp" to do NONE = A - source?
-  Operand dest{Operand::None};
-  Operand source{Operand::None};
+  Operand lhs{Operand::None};
+  Operand rhs{Operand::None};
+  bool with_carry{false};
   enum class Condition { None, NonZero, Zero, NoCarry, Carry };
   Condition condition{Condition::None};
   struct Input {
-    std::uint16_t dest;
-    std::uint16_t source;
-    std::uint16_t pc;
-    std::uint16_t sp;
+    std::uint16_t lhs;
+    std::uint16_t rhs;
     Flags flags;
-    bool iff1;
-    bool iff2;
-    std::uint8_t port_fe;
   };
   struct Output {
     std::uint16_t value;
-    std::uint16_t pc;
-    std::uint16_t sp;
     Flags flags;
-    bool iff1;
-    bool iff2;
-    std::uint8_t extra_t_states;
-    std::uint8_t port_fe;
+    std::uint8_t extra_t_states{};
   };
 
-  [[nodiscard]] static Output apply(Operation operation, const Input &input);
+  [[nodiscard]] Output apply(Input input, Z80 &cpu) const;
 };
 
 } // namespace specbolt
