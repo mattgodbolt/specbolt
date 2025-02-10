@@ -29,37 +29,32 @@ Instruction::Output Instruction::apply(Input input, Z80 &cpu) const {
       const auto [result, flags] =
           Alu::add8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs), carry);
       return {result, flags, 0};
-    } break;
+    }
 
     case Operation::Add16: {
       const auto [result, flags] = Alu::add16(input.lhs, input.rhs, carry);
       return {result, flags, 7}; //
-    } break;
+    }
     case Operation::Compare:
       // Only update the flags on compare.
       return {0, Alu::cmp8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs)).flags, 0};
-      break;
     case Operation::Subtract8: {
       const auto [result, flags] =
           Alu::sub8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs), carry);
       return {result, flags, 0};
-    } break;
+    }
     case Operation::Subtract16: {
       const auto [result, flags] = Alu::sub16(input.lhs, input.rhs, carry);
       return {result, flags, 7};
-    } break;
+    }
 
     case Operation::Load:
       return {input.lhs, input.flags, 0}; // TODO is 0 right?
-      break;
     case Operation::Jump:
       if (taken)
         cpu.registers().pc(input.rhs);
       // TODO t-states not right for jp vs jr
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 6 : 3)};
-      break;
-    case Operation::Bit:
-      break;
     case Operation::Xor:
       return alu8(input, &Alu::xor8);
     case Operation::And:
@@ -76,8 +71,20 @@ Instruction::Output Instruction::apply(Input input, Z80 &cpu) const {
     case Operation::Exx:
       cpu.registers().exx();
       return {0, input.flags, 0};
-    case Operation::Exchange:
-      throw std::runtime_error("Exchange is baddd");
+    case Operation::Exchange: {
+      switch (lhs) {
+        case Operand::AF:
+          cpu.registers().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_);
+          break;
+        case Operand::DE:
+          cpu.registers().ex(RegisterFile::R16::DE, RegisterFile::R16::HL);
+          break;
+        default:
+          throw std::runtime_error("Unsupported exchange");
+      }
+      return {0, input.flags, 0};
+    }
+    case Operation::Bit:
     case Operation::Invalid:
       break;
   }

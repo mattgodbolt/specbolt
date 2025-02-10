@@ -31,6 +31,7 @@ public:
   void i(std::uint8_t i);
 
   void exx();
+  void ex(R16 lhs, R16 rhs);
 
 private:
   class RegPair {

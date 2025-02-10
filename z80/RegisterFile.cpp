@@ -20,22 +20,24 @@ void RegisterFile::set(const R8 reg, const std::uint8_t value) {
 std::uint16_t RegisterFile::get(const R16 reg) const { return reg_for(reg).highlow(); }
 void RegisterFile::set(const R16 reg, const std::uint16_t value) { reg_for(reg).highlow(value); }
 std::uint16_t RegisterFile::ix() const { return ix_; }
-void RegisterFile::ix(std::uint16_t ix) { ix_ = ix; }
+void RegisterFile::ix(const std::uint16_t ix) { ix_ = ix; }
 std::uint16_t RegisterFile::iy() const { return iy_; }
-void RegisterFile::iy(std::uint16_t iy) { iy_ = iy; }
+void RegisterFile::iy(const std::uint16_t iy) { iy_ = iy; }
 std::uint16_t RegisterFile::sp() const { return sp_; }
-void RegisterFile::sp(std::uint16_t sp) { sp_ = sp; }
+void RegisterFile::sp(const std::uint16_t sp) { sp_ = sp; }
 std::uint16_t RegisterFile::pc() const { return pc_; }
-void RegisterFile::pc(std::uint16_t pc) { pc_ = pc; }
+void RegisterFile::pc(const std::uint16_t pc) { pc_ = pc; }
 std::uint8_t RegisterFile::r() const { return r_; }
-void RegisterFile::r(std::uint8_t r) { r_ = r; }
+void RegisterFile::r(const std::uint8_t r) { r_ = r; }
 std::uint8_t RegisterFile::i() const { return i_; }
-void RegisterFile::i(std::uint8_t i) { i_ = i; }
+void RegisterFile::i(const std::uint8_t i) { i_ = i; }
+
+void RegisterFile::ex(const R16 lhs, const R16 rhs) { std::swap(reg_for(lhs), reg_for(rhs)); }
 
 void RegisterFile::exx() {
-  std::swap(reg_for(R16::BC), reg_for(R16::BC_));
-  std::swap(reg_for(R16::DE), reg_for(R16::DE_));
-  std::swap(reg_for(R16::HL), reg_for(R16::HL_));
+  ex(R16::BC, R16::BC_);
+  ex(R16::DE, R16::DE_);
+  ex(R16::HL, R16::HL_);
 }
 
 uint8_t RegisterFile::RegPair::high() const { return high_; }
