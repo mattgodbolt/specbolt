@@ -76,6 +76,10 @@ struct App {
       go();
       return 0;
     };
+    commands["reset"] = [this](const std::vector<std::string> &) {
+      z80.registers().pc(0);
+      return 0;
+    };
 
     rl_attempted_completion_function = [](const char *text, const int start, int) -> char ** {
       if (start != 0)
