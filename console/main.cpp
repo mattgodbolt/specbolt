@@ -167,11 +167,12 @@ struct App {
       if (line.empty())
         continue;
       add_history(line.c_str());
-      execute(line);
+      if (!execute(line))
+        break;
     }
   }
 
-  void execute(const std::string &line) {
+  bool execute(const std::string &line) {
     // Use ranges to split the string line on whitespace, making a vector of strings
     std::vector<std::string> inputs;
     {
@@ -182,12 +183,13 @@ struct App {
     if (const auto found = commands.find(inputs[0]); found != std::end(commands)) {
       if (const auto result = found->second(std::vector<std::string>(std::next(std::begin(inputs)), std::end(inputs)));
           result != 0) {
-        return;
+        return false;
       }
     }
     else {
       std::cout << "Unknown command " << inputs[0] << "\n";
     }
+    return true;
   }
 };
 
