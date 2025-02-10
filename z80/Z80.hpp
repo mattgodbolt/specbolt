@@ -26,6 +26,7 @@ public:
   auto &registers() { return regs_; }
   // TODO this isn't a property of the z80, we should "poke" out to a port mapper or something.
   void out(std::uint16_t port, std::uint8_t value);
+  [[nodiscard]] std::uint8_t port_fe() const { return port_fe_; }
 
   void dump() const;
 
