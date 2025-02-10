@@ -1,0 +1,6 @@
+excludeDirectories = "{$excludeDirectories,build}"
+includeDirectories = "{$includeDirectories,.github,.idea}"
+
+CLANG_FORMAT_ON_SAVE = true
+softTabs = true
+tabSize = 2
