@@ -84,6 +84,8 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
       return memory_.read(regs_.pc() - 1);
     case Instruction::Operand::WordImmediate:
       return read16(regs_.pc() - 2);
+    case Instruction::Operand::WordImmediateIndirect8:
+      return memory_.read(read16(regs_.pc() - 2));
     case Instruction::Operand::WordImmediateIndirect16:
       return read16(read16(regs_.pc() - 2));
     case Instruction::Operand::PcOffset:
@@ -175,6 +177,9 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     }
     case Instruction::Operand::WordImmediate:
       throw std::runtime_error("Probably didn't mean to do this");
+    case Instruction::Operand::WordImmediateIndirect8:
+      write8(read16(regs_.pc() - 2), static_cast<std::uint8_t>(value));
+      break;
     case Instruction::Operand::WordImmediateIndirect16:
       write16(read16(regs_.pc() - 2), value);
       break;

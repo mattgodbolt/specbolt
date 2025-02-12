@@ -159,6 +159,15 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Reset:
       return {static_cast<std::uint16_t>(input.lhs & ~static_cast<std::uint16_t>(1u << input.rhs)), input.flags, 4};
 
+    case Operation::Djnz: {
+      const auto new_b = static_cast<std::uint8_t>(cpu.registers().get(RegisterFile::R8::B) - 1);
+      cpu.registers().set(RegisterFile::R8::B, new_b);
+      const auto taken = new_b != 0;
+      if (taken)
+        cpu.registers().pc(input.rhs);
+      return {0, input.flags, static_cast<std::uint8_t>(taken ? 9 : 4)};
+    }
+
     case Operation::Shift:
     case Operation::Bit:
     case Operation::Invalid:

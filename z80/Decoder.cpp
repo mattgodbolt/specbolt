@@ -1,6 +1,7 @@
 #include "z80/Decoder.hpp"
 
 #include <array>
+#include <format>
 #include <span>
 #include <stdexcept>
 #include <utility>
@@ -178,29 +179,60 @@ Instruction::Operand source_operand_for(const std::uint8_t opcode) {
   }
 }
 
-Instruction::Operand dest_operand_for(const std::uint8_t opcode) {
-  switch (opcode & 0xf8) {
-    case 0x30:
-      // gotta be cleverer than this...look at z80 decoder diagram?
-      if (opcode == 0x36)
-        return Instruction::Operand::HL_Indirect;
-      break;
-    case 0x40:
-      return Instruction::Operand::B;
-    case 0x48:
-      return Instruction::Operand::C;
-    case 0x50:
-      return Instruction::Operand::D;
-    case 0x58:
-      return Instruction::Operand::E;
-    case 0x60:
-      return Instruction::Operand::H;
-    case 0x68:
-      return Instruction::Operand::L;
-    default:
-      break;
+Instruction::Operand load_dest_for(const std::uint8_t opcode) {
+  using Operand = Instruction::Operand;
+  if (const auto quarter = opcode >> 6; quarter == 0) {
+    switch (opcode) {
+      case 0x01:
+        return Operand::BC;
+      case 0x11:
+        return Operand::DE;
+      case 0x21:
+        return Operand::HL;
+      case 0x31:
+        return Operand::SP;
+      case 0x02:
+        return Operand::BC_Indirect;
+      case 0x12:
+        return Operand::DE_Indirect;
+      case 0x22:
+        return Operand::HL_Indirect;
+      case 0x32:
+        return Operand::WordImmediateIndirect8;
+      case 0x06:
+        return Operand::B;
+      case 0x16:
+        return Operand::D;
+      case 0x26:
+        return Operand::H;
+      case 0x36:
+        return Operand::HL_Indirect;
+      case 0x0e:
+        return Operand::C;
+      case 0x1e:
+        return Operand::E;
+      case 0x2e:
+        return Operand::L;
+      case 0x0a:
+      case 0x1a:
+      case 0x3a:
+      case 0x3e:
+        return Operand::A;
+      case 0x2a:
+        return Operand::HL;
+      default:
+        break;
+    }
   }
-  throw std::runtime_error("not worked out yet");
+  else if (quarter == 1) {
+    static constexpr std::array destinations{
+        Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::HL_Indirect, Operand::A};
+    return destinations[opcode >> 3 & 7];
+  }
+  // anything else isn't a load, unless it's the very special SP load
+  if (opcode == 0xf9)
+    return Operand::SP;
+  throw std::runtime_error(std::format("0x{:02x} is not a load opcode", opcode));
 }
 
 Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
@@ -209,8 +241,8 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x00:
       return {"nop", 1, Instruction::Operation::None};
     case 0x01:
-      return {
-          "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::BC, Instruction::Operand::WordImmediate};
+      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::BC,
+          Instruction::Operand::WordImmediateIndirect16};
     case 0x02:
       return {"ld {}, {}", 1, Instruction::Operation::Load, Instruction::Operand::BC_Indirect, Instruction::Operand::A};
     case 0x03:
@@ -218,6 +250,29 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
           "inc {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::BC, Instruction::Operand::Const_1};
     case 0x04:
       return {"inc {}", 1, Instruction::Operation::Add8, Instruction::Operand::B, Instruction::Operand::Const_1};
+    case 0x06:
+    case 0x16:
+    case 0x26:
+    case 0x36:
+    case 0x0e:
+    case 0x1e:
+    case 0x2e:
+    case 0x3e:
+      return {
+          "ld {}, {}",
+          2,
+          Instruction::Operation::Load,
+          load_dest_for(opcode),
+          Instruction::Operand::ByteImmediate,
+      };
+    case 0x10:
+      return {
+          "djnz {1}",
+          2,
+          Instruction::Operation::Djnz,
+          Instruction::Operand::None,
+          Instruction::Operand::PcOffset,
+      };
     case 0x11:
       return {
           "ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::DE, Instruction::Operand::WordImmediate};
@@ -250,20 +305,11 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {
           "inc {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::HL, Instruction::Operand::Const_1};
     case 0x32:
-      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect16,
+      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::WordImmediateIndirect8,
           Instruction::Operand::A};
     case 0x35:
       return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::HL_Indirect,
           Instruction::Operand::Const_ffff};
-    case 0x06:
-    case 0x16:
-    case 0x26:
-    case 0x36:
-      return {
-          "ld {}, {}", 2, Instruction::Operation::Load, dest_operand_for(opcode), Instruction::Operand::ByteImmediate};
-    case 0x3e:
-      return {
-          "ld {}, {}", 2, Instruction::Operation::Load, Instruction::Operand::A, Instruction::Operand::ByteImmediate};
 
     case 0x40:
     case 0x41:
@@ -296,7 +342,29 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x6d:
     case 0x6e:
     case 0x6f:
-      return {"ld {}, {}", 1, Instruction::Operation::Load, dest_operand_for(opcode), source_operand_for(opcode)};
+      return {"ld {}, {}", 1, Instruction::Operation::Load, load_dest_for(opcode), source_operand_for(opcode)};
+
+    case 0x76:
+      return {"halt", 1, Instruction::Operation::Invalid};
+
+    case 0x70:
+    case 0x71:
+    case 0x72:
+    case 0x73:
+    case 0x74:
+    case 0x75:
+    case 0x77:
+      return {
+          "ld {}, {}", 1, Instruction::Operation::Load, Instruction::Operand::HL_Indirect, source_operand_for(opcode)};
+    case 0x78:
+    case 0x79:
+    case 0x7a:
+    case 0x7b:
+    case 0x7c:
+    case 0x7d:
+    case 0x7e:
+    case 0x7f:
+      return {"ld {}, {}", 1, Instruction::Operation::Load, load_dest_for(opcode), source_operand_for(opcode)};
 
     case 0x80:
     case 0x81:

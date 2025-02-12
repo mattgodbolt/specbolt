@@ -42,6 +42,7 @@ std::string Disassembler::Disassembled::operand_name(
     case Instruction::Operand::WordImmediate:
       return std::format(
           "0x{:04x}", static_cast<uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
+    case Instruction::Operand::WordImmediateIndirect8:
     case Instruction::Operand::WordImmediateIndirect16:
       return std::format(
           "(0x{:04x})", static_cast<uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
