@@ -75,6 +75,8 @@ struct Instruction {
     EdOp,
     Add16NoFlags,
     Shift,
+    Push,
+    Pop
   };
   std::string_view opcode; // todo rename mnemonic
   std::uint8_t length;

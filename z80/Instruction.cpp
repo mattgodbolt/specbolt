@@ -146,8 +146,25 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 9 : 4)};
     }
 
+    case Operation::Bit: {
+      const auto bit = static_cast<std::uint8_t>(1 << static_cast<std::uint8_t>(input.rhs));
+      const auto flags_persisted = input.flags & Flags::Carry();
+      // From js speccy, bit 3 and 5 are copied to flags 3 and 5.
+      const auto flags_from_value = Flags(static_cast<std::uint8_t>(input.lhs)) & (Flags::Flag3() | Flags::Flag5());
+      const auto flags_from_sign = (bit & input.lhs & 0x80) ? Flags::Sign() : Flags();
+      const auto flags_from_bit = input.lhs & bit ? Flags() : (Flags::Zero() | Flags::Parity());
+      const auto flags = flags_persisted | flags_from_value | flags_from_sign | flags_from_bit;
+      return {0, flags, 4};
+    }
+
+    case Operation::Pop: return {cpu.pop16(), input.flags, 6};
+
+    case Operation::Push: {
+      cpu.push16(input.rhs);
+      return {0, input.flags, 7};
+    }
+
     case Operation::Shift:
-    case Operation::Bit:
     case Operation::Invalid: break;
   }
   // TODO better
