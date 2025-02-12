@@ -35,67 +35,41 @@ void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
 
 std::uint16_t Z80::read(const Instruction::Operand operand) const {
   switch (operand) {
-    case Instruction::Operand::A:
-      return regs_.get(RegisterFile::R8::A);
-    case Instruction::Operand::B:
-      return regs_.get(RegisterFile::R8::B);
-    case Instruction::Operand::C:
-      return regs_.get(RegisterFile::R8::C);
-    case Instruction::Operand::D:
-      return regs_.get(RegisterFile::R8::D);
-    case Instruction::Operand::E:
-      return regs_.get(RegisterFile::R8::E);
-    case Instruction::Operand::H:
-      return regs_.get(RegisterFile::R8::H);
-    case Instruction::Operand::L:
-      return regs_.get(RegisterFile::R8::L);
-    case Instruction::Operand::AF:
-      return regs_.get(RegisterFile::R16::AF);
-    case Instruction::Operand::BC:
-      return regs_.get(RegisterFile::R16::BC);
-    case Instruction::Operand::DE:
-      return regs_.get(RegisterFile::R16::DE);
-    case Instruction::Operand::HL:
-      return regs_.get(RegisterFile::R16::HL);
-    case Instruction::Operand::SP:
-      return regs_.sp();
-    case Instruction::Operand::IX:
-      return regs_.ix();
-    case Instruction::Operand::IY:
-      return regs_.iy();
-    case Instruction::Operand::I:
-      return regs_.i();
+    case Instruction::Operand::A: return regs_.get(RegisterFile::R8::A);
+    case Instruction::Operand::B: return regs_.get(RegisterFile::R8::B);
+    case Instruction::Operand::C: return regs_.get(RegisterFile::R8::C);
+    case Instruction::Operand::D: return regs_.get(RegisterFile::R8::D);
+    case Instruction::Operand::E: return regs_.get(RegisterFile::R8::E);
+    case Instruction::Operand::H: return regs_.get(RegisterFile::R8::H);
+    case Instruction::Operand::L: return regs_.get(RegisterFile::R8::L);
+    case Instruction::Operand::AF: return regs_.get(RegisterFile::R16::AF);
+    case Instruction::Operand::BC: return regs_.get(RegisterFile::R16::BC);
+    case Instruction::Operand::DE: return regs_.get(RegisterFile::R16::DE);
+    case Instruction::Operand::HL: return regs_.get(RegisterFile::R16::HL);
+    case Instruction::Operand::SP: return regs_.sp();
+    case Instruction::Operand::IX: return regs_.ix();
+    case Instruction::Operand::IY: return regs_.iy();
+    case Instruction::Operand::I: return regs_.i();
     case Instruction::Operand::BC_Indirect: // TODO 16 vs 8 bit?! and for write
       return read16(regs_.get(RegisterFile::R16::BC));
-    case Instruction::Operand::DE_Indirect:
-      return read16(regs_.get(RegisterFile::R16::DE));
-    case Instruction::Operand::HL_Indirect:
-      return read16(regs_.get(RegisterFile::R16::HL));
+    case Instruction::Operand::DE_Indirect: return read16(regs_.get(RegisterFile::R16::DE));
+    case Instruction::Operand::HL_Indirect: return read16(regs_.get(RegisterFile::R16::HL));
     case Instruction::Operand::Const_0:
-    case Instruction::Operand::None:
-      return 0;
-    case Instruction::Operand::Const_1:
-      return 1;
-    case Instruction::Operand::Const_2:
-      return 2;
-    case Instruction::Operand::Const_ffff:
-      return 0xffff;
-    case Instruction::Operand::ByteImmediate:
-      return memory_.read(regs_.pc() - 1);
-    case Instruction::Operand::WordImmediate:
-      return read16(regs_.pc() - 2);
-    case Instruction::Operand::WordImmediateIndirect8:
-      return memory_.read(read16(regs_.pc() - 2));
-    case Instruction::Operand::WordImmediateIndirect16:
-      return read16(read16(regs_.pc() - 2));
+    case Instruction::Operand::None: return 0;
+    case Instruction::Operand::Const_1: return 1;
+    case Instruction::Operand::Const_2: return 2;
+    case Instruction::Operand::Const_ffff: return 0xffff;
+    case Instruction::Operand::ByteImmediate: return memory_.read(regs_.pc() - 1);
+    case Instruction::Operand::WordImmediate: return read16(regs_.pc() - 2);
+    case Instruction::Operand::WordImmediateIndirect8: return memory_.read(read16(regs_.pc() - 2));
+    case Instruction::Operand::WordImmediateIndirect16: return read16(read16(regs_.pc() - 2));
     case Instruction::Operand::PcOffset:
       return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1)));
     case Instruction::Operand::IX_Offset_Indirect8:
       return memory_.read(static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))));
     case Instruction::Operand::IY_Offset_Indirect8:
       return memory_.read(static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))));
-    default:
-      break; // TODO NOT THIS
+    default: break; // TODO NOT THIS
   }
   throw std::runtime_error("bad operand for read");
 }
@@ -110,51 +84,23 @@ void Z80::execute(const Instruction &instr) {
 
 void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
   switch (operand) {
-    case Instruction::Operand::A:
-      regs_.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value));
-      break;
-    case Instruction::Operand::B:
-      regs_.set(RegisterFile::R8::B, static_cast<std::uint8_t>(value));
-      break;
-    case Instruction::Operand::C:
-      regs_.set(RegisterFile::R8::C, static_cast<std::uint8_t>(value));
-      break;
-    case Instruction::Operand::D:
-      regs_.set(RegisterFile::R8::D, static_cast<std::uint8_t>(value));
-      break;
-    case Instruction::Operand::E:
-      regs_.set(RegisterFile::R8::E, static_cast<std::uint8_t>(value));
-      break;
+    case Instruction::Operand::A: regs_.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::B: regs_.set(RegisterFile::R8::B, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::C: regs_.set(RegisterFile::R8::C, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::D: regs_.set(RegisterFile::R8::D, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::E: regs_.set(RegisterFile::R8::E, static_cast<std::uint8_t>(value)); break;
     // case Instruction::Operand::F:
     //   regs_.set(RegisterFile::R8::F, static_cast<std::uint8_t>(value));
     //   break;
-    case Instruction::Operand::H:
-      regs_.set(RegisterFile::R8::H, static_cast<std::uint8_t>(value));
-      break;
-    case Instruction::Operand::L:
-      regs_.set(RegisterFile::R8::L, static_cast<std::uint8_t>(value));
-      break;
-    case Instruction::Operand::AF:
-      regs_.set(RegisterFile::R16::AF, value);
-      break;
-    case Instruction::Operand::BC:
-      regs_.set(RegisterFile::R16::BC, value);
-      break;
-    case Instruction::Operand::DE:
-      regs_.set(RegisterFile::R16::DE, value);
-      break;
-    case Instruction::Operand::HL:
-      regs_.set(RegisterFile::R16::HL, value);
-      break;
-    case Instruction::Operand::IX:
-      regs_.ix(value);
-      break;
-    case Instruction::Operand::IY:
-      regs_.iy(value);
-      break;
-    case Instruction::Operand::SP:
-      regs_.sp(value);
-      break;
+    case Instruction::Operand::H: regs_.set(RegisterFile::R8::H, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::L: regs_.set(RegisterFile::R8::L, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::AF: regs_.set(RegisterFile::R16::AF, value); break;
+    case Instruction::Operand::BC: regs_.set(RegisterFile::R16::BC, value); break;
+    case Instruction::Operand::DE: regs_.set(RegisterFile::R16::DE, value); break;
+    case Instruction::Operand::HL: regs_.set(RegisterFile::R16::HL, value); break;
+    case Instruction::Operand::IX: regs_.ix(value); break;
+    case Instruction::Operand::IY: regs_.iy(value); break;
+    case Instruction::Operand::SP: regs_.sp(value); break;
     case Instruction::Operand::BC_Indirect:
       // TODO are these all 8-bit?
       write8(regs_.get(RegisterFile::R16::BC), static_cast<std::uint8_t>(value));
@@ -165,24 +111,18 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::HL_Indirect:
       write8(regs_.get(RegisterFile::R16::HL), static_cast<std::uint8_t>(value));
       break;
-    case Instruction::Operand::I:
-      regs_.i(static_cast<std::uint8_t>(value));
-      break;
-    case Instruction::Operand::None:
-      break;
+    case Instruction::Operand::I: regs_.i(static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::None: break;
     case Instruction::Operand::ByteImmediate: {
       // Does nothing; this is (currently) used in OUT (nn), a instruction.
       // perhaps the operand should be ByteImmediateOut? But then how about IN?
       break;
     }
-    case Instruction::Operand::WordImmediate:
-      throw std::runtime_error("Probably didn't mean to do this");
+    case Instruction::Operand::WordImmediate: throw std::runtime_error("Probably didn't mean to do this");
     case Instruction::Operand::WordImmediateIndirect8:
       write8(read16(regs_.pc() - 2), static_cast<std::uint8_t>(value));
       break;
-    case Instruction::Operand::WordImmediateIndirect16:
-      write16(read16(regs_.pc() - 2), value);
-      break;
+    case Instruction::Operand::WordImmediateIndirect16: write16(read16(regs_.pc() - 2), value); break;
     case Instruction::Operand::IX_Offset_Indirect8:
       write8(static_cast<std::uint16_t>(regs_.ix() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))),
           static_cast<std::uint8_t>(value));

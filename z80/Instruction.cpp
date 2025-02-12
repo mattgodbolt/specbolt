@@ -19,14 +19,10 @@ Instruction::Output alu8(const Instruction::Input input, Alu::R8 (*operation)(st
 bool Instruction::should_execute(const Flags flags) const {
   if (const auto *condition = std::get_if<Condition>(&args)) {
     switch (*condition) {
-      case Condition::NonZero:
-        return !flags.zero();
-      case Condition::Zero:
-        return flags.zero();
-      case Condition::NoCarry:
-        return !flags.carry();
-      case Condition::Carry:
-        return flags.carry();
+      case Condition::NonZero: return !flags.zero();
+      case Condition::Zero: return flags.zero();
+      case Condition::NoCarry: return !flags.carry();
+      case Condition::Carry: return flags.carry();
     }
   }
   return true;
@@ -36,8 +32,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
   // TODO tstates ... like ED executes take longer etc
   const bool carry = std::holds_alternative<WithCarry>(args) ? input.flags.carry() : false;
   switch (operation) {
-    case Operation::None:
-      return {0, Flags(), 0};
+    case Operation::None: return {0, Flags(), 0};
 
     case Operation::Add8: {
       const auto [result, flags] =
@@ -65,8 +60,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {result, flags, 7};
     }
 
-    case Operation::Load:
-      return {input.rhs, input.flags, 0}; // TODO is 0 right?
+    case Operation::Load: return {input.rhs, input.flags, 0}; // TODO is 0 right?
     case Operation::Jump: {
       const auto taken = should_execute(input.flags);
       if (taken)
@@ -82,35 +76,21 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       }
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 17 : 10)};
     }
-    case Operation::Xor:
-      return alu8(input, &Alu::xor8);
-    case Operation::And:
-      return alu8(input, &Alu::and8);
-    case Operation::Or:
-      return alu8(input, &Alu::or8);
+    case Operation::Xor: return alu8(input, &Alu::xor8);
+    case Operation::And: return alu8(input, &Alu::and8);
+    case Operation::Or: return alu8(input, &Alu::or8);
     case Operation::Irq:
       cpu.iff1(input.rhs);
       cpu.iff2(input.rhs);
       return {0, input.flags, 0};
-    case Operation::IrqMode:
-      cpu.irq_mode(static_cast<std::uint8_t>(input.rhs));
-      return {0, input.flags, 4};
-    case Operation::Out:
-      cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs));
-      return {0, input.flags, 7};
-    case Operation::Exx:
-      cpu.registers().exx();
-      return {0, input.flags, 0};
+    case Operation::IrqMode: cpu.irq_mode(static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 4};
+    case Operation::Out: cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 7};
+    case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
       switch (lhs) {
-        case Operand::AF:
-          cpu.registers().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_);
-          break;
-        case Operand::DE:
-          cpu.registers().ex(RegisterFile::R16::DE, RegisterFile::R16::HL);
-          break;
-        default:
-          throw std::runtime_error("Unsupported exchange");
+        case Operand::AF: cpu.registers().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); break;
+        case Operand::DE: cpu.registers().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); break;
+        default: throw std::runtime_error("Unsupported exchange");
       }
       return {0, input.flags, 0};
     }
@@ -143,10 +123,8 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
             should_continue = false;
           break;
         }
-        case EdOpArgs::Op::In:
-          throw std::runtime_error("in not supported yet TODO");
-        case EdOpArgs::Op::Out:
-          throw std::runtime_error("out not supported yet TODO");
+        case EdOpArgs::Op::In: throw std::runtime_error("in not supported yet TODO");
+        case EdOpArgs::Op::Out: throw std::runtime_error("out not supported yet TODO");
       }
       if (should_continue) {
         cpu.registers().pc(cpu.registers().pc() - 2);
@@ -170,8 +148,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
 
     case Operation::Shift:
     case Operation::Bit:
-    case Operation::Invalid:
-      break;
+    case Operation::Invalid: break;
   }
   // TODO better
   throw std::runtime_error("Unsupported opcode");
