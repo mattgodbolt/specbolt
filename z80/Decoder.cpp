@@ -87,6 +87,9 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
     case 0x35:
       return {"dec {}", 3, Instruction::Operation::Add16NoFlags, RegisterSet::indirect,
           Instruction::Operand::Const_ffff, {}, offset};
+    case 0x36:
+      return {"ld {}, {}", 4, Instruction::Operation::Load, RegisterSet::indirect, Instruction::Operand::ByteImmediate,
+          {}, offset};
     case 0xcb: {
       // Next byte is the offset, then finally the opcode
       // BLEH
@@ -318,6 +321,18 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"dec {}", 1, Instruction::Operation::Add8, Instruction::Operand::L, Instruction::Operand::Const_ffff};
     case 0x3d:
       return {"dec {}", 1, Instruction::Operation::Add8, Instruction::Operand::A, Instruction::Operand::Const_ffff};
+    case 0x0b:
+      return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::BC,
+          Instruction::Operand::Const_ffff};
+    case 0x1b:
+      return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::DE,
+          Instruction::Operand::Const_ffff};
+    case 0x2b:
+      return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::HL,
+          Instruction::Operand::Const_ffff};
+    case 0x3b:
+      return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::SP,
+          Instruction::Operand::Const_ffff};
 
     case 0x76: return {"halt", 1, Instruction::Operation::Invalid};
 
@@ -329,6 +344,10 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::HL};
     case 0x39:
       return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::SP};
+
+    case 0xc6:
+      return {
+          "add {}, {}", 2, Instruction::Operation::Add8, Instruction::Operand::A, Instruction::Operand::ByteImmediate};
 
     case 0x80:
     case 0x81:
@@ -421,9 +440,6 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xe1: return {"pop {}", 1, Instruction::Operation::Pop, Instruction::Operand::HL};
     case 0xf1: return {"pop {}", 1, Instruction::Operation::Pop, Instruction::Operand::AF};
 
-    case 0x2b:
-      return {"dec {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::HL,
-          Instruction::Operand::Const_ffff};
     case 0xc3:
       return {
           "jp {1}", 3, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::WordImmediate};
@@ -432,7 +448,21 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xcd:
       return {
           "call {1}", 3, Instruction::Operation::Call, Instruction::Operand::None, Instruction::Operand::WordImmediate};
+    case 0xc8:
+      return {"ret z", 1, Instruction::Operation::Return, Instruction::Operand::None, Instruction::Operand::None,
+          Instruction::Condition::Zero};
     case 0xc9: return {"ret", 1, Instruction::Operation::Return};
+    case 0xd8:
+      return {"ret c", 1, Instruction::Operation::Return, Instruction::Operand::None, Instruction::Operand::None,
+          Instruction::Condition::Carry};
+    case 0xc0:
+      return {"ret nz", 1, Instruction::Operation::Return, Instruction::Operand::None, Instruction::Operand::None,
+          Instruction::Condition::NonZero};
+    case 0xd0:
+      return {"ret nc", 1, Instruction::Operation::Return, Instruction::Operand::None, Instruction::Operand::None,
+          Instruction::Condition::NoCarry};
+
+    case 0x3f: return {"ccf", 1, Instruction::Operation::Ccf};
 
     case 0xdd: return decode_ddfd<RegisterSetIx>(operands);
     case 0xed: return decode_ed(operands);

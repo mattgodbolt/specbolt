@@ -69,6 +69,7 @@ struct Instruction {
     Djnz,
     Call,
     Return,
+    Ccf,
     Invalid,
     Irq,
     IrqMode,

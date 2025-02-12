@@ -90,12 +90,23 @@ TEST_CASE("Disassembler tests") {
     CHECK(instr.to_string() == "0270  cb 5e        bit 3, (hl)");
   }
   SECTION("fd prefixes") {
-    memory.raw_write(0x1276, 0xfd); // prefix
-    memory.raw_write(0x1277, 0x35); // dec []
-    memory.raw_write(0x1278, 0xc6); // -0x3a
-    const auto instr = dis.disassemble(0x1276);
-    CHECK(instr.instruction.length == 3);
-    CHECK(instr.to_string() == "1276  fd 35 c6     dec (iy-0x3a)");
+    SECTION("without constant") {
+      memory.raw_write(0x1276, 0xfd); // prefix
+      memory.raw_write(0x1277, 0x35); // dec []
+      memory.raw_write(0x1278, 0xc6); // -0x3a
+      const auto instr = dis.disassemble(0x1276);
+      CHECK(instr.instruction.length == 3);
+      CHECK(instr.to_string() == "1276  fd 35 c6     dec (iy-0x3a)");
+    }
+    SECTION("with constant") {
+      memory.raw_write(0x128e, 0xfd); // prefix
+      memory.raw_write(0x128f, 0x36); // ld [], nn
+      memory.raw_write(0x1290, 0x31); // +0x31
+      memory.raw_write(0x1291, 0x02); // 0x02
+      const auto instr = dis.disassemble(0x128e);
+      CHECK(instr.instruction.length == 4);
+      CHECK(instr.to_string() == "128e  fd 36 31 02  ld (iy+0x31), 0x02");
+    }
   }
   SECTION("fdcb prefixes") {
     memory.raw_write(0x1287, 0xfd); // fd prefix (iy+nn)
