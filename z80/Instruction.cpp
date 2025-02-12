@@ -76,6 +76,14 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       }
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 17 : 10)};
     }
+    case Operation::Return: {
+      const auto taken = should_execute(input.flags);
+      if (taken) {
+        cpu.registers().pc(cpu.pop16());
+      }
+      // timings not actually right here.
+      return {0, input.flags, static_cast<std::uint8_t>(taken ? 6 : 1)};
+    }
     case Operation::Xor: return alu8(input, &Alu::xor8);
     case Operation::And: return alu8(input, &Alu::and8);
     case Operation::Or: return alu8(input, &Alu::or8);

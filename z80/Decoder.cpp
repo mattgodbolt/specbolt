@@ -15,7 +15,7 @@ constexpr Instruction invalid_2{"??", 2, Instruction::Operation::Invalid};
 
 struct RegisterSetUnshifted {
   // static constexpr auto direct = Instruction::Operand::HL;
-  static constexpr auto indirect = Instruction::Operand::HL_Indirect;
+  static constexpr auto indirect = Instruction::Operand::HL_Indirect8;
   static constexpr auto extra_bytes = 0u;
 };
 
@@ -39,7 +39,7 @@ Instruction decode_bit(const std::span<const std::uint8_t> opcodes) {
   static constexpr std::array registers_from_opcode = {Instruction::Operand::B, Instruction::Operand::C,
       Instruction::Operand::D, Instruction::Operand::E, Instruction::Operand::H, Instruction::Operand::L,
       RegisterSet::indirect, Instruction::Operand::A};
-  const auto operand = (RegisterSet::indirect == Instruction::Operand::HL_Indirect)
+  const auto operand = (RegisterSet::indirect == Instruction::Operand::HL_Indirect8)
                            ? registers_from_opcode[opcode & 0x07]
                            : RegisterSet::indirect;
   if (opcode < 0x40) {
@@ -162,7 +162,7 @@ Instruction::Operand source_operand_for(const std::uint8_t opcode) {
     case 5: return Instruction::Operand::L;
     case 6:
       // sometimes a constant though...
-      return Instruction::Operand::HL_Indirect;
+      return Instruction::Operand::HL_Indirect8;
     case 7: return Instruction::Operand::A;
     default: std::unreachable();
   }
@@ -184,8 +184,8 @@ constexpr std::optional<Instruction::Operand> load_source_for(const std::uint8_t
       case 0x16:
       case 0x26:
       case 0x36: return Operand::ByteImmediate;
-      case 0x0a: return Operand::BC_Indirect;
-      case 0x1a: return Operand::DE_Indirect;
+      case 0x0a: return Operand::BC_Indirect8;
+      case 0x1a: return Operand::DE_Indirect8;
       case 0x2a: return Operand::WordImmediateIndirect16;
       case 0x3a: return Operand::WordImmediateIndirect8;
       case 0x0e:
@@ -197,7 +197,7 @@ constexpr std::optional<Instruction::Operand> load_source_for(const std::uint8_t
   }
   else if (quarter == 1 && opcode != 0x76 /* HALT which would be ld (hl), (hl) otherwise */) {
     static constexpr std::array sources{
-        Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::HL_Indirect, Operand::A};
+        Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::HL_Indirect8, Operand::A};
     return sources[opcode & 7];
   }
   // anything else isn't a load, unless it's the very special SP, HL load
@@ -214,14 +214,14 @@ constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t o
       case 0x11: return Operand::DE;
       case 0x21: return Operand::HL;
       case 0x31: return Operand::SP;
-      case 0x02: return Operand::BC_Indirect;
-      case 0x12: return Operand::DE_Indirect;
-      case 0x22: return Operand::HL_Indirect;
+      case 0x02: return Operand::BC_Indirect8;
+      case 0x12: return Operand::DE_Indirect8;
+      case 0x22: return Operand::WordImmediateIndirect16;
       case 0x32: return Operand::WordImmediateIndirect8;
       case 0x06: return Operand::B;
       case 0x16: return Operand::D;
       case 0x26: return Operand::H;
-      case 0x36: return Operand::HL_Indirect;
+      case 0x36: return Operand::HL_Indirect8;
       case 0x0e: return Operand::C;
       case 0x1e: return Operand::E;
       case 0x2e: return Operand::L;
@@ -235,7 +235,7 @@ constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t o
   }
   else if (quarter == 1) {
     static constexpr std::array destinations{
-        Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::HL_Indirect, Operand::A};
+        Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::HL_Indirect8, Operand::A};
     return destinations[opcode >> 3 & 7];
   }
   // anything else isn't a load, unless it's the very special SP load
@@ -269,11 +269,6 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
   const auto operands = std::span{opcodes}.subspan(1);
   switch (opcode) {
     case 0x00: return {"nop", 1, Instruction::Operation::None};
-    case 0x01:
-      return {"ld {}, {}", 3, Instruction::Operation::Load, Instruction::Operand::BC,
-          Instruction::Operand::WordImmediateIndirect16};
-    case 0x02:
-      return {"ld {}, {}", 1, Instruction::Operation::Load, Instruction::Operand::BC_Indirect, Instruction::Operand::A};
     case 0x03:
       return {
           "inc {}", 1, Instruction::Operation::Add16NoFlags, Instruction::Operand::BC, Instruction::Operand::Const_1};
@@ -289,8 +284,6 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       };
     case 0x18:
       return {"jr {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset};
-    case 0x19:
-      return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::DE};
     case 0x20:
       return {"jr nz {1}", 2, Instruction::Operation::Jump, Instruction::Operand::None, Instruction::Operand::PcOffset,
           Instruction::Condition::NonZero};
@@ -315,7 +308,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x25:
       return {"dec {}", 1, Instruction::Operation::Add8, Instruction::Operand::H, Instruction::Operand::Const_ffff};
     case 0x35:
-      return {"dec {}", 1, Instruction::Operation::Add8, Instruction::Operand::HL_Indirect, // TODO 8!!!
+      return {"dec {}", 1, Instruction::Operation::Add8, Instruction::Operand::HL_Indirect8,
           Instruction::Operand::Const_ffff};
     case 0x0d:
       return {"dec {}", 1, Instruction::Operation::Add8, Instruction::Operand::C, Instruction::Operand::Const_ffff};
@@ -327,6 +320,15 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"dec {}", 1, Instruction::Operation::Add8, Instruction::Operand::A, Instruction::Operand::Const_ffff};
 
     case 0x76: return {"halt", 1, Instruction::Operation::Invalid};
+
+    case 0x09:
+      return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::BC};
+    case 0x19:
+      return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::DE};
+    case 0x29:
+      return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::HL};
+    case 0x39:
+      return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::SP};
 
     case 0x80:
     case 0x81:
@@ -430,6 +432,8 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xcd:
       return {
           "call {1}", 3, Instruction::Operation::Call, Instruction::Operand::None, Instruction::Operand::WordImmediate};
+    case 0xc9: return {"ret", 1, Instruction::Operation::Return};
+
     case 0xdd: return decode_ddfd<RegisterSetIx>(operands);
     case 0xed: return decode_ed(operands);
     case 0xd3:

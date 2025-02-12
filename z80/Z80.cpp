@@ -50,10 +50,11 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
     case Instruction::Operand::IX: return regs_.ix();
     case Instruction::Operand::IY: return regs_.iy();
     case Instruction::Operand::I: return regs_.i();
-    case Instruction::Operand::BC_Indirect: // TODO 16 vs 8 bit?! and for write
-      return read16(regs_.get(RegisterFile::R16::BC));
-    case Instruction::Operand::DE_Indirect: return read16(regs_.get(RegisterFile::R16::DE));
-    case Instruction::Operand::HL_Indirect: return read16(regs_.get(RegisterFile::R16::HL));
+    case Instruction::Operand::BC_Indirect8: return memory_.read(regs_.get(RegisterFile::R16::BC));
+    case Instruction::Operand::DE_Indirect8: return memory_.read(regs_.get(RegisterFile::R16::DE));
+    case Instruction::Operand::HL_Indirect8: return memory_.read(regs_.get(RegisterFile::R16::HL));
+    case Instruction::Operand::HL_Indirect16: return read16(regs_.get(RegisterFile::R16::HL));
+    case Instruction::Operand::SP_Indirect16: return read16(regs_.get(RegisterFile::R16::HL));
     case Instruction::Operand::Const_0:
     case Instruction::Operand::None: return 0;
     case Instruction::Operand::Const_1: return 1;
@@ -101,16 +102,17 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::IX: regs_.ix(value); break;
     case Instruction::Operand::IY: regs_.iy(value); break;
     case Instruction::Operand::SP: regs_.sp(value); break;
-    case Instruction::Operand::BC_Indirect:
-      // TODO are these all 8-bit?
+    case Instruction::Operand::BC_Indirect8:
       write8(regs_.get(RegisterFile::R16::BC), static_cast<std::uint8_t>(value));
       break;
-    case Instruction::Operand::DE_Indirect:
+    case Instruction::Operand::DE_Indirect8:
       write8(regs_.get(RegisterFile::R16::DE), static_cast<std::uint8_t>(value));
       break;
-    case Instruction::Operand::HL_Indirect:
+    case Instruction::Operand::HL_Indirect8:
       write8(regs_.get(RegisterFile::R16::HL), static_cast<std::uint8_t>(value));
       break;
+    case Instruction::Operand::HL_Indirect16: write16(regs_.get(RegisterFile::R16::HL), value); break;
+    case Instruction::Operand::SP_Indirect16: write16(regs_.sp(), value); break;
     case Instruction::Operand::I: regs_.i(static_cast<std::uint8_t>(value)); break;
     case Instruction::Operand::None: break;
     case Instruction::Operand::ByteImmediate: {

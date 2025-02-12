@@ -56,10 +56,12 @@ std::string Disassembler::Disassembled::operand_name(
     case Instruction::Operand::AF_: return "af'";
     case Instruction::Operand::IX: return "ix";
     case Instruction::Operand::IY: return "iy";
-    case Instruction::Operand::BC_Indirect: return "(bc)";
-    case Instruction::Operand::DE_Indirect: return "(de)";
-    case Instruction::Operand::HL_Indirect: return "(hl)";
+    case Instruction::Operand::BC_Indirect8: return "(bc)";
+    case Instruction::Operand::DE_Indirect8: return "(de)";
+    case Instruction::Operand::HL_Indirect16:
+    case Instruction::Operand::HL_Indirect8: return "(hl)";
     case Instruction::Operand::SP: return "sp";
+    case Instruction::Operand::SP_Indirect16: return "(sp)";
     case Instruction::Operand::PcOffset:
       return std::format("0x{:04x}", address + instruction.length + static_cast<int8_t>(bytes[instruction.length - 1]));
     case Instruction::Operand::IX_Offset_Indirect8:
