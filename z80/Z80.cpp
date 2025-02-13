@@ -11,8 +11,7 @@ namespace specbolt {
 std::size_t Z80::execute_one() {
   const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
-  const std::array opcodes{memory_.read(initial_pc), memory_.read(initial_pc + 1), memory_.read(initial_pc + 2),
-      memory_.read(initial_pc + 3)};
+  const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
   const auto decoded = decode(opcodes);
   pass_time(4);
   regs_.pc(initial_pc + decoded.length); // NOT RIGHT
@@ -27,6 +26,7 @@ std::size_t Z80::execute_one() {
   return now_tstates_ - initial_time;
 }
 
+std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read(address); }
 std::uint16_t Z80::read16(const std::uint16_t address) const {
   return static_cast<uint16_t>(memory_.read(address + 1) << 8) | memory_.read(address);
 }
@@ -50,9 +50,9 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
     case Instruction::Operand::IX: return regs_.ix();
     case Instruction::Operand::IY: return regs_.iy();
     case Instruction::Operand::I: return regs_.i();
-    case Instruction::Operand::BC_Indirect8: return memory_.read(regs_.get(RegisterFile::R16::BC));
-    case Instruction::Operand::DE_Indirect8: return memory_.read(regs_.get(RegisterFile::R16::DE));
-    case Instruction::Operand::HL_Indirect8: return memory_.read(regs_.get(RegisterFile::R16::HL));
+    case Instruction::Operand::BC_Indirect8: return read8(regs_.get(RegisterFile::R16::BC));
+    case Instruction::Operand::DE_Indirect8: return read8(regs_.get(RegisterFile::R16::DE));
+    case Instruction::Operand::HL_Indirect8: return read8(regs_.get(RegisterFile::R16::HL));
     case Instruction::Operand::HL_Indirect16: return read16(regs_.get(RegisterFile::R16::HL));
     case Instruction::Operand::SP_Indirect16: return read16(regs_.get(RegisterFile::R16::HL));
     case Instruction::Operand::Const_0:
@@ -64,17 +64,24 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
     case Instruction::Operand::Const_5: return 5;
     case Instruction::Operand::Const_6: return 6;
     case Instruction::Operand::Const_7: return 7;
+    case Instruction::Operand::Const_8: return 8;
+    case Instruction::Operand::Const_16: return 16;
+    case Instruction::Operand::Const_24: return 24;
+    case Instruction::Operand::Const_32: return 32;
+    case Instruction::Operand::Const_40: return 40;
+    case Instruction::Operand::Const_48: return 48;
+    case Instruction::Operand::Const_52: return 52;
     case Instruction::Operand::Const_ffff: return 0xffff;
-    case Instruction::Operand::ByteImmediate: return memory_.read(regs_.pc() - 1);
+    case Instruction::Operand::ByteImmediate: return read8(regs_.pc() - 1);
     case Instruction::Operand::WordImmediate: return read16(regs_.pc() - 2);
-    case Instruction::Operand::WordImmediateIndirect8: return memory_.read(read16(regs_.pc() - 2));
+    case Instruction::Operand::WordImmediateIndirect8: return read8(read16(regs_.pc() - 2));
     case Instruction::Operand::WordImmediateIndirect16: return read16(read16(regs_.pc() - 2));
     case Instruction::Operand::PcOffset:
-      return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1)));
+      return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
     case Instruction::Operand::IX_Offset_Indirect8:
-      return memory_.read(static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))));
+      return read8(static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1))));
     case Instruction::Operand::IY_Offset_Indirect8:
-      return memory_.read(static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))));
+      return read8(static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1))));
     default: break; // TODO NOT THIS
   }
   throw std::runtime_error("bad operand for read");
@@ -131,11 +138,11 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
       break;
     case Instruction::Operand::WordImmediateIndirect16: write16(read16(regs_.pc() - 2), value); break;
     case Instruction::Operand::IX_Offset_Indirect8:
-      write8(static_cast<std::uint16_t>(regs_.ix() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))),
+      write8(static_cast<std::uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1))),
           static_cast<std::uint8_t>(value));
       break;
     case Instruction::Operand::IY_Offset_Indirect8:
-      write8(static_cast<std::uint16_t>(regs_.iy() + static_cast<std::int8_t>(memory_.read(regs_.pc() - 1))),
+      write8(static_cast<std::uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1))),
           static_cast<std::uint8_t>(value));
       break;
     default:
@@ -197,7 +204,7 @@ std::uint8_t Z80::pop8() {
   // todo maybe account for time here instead of in the instructions?
   const auto old_sp = regs_.sp();
   regs_.sp(static_cast<std::uint16_t>(old_sp + 1));
-  return memory_.read(old_sp);
+  return read8(old_sp);
 }
 
 } // namespace specbolt

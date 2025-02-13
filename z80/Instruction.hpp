@@ -50,6 +50,13 @@ struct Instruction {
     Const_5,
     Const_6,
     Const_7,
+    Const_8,
+    Const_16,
+    Const_24,
+    Const_32,
+    Const_40,
+    Const_48,
+    Const_52,
     Const_ffff,
   };
   enum class Operation {
@@ -89,7 +96,7 @@ struct Instruction {
   Operand lhs{Operand::None};
   Operand rhs{Operand::None};
   struct WithCarry {};
-  enum class Condition { NonZero, Zero, NoCarry, Carry };
+  enum class Condition { NonZero, Zero, NoCarry, Carry, NoParity, Parity, Positive, Negative };
   struct EdOpArgs {
     enum class Op { Load = 0x00, Compare = 0x01, In = 0x02, Out = 0x03 };
     Op op;

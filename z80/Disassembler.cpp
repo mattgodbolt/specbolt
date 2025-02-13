@@ -77,6 +77,13 @@ std::string Disassembler::Disassembled::operand_name(
     case Instruction::Operand::Const_5: return "5";
     case Instruction::Operand::Const_6: return "6";
     case Instruction::Operand::Const_7: return "7";
+    case Instruction::Operand::Const_8: return "8";
+    case Instruction::Operand::Const_16: return "16";
+    case Instruction::Operand::Const_24: return "24";
+    case Instruction::Operand::Const_32: return "32";
+    case Instruction::Operand::Const_40: return "40";
+    case Instruction::Operand::Const_48: return "48";
+    case Instruction::Operand::Const_52: return "52";
     case Instruction::Operand::Const_ffff: return "0xffff";
   }
   return "??";

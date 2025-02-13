@@ -23,6 +23,10 @@ bool Instruction::should_execute(const Flags flags) const {
       case Condition::Zero: return flags.zero();
       case Condition::NoCarry: return !flags.carry();
       case Condition::Carry: return flags.carry();
+      case Condition::Parity: return flags.parity();
+      case Condition::NoParity: return !flags.parity();
+      case Condition::Positive: return !flags.sign();
+      case Condition::Negative: return flags.sign();
     }
   }
   return true;
@@ -98,6 +102,13 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       switch (lhs) {
         case Operand::AF: cpu.registers().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); break;
         case Operand::DE: cpu.registers().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); break;
+        case Operand::SP_Indirect16: {
+          const auto sp16 = cpu.read16(cpu.registers().sp());
+          const auto hl = cpu.registers().get(RegisterFile::R16::HL);
+          cpu.write16(cpu.registers().sp(), hl);
+          cpu.registers().set(RegisterFile::R16::HL, sp16);
+          return {0, input.flags, 15};
+        }
         default: throw std::runtime_error("Unsupported exchange");
       }
       return {0, input.flags, 0};
