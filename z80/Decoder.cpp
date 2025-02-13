@@ -408,7 +408,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xf1: return {"pop {1}", 1, Op::Pop, Operand::AF};
 
     case 0xc3: return {"jp {1}", 3, Op::Jump, Operand::None, Operand::WordImmediate};
-    case 0xe9: return {"jp {1}", 3, Op::Jump, Operand::None, Operand::HL_Indirect16};
+    case 0xe9: return {"jp (hl)", 3, Op::Jump, Operand::None, Operand::HL};
     case 0xd9: return {"exx", 1, Op::Exx}; // TODO arg this does not fit neatly into my world.
     case 0xcb: return decode_bit<RegisterSetUnshifted>(operands);
     case 0xcd: return {"call {1}", 3, Op::Call, Operand::None, Operand::WordImmediate};
