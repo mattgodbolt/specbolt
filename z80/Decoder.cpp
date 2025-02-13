@@ -44,15 +44,13 @@ Instruction decode_bit(const std::span<const std::uint8_t> opcodes) {
                            : RegisterSet::indirect;
   if (opcode < 0x40) {
     // it's a shift
-    const auto direction =
-        opcode & 0x08 ? Instruction::ShiftArgs::Direction::Right : Instruction::ShiftArgs::Direction::Left;
+    const auto direction = opcode & 0x08 ? Alu::Direction::Right : Alu::Direction::Left;
     const auto type = static_cast<Instruction::ShiftArgs::Type>((opcode & 0x30) >> 4);
     std::array<std::string_view, 8> names = {
         "rlc {}", "rrc {}", "rl {}", "rr {}", "sla {}", "sra {}", "sll {}", "srl {}"};
-    return {
-        names[(static_cast<std::size_t>(type) << 1) | (direction == Instruction::ShiftArgs::Direction::Right ? 1 : 0)],
+    return {names[(static_cast<std::size_t>(type) << 1) | (direction == Alu::Direction::Right ? 1 : 0)],
         2 + RegisterSet::extra_bytes, Instruction::Operation::Shift, operand, operand,
-        Instruction::ShiftArgs{direction, type}};
+        Instruction::ShiftArgs{direction, type, false}};
   }
   const std::size_t bit_offset = (opcode >> 3) & 0x07;
   switch (opcode >> 6) {
@@ -344,6 +342,19 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::HL};
     case 0x39:
       return {"add {}, {}", 1, Instruction::Operation::Add16, Instruction::Operand::HL, Instruction::Operand::SP};
+
+    case 0x0f:
+      return {"rrca", 1, Instruction::Operation::Shift, Instruction::Operand::A, Instruction::Operand::None,
+          Instruction::ShiftArgs{Alu::Direction::Right, Instruction::ShiftArgs::Type::RotateCircular, true}};
+    case 0x1f:
+      return {"rra", 1, Instruction::Operation::Shift, Instruction::Operand::A, Instruction::Operand::None,
+          Instruction::ShiftArgs{Alu::Direction::Right, Instruction::ShiftArgs::Type::Rotate, true}};
+    case 0x07:
+      return {"rlca", 1, Instruction::Operation::Shift, Instruction::Operand::A, Instruction::Operand::None,
+          Instruction::ShiftArgs{Alu::Direction::Left, Instruction::ShiftArgs::Type::RotateCircular, true}};
+    case 0x17:
+      return {"rla", 1, Instruction::Operation::Shift, Instruction::Operand::A, Instruction::Operand::None,
+          Instruction::ShiftArgs{Alu::Direction::Left, Instruction::ShiftArgs::Type::Rotate, true}};
 
     case 0xc6:
       return {

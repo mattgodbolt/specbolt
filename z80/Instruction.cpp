@@ -173,7 +173,43 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {0, input.flags, 7};
     }
 
-    case Operation::Shift:
+    case Operation::Shift: {
+      if (const auto [direction, type, fast] = std::get<ShiftArgs>(args); fast) {
+        if (type == ShiftArgs::Type::RotateCircular) {
+          const auto [result, flags] =
+              Alu::fast_rotate_circular8(static_cast<std::uint8_t>(input.lhs), direction, input.flags);
+          return {result, flags, 0};
+        }
+        if (type == ShiftArgs::Type::Rotate) {
+          const auto [result, flags] =
+              Alu::fast_rotate_circular8(static_cast<std::uint8_t>(input.lhs), direction, input.flags);
+          return {result, flags, 0};
+        }
+      }
+      else {
+        switch (type) {
+          case ShiftArgs::Type::RotateCircular: {
+            const auto [result, flags] = Alu::rotate_circular8(static_cast<std::uint8_t>(input.lhs), direction);
+            return {result, flags, 0};
+          }
+          case ShiftArgs::Type::Rotate: {
+            const auto [result, flags] =
+                Alu::rotate8(static_cast<std::uint8_t>(input.lhs), direction, input.flags.carry());
+            return {result, flags, 0};
+          }
+          case ShiftArgs::Type::ShiftArithmetic: {
+            const auto [result, flags] = Alu::shift_arithmetic8(static_cast<std::uint8_t>(input.lhs), direction);
+            return {result, flags, 0};
+          }
+          case ShiftArgs::Type::Shift: {
+            const auto [result, flags] = Alu::shift_logical8(static_cast<std::uint8_t>(input.lhs), direction);
+            return {result, flags, 0};
+          }
+        }
+      }
+      break;
+    }
+
     case Operation::Invalid: break;
   }
   // TODO better

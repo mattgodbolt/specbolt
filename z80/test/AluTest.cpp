@@ -100,6 +100,106 @@ TEST_CASE("ALU tests") {
     CHECK(Alu::xor8(0, 0xff) == Alu::R8{0xff, Flags::Sign() | Flags::Flag5() | Flags::Flag3() | Flags::Parity()});
     CHECK(Alu::xor8(1, 0xff) == Alu::R8{0xfe, Flags::Sign() | Flags::Flag5() | Flags::Flag3()});
   }
+
+  SECTION("rotates and shifts") {
+    SECTION("fast versions") {
+      SECTION("carry left") {
+        CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Left, Flags()) == Alu::R8{0b0000'0010, Flags()});
+        CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Left, Flags::Flag3() | Flags::Flag5()) ==
+              Alu::R8{0b0000'0010, Flags::Flag3() | Flags::Flag5()});
+        CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Left, Flags::Subtract()) ==
+              Alu::R8{0b0000'0000, Flags::Carry() | Flags::Subtract()});
+        CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Left, Flags::Carry()) ==
+              Alu::R8{0b0000'0001, Flags::Carry()});
+      }
+      SECTION("carry right") {
+        CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Right, Flags()) == Alu::R8{0b0000'0000, Flags::Carry()});
+        CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Right, Flags::Flag3() | Flags::Flag5()) ==
+              Alu::R8{0b0000'0000, Flags::Flag3() | Flags::Flag5() | Flags::Carry()});
+        CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Right, Flags::Subtract()) ==
+              Alu::R8{0b0100'0000, Flags::Subtract()});
+        CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Right, Flags::Carry()) == Alu::R8{0b1100'0000, Flags()});
+      }
+      SECTION("circular left") {
+        CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Left, Flags()) == Alu::R8{0b0000'0010, Flags()});
+        CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Left, Flags::Flag3() | Flags::Flag5()) ==
+              Alu::R8{0b0000'0010, Flags::Flag3() | Flags::Flag5()});
+        CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Left, Flags::Subtract()) ==
+              Alu::R8{0b0000'0001, Flags::Carry() | Flags::Subtract()});
+        CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Left, Flags::Carry()) ==
+              Alu::R8{0b0000'0001, Flags::Carry()});
+      }
+      SECTION("circular right") {
+        CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Right, Flags()) ==
+              Alu::R8{0b1000'0000, Flags::Carry()});
+        CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Right, Flags::Flag3() | Flags::Flag5()) ==
+              Alu::R8{0b1000'0000, Flags::Flag3() | Flags::Flag5() | Flags::Carry()});
+        CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Right, Flags::Subtract()) ==
+              Alu::R8{0b0100'0000, Flags::Subtract()});
+        CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Right, Flags::Carry()) ==
+              Alu::R8{0b0100'0000, Flags()});
+      }
+    }
+    SECTION("normal versions") {
+      SECTION("rotate left") {
+        CHECK(Alu::rotate8(0b0000'0001, Alu::Direction::Left, false) == Alu::R8{0b0000'0010, Flags()});
+        CHECK(Alu::rotate8(0b1000'0000, Alu::Direction::Left, false) ==
+              Alu::R8{0b0000'0000, Flags::Carry() | Flags::Zero()});
+        CHECK(Alu::rotate8(0b1000'0000, Alu::Direction::Left, true) == Alu::R8{0b0000'0001, Flags::Carry()});
+        CHECK(Alu::rotate8(0b1111'1111, Alu::Direction::Left, true) ==
+              Alu::R8{0b1111'1111, Flags::Carry() | Flags::Sign() | Flags::Flag3() | Flags::Flag5()});
+      }
+      SECTION("rotate right") {
+        CHECK(Alu::rotate8(0b0000'0001, Alu::Direction::Right, false) ==
+              Alu::R8{0b0000'0000, Flags::Zero() | Flags::Carry()});
+        CHECK(Alu::rotate8(0b1000'0000, Alu::Direction::Right, false) == Alu::R8{0b0100'0000, Flags()});
+        CHECK(Alu::rotate8(0b0000'0000, Alu::Direction::Right, true) == Alu::R8{0b1000'0000, Flags::Sign()});
+      }
+      SECTION("rotate circular left") {
+        CHECK(Alu::rotate_circular8(0b0000'0000, Alu::Direction::Left) == Alu::R8{0b0000'0000, Flags::Zero()});
+        CHECK(Alu::rotate_circular8(0b1111'1111, Alu::Direction::Left) ==
+              Alu::R8{0b1111'1111, Flags::Carry() | Flags::Flag3() | Flags::Flag5() | Flags::Sign()});
+        CHECK(Alu::rotate_circular8(0b0000'0001, Alu::Direction::Left) == Alu::R8{0b0000'0010, Flags()});
+        CHECK(Alu::rotate_circular8(0b0100'0000, Alu::Direction::Left) == Alu::R8{0b1000'0000, Flags::Sign()});
+        CHECK(Alu::rotate_circular8(0b1000'0000, Alu::Direction::Left) == Alu::R8{0b0000'0001, Flags::Carry()});
+      }
+      SECTION("rotate circular right") {
+        CHECK(Alu::rotate_circular8(0b0000'0000, Alu::Direction::Right) == Alu::R8{0b0000'0000, Flags::Zero()});
+        CHECK(Alu::rotate_circular8(0b1111'1111, Alu::Direction::Right) ==
+              Alu::R8{0b1111'1111, Flags::Carry() | Flags::Flag3() | Flags::Flag5() | Flags::Sign()});
+        CHECK(Alu::rotate_circular8(0b0000'0001, Alu::Direction::Right) ==
+              Alu::R8{0b1000'0000, Flags::Sign() | Flags::Carry()});
+        CHECK(Alu::rotate_circular8(0b1000'0000, Alu::Direction::Right) == Alu::R8{0b0100'0000, Flags()});
+        CHECK(Alu::rotate_circular8(0b0001'0000, Alu::Direction::Right) == Alu::R8{0b0000'1000, Flags::Flag3()});
+      }
+      SECTION("shift left arithmetic") {
+        CHECK(Alu::shift_arithmetic8(0b0101'1010, Alu::Direction::Left) ==
+              Alu::R8{0b1011'0100, Flags::Sign() | Flags::Flag5()});
+        CHECK(Alu::shift_arithmetic8(0b1010'0101, Alu::Direction::Left) ==
+              Alu::R8{0b0100'1010, Flags::Carry() | Flags::Flag3()});
+        CHECK(Alu::shift_arithmetic8(0b0000'0000, Alu::Direction::Left) == Alu::R8{0b0000'0000, Flags::Zero()});
+        CHECK(Alu::shift_arithmetic8(0b1111'1111, Alu::Direction::Left) ==
+              Alu::R8{0b1111'1110, Flags::Sign() | Flags::Flag3() | Flags::Flag5() | Flags::Carry()});
+      }
+      SECTION("shift right arithmetic") {
+        CHECK(Alu::shift_arithmetic8(0b0101'1010, Alu::Direction::Right) ==
+              Alu::R8{0b001'01101, Flags::Flag3() | Flags::Flag5()});
+        CHECK(Alu::shift_arithmetic8(0b1010'0101, Alu::Direction::Right) ==
+              Alu::R8{0b1101'0010, Flags::Carry() | Flags::Sign()});
+        CHECK(Alu::shift_arithmetic8(0b0000'0000, Alu::Direction::Right) == Alu::R8{0b0000'0000, Flags::Zero()});
+        CHECK(Alu::shift_arithmetic8(0b1111'1111, Alu::Direction::Right) ==
+              Alu::R8{0b1111'1111, Flags::Sign() | Flags::Flag3() | Flags::Flag5() | Flags::Carry()});
+      }
+      SECTION("shift right logical") {
+        CHECK(Alu::shift_logical8(0b0101'1010, Alu::Direction::Right) ==
+              Alu::R8{0b0010'1101, Flags::Flag3() | Flags::Flag5()});
+        CHECK(Alu::shift_logical8(0b1010'0101, Alu::Direction::Right) == Alu::R8{0b0101'0010, Flags::Carry()});
+        CHECK(Alu::shift_logical8(0b0000'0000, Alu::Direction::Right) == Alu::R8{0b0000'0000, Flags::Zero()});
+        CHECK(Alu::shift_logical8(0b1111'1111, Alu::Direction::Right) ==
+              Alu::R8{0b0111'1111, Flags::Flag3() | Flags::Flag5() | Flags::Carry()});
+      }
+    }
+  }
 }
 
 } // namespace specbolt

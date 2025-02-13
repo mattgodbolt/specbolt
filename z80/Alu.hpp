@@ -24,8 +24,23 @@ public:
   static R8 and8(std::uint8_t lhs, std::uint8_t rhs);
   static R8 xor8(std::uint8_t lhs, std::uint8_t rhs);
   static R8 or8(std::uint8_t lhs, std::uint8_t rhs);
-  // add to SP alledgely updates flags, bit 11 to 12? not done in jsspeccy?
+  // add to SP allegedly updates flags, bit 11 to 12? not done in jsspeccy?
   // https://stackoverflow.com/questions/57958631/game-boy-half-carry-flag-and-16-bit-instructions-especially-opcode-0xe8
+
+  enum class Direction { Left, Right };
+
+  // "Fast" here means the flags aren't properly calculated, as in RLCA, RRCA etc.
+  // Fast rotate normally.
+  static R8 fast_rotate8(std::uint8_t lhs, Direction direction, Flags flags);
+  // Fast rotate circularly.
+  static R8 fast_rotate_circular8(std::uint8_t lhs, Direction direction, Flags flags);
+
+  // Rotate through the carry flag.
+  static R8 rotate8(std::uint8_t lhs, Direction direction, bool carry_in);
+  // Rotate circularly.
+  static R8 rotate_circular8(std::uint8_t lhs, Direction direction);
+  static R8 shift_logical8(std::uint8_t lhs, Direction direction);
+  static R8 shift_arithmetic8(std::uint8_t lhs, Direction direction);
 };
 
 } // namespace specbolt

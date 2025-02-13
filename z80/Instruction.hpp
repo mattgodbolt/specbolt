@@ -1,5 +1,6 @@
 #pragma once
 
+#include "z80/Alu.hpp"
 #include "z80/Flags.hpp"
 
 #include <cstdint>
@@ -96,10 +97,10 @@ struct Instruction {
     bool repeat{false};
   };
   struct ShiftArgs {
-    enum class Direction { Left, Right };
-    Direction direction;
-    enum class Type { RotateThroughCarry = 0x00, Rotate = 0x01, ShiftArithmetic = 0x02, Shift = 0x03 };
+    Alu::Direction direction;
+    enum class Type { RotateCircular = 0x00, Rotate = 0x01, ShiftArithmetic = 0x02, Shift = 0x03 };
     Type type;
+    bool fast;
   };
   std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs> args{};
   std::int8_t index_offset{};
