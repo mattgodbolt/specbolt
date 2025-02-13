@@ -151,7 +151,6 @@ Instruction::Operand source_operand_for(const std::uint8_t opcode) {
 }
 
 constexpr std::optional<Instruction::Operand> load_source_for(const std::uint8_t opcode) {
-  using Operand = Instruction::Operand;
   if (const auto quarter = opcode >> 6; quarter == 0) {
     switch (opcode & 0x3f) {
       case 0x01:
@@ -189,7 +188,6 @@ constexpr std::optional<Instruction::Operand> load_source_for(const std::uint8_t
 }
 
 constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t opcode) {
-  using Operand = Instruction::Operand;
   if (const auto quarter = opcode >> 6; quarter == 0) {
     switch (opcode) {
       case 0x01: return Operand::BC;
@@ -302,8 +300,6 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"rla", 1, Op::Shift, Operand::A, Operand::None,
           Instruction::ShiftArgs{Alu::Direction::Left, Instruction::ShiftArgs::Type::Rotate, true}};
 
-    case 0xc6: return {"add {}, {}", 2, Op::Add8, Operand::A, Operand::ByteImmediate};
-
     case 0x80:
     case 0x81:
     case 0x82:
@@ -374,6 +370,11 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xbf:
       // hackily use "a" as the destination (e.g. other operand, but Compare doesn't actually update it).
       return {"cp {1}", 1, Op::Compare, Operand::A, source_operand_for(opcode)};
+
+    case 0xc6: return {"add {}", 2, Op::Add8, Operand::A, Operand::ByteImmediate};
+    case 0xd6: return {"sub {}", 2, Op::Subtract8, Operand::A, Operand::ByteImmediate};
+    case 0xe6: return {"and {}", 2, Op::And, Operand::A, Operand::ByteImmediate};
+    case 0xf6: return {"or {}", 2, Op::Or, Operand::A, Operand::ByteImmediate};
 
     case 0xc5: return {"push {}", 1, Op::Push, Operand::None, Operand::BC};
     case 0xd5: return {"push {}", 1, Op::Push, Operand::None, Operand::DE};
