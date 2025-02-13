@@ -256,6 +256,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
   const auto operands = std::span{opcodes}.subspan(1);
   switch (opcode) {
     case 0x00: return {"nop", 1, Op::None};
+    case 0x08: return {"ex af, af'", 1, Op::Exchange, Operand::AF, Operand::AF_};
     case 0x10:
       return {
           "djnz {1}",
@@ -412,6 +413,20 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xd9: return {"exx", 1, Op::Exx}; // TODO arg this does not fit neatly into my world.
     case 0xcb: return decode_bit<RegisterSetUnshifted>(operands);
     case 0xcd: return {"call {1}", 3, Op::Call, Operand::None, Operand::WordImmediate};
+    case 0xc4:
+      return {"call nz {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::NonZero};
+    case 0xcc: return {"call z {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::Zero};
+    case 0xd4:
+      return {"call nc {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::NoCarry};
+    case 0xdc: return {"call c {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::Carry};
+    case 0xe4:
+      return {"call po {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::NoParity};
+    case 0xec:
+      return {"call pe {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::Parity};
+    case 0xf4:
+      return {"call p {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::Positive};
+    case 0xfc:
+      return {"call m {1}", 3, Op::Call, Operand::None, Operand::WordImmediate, Instruction::Condition::Negative};
     case 0xc8: return {"ret z", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::Zero};
     case 0xc9: return {"ret", 1, Op::Return};
     case 0xd8: return {"ret c", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::Carry};

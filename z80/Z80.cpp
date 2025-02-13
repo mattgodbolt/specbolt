@@ -47,6 +47,7 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
     case Instruction::Operand::H: return regs_.get(RegisterFile::R8::H);
     case Instruction::Operand::L: return regs_.get(RegisterFile::R8::L);
     case Instruction::Operand::AF: return regs_.get(RegisterFile::R16::AF);
+    case Instruction::Operand::AF_: return regs_.get(RegisterFile::R16::AF_);
     case Instruction::Operand::BC: return regs_.get(RegisterFile::R16::BC);
     case Instruction::Operand::DE: return regs_.get(RegisterFile::R16::DE);
     case Instruction::Operand::HL: return regs_.get(RegisterFile::R16::HL);
