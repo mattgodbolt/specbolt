@@ -2,8 +2,8 @@
 <project version="4">
   <component name="CMakeSharedSettings">
     <configurations>
-      <configuration PROFILE_NAME="Debug" ENABLED="true" GENERATION_DIR="build/Debug" CONFIG_NAME="Debug" GENERATION_OPTIONS="-G &quot;Ninja Multi-Config&quot;" />
-      <configuration PROFILE_NAME="RelWithDebInfo" ENABLED="true" GENERATION_DIR="build/RelWithDebInfo" CONFIG_NAME="RelWithDebInfo" GENERATION_OPTIONS="-G &quot;Ninja Multi-Config&quot;" />
+      <configuration PROFILE_NAME="Debug" ENABLED="true" GENERATION_DIR="build/Debug" CONFIG_NAME="Debug" />
+      <configuration PROFILE_NAME="RelWithDebInfo" ENABLED="true" GENERATION_DIR="build/RelWithDebInfo" CONFIG_NAME="RelWithDebInfo" />
     </configurations>
   </component>
 </project>

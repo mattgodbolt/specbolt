@@ -61,6 +61,7 @@ void Main() {
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
   bool z80_running{true};
+  auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
   while (!quit) {
     SDL_Event e{};
     while (SDL_PollEvent(&e) != 0) {
@@ -70,9 +71,19 @@ void Main() {
     }
 
     if (z80_running) {
+      const auto start_time = std::chrono::high_resolution_clock::now();
       try {
-        for (std::size_t cycles_elapsed = 0; cycles_elapsed < cycles_per_frame; cycles_elapsed += z80.execute_one())
-          ;
+        std::size_t cycles_elapsed = 0;
+        while (cycles_elapsed < cycles_per_frame)
+          cycles_elapsed += z80.execute_one();
+        const auto end_time = std::chrono::high_resolution_clock::now();
+        const auto time_taken = end_time - start_time;
+        const auto cycles_per_second = static_cast<double>(cycles_elapsed) /
+                                       std::chrono::duration_cast<std::chrono::duration<double>>(time_taken).count();
+        if (end_time > next_print) {
+          std::print(std::cout, "Cycles/sec: {:.2f}\n", cycles_per_second);
+          next_print = end_time + std::chrono::seconds(1);
+        }
       }
       catch (const std::exception &e) {
         std::print(std::cout, "Exception: {}\n", e.what());
