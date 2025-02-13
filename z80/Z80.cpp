@@ -10,6 +10,9 @@ namespace specbolt {
 
 std::size_t Z80::execute_one() {
   ++num_instructions_;
+  reg_history_[current_reg_history_index_] = regs_;
+  current_reg_history_index_ = (current_reg_history_index_ + 1) % RegHistory;
+
   const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
   const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
@@ -168,20 +171,7 @@ void Z80::out(const std::uint16_t port, const std::uint8_t value) {
     std::print(std::cout, "zomg OUT({:04x}, {:02x})\n", port, value);
 }
 
-void Z80::dump() const {
-  std::print(std::cout, "Z80 dump:\n");
-  std::print(std::cout, "PC: {:04x} | SP: {:04x}\n", regs_.pc(), regs_.sp());
-  std::print(std::cout, "IX: {:04x} | IY: {:04x}\n", regs_.ix(), regs_.iy());
-  std::print(std::cout, "AF: {:04x} - {} | AF': {:04x} - {}\n", regs_.get(RegisterFile::R16::AF),
-      Flags(regs_.get(RegisterFile::R8::F)).to_string(), regs_.get(RegisterFile::R16::AF_),
-      Flags(regs_.get(RegisterFile::R8::F_)).to_string());
-  std::print(
-      std::cout, "BC: {:04x} | BC': {:04x}\n", regs_.get(RegisterFile::R16::BC), regs_.get(RegisterFile::R16::BC_));
-  std::print(
-      std::cout, "DE: {:04x} | DE': {:04x}\n", regs_.get(RegisterFile::R16::DE), regs_.get(RegisterFile::R16::DE_));
-  std::print(
-      std::cout, "HL: {:04x} | HL': {:04x}\n", regs_.get(RegisterFile::R16::HL), regs_.get(RegisterFile::R16::HL_));
-}
+void Z80::dump() const { regs_.dump(""); }
 
 void Z80::push16(const std::uint16_t value) {
   push8(static_cast<std::uint8_t>(value >> 8));
@@ -206,6 +196,18 @@ std::uint8_t Z80::pop8() {
   const auto old_sp = regs_.sp();
   regs_.sp(static_cast<std::uint16_t>(old_sp + 1));
   return read8(old_sp);
+}
+
+std::vector<RegisterFile> Z80::history() const {
+  std::vector<RegisterFile> result;
+  const auto num_entries = std::min(RegHistory, num_instructions_executed());
+  result.reserve(num_entries + 1);
+  for (auto offset = 0u; offset < num_entries; ++offset) {
+    const auto index = (current_reg_history_index_ + offset) % RegHistory;
+    result.push_back(reg_history_[index]);
+  }
+  result.push_back(regs_);
+  return result;
 }
 
 } // namespace specbolt

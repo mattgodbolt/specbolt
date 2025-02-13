@@ -1,5 +1,9 @@
 #include "z80/RegisterFile.hpp"
 
+#include "z80/Flags.hpp"
+
+#include <iostream>
+
 namespace specbolt {
 
 namespace {
@@ -33,6 +37,20 @@ std::uint8_t RegisterFile::i() const { return i_; }
 void RegisterFile::i(const std::uint8_t i) { i_ = i; }
 
 void RegisterFile::ex(const R16 lhs, const R16 rhs) { std::swap(reg_for(lhs), reg_for(rhs)); }
+
+void RegisterFile::dump(std::string_view prefix) const {
+  std::print(std::cout, "{}PC: {:04x} | SP: {:04x}\n", prefix, pc(), sp());
+  std::print(std::cout, "{}IX: {:04x} | IY: {:04x}\n", prefix, ix(), iy());
+  std::print(std::cout, "{}AF: {:04x} - {} | AF': {:04x} - {}\n", prefix, get(RegisterFile::R16::AF),
+      Flags(get(RegisterFile::R8::F)).to_string(), get(RegisterFile::R16::AF_),
+      Flags(get(RegisterFile::R8::F_)).to_string());
+  std::print(
+      std::cout, "{}BC: {:04x} | BC': {:04x}\n", prefix, get(RegisterFile::R16::BC), get(RegisterFile::R16::BC_));
+  std::print(
+      std::cout, "{}DE: {:04x} | DE': {:04x}\n", prefix, get(RegisterFile::R16::DE), get(RegisterFile::R16::DE_));
+  std::print(
+      std::cout, "{}HL: {:04x} | HL': {:04x}\n", prefix, get(RegisterFile::R16::HL), get(RegisterFile::R16::HL_));
+}
 
 void RegisterFile::exx() {
   ex(R16::BC, R16::BC_);

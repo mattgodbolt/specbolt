@@ -4,7 +4,9 @@
 #include "z80/Decoder.hpp"
 #include "z80/RegisterFile.hpp"
 
+#include <array>
 #include <cstdint>
+#include <vector>
 
 namespace specbolt {
 
@@ -48,6 +50,8 @@ public:
 
   [[nodiscard]] auto num_instructions_executed() const { return num_instructions_; }
 
+  [[nodiscard]] std::vector<RegisterFile> history() const;
+
 private:
   RegisterFile regs_;
   Memory &memory_;
@@ -57,6 +61,9 @@ private:
   bool iff2_{};
   std::uint8_t port_fe_{};
   std::uint8_t irq_mode_{};
+  static constexpr std::size_t RegHistory = 8z;
+  std::array<RegisterFile, RegHistory> reg_history_{};
+  size_t current_reg_history_index_{};
 
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand) const;
   void write(Instruction::Operand operand, std::uint16_t value);

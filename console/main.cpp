@@ -54,6 +54,10 @@ struct App {
       step(get_number_arg(args));
       return 0;
     };
+    commands["history"] = [this](const std::vector<std::string> &) {
+      history();
+      return 0;
+    };
     commands["next"] = [this](const std::vector<std::string> &args) {
       next(get_number_arg(args));
       return 0;
@@ -175,6 +179,14 @@ struct App {
         break;
       if (i != num_steps - 1)
         report();
+    }
+  }
+
+  void history() const {
+    for (const auto &trace: z80.history()) {
+      const auto disassembled = dis.disassemble(trace.pc());
+      trace.dump("  ");
+      std::print(std::cout, "{}\n", disassembled.to_string());
     }
   }
 

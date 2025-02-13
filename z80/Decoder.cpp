@@ -398,14 +398,14 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"cp {1}", 1, Op::Compare, Operand::A, source_operand_for(opcode)};
     case 0xfe: return {"cp {1}", 2, Op::Compare, Operand::A, Operand::ByteImmediate};
 
-    case 0xc5: return {"push {}", 1, Op::Push, Operand::None, Operand::BC};
-    case 0xd5: return {"push {}", 1, Op::Push, Operand::None, Operand::DE};
-    case 0xe5: return {"push {}", 1, Op::Push, Operand::None, Operand::HL};
-    case 0xf5: return {"push {}", 1, Op::Push, Operand::None, Operand::AF};
-    case 0xc1: return {"pop {}", 1, Op::Pop, Operand::BC};
-    case 0xd1: return {"pop {}", 1, Op::Pop, Operand::DE};
-    case 0xe1: return {"pop {}", 1, Op::Pop, Operand::HL};
-    case 0xf1: return {"pop {}", 1, Op::Pop, Operand::AF};
+    case 0xc5: return {"push {1}", 1, Op::Push, Operand::None, Operand::BC};
+    case 0xd5: return {"push {1}", 1, Op::Push, Operand::None, Operand::DE};
+    case 0xe5: return {"push {1}", 1, Op::Push, Operand::None, Operand::HL};
+    case 0xf5: return {"push {1}", 1, Op::Push, Operand::None, Operand::AF};
+    case 0xc1: return {"pop {1}", 1, Op::Pop, Operand::BC};
+    case 0xd1: return {"pop {1}", 1, Op::Pop, Operand::DE};
+    case 0xe1: return {"pop {1}", 1, Op::Pop, Operand::HL};
+    case 0xf1: return {"pop {1}", 1, Op::Pop, Operand::AF};
 
     case 0xc3: return {"jp {1}", 3, Op::Jump, Operand::None, Operand::WordImmediate};
     case 0xe9: return {"jp {1}", 3, Op::Jump, Operand::None, Operand::HL_Indirect16};
