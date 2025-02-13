@@ -180,7 +180,7 @@ struct App {
 
   void report() const {
     const auto disassembled = dis.disassemble(z80.pc());
-    std::print(std::cout, "{}\n", disassembled.to_string());
+    std::print(std::cout, "{} ({} executed)\n", disassembled.to_string(), z80.num_instructions_executed());
   }
 
   std::vector<std::string> exec_on_startup;

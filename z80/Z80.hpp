@@ -46,9 +46,12 @@ public:
   void write8(std::uint16_t address, std::uint8_t value);
   void write16(std::uint16_t address, std::uint16_t value);
 
+  [[nodiscard]] auto num_instructions_executed() const { return num_instructions_; }
+
 private:
   RegisterFile regs_;
   Memory &memory_;
+  std::size_t num_instructions_{};
   std::size_t now_tstates_{};
   bool iff1_{};
   bool iff2_{};
