@@ -78,6 +78,7 @@ struct Instruction {
     Call,
     Return,
     Ccf,
+    Scf,
     Invalid,
     Irq,
     IrqMode,

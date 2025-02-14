@@ -441,6 +441,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xc0: return {"ret nz", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::NonZero};
     case 0xd0: return {"ret nc", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::NoCarry};
 
+    case 0x37: return {"scf", 1, Op::Scf};
     case 0x3f: return {"ccf", 1, Op::Ccf};
 
     case 0xc2:
