@@ -18,133 +18,26 @@ constexpr Instruction invalid_2{"??", 2, Op::Invalid};
 
 struct RegisterSetUnshifted {
   // static constexpr auto direct = Instruction::Operand::HL;
-  static constexpr auto indirect = Operand::HL_Indirect8;
+  static constexpr auto indirect8 = Operand::HL_Indirect8;
   static constexpr auto extra_bytes = 0u;
 };
 
 struct RegisterSetIx {
   static constexpr auto direct = Operand::IX;
-  static constexpr auto indirect = Operand::IX_Offset_Indirect8;
+  static constexpr auto direct_low = Operand::IXL;
+  static constexpr auto direct_high = Operand::IXH;
+  static constexpr auto indirect8 = Operand::IX_Offset_Indirect8;
   static constexpr auto extra_bytes = 1u;
 };
 
 struct RegisterSetIy {
   static constexpr auto direct = Operand::IY;
-  static constexpr auto indirect = Operand::IY_Offset_Indirect8;
+  static constexpr auto direct_low = Operand::IYL;
+  static constexpr auto direct_high = Operand::IYH;
+  static constexpr auto indirect8 = Operand::IY_Offset_Indirect8;
   static constexpr auto extra_bytes = 1u;
 };
 
-} // namespace
-
-template<typename RegisterSet>
-Instruction decode_bit(const std::span<const std::uint8_t> opcodes) {
-  const auto opcode = opcodes[0];
-  static constexpr std::array registers_from_opcode = {
-      Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, RegisterSet::indirect, Operand::A};
-  const auto operand =
-      (RegisterSet::indirect == Operand::HL_Indirect8) ? registers_from_opcode[opcode & 0x07] : RegisterSet::indirect;
-  if (opcode < 0x40) {
-    // it's a shift
-    const auto direction = opcode & 0x08 ? Alu::Direction::Right : Alu::Direction::Left;
-    const auto type = static_cast<Instruction::ShiftArgs::Type>((opcode & 0x30) >> 4);
-    std::array<std::string_view, 8> names = {
-        "rlc {}", "rrc {}", "rl {}", "rr {}", "sla {}", "sra {}", "sll {}", "srl {}"};
-    return {names[(static_cast<std::size_t>(type) << 1) | (direction == Alu::Direction::Right ? 1 : 0)],
-        2 + RegisterSet::extra_bytes, Op::Shift, operand, operand, Instruction::ShiftArgs{direction, type, false}};
-  }
-  const std::size_t bit_offset = (opcode >> 3) & 0x07;
-  switch (opcode >> 6) {
-    default: throw std::runtime_error("Not possible");
-    // WTF extra bytes crap
-    case 1:
-      return {"bit {1}, {0}", 2 + RegisterSet::extra_bytes, Op::Bit, operand,
-          static_cast<Instruction::Operand>(static_cast<std::size_t>(Operand::Const_0) + bit_offset)};
-    case 2:
-      return {
-          "res {1}, {0}",
-          2 + RegisterSet::extra_bytes,
-          Op::Reset,
-          operand,
-          static_cast<Instruction::Operand>(static_cast<std::size_t>(Operand::Const_0) + bit_offset),
-      };
-    case 3:
-      return {"set {1}, {0}", 2 + RegisterSet::extra_bytes, Op::Set, operand,
-          static_cast<Instruction::Operand>(static_cast<std::size_t>(Operand::Const_0) + bit_offset)};
-  }
-  return invalid_2;
-}
-
-template<typename RegisterSet>
-Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
-  const auto offset = static_cast<std::int8_t>(opcodes[1]);
-  switch (opcodes[0]) {
-    case 0x75: return {"ld {}, {}", 3, Op::Load, RegisterSet::indirect, Operand::L, {}, offset};
-    case 0x21: return {"ld {}, {}", 4, Op::Load, RegisterSet::direct, Operand::WordImmediate};
-    case 0x35: return {"dec {}", 3, Op::Add16NoFlags, RegisterSet::indirect, Operand::Const_ffff, {}, offset};
-    case 0x36: return {"ld {}, {}", 4, Op::Load, RegisterSet::indirect, Operand::ByteImmediate, {}, offset};
-    case 0x46: return {"ld {}, {}", 3, Op::Load, Operand::B, RegisterSet::indirect, {}, offset};
-    case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
-    case 0xe5: return {"push {1}", 2, Op::Push, Operand::None, RegisterSet::direct};
-    case 0xcb: {
-      // Next byte is the offset, then finally the opcode.
-      auto result = decode_bit<RegisterSet>(opcodes.subspan(2));
-      result.length += 1; // TODO NO WHAT THE HECK IS THE POINT OF THE EXTRA
-      result.index_offset = offset;
-      return result;
-    }
-    default: break;
-  }
-  return invalid_2;
-}
-
-Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
-  switch (const auto opcode = opcodes[0]) {
-    case 0x47: return {"ld {}, {}", 2, Op::Load, Operand::I, Operand::A};
-    case 0x46: return {"im 0", 2, Op::IrqMode, Operand::None, Operand::Const_0};
-    case 0x56: return {"im 1", 2, Op::IrqMode, Operand::None, Operand::Const_1};
-    case 0x5e: return {"im 2", 2, Op::IrqMode, Operand::None, Operand::Const_2};
-    case 0x43: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::BC};
-    case 0x53: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::DE};
-    case 0x73: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::SP};
-    case 0x4b: return {"ld {}, {}", 4, Op::Load, Operand::BC, Operand::WordImmediateIndirect16};
-    case 0x5b: return {"ld {}, {}", 4, Op::Load, Operand::DE, Operand::WordImmediateIndirect16};
-    case 0x7b: return {"ld {}, {}", 4, Op::Load, Operand::SP, Operand::WordImmediateIndirect16};
-    case 0x42: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::BC, Instruction::WithCarry{}};
-    case 0x52: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
-    case 0x62: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
-    case 0x72: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
-    case 0x4a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::BC, Instruction::WithCarry{}};
-    case 0x5a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
-    case 0x6a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
-    case 0x7a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
-    case 0xa0:
-    case 0xa1:
-    case 0xa2:
-    case 0xa3:
-    case 0xa8:
-    case 0xa9:
-    case 0xaa:
-    case 0xab:
-    case 0xb0:
-    case 0xb1:
-    case 0xb2:
-    case 0xb3:
-    case 0xb8:
-    case 0xb9:
-    case 0xba:
-    case 0xbb: {
-      const auto op = static_cast<Instruction::EdOpArgs::Op>(opcode & 0x3);
-      const auto repeat = (opcode & 0xf0) == 0xb0;
-      const auto increment = (opcode & 0x8) == 0;
-      static std::array<std::string_view, 16> names = {"ldi", "cpi", "ini", "outi", "ldd", "cpd", "ind", "outd", "ldir",
-          "cpir", "inir", "otir", "lddr", "cpdr", "indr", "otdr"};
-      return {names[static_cast<std::size_t>(op) | (increment ? 0 : 4) | (repeat ? 8 : 0)], 2, Op::EdOp, Operand::None,
-          Operand::None, Instruction::EdOpArgs{op, increment, repeat}};
-    }
-    default: break;
-  }
-  return invalid_2;
-}
 
 Instruction::Operand source_operand_for(const std::uint8_t opcode) {
   // todo unify with load_source_for
@@ -240,11 +133,172 @@ constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t o
 constexpr std::uint8_t operand_length(const Instruction::Operand operand) {
   switch (operand) {
     default: return 0;
+    case Operand::IX_Offset_Indirect8:
+    case Operand::IY_Offset_Indirect8:
     case Operand::WordImmediateIndirect8:
     case Operand::WordImmediateIndirect16:
     case Operand::WordImmediate: return 2;
     case Operand::ByteImmediate: return 1;
   }
+}
+
+} // namespace
+
+template<typename RegisterSet>
+Instruction decode_bit(const std::span<const std::uint8_t> opcodes) {
+  const auto opcode = opcodes[0];
+  static constexpr std::array registers_from_opcode = {
+      Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, RegisterSet::indirect8, Operand::A};
+  const auto operand =
+      (RegisterSet::indirect8 == Operand::HL_Indirect8) ? registers_from_opcode[opcode & 0x07] : RegisterSet::indirect8;
+  if (opcode < 0x40) {
+    // it's a shift
+    const auto direction = opcode & 0x08 ? Alu::Direction::Right : Alu::Direction::Left;
+    const auto type = static_cast<Instruction::ShiftArgs::Type>((opcode & 0x30) >> 4);
+    std::array<std::string_view, 8> names = {
+        "rlc {}", "rrc {}", "rl {}", "rr {}", "sla {}", "sra {}", "sll {}", "srl {}"};
+    return {names[(static_cast<std::size_t>(type) << 1) | (direction == Alu::Direction::Right ? 1 : 0)],
+        2 + RegisterSet::extra_bytes, Op::Shift, operand, operand, Instruction::ShiftArgs{direction, type, false}};
+  }
+  const std::size_t bit_offset = (opcode >> 3) & 0x07;
+  switch (opcode >> 6) {
+    default: throw std::runtime_error("Not possible");
+    // WTF extra bytes crap
+    case 1:
+      return {"bit {1}, {0}", 2 + RegisterSet::extra_bytes, Op::Bit, operand,
+          static_cast<Instruction::Operand>(static_cast<std::size_t>(Operand::Const_0) + bit_offset)};
+    case 2:
+      return {
+          "res {1}, {0}",
+          2 + RegisterSet::extra_bytes,
+          Op::Reset,
+          operand,
+          static_cast<Instruction::Operand>(static_cast<std::size_t>(Operand::Const_0) + bit_offset),
+      };
+    case 3:
+      return {"set {1}, {0}", 2 + RegisterSet::extra_bytes, Op::Set, operand,
+          static_cast<Instruction::Operand>(static_cast<std::size_t>(Operand::Const_0) + bit_offset)};
+  }
+  return invalid_2;
+}
+
+template<typename RegisterSet>
+Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
+  const auto offset = static_cast<std::int8_t>(opcodes[1]);
+  const auto opcode = opcodes[0];
+  switch (opcode) {
+    case 0x09: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::BC};
+    case 0x19: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::DE};
+    case 0x29: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, RegisterSet::direct};
+    case 0x39: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::SP};
+    case 0x35: return {"dec {}", 3, Op::Add16NoFlags, RegisterSet::indirect8, Operand::Const_ffff, {}, offset};
+    case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
+    case 0xe5: return {"push {1}", 2, Op::Push, Operand::None, RegisterSet::direct};
+    case 0xcb: {
+      // Next byte is the offset, then finally the opcode.
+      auto result = decode_bit<RegisterSet>(opcodes.subspan(2));
+      result.length += 1; // TODO NO WHAT THE HECK IS THE POINT OF THE EXTRA
+      result.index_offset = offset;
+      return result;
+    }
+
+    default: break;
+  }
+  const auto transform = [](Operand op) {
+    switch (op) {
+      case Operand::HL: return RegisterSet::direct;
+      case Operand::HL_Indirect8: return RegisterSet::indirect8;
+      case Operand::HL_Indirect16: throw std::runtime_error("erk");
+      case Operand::H: return RegisterSet::direct_high;
+      case Operand::L: return RegisterSet::direct_low;
+      default: break;
+    }
+    return op;
+  };
+  // The load group...
+  if (const auto maybe_load_dest = load_dest_for(opcode); maybe_load_dest.has_value()) {
+    const auto dest = transform(maybe_load_dest.value());
+    const auto source_opt = load_source_for(opcode);
+    if (!source_opt)
+      throw std::runtime_error(std::format("Impossible sourceless load for 0x{:02x}", opcode));
+    const auto source = opcode >= 0x70 && opcode < 0x78 ? source_opt.value() : transform(source_opt.value());
+
+
+    return {"ld {}, {}", static_cast<std::uint8_t>(2 + operand_length(dest) + operand_length(source)), Op::Load, dest,
+        source, {}, offset};
+  }
+  const auto make_instruction = [&](const std::string_view name, const Op op, Operand lhs, Operand rhs,
+                                    const Instruction::Args args = {}) {
+    lhs = transform(lhs);
+    rhs = transform(rhs);
+    return Instruction{
+        name, static_cast<std::uint8_t>(2 + operand_length(lhs) + operand_length(rhs)), op, lhs, rhs, args, offset};
+  };
+  switch (opcode & 0xf8) {
+    case 0x80: return make_instruction("add {}, {}", Op::Add8, Operand::A, source_operand_for(opcode));
+    case 0x88:
+      return make_instruction("adc {}, {}", Op::Add8, Operand::A, source_operand_for(opcode), Instruction::WithCarry{});
+    case 0x90: return make_instruction("sub {}", Op::Subtract8, Operand::A, source_operand_for(opcode));
+    case 0x98:
+      return make_instruction(
+          "sbc {1}", Op::Subtract8, Operand::A, source_operand_for(opcode), Instruction::WithCarry{});
+    case 0xa0: return make_instruction("and {1}", Op::And, Operand::A, source_operand_for(opcode));
+    case 0xa8: return make_instruction("xor {1}", Op::Xor, Operand::A, source_operand_for(opcode));
+    case 0xb0: return make_instruction("or {1}", Op::Or, Operand::A, source_operand_for(opcode));
+    case 0xb8: return make_instruction("cp {1}", Op::Compare, Operand::A, source_operand_for(opcode));
+    default: break;
+  }
+  return invalid_2;
+}
+
+Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
+  switch (const auto opcode = opcodes[0]) {
+    case 0x47: return {"ld {}, {}", 2, Op::Load, Operand::I, Operand::A};
+    case 0x46: return {"im 0", 2, Op::IrqMode, Operand::None, Operand::Const_0};
+    case 0x56: return {"im 1", 2, Op::IrqMode, Operand::None, Operand::Const_1};
+    case 0x5e: return {"im 2", 2, Op::IrqMode, Operand::None, Operand::Const_2};
+    case 0x43: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::BC};
+    case 0x44: return {"neg", 4, Op::Neg, Operand::A};
+    case 0x53: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::DE};
+    case 0x73: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::SP};
+    case 0x4b: return {"ld {}, {}", 4, Op::Load, Operand::BC, Operand::WordImmediateIndirect16};
+    case 0x5b: return {"ld {}, {}", 4, Op::Load, Operand::DE, Operand::WordImmediateIndirect16};
+    case 0x7b: return {"ld {}, {}", 4, Op::Load, Operand::SP, Operand::WordImmediateIndirect16};
+    case 0x42: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::BC, Instruction::WithCarry{}};
+    case 0x52: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
+    case 0x62: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
+    case 0x72: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
+    case 0x4a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::BC, Instruction::WithCarry{}};
+    case 0x5a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
+    case 0x6a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
+    case 0x7a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
+    case 0xa0:
+    case 0xa1:
+    case 0xa2:
+    case 0xa3:
+    case 0xa8:
+    case 0xa9:
+    case 0xaa:
+    case 0xab:
+    case 0xb0:
+    case 0xb1:
+    case 0xb2:
+    case 0xb3:
+    case 0xb8:
+    case 0xb9:
+    case 0xba:
+    case 0xbb: {
+      const auto op = static_cast<Instruction::EdOpArgs::Op>(opcode & 0x3);
+      const auto repeat = (opcode & 0xf0) == 0xb0;
+      const auto increment = (opcode & 0x8) == 0;
+      static std::array<std::string_view, 16> names = {"ldi", "cpi", "ini", "outi", "ldd", "cpd", "ind", "outd", "ldir",
+          "cpir", "inir", "otir", "lddr", "cpdr", "indr", "otdr"};
+      return {names[static_cast<std::size_t>(op) | (increment ? 0 : 4) | (repeat ? 8 : 0)], 2, Op::EdOp, Operand::None,
+          Operand::None, Instruction::EdOpArgs{op, increment, repeat}};
+    }
+    default: break;
+  }
+  return invalid_2;
 }
 
 Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
@@ -327,6 +381,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
       return {"rla", 1, Op::Shift, Operand::A, Operand::None,
           Instruction::ShiftArgs{Alu::Direction::Left, Instruction::ShiftArgs::Type::Rotate, true}};
 
+    // TODO this is the same table as the IX/IY stuff, so maybe unify it
     case 0x80:
     case 0x81:
     case 0x82:

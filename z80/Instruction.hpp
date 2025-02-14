@@ -33,6 +33,10 @@ struct Instruction {
     SP,
     IX,
     IY,
+    IXL,
+    IYL,
+    IXH,
+    IYH,
     IX_Offset_Indirect8,
     IY_Offset_Indirect8, // TODO decide on naming
     AF_,
@@ -91,7 +95,8 @@ struct Instruction {
     Push,
     Pop,
     Inc8,
-    Dec8
+    Dec8,
+    Neg
   };
   std::string_view opcode; // todo rename mnemonic
   std::uint8_t length;
@@ -112,7 +117,8 @@ struct Instruction {
     Type type;
     bool fast;
   };
-  std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs> args{};
+  using Args = std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs>;
+  Args args{};
   std::int8_t index_offset{};
 
   struct Input {

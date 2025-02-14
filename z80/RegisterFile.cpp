@@ -27,6 +27,14 @@ std::uint16_t RegisterFile::ix() const { return ix_; }
 void RegisterFile::ix(const std::uint16_t ix) { ix_ = ix; }
 std::uint16_t RegisterFile::iy() const { return iy_; }
 void RegisterFile::iy(const std::uint16_t iy) { iy_ = iy; }
+std::uint8_t RegisterFile::ixh() const { return static_cast<std::uint8_t>(ix_ >> 8); }
+void RegisterFile::ixh(const std::uint8_t ixh) { ix_ = (ix_ & 0xff) | static_cast<std::uint16_t>(ixh << 8); }
+std::uint8_t RegisterFile::iyh() const { return static_cast<std::uint8_t>(iy_ >> 8); }
+void RegisterFile::iyh(const std::uint8_t iyh) { ix_ = (iy_ & 0xff) | static_cast<std::uint16_t>(iyh << 8); }
+std::uint8_t RegisterFile::ixl() const { return static_cast<std::uint8_t>(ix_ & 0xff); }
+void RegisterFile::ixl(const std::uint8_t ixl) { ix_ = (ix_ & 0xff00) | ixl; }
+std::uint8_t RegisterFile::iyl() const { return static_cast<std::uint8_t>(iy_ & 0xff); }
+void RegisterFile::iyl(const std::uint8_t iyl) { ix_ = (iy_ & 0xff00) | iyl; }
 std::uint16_t RegisterFile::sp() const { return sp_; }
 void RegisterFile::sp(const std::uint16_t sp) { sp_ = sp; }
 std::uint16_t RegisterFile::pc() const { return pc_; }
@@ -41,12 +49,11 @@ void RegisterFile::ex(const R16 lhs, const R16 rhs) { std::swap(reg_for(lhs), re
 void RegisterFile::dump(std::ostream &to, std::string_view prefix) const {
   std::print(to, "{}PC: {:04x} | SP: {:04x}\n", prefix, pc(), sp());
   std::print(to, "{}IX: {:04x} | IY: {:04x}\n", prefix, ix(), iy());
-  std::print(to, "{}AF: {:04x} - {} | AF': {:04x} - {}\n", prefix, get(RegisterFile::R16::AF),
-      Flags(get(RegisterFile::R8::F)).to_string(), get(RegisterFile::R16::AF_),
-      Flags(get(RegisterFile::R8::F_)).to_string());
-  std::print(to, "{}BC: {:04x} | BC': {:04x}\n", prefix, get(RegisterFile::R16::BC), get(RegisterFile::R16::BC_));
-  std::print(to, "{}DE: {:04x} | DE': {:04x}\n", prefix, get(RegisterFile::R16::DE), get(RegisterFile::R16::DE_));
-  std::print(to, "{}HL: {:04x} | HL': {:04x}\n", prefix, get(RegisterFile::R16::HL), get(RegisterFile::R16::HL_));
+  std::print(to, "{}AF: {:04x} - {} | AF': {:04x} - {}\n", prefix, get(R16::AF), Flags(get(R8::F)).to_string(),
+      get(R16::AF_), Flags(get(R8::F_)).to_string());
+  std::print(to, "{}BC: {:04x} | BC': {:04x}\n", prefix, get(R16::BC), get(R16::BC_));
+  std::print(to, "{}DE: {:04x} | DE': {:04x}\n", prefix, get(R16::DE), get(R16::DE_));
+  std::print(to, "{}HL: {:04x} | HL': {:04x}\n", prefix, get(R16::HL), get(R16::HL_));
 }
 
 void RegisterFile::exx() {

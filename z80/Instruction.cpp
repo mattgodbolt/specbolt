@@ -211,6 +211,10 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Pop: return {cpu.pop16(), input.flags, 6};
     case Operation::Ccf: return {0, input.flags ^ Flags::Carry(), 0};
     case Operation::Scf: return {0, input.flags | Flags::Carry(), 0};
+    case Operation::Neg: {
+      const auto [result, flags] = Alu::sub8(0, static_cast<std::uint8_t>(input.lhs), false);
+      return {result, flags, 0};
+    }
 
     case Operation::Push: {
       cpu.push16(input.rhs);

@@ -54,6 +54,10 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
     case Instruction::Operand::SP: return regs_.sp();
     case Instruction::Operand::IX: return regs_.ix();
     case Instruction::Operand::IY: return regs_.iy();
+    case Instruction::Operand::IXH: return regs_.ixh();
+    case Instruction::Operand::IYH: return regs_.iyh();
+    case Instruction::Operand::IXL: return regs_.ixl();
+    case Instruction::Operand::IYL: return regs_.iyl();
     case Instruction::Operand::I: return regs_.i();
     case Instruction::Operand::BC_Indirect8: return read8(regs_.get(RegisterFile::R16::BC));
     case Instruction::Operand::DE_Indirect8: return read8(regs_.get(RegisterFile::R16::DE));
@@ -118,6 +122,10 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
     case Instruction::Operand::HL: regs_.set(RegisterFile::R16::HL, value); break;
     case Instruction::Operand::IX: regs_.ix(value); break;
     case Instruction::Operand::IY: regs_.iy(value); break;
+    case Instruction::Operand::IXH: regs_.ixh(static_cast<uint8_t>(value)); break;
+    case Instruction::Operand::IYH: regs_.iyh(static_cast<uint8_t>(value)); break;
+    case Instruction::Operand::IXL: regs_.ixl(static_cast<uint8_t>(value)); break;
+    case Instruction::Operand::IYL: regs_.iyl(static_cast<uint8_t>(value)); break;
     case Instruction::Operand::SP: regs_.sp(value); break;
     case Instruction::Operand::BC_Indirect8:
       write8(regs_.get(RegisterFile::R16::BC), static_cast<std::uint8_t>(value));

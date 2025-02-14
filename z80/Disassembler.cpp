@@ -56,6 +56,10 @@ std::string Disassembler::Disassembled::operand_name(
     case Instruction::Operand::AF_: return "af'";
     case Instruction::Operand::IX: return "ix";
     case Instruction::Operand::IY: return "iy";
+    case Instruction::Operand::IXH: return "ixh";
+    case Instruction::Operand::IYH: return "iyh";
+    case Instruction::Operand::IXL: return "ixl";
+    case Instruction::Operand::IYL: return "iyl";
     case Instruction::Operand::BC_Indirect8: return "(bc)";
     case Instruction::Operand::DE_Indirect8: return "(de)";
     case Instruction::Operand::HL_Indirect16:

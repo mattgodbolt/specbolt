@@ -23,6 +23,14 @@ public:
   void ix(std::uint16_t ix);
   [[nodiscard]] std::uint16_t iy() const;
   void iy(std::uint16_t iy);
+  [[nodiscard]] std::uint8_t ixl() const;
+  void ixl(std::uint8_t ix);
+  [[nodiscard]] std::uint8_t iyl() const;
+  void iyl(std::uint8_t iyl);
+  [[nodiscard]] std::uint8_t ixh() const;
+  void ixh(std::uint8_t ixh);
+  [[nodiscard]] std::uint8_t iyh() const;
+  void iyh(std::uint8_t iyh);
   [[nodiscard]] std::uint16_t sp() const;
   void sp(std::uint16_t sp);
   [[nodiscard]] std::uint16_t pc() const;
