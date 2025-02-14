@@ -113,6 +113,10 @@ Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
     case 0x52: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
     case 0x62: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
     case 0x72: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
+    case 0x4a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::BC, Instruction::WithCarry{}};
+    case 0x5a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
+    case 0x6a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
+    case 0x7a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
     case 0xa0:
     case 0xa1:
     case 0xa2:
@@ -290,14 +294,14 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x3c: return {"inc {}", 1, Op::Add8, Operand::A, Operand::Const_1};
 
     // Sure would be nice to generalise these...
-    case 0x05: return {"dec {}", 1, Op::Add8, Operand::B, Operand::Const_ffff};
-    case 0x15: return {"dec {}", 1, Op::Add8, Operand::D, Operand::Const_ffff};
-    case 0x25: return {"dec {}", 1, Op::Add8, Operand::H, Operand::Const_ffff};
-    case 0x35: return {"dec {}", 1, Op::Add8, Operand::HL_Indirect8, Operand::Const_ffff};
-    case 0x0d: return {"dec {}", 1, Op::Add8, Operand::C, Operand::Const_ffff};
-    case 0x1d: return {"dec {}", 1, Op::Add8, Operand::E, Operand::Const_ffff};
-    case 0x2d: return {"dec {}", 1, Op::Add8, Operand::L, Operand::Const_ffff};
-    case 0x3d: return {"dec {}", 1, Op::Add8, Operand::A, Operand::Const_ffff};
+    case 0x05: return {"dec {}", 1, Op::Subtract8, Operand::B, Operand::Const_1};
+    case 0x15: return {"dec {}", 1, Op::Subtract8, Operand::D, Operand::Const_1};
+    case 0x25: return {"dec {}", 1, Op::Subtract8, Operand::H, Operand::Const_1};
+    case 0x35: return {"dec {}", 1, Op::Subtract8, Operand::HL_Indirect8, Operand::Const_1};
+    case 0x0d: return {"dec {}", 1, Op::Subtract8, Operand::C, Operand::Const_1};
+    case 0x1d: return {"dec {}", 1, Op::Subtract8, Operand::E, Operand::Const_1};
+    case 0x2d: return {"dec {}", 1, Op::Subtract8, Operand::L, Operand::Const_1};
+    case 0x3d: return {"dec {}", 1, Op::Subtract8, Operand::A, Operand::Const_1};
     case 0x0b: return {"dec {}", 1, Op::Add16NoFlags, Operand::BC, Operand::Const_ffff};
     case 0x1b: return {"dec {}", 1, Op::Add16NoFlags, Operand::DE, Operand::Const_ffff};
     case 0x2b: return {"dec {}", 1, Op::Add16NoFlags, Operand::HL, Operand::Const_ffff};
