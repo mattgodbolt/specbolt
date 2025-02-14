@@ -45,22 +45,22 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     }
 
     case Operation::Add16: {
-      const auto [result, flags] = Alu::add16(input.lhs, input.rhs, carry);
+      const auto [result, flags] = Alu::add16(input.lhs, input.rhs, carry, input.flags);
       return {result, flags, 7};
     }
     case Operation::Add16NoFlags: {
       return {static_cast<std::uint16_t>(input.lhs + input.rhs), input.flags, 2};
     }
     case Operation::Compare:
-      // Only update the flags on compare.
-      return {0, Alu::cmp8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs)).flags, 0};
+      return {
+          input.lhs, Alu::cmp8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs)).flags, 0};
     case Operation::Subtract8: {
       const auto [result, flags] =
           Alu::sub8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs), carry);
       return {result, flags, 0};
     }
     case Operation::Subtract16: {
-      const auto [result, flags] = Alu::sub16(input.lhs, input.rhs, carry);
+      const auto [result, flags] = Alu::sub16(input.lhs, input.rhs, carry, input.flags);
       return {result, flags, 7};
     }
 
@@ -127,9 +127,8 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto bc = cpu.registers().get(RegisterFile::R16::BC);
       bool should_continue = bc != 1 && repeat;
       cpu.registers().set(RegisterFile::R16::BC, bc - 1);
-      // TODO: flag 3 and flag 5 are supposedly set from "HL + A"'s left over bits?!
       auto flags = input.flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow());
-      if (bc == 1)
+      if (bc != 1)
         flags = flags | Flags::Overflow();
 
       switch (op) {
@@ -137,12 +136,25 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
           const auto de = cpu.registers().get(RegisterFile::R16::DE);
           cpu.registers().set(RegisterFile::R16::DE, de + add);
           const auto byte = cpu.memory().read(hl);
+          // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
+          const auto flag_bits = static_cast<std::uint8_t>(byte + cpu.registers().get(RegisterFile::R8::A));
+          flags = flags & ~(Flags::Flag3() | Flags::Flag5()) | //
+                  (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | //
+                  (flag_bits & 0x02 ? Flags::Flag5() : Flags());
           cpu.memory().write(de, byte);
           break;
         }
         case EdOpArgs::Op::Compare: {
           const auto byte = cpu.memory().read(hl);
           const auto compare_flags = Alu::cmp8(cpu.registers().get(RegisterFile::R8::A), byte).flags;
+          // TODO: flag 3 and flag 5 are supposedly set from "HL - A"'s left over bits?!
+#if 0 // TODO test this,
+      // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
+          const auto flag_bits = static_cast<std::uint8_t>(byte - cpu.registers().get(RegisterFile::R8::A));
+          flags = flags & ~(Flags::Flag3() | Flags::Flag5()) | //
+                  (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | //
+                  (flag_bits & 0x02 ? Flags::Flag5() : Flags());
+#endif
           constexpr auto flags_to_copy = Flags::HalfCarry() | Flags::Zero() | Flags::Sign();
           flags = flags & ~flags_to_copy | (compare_flags & flags_to_copy);
           if (flags.zero())

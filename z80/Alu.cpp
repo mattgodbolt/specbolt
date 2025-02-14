@@ -12,9 +12,6 @@ constexpr Flags sz53_parity(const std::uint8_t value) {
   return Flags(value) & (Flags::Sign() | Flags::Flag3() | Flags::Flag5()) | (value == 0 ? Flags::Zero() : Flags()) |
          (std::popcount(value) % 2 == 0 ? Flags::Parity() : Flags());
 }
-constexpr Flags sz53_16(const std::uint16_t value) {
-  return Flags(value >> 8) & (Flags::Sign() | Flags::Flag3() | Flags::Flag5()) | (value == 0 ? Flags::Zero() : Flags());
-}
 
 } // namespace
 
@@ -39,17 +36,17 @@ Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs) {
   return {result, flags & ~mask53 | Flags(lhs) & mask53};
 }
 
-Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in) {
+Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in, const Flags current_flags) {
   const std::uint32_t intermediate = lhs + rhs + (carry_in ? 1 : 0);
   const auto carry = intermediate > 0xffff ? Flags::Carry() : Flags();
   const auto result = static_cast<std::uint16_t>(intermediate);
   const auto half_carry = (lhs & 0xf00) + (rhs & 0xf00) > 0xf00 ? Flags::HalfCarry() : Flags();
-  const auto overflow = (lhs ^ result) & (rhs ^ result) & 0x8000 ? Flags::Overflow() : Flags();
-  return {result, sz53_16(result) | carry | half_carry | overflow};
+  const auto flags35 = Flags(result >> 8) & (Flags::Flag5() | Flags::Flag3());
+  return {result, current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity()) | carry | half_carry | flags35};
 }
 
-Alu::R16 Alu::sub16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in) {
-  const auto [result, flags] = add16(lhs, ~rhs, !carry_in);
+Alu::R16 Alu::sub16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in, const Flags current_flags) {
+  const auto [result, flags] = add16(lhs, ~rhs, !carry_in, current_flags);
   return {result, (flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
@@ -65,17 +62,21 @@ Alu::R8 Alu::or8(const std::uint8_t lhs, const std::uint8_t rhs) {
 
 Alu::R8 Alu::fast_rotate8(const std::uint8_t lhs, const Direction direction, const Flags flags) {
   const auto [result, result_flags] = rotate8(lhs, direction, flags.carry());
-  return {result, flags & ~Flags::Carry() | (result_flags & Flags::Carry())};
+  constexpr auto preserved_original_flags = Flags::Sign() | Flags::Zero() | Flags::Parity();
+  constexpr auto preserved_result_flags = Flags::Carry() | Flags::Flag3() | Flags::Flag5();
+  return {result, (flags & preserved_original_flags) | (result_flags & preserved_result_flags)};
 }
 
 Alu::R8 Alu::fast_rotate_circular8(const std::uint8_t lhs, const Direction direction, const Flags flags) {
   const auto [result, result_flags] = rotate_circular8(lhs, direction);
-  return {result, flags & ~Flags::Carry() | (result_flags & Flags::Carry())};
+  constexpr auto preserved_original_flags = Flags::Sign() | Flags::Zero() | Flags::Parity();
+  constexpr auto preserved_result_flags = Flags::Carry() | Flags::Flag3() | Flags::Flag5();
+  return {result, (flags & preserved_original_flags) | (result_flags & preserved_result_flags)};
 }
 
 Alu::R8 Alu::and8(const std::uint8_t lhs, const std::uint8_t rhs) {
   const auto result = static_cast<std::uint8_t>(lhs & rhs);
-  return {result, sz53_parity(result)};
+  return {result, sz53_parity(result) | Flags::HalfCarry()};
 }
 
 Alu::R8 Alu::rotate8(const std::uint8_t lhs, const Direction direction, const bool carry_in) {

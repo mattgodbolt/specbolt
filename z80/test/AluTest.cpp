@@ -56,32 +56,38 @@ TEST_CASE("ALU tests") {
     }
   }
   SECTION("16 bit addition") {
+    // According to z80-heaven: "preserves the S, Z and P/V flags, and H is undefined. Rest of flags modified by
+    // definition." Half carry set by the result, it seems.
     SECTION("no carry in") {
-      CHECK(Alu::add16(0, 0, false) == Alu::R16{0, Flags::Zero()});
-      CHECK(Alu::add16(0, 0xff, false) == Alu::R16{0xff, Flags()});
-      CHECK(Alu::add16(1, 0xff, false) == Alu::R16{0x100, Flags()});
-      CHECK(Alu::add16(0xff00, 0xff, false) == Alu::R16{0xffff, Flags::Sign() | Flags::Flag5() | Flags::Flag3()});
-      CHECK(Alu::add16(0xffff, 0, false) == Alu::R16{0xffff, Flags::Sign() | Flags::Flag5() | Flags::Flag3()});
-      CHECK(Alu::add16(0xffff, 1, false) == Alu::R16{0, Flags::Zero() | Flags::Carry()});
+      CHECK(Alu::add16(0, 0, false, Flags()) == Alu::R16{0, Flags()});
+      CHECK(Alu::add16(0, 0xff, false, Flags()) == Alu::R16{0xff, Flags()});
+      CHECK(Alu::add16(1, 0xff, false, Flags()) == Alu::R16{0x100, Flags()});
+      CHECK(Alu::add16(0xff00, 0xff, false, Flags()) == Alu::R16{0xffff, Flags::Flag5() | Flags::Flag3()});
+      CHECK(Alu::add16(0xffff, 0, false, Flags()) == Alu::R16{0xffff, Flags::Flag5() | Flags::Flag3()});
+      CHECK(Alu::add16(0xffff, 1, false, Flags()) == Alu::R16{0, Flags::Carry()});
     }
     SECTION("with carry in") {
-      CHECK(Alu::add16(0, 0, true) == Alu::R16{1, Flags()});
-      CHECK(Alu::add16(0xff, 0, true) == Alu::R16{0x100, Flags()});
-      CHECK(Alu::add16(0xffff, 0, true) == Alu::R16{0x0, Flags::Zero() | Flags::Carry()});
+      CHECK(Alu::add16(0, 0, true, Flags()) == Alu::R16{1, Flags()});
+      CHECK(Alu::add16(0xff, 0, true, Flags()) == Alu::R16{0x100, Flags()});
+      CHECK(Alu::add16(0xffff, 0, true, Flags()) == Alu::R16{0x0, Flags::Carry()});
     }
     SECTION("half carry") {
-      CHECK(!Alu::add16(0x0f, 0x00, false).flags.half_carry());
-      CHECK(!Alu::add16(0x03, 0x0a, false).flags.half_carry());
-      CHECK(!Alu::add16(0x01, 0x0f, false).flags.half_carry());
-      CHECK(!Alu::add16(0x0f, 0x0f, false).flags.half_carry());
-      CHECK(!Alu::add16(0x0000, 0x7f00, false).flags.overflow());
-      CHECK(Alu::add16(0x0100, 0x7f00, false).flags.overflow());
+      CHECK(!Alu::add16(0x0f, 0x00, false, Flags()).flags.half_carry());
+      CHECK(!Alu::add16(0x03, 0x0a, false, Flags()).flags.half_carry());
+      CHECK(!Alu::add16(0x01, 0x0f, false, Flags()).flags.half_carry());
+      CHECK(!Alu::add16(0x0f, 0x0f, false, Flags()).flags.half_carry());
     }
-    SECTION("overflow") {
-      CHECK(!Alu::add16(0xff, 0x00, false).flags.overflow());
-      CHECK(!Alu::add16(0x01, 0x7f, false).flags.overflow());
-      CHECK(!Alu::add16(0x00, 0x7f00, false).flags.overflow());
-      CHECK(Alu::add16(0x0100, 0x7f00, false).flags.overflow());
+    SECTION("doesn't set overflow") {
+      CHECK(!Alu::add16(0xff, 0x00, false, Flags()).flags.overflow());
+      CHECK(!Alu::add16(0x01, 0x7f, false, Flags()).flags.overflow());
+      CHECK(!Alu::add16(0x00, 0x7f00, false, Flags()).flags.overflow());
+      CHECK(!Alu::add16(0x0100, 0x7f00, false, Flags()).flags.overflow());
+      CHECK(!Alu::add16(0x0000, 0x7f00, false, Flags()).flags.overflow());
+      CHECK(!Alu::add16(0x0100, 0x7f00, false, Flags()).flags.overflow());
+    }
+    SECTION("presereves previous flags") {
+      CHECK(Alu::add16(1, 1, false, Flags::Sign() | Flags::Zero() | Flags::Parity()) ==
+            Alu::R16{2, Flags::Sign() | Flags::Zero() | Flags::Parity()});
     }
   }
 
@@ -106,26 +112,26 @@ TEST_CASE("ALU tests") {
       SECTION("carry left") {
         CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Left, Flags()) == Alu::R8{0b0000'0010, Flags()});
         CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Left, Flags::Flag3() | Flags::Flag5()) ==
-              Alu::R8{0b0000'0010, Flags::Flag3() | Flags::Flag5()});
+              Alu::R8{0b0000'0010, Flags()});
         CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Left, Flags::Subtract()) ==
-              Alu::R8{0b0000'0000, Flags::Carry() | Flags::Subtract()});
+              Alu::R8{0b0000'0000, Flags::Carry()});
         CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Left, Flags::Carry()) ==
               Alu::R8{0b0000'0001, Flags::Carry()});
       }
       SECTION("carry right") {
         CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Right, Flags()) == Alu::R8{0b0000'0000, Flags::Carry()});
         CHECK(Alu::fast_rotate8(0b0000'0001, Alu::Direction::Right, Flags::Flag3() | Flags::Flag5()) ==
-              Alu::R8{0b0000'0000, Flags::Flag3() | Flags::Flag5() | Flags::Carry()});
-        CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Right, Flags::Subtract()) ==
-              Alu::R8{0b0100'0000, Flags::Subtract()});
+              Alu::R8{0b0000'0000, Flags::Carry()});
+        CHECK(
+            Alu::fast_rotate8(0b1000'0000, Alu::Direction::Right, Flags::Subtract()) == Alu::R8{0b0100'0000, Flags()});
         CHECK(Alu::fast_rotate8(0b1000'0000, Alu::Direction::Right, Flags::Carry()) == Alu::R8{0b1100'0000, Flags()});
       }
       SECTION("circular left") {
         CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Left, Flags()) == Alu::R8{0b0000'0010, Flags()});
         CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Left, Flags::Flag3() | Flags::Flag5()) ==
-              Alu::R8{0b0000'0010, Flags::Flag3() | Flags::Flag5()});
+              Alu::R8{0b0000'0010, Flags()});
         CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Left, Flags::Subtract()) ==
-              Alu::R8{0b0000'0001, Flags::Carry() | Flags::Subtract()});
+              Alu::R8{0b0000'0001, Flags::Carry()});
         CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Left, Flags::Carry()) ==
               Alu::R8{0b0000'0001, Flags::Carry()});
       }
@@ -133,9 +139,9 @@ TEST_CASE("ALU tests") {
         CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Right, Flags()) ==
               Alu::R8{0b1000'0000, Flags::Carry()});
         CHECK(Alu::fast_rotate_circular8(0b0000'0001, Alu::Direction::Right, Flags::Flag3() | Flags::Flag5()) ==
-              Alu::R8{0b1000'0000, Flags::Flag3() | Flags::Flag5() | Flags::Carry()});
+              Alu::R8{0b1000'0000, Flags::Carry()});
         CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Right, Flags::Subtract()) ==
-              Alu::R8{0b0100'0000, Flags::Subtract()});
+              Alu::R8{0b0100'0000, Flags()});
         CHECK(Alu::fast_rotate_circular8(0b1000'0000, Alu::Direction::Right, Flags::Carry()) ==
               Alu::R8{0b0100'0000, Flags()});
       }
