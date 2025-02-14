@@ -100,18 +100,24 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
       switch (lhs) {
-        case Operand::AF: cpu.registers().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); break;
-        case Operand::DE: cpu.registers().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); break;
+        // have to return the very thing we just swapped. Could return std::nullopt?
+        case Operand::AF: {
+          cpu.registers().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_);
+          return {cpu.registers().get(RegisterFile::R16::AF), input.flags, 0};
+        }
+        case Operand::DE: {
+          cpu.registers().ex(RegisterFile::R16::DE, RegisterFile::R16::HL);
+          return {cpu.registers().get(RegisterFile::R16::DE), input.flags, 0};
+        }
         case Operand::SP_Indirect16: {
           const auto sp16 = cpu.read16(cpu.registers().sp());
           const auto hl = cpu.registers().get(RegisterFile::R16::HL);
           cpu.write16(cpu.registers().sp(), hl);
           cpu.registers().set(RegisterFile::R16::HL, sp16);
-          return {0, input.flags, 15};
+          return {hl, input.flags, 15}; // TODO is this really the right thing to return?
         }
         default: throw std::runtime_error("Unsupported exchange");
       }
-      return {0, input.flags, 0};
     }
     case Operation::EdOp: {
       const auto [op, increment, repeat] = std::get<EdOpArgs>(args);
@@ -119,8 +125,9 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto hl = cpu.registers().get(RegisterFile::R16::HL);
       cpu.registers().set(RegisterFile::R16::HL, hl + add);
       const auto bc = cpu.registers().get(RegisterFile::R16::BC);
-      bool should_continue = bc != 0 && repeat;
+      bool should_continue = bc != 1 && repeat;
       cpu.registers().set(RegisterFile::R16::BC, bc - 1);
+      // TODO: flag 3 and flag 5 are supposedly set from "HL + A"'s left over bits?!
       auto flags = input.flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow());
       if (bc == 1)
         flags = flags | Flags::Overflow();

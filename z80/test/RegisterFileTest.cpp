@@ -42,19 +42,27 @@ TEST_CASE("RegisterFile tests") {
     CHECK(rf.get(low) == 0xff);
     CHECK(rf.get(highlow) == 0x00ff);
   }
-  SECTION("exxes") {
+  SECTION("exchanges") {
     rf.set(RegisterFile::R16::BC, 0x1234);
     rf.set(RegisterFile::R16::DE, 0x2345);
     rf.set(RegisterFile::R16::HL, 0x3456);
     rf.set(RegisterFile::R16::BC_, 0x4567);
     rf.set(RegisterFile::R16::DE_, 0x5678);
     rf.set(RegisterFile::R16::HL_, 0x6789);
-    rf.exx();
-    CHECK(rf.get(RegisterFile::R16::BC) == 0x4567);
-    CHECK(rf.get(RegisterFile::R16::DE) == 0x5678);
-    CHECK(rf.get(RegisterFile::R16::HL) == 0x6789);
-    CHECK(rf.get(RegisterFile::R16::BC_) == 0x1234);
-    CHECK(rf.get(RegisterFile::R16::DE_) == 0x2345);
-    CHECK(rf.get(RegisterFile::R16::HL_) == 0x3456);
+    SECTION("exx") {
+      rf.exx();
+      CHECK(rf.get(RegisterFile::R16::BC) == 0x4567);
+      CHECK(rf.get(RegisterFile::R16::DE) == 0x5678);
+      CHECK(rf.get(RegisterFile::R16::HL) == 0x6789);
+      CHECK(rf.get(RegisterFile::R16::BC_) == 0x1234);
+      CHECK(rf.get(RegisterFile::R16::DE_) == 0x2345);
+      CHECK(rf.get(RegisterFile::R16::HL_) == 0x3456);
+    }
+    SECTION("ex de, hl") {
+      rf.ex(RegisterFile::R16::DE, RegisterFile::R16::HL);
+      CHECK(rf.get(RegisterFile::R16::BC) == 0x1234);
+      CHECK(rf.get(RegisterFile::R16::DE) == 0x3456);
+      CHECK(rf.get(RegisterFile::R16::HL) == 0x2345);
+    }
   }
 }

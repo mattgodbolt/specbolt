@@ -83,6 +83,8 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
     case 0x35: return {"dec {}", 3, Op::Add16NoFlags, RegisterSet::indirect, Operand::Const_ffff, {}, offset};
     case 0x36: return {"ld {}, {}", 4, Op::Load, RegisterSet::indirect, Operand::ByteImmediate, {}, offset};
     case 0x46: return {"ld {}, {}", 3, Op::Load, Operand::B, RegisterSet::indirect, {}, offset};
+    case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
+    case 0xe5: return {"push {}", 2, Op::Push, RegisterSet::direct};
     case 0xcb: {
       // Next byte is the offset, then finally the opcode.
       auto result = decode_bit<RegisterSet>(opcodes.subspan(2));
@@ -271,6 +273,8 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x30: return {"jr nc {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::NoCarry};
     case 0x38: return {"jr c {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::Carry};
 
+    case 0x2f: return {"cpl", 1, Op::Xor, Operand::A, Operand::Const_ffff};
+
     case 0x03: return {"inc {}", 1, Op::Add16NoFlags, Operand::BC, Operand::Const_1};
     case 0x13: return {"inc {}", 1, Op::Add16NoFlags, Operand::DE, Operand::Const_1};
     case 0x23: return {"inc {}", 1, Op::Add16NoFlags, Operand::HL, Operand::Const_1};
@@ -403,10 +407,10 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xd5: return {"push {1}", 1, Op::Push, Operand::None, Operand::DE};
     case 0xe5: return {"push {1}", 1, Op::Push, Operand::None, Operand::HL};
     case 0xf5: return {"push {1}", 1, Op::Push, Operand::None, Operand::AF};
-    case 0xc1: return {"pop {1}", 1, Op::Pop, Operand::BC};
-    case 0xd1: return {"pop {1}", 1, Op::Pop, Operand::DE};
-    case 0xe1: return {"pop {1}", 1, Op::Pop, Operand::HL};
-    case 0xf1: return {"pop {1}", 1, Op::Pop, Operand::AF};
+    case 0xc1: return {"pop {}", 1, Op::Pop, Operand::BC};
+    case 0xd1: return {"pop {}", 1, Op::Pop, Operand::DE};
+    case 0xe1: return {"pop {}", 1, Op::Pop, Operand::HL};
+    case 0xf1: return {"pop {}", 1, Op::Pop, Operand::AF};
 
     case 0xc3: return {"jp {1}", 3, Op::Jump, Operand::None, Operand::WordImmediate};
     case 0xe9: return {"jp (hl)", 3, Op::Jump, Operand::None, Operand::HL};

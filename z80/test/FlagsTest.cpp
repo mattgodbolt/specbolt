@@ -2,7 +2,6 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-
 namespace specbolt {
 
 TEST_CASE("Flags tests") {

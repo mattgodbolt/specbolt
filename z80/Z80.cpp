@@ -172,7 +172,7 @@ void Z80::out(const std::uint16_t port, const std::uint8_t value) {
     std::print(std::cout, "zomg OUT({:04x}, {:02x})\n", port, value);
 }
 
-void Z80::dump() const { regs_.dump(""); }
+void Z80::dump() const { regs_.dump(std::cout, ""); }
 
 void Z80::push16(const std::uint16_t value) {
   push8(static_cast<std::uint8_t>(value >> 8));

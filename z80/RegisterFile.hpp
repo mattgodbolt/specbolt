@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include <iosfwd>
 #include <string_view>
 
 namespace specbolt {
@@ -34,7 +35,7 @@ public:
   void exx();
   void ex(R16 lhs, R16 rhs);
 
-  void dump(std::string_view prefix) const;
+  void dump(std::ostream &to, std::string_view prefix) const;
 
 private:
   class RegPair {
