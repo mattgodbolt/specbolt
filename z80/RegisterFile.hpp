@@ -48,8 +48,8 @@ private:
     void highlow(uint16_t highlow);
 
   private:
-    uint8_t high_{};
     uint8_t low_{};
+    uint8_t high_{};
   };
   [[nodiscard]] RegPair &reg_for(R8 r8);
   [[nodiscard]] const RegPair &reg_for(R8 r8) const;
