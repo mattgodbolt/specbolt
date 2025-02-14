@@ -63,14 +63,16 @@ int Main() {
     std::print(to, "Output: {}\n", output.output);
   };
 
-  uint64_t x = 0;
+  // uint64_t x = 0;
 
   for (;;) {
-    if (++x < 10000)
-      std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x}\n", z80.pc(),
-          z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
-          z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL), z80.registers().ix(),
-          z80.registers().iy(), z80.registers().sp());
+    // if (++x < 100000)
+    //   std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x}\n", z80.pc(),
+    //       z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
+    //       z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL),
+    //       z80.registers().ix(), z80.registers().iy(), z80.registers().sp());
+    // else
+    //   break;
     try {
       z80.execute_one();
     }
