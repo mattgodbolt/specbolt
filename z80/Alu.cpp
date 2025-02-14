@@ -13,6 +13,8 @@ constexpr Flags sz53_parity(const std::uint8_t value) {
          (std::popcount(value) % 2 == 0 ? Flags::Parity() : Flags());
 }
 
+constexpr auto mask53 = Flags::Flag5() | Flags::Flag3();
+
 } // namespace
 
 Alu::R8 Alu::add8(const std::uint8_t lhs, const std::uint8_t rhs, const bool carry_in) {
@@ -29,10 +31,22 @@ Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
   return {result.result, (result.flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
+Alu::R8 Alu::inc8(const std::uint8_t lhs, const Flags current_flags) {
+  const auto result = static_cast<std::uint8_t>(lhs + 1);
+  const auto flags = sz53_8(result) | Flags(result) & mask53 | Flags(result ^ lhs) & Flags::HalfCarry() |
+                     (current_flags & Flags::Carry());
+  return {result, flags};
+}
+Alu::R8 Alu::dec8(const std::uint8_t lhs, const Flags current_flags) {
+  const auto result = static_cast<std::uint8_t>(lhs - 1);
+  const auto flags = Flags::Subtract() | sz53_8(result) | Flags(result) & mask53 |
+                     Flags(result ^ lhs) & Flags::HalfCarry() | (current_flags & Flags::Carry());
+  return {result, flags};
+}
+
 Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs) {
   const auto [result, flags] = sub8(lhs, rhs, false);
   // Per http://www.z80.info/z80sflag.htm; F5 and F3 are copied from the operand, not the result
-  constexpr auto mask53 = Flags::Flag5() | Flags::Flag3();
   return {result, flags & ~mask53 | Flags(rhs) & mask53};
 }
 

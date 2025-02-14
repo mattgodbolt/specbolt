@@ -88,7 +88,9 @@ struct Instruction {
     Add16NoFlags,
     Shift,
     Push,
-    Pop
+    Pop,
+    Inc8,
+    Dec8
   };
   std::string_view opcode; // todo rename mnemonic
   std::uint8_t length;

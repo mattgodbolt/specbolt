@@ -284,24 +284,24 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x23: return {"inc {}", 1, Op::Add16NoFlags, Operand::HL, Operand::Const_1};
     case 0x33: return {"inc {}", 1, Op::Add16NoFlags, Operand::SP, Operand::Const_1};
 
-    case 0x04: return {"inc {}", 1, Op::Add8, Operand::B, Operand::Const_1};
-    case 0x14: return {"inc {}", 1, Op::Add8, Operand::D, Operand::Const_1};
-    case 0x24: return {"inc {}", 1, Op::Add8, Operand::H, Operand::Const_1};
-    case 0x34: return {"inc {}", 1, Op::Add8, Operand::HL_Indirect8, Operand::Const_1};
-    case 0x0c: return {"inc {}", 1, Op::Add8, Operand::C, Operand::Const_1};
-    case 0x1c: return {"inc {}", 1, Op::Add8, Operand::E, Operand::Const_1};
-    case 0x2c: return {"inc {}", 1, Op::Add8, Operand::L, Operand::Const_1};
-    case 0x3c: return {"inc {}", 1, Op::Add8, Operand::A, Operand::Const_1};
+    case 0x04: return {"inc {}", 1, Op::Inc8, Operand::B};
+    case 0x14: return {"inc {}", 1, Op::Inc8, Operand::D};
+    case 0x24: return {"inc {}", 1, Op::Inc8, Operand::H};
+    case 0x34: return {"inc {}", 1, Op::Inc8, Operand::HL_Indirect8};
+    case 0x0c: return {"inc {}", 1, Op::Inc8, Operand::C};
+    case 0x1c: return {"inc {}", 1, Op::Inc8, Operand::E};
+    case 0x2c: return {"inc {}", 1, Op::Inc8, Operand::L};
+    case 0x3c: return {"inc {}", 1, Op::Inc8, Operand::A};
 
     // Sure would be nice to generalise these...
-    case 0x05: return {"dec {}", 1, Op::Subtract8, Operand::B, Operand::Const_1};
-    case 0x15: return {"dec {}", 1, Op::Subtract8, Operand::D, Operand::Const_1};
-    case 0x25: return {"dec {}", 1, Op::Subtract8, Operand::H, Operand::Const_1};
-    case 0x35: return {"dec {}", 1, Op::Subtract8, Operand::HL_Indirect8, Operand::Const_1};
-    case 0x0d: return {"dec {}", 1, Op::Subtract8, Operand::C, Operand::Const_1};
-    case 0x1d: return {"dec {}", 1, Op::Subtract8, Operand::E, Operand::Const_1};
-    case 0x2d: return {"dec {}", 1, Op::Subtract8, Operand::L, Operand::Const_1};
-    case 0x3d: return {"dec {}", 1, Op::Subtract8, Operand::A, Operand::Const_1};
+    case 0x05: return {"dec {}", 1, Op::Dec8, Operand::B};
+    case 0x15: return {"dec {}", 1, Op::Dec8, Operand::D};
+    case 0x25: return {"dec {}", 1, Op::Dec8, Operand::H};
+    case 0x35: return {"dec {}", 1, Op::Dec8, Operand::HL_Indirect8};
+    case 0x0d: return {"dec {}", 1, Op::Dec8, Operand::C};
+    case 0x1d: return {"dec {}", 1, Op::Dec8, Operand::E};
+    case 0x2d: return {"dec {}", 1, Op::Dec8, Operand::L};
+    case 0x3d: return {"dec {}", 1, Op::Dec8, Operand::A};
     case 0x0b: return {"dec {}", 1, Op::Add16NoFlags, Operand::BC, Operand::Const_ffff};
     case 0x1b: return {"dec {}", 1, Op::Add16NoFlags, Operand::DE, Operand::Const_ffff};
     case 0x2b: return {"dec {}", 1, Op::Add16NoFlags, Operand::HL, Operand::Const_ffff};

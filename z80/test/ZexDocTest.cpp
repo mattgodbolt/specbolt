@@ -66,7 +66,7 @@ int Main() {
   uint64_t x = 0;
 
   for (;;) {
-    if (++x < 1000)
+    if (++x < 10000)
       std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x}\n", z80.pc(),
           z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
           z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL));

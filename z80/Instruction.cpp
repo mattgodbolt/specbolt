@@ -64,6 +64,15 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {result, flags, 7};
     }
 
+    case Operation::Inc8: {
+      const auto [result, flags] = Alu::inc8(static_cast<std::uint8_t>(input.lhs), input.flags);
+      return {result, flags, 0};
+    }
+    case Operation::Dec8: {
+      const auto [result, flags] = Alu::dec8(static_cast<std::uint8_t>(input.lhs), input.flags);
+      return {result, flags, 0};
+    }
+
     case Operation::Load: return {input.rhs, input.flags, 0}; // TODO is 0 right?
     case Operation::Jump: {
       const auto taken = should_execute(input.flags);

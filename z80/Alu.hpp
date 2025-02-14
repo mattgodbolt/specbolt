@@ -18,6 +18,8 @@ public:
   using R16 = ResultT<std::uint16_t>;
   static R8 add8(std::uint8_t lhs, std::uint8_t rhs, bool carry_in);
   static R8 sub8(std::uint8_t lhs, std::uint8_t rhs, bool carry_in);
+  static R8 inc8(std::uint8_t lhs, Flags current_flags);
+  static R8 dec8(std::uint8_t lhs, Flags current_flags);
   static R8 cmp8(std::uint8_t lhs, std::uint8_t rhs);
   static R16 add16(std::uint16_t lhs, std::uint16_t rhs, bool carry_in, Flags current_flags);
   static R16 sub16(std::uint16_t lhs, std::uint16_t rhs, bool carry_in, Flags current_flags);
