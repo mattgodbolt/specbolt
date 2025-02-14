@@ -4,10 +4,12 @@
 #include "z80/Disassembler.hpp"
 #include "z80/Z80.hpp"
 
-#include <catch2/catch_test_macros.hpp>
+#include <format>
+#include <iostream>
 
 namespace specbolt {
 
+namespace {
 struct Vt52Emu {
   std::string output;
   size_t ignore_next{};
@@ -30,16 +32,15 @@ struct Vt52Emu {
     if (c == '\r')
       return;
     if (c < 32 && c != '\n') {
-      FAIL("Unsupported VT52 control character " + std::to_string(c));
+      throw std::runtime_error("Unsupported VT52 control character " + std::to_string(c));
     }
     output.append(1, c);
-    if (c == '\n') {
-      std::cout << output << std::endl;
-    }
+    std::print(std::cout, "{}", c);
+    std::cout.flush();
   }
 };
 
-TEST_CASE("ZEXDOC test") {
+int Main() {
   Memory memory;
   const auto filename = std::filesystem::path("z80/test/zexdoc.com");
   static constexpr auto FileSize = 8704;
@@ -62,83 +63,98 @@ TEST_CASE("ZEXDOC test") {
     std::print(to, "Output: {}\n", output.output);
   };
 
-  SECTION("should pass ZEXDOC") {
-    for (;;) {
-      try {
-        z80.execute_one();
-      }
-      catch (const std::runtime_error &e) {
-        dump_state(std::cerr);
-        FAIL(e.what());
-      }
-      if (z80.pc() == 5) {
-        // Emulate simple CPM console output.
-        switch (z80.registers().get(RegisterFile::R8::C)) {
-          case 2: // putchar()
-            output.on_char(static_cast<char>(z80.registers().get(RegisterFile::R8::E)));
-            break;
-          case 9: {
-            // print string
-            auto addr = z80.registers().get(RegisterFile::R16::DE);
-            if (addr == 0x205)
-              FAIL("oh no");
-            for (auto c = static_cast<char>(memory.read(addr)); c != '$'; c = static_cast<char>(memory.read(++addr)))
-              output.on_char(c);
-          } break;
-          default: FAIL("Unsupported CPM function");
-        }
-        // Fake out a RET.
-        z80.registers().pc(z80.pop16());
-      }
-      if (z80.pc() == 0) {
-        dump_state(std::cout);
-        break;
-      }
-      if (z80.pc() > FileSize + 0x100) {
-        dump_state(std::cerr);
-        FAIL("PC out of bounds");
-      }
-      const std::uint16_t iut = 0x1d42;
-      const std::uint16_t msbt = 0x0103;
-      auto dump = [&](const std::uint16_t addr, const std::size_t len) {
-        for (auto x = 0uz; x < len; ++x)
-          std::print(std::cerr, "{:02x} ", memory.read(static_cast<std::uint16_t>(addr + x)));
-      };
-      if (z80.pc() == 0x1b93) {
-        const auto test_addr = z80.registers().get(RegisterFile::R16::HL);
-        std::print(std::cerr, "20_0 = ");
-        dump(test_addr, 20);
-        std::print(std::cerr, "\n20_1 = ");
-        dump(test_addr + 20, 20);
-        std::print(std::cerr, "\n20_2 = ");
-        dump(test_addr + 40, 20);
-        std::print(std::cerr, "\n");
-      }
-      if (z80.pc() == 0x1ba1) {
-        std::print(std::cerr, "iut = ");
-        dump(iut, 4);
-        std::print(std::cerr, "\nmsbt = ");
-        dump(msbt, 16);
-        std::print(std::cerr, "\n");
+  uint64_t x = 0;
 
-        static int moose = 0;
-        if (++moose == 100)
-          FAIL("moose");
-      }
-      // if (z80.pc() >= 0x1cad && z80.pc() <= 0x1cda) {
-      // if (z80.pc() >= 0x1b3b && z80.pc() <= 0x1b44) {
-      // if (z80.pc() >= 0x1c49 && z80.pc() <= 0x1c88) {
-      //   z80.registers().dump(std::cerr, "  ");
-      //   const auto disassembled = dis.disassemble(z80.pc());
-      //   std::print(std::cerr, "{}\n", disassembled.to_string());
-      //   // static int moose = 0;
-      //   // if (++moose == 5000) FAIL("moose");
-      //   if (z80.pc() == 0x1c88)
-      //     FAIL("baddger");
-      // }
+  for (;;) {
+    if (++x < 1000)
+      std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x}\n", z80.pc(),
+          z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
+          z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL));
+    try {
+      z80.execute_one();
     }
-    CHECK(output.output == "");
+    catch (const std::runtime_error &e) {
+      dump_state(std::cerr);
+      throw;
+    }
+    if (z80.pc() == 5) {
+      // Emulate simple CPM console output.
+      switch (z80.registers().get(RegisterFile::R8::C)) {
+        case 2: // putchar()
+          output.on_char(static_cast<char>(z80.registers().get(RegisterFile::R8::E)));
+          break;
+        case 9: {
+          // print string
+          auto addr = z80.registers().get(RegisterFile::R16::DE);
+          for (auto c = static_cast<char>(memory.read(addr)); c != '$'; c = static_cast<char>(memory.read(++addr)))
+            output.on_char(c);
+        } break;
+        default: throw std::runtime_error("Unsupported CPM function");
+      }
+      // Fake out a RET.
+      z80.registers().pc(z80.pop16());
+    }
+    if (z80.pc() == 0) {
+      dump_state(std::cout);
+      break;
+    }
+    if (z80.pc() > FileSize + 0x100) {
+      dump_state(std::cerr);
+      throw std::runtime_error("PC out of bounds");
+    }
+    // constexpr std::uint16_t iut = 0x1d42;
+    // constexpr std::uint16_t msbt = 0x0103;
+    // auto dump = [&](const std::uint16_t addr, const std::size_t len) {
+    //   for (auto x = 0uz; x < len; ++x)
+    //     std::print(std::cerr, "{:02x} ", memory.read(static_cast<std::uint16_t>(addr + x)));
+    // };
+    // if (z80.pc() == 0x1b93) {
+    //   const auto test_addr = z80.registers().get(RegisterFile::R16::HL);
+    //   std::print(std::cerr, "20_0 = ");
+    //   dump(test_addr, 20);
+    //   std::print(std::cerr, "\n20_1 = ");
+    //   dump(test_addr + 20, 20);
+    //   std::print(std::cerr, "\n20_2 = ");
+    //   dump(test_addr + 40, 20);
+    //   std::print(std::cerr, "\n");
+    // }
+    // if (z80.pc() == 0x1ba1) {
+    //   std::print(std::cerr, "iut = ");
+    //   dump(iut, 4);
+    //   std::print(std::cerr, "\nmsbt = ");
+    //   dump(msbt, 16);
+    //   std::print(std::cerr, "\n");
+    //
+    //   static int moose = 0;
+    //   if (++moose == 100)
+    //     throw std::runtime_error("moose");
+    // }
+    // if (z80.pc() >= 0x1cad && z80.pc() <= 0x1cda) {
+    // if (z80.pc() >= 0x1b3b && z80.pc() <= 0x1b44) {
+    // if (z80.pc() >= 0x1c49 && z80.pc() <= 0x1c88) {
+    //   z80.registers().dump(std::cerr, "  ");
+    //   const auto disassembled = dis.disassemble(z80.pc());
+    //   std::print(std::cerr, "{}\n", disassembled.to_string());
+    //   // static int moose = 0;
+    //   // if (++moose == 5000) FAIL("moose");
+    //   if (z80.pc() == 0x1c88)
+    //     FAIL("baddger");
+    // }
   }
+  // TODO look for error/pass
+  return 1;
 }
 
+} // namespace
+
 } // namespace specbolt
+
+int main(int, const char **) {
+  try {
+    return specbolt::Main();
+  }
+  catch (const std::runtime_error &e) {
+    std::print(std::cerr, "Caught exception: {}\n", e.what());
+    return 1;
+  }
+}
