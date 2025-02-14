@@ -185,7 +185,7 @@ struct App {
   void history() const {
     for (const auto &trace: z80.history()) {
       const auto disassembled = dis.disassemble(trace.pc());
-      trace.dump("  ");
+      trace.dump(std::cout, "  ");
       std::print(std::cout, "{}\n", disassembled.to_string());
     }
   }
