@@ -21,8 +21,10 @@ public:
   static R8 inc8(std::uint8_t lhs, Flags current_flags);
   static R8 dec8(std::uint8_t lhs, Flags current_flags);
   static R8 cmp8(std::uint8_t lhs, std::uint8_t rhs);
-  static R16 add16(std::uint16_t lhs, std::uint16_t rhs, bool carry_in, Flags current_flags);
-  static R16 sub16(std::uint16_t lhs, std::uint16_t rhs, bool carry_in, Flags current_flags);
+  static R16 add16(std::uint16_t lhs, std::uint16_t rhs, Flags current_flags);
+  static R16 sub16(std::uint16_t lhs, std::uint16_t rhs, Flags current_flags);
+  static R16 adc16(std::uint16_t lhs, std::uint16_t rhs, bool carry_in);
+  static R16 sbc16(std::uint16_t lhs, std::uint16_t rhs, bool carry_in);
   static R8 and8(std::uint8_t lhs, std::uint8_t rhs);
   static R8 xor8(std::uint8_t lhs, std::uint8_t rhs);
   static R8 or8(std::uint8_t lhs, std::uint8_t rhs);

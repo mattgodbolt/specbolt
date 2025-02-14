@@ -50,17 +50,34 @@ Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs) {
   return {result, flags & ~mask53 | Flags(rhs) & mask53};
 }
 
-Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in, const Flags current_flags) {
-  const std::uint32_t intermediate = lhs + rhs + (carry_in ? 1 : 0);
+Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const Flags current_flags) {
+  const std::uint32_t intermediate = lhs + rhs;
   const auto carry = intermediate > 0xffff ? Flags::Carry() : Flags();
   const auto result = static_cast<std::uint16_t>(intermediate);
-  const auto half_carry = (lhs & 0xf00) + (rhs & 0xf00) > 0xf00 ? Flags::HalfCarry() : Flags();
+  const auto half_carry = (lhs & 0xfff) + (rhs & 0xfff) > 0xfff ? Flags::HalfCarry() : Flags();
   const auto flags35 = Flags(result >> 8) & (Flags::Flag5() | Flags::Flag3());
   return {result, current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity()) | carry | half_carry | flags35};
 }
 
-Alu::R16 Alu::sub16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in, const Flags current_flags) {
-  const auto [result, flags] = add16(lhs, ~rhs, !carry_in, current_flags);
+Alu::R16 Alu::sub16(const std::uint16_t lhs, const std::uint16_t rhs, const Flags current_flags) {
+  const auto [result, flags] = add16(lhs, ~rhs, current_flags);
+  return {result, (flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
+}
+
+Alu::R16 Alu::adc16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in) {
+  const std::uint32_t intermediate = lhs + rhs + (carry_in ? 1 : 0);
+  const auto carry = intermediate > 0xffff ? Flags::Carry() : Flags();
+  const auto result = static_cast<std::uint16_t>(intermediate);
+  const auto half_carry = (lhs & 0xfff) + (rhs & 0xfff) > 0xfff ? Flags::HalfCarry() : Flags();
+  const auto flags35 = Flags(result >> 8) & (Flags::Flag5() | Flags::Flag3());
+  const auto negative = result & 0x8000 ? Flags::Sign() : Flags();
+  const auto zero = result == 0 ? Flags::Zero() : Flags();
+  const auto overflow = (lhs ^ result) & (rhs ^ result) & 0x8000 ? Flags::Overflow() : Flags();
+  return {result, carry | half_carry | flags35 | negative | zero | overflow};
+}
+
+Alu::R16 Alu::sbc16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in) {
+  const auto [result, flags] = adc16(lhs, ~rhs, !carry_in);
   return {result, (flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 

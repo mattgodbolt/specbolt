@@ -84,7 +84,7 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
     case 0x36: return {"ld {}, {}", 4, Op::Load, RegisterSet::indirect, Operand::ByteImmediate, {}, offset};
     case 0x46: return {"ld {}, {}", 3, Op::Load, Operand::B, RegisterSet::indirect, {}, offset};
     case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
-    case 0xe5: return {"push {}", 2, Op::Push, RegisterSet::direct};
+    case 0xe5: return {"push {1}", 2, Op::Push, Operand::None, RegisterSet::direct};
     case 0xcb: {
       // Next byte is the offset, then finally the opcode.
       auto result = decode_bit<RegisterSet>(opcodes.subspan(2));

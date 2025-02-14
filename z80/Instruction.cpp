@@ -36,7 +36,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
   // TODO tstates ... like ED executes take longer etc
   const bool carry = std::holds_alternative<WithCarry>(args) ? input.flags.carry() : false;
   switch (operation) {
-    case Operation::None: return {0, Flags(), 0};
+    case Operation::None: return {0, input.flags, 0};
 
     case Operation::Add8: {
       const auto [result, flags] =
@@ -45,7 +45,9 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     }
 
     case Operation::Add16: {
-      const auto [result, flags] = Alu::add16(input.lhs, input.rhs, carry, input.flags);
+      const auto [result, flags] = std::holds_alternative<WithCarry>(args)
+                                       ? Alu::adc16(input.lhs, input.rhs, carry)
+                                       : Alu::add16(input.lhs, input.rhs, input.flags);
       return {result, flags, 7};
     }
     case Operation::Add16NoFlags: {
@@ -60,7 +62,9 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {result, flags, 0};
     }
     case Operation::Subtract16: {
-      const auto [result, flags] = Alu::sub16(input.lhs, input.rhs, carry, input.flags);
+      const auto [result, flags] = std::holds_alternative<WithCarry>(args)
+                                       ? Alu::sbc16(input.lhs, input.rhs, carry)
+                                       : Alu::sub16(input.lhs, input.rhs, input.flags);
       return {result, flags, 7};
     }
 

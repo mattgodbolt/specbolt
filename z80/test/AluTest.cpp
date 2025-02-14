@@ -56,38 +56,66 @@ TEST_CASE("ALU tests") {
     }
   }
   SECTION("16 bit addition") {
-    // According to z80-heaven: "preserves the S, Z and P/V flags, and H is undefined. Rest of flags modified by
-    // definition." Half carry set by the result, it seems.
-    SECTION("no carry in") {
-      CHECK(Alu::add16(0, 0, false, Flags()) == Alu::R16{0, Flags()});
-      CHECK(Alu::add16(0, 0xff, false, Flags()) == Alu::R16{0xff, Flags()});
-      CHECK(Alu::add16(1, 0xff, false, Flags()) == Alu::R16{0x100, Flags()});
-      CHECK(Alu::add16(0xff00, 0xff, false, Flags()) == Alu::R16{0xffff, Flags::Flag5() | Flags::Flag3()});
-      CHECK(Alu::add16(0xffff, 0, false, Flags()) == Alu::R16{0xffff, Flags::Flag5() | Flags::Flag3()});
-      CHECK(Alu::add16(0xffff, 1, false, Flags()) == Alu::R16{0, Flags::Carry()});
+    SECTION("with carry") {
+      SECTION("no carry in") {
+        CHECK(Alu::adc16(0, 0, false) == Alu::R16{0, Flags::Zero()});
+        CHECK(Alu::adc16(0, 0xff, false) == Alu::R16{0xff, Flags()});
+        CHECK(Alu::adc16(1, 0xff, false) == Alu::R16{0x100, Flags()});
+        CHECK(Alu::adc16(0xff00, 0xff, false) == Alu::R16{0xffff, Flags::Sign() | Flags::Flag5() | Flags::Flag3()});
+        CHECK(Alu::adc16(0xffff, 0, false) == Alu::R16{0xffff, Flags::Sign() | Flags::Flag5() | Flags::Flag3()});
+        CHECK(Alu::adc16(0xffff, 1, false) == Alu::R16{0, Flags::Zero() | Flags::HalfCarry() | Flags::Carry()});
+      }
+      SECTION("with carry in") {
+        CHECK(Alu::adc16(0, 0, true) == Alu::R16{1, Flags()});
+        CHECK(Alu::adc16(0xff, 0, true) == Alu::R16{0x100, Flags()});
+        CHECK(Alu::adc16(0xffff, 0, true) == Alu::R16{0x0, Flags::Zero() | Flags::Carry()});
+      }
+      SECTION("half carry") {
+        CHECK(!Alu::adc16(0x0f, 0x00, false).flags.half_carry());
+        CHECK(!Alu::adc16(0x03, 0x0a, false).flags.half_carry());
+        CHECK(!Alu::adc16(0x01, 0x0f, false).flags.half_carry());
+        CHECK(!Alu::adc16(0x0f, 0x0f, false).flags.half_carry());
+        CHECK(!Alu::adc16(0x0fff, 0x0000, false).flags.half_carry());
+        CHECK(!Alu::adc16(0x03ff, 0x0a00, false).flags.half_carry());
+        CHECK(Alu::adc16(0x01ff, 0x0fff, false).flags.half_carry());
+        CHECK(Alu::adc16(0x0fff, 0x0fff, false).flags.half_carry());
+        CHECK(Alu::adc16(0x0eff, 0x0101, false).flags.half_carry());
+      }
+      SECTION("overflow") {
+        CHECK(!Alu::adc16(0xff, 0x00, false).flags.overflow());
+        CHECK(!Alu::adc16(0x01, 0x7f, false).flags.overflow());
+        CHECK(!Alu::adc16(0x00, 0x7f00, false).flags.overflow());
+        CHECK(Alu::adc16(0x0100, 0x7f00, false).flags.overflow());
+        CHECK(!Alu::adc16(0x0000, 0x7f00, false).flags.overflow());
+        CHECK(Alu::adc16(0x0100, 0x7f00, false).flags.overflow());
+      }
     }
-    SECTION("with carry in") {
-      CHECK(Alu::add16(0, 0, true, Flags()) == Alu::R16{1, Flags()});
-      CHECK(Alu::add16(0xff, 0, true, Flags()) == Alu::R16{0x100, Flags()});
-      CHECK(Alu::add16(0xffff, 0, true, Flags()) == Alu::R16{0x0, Flags::Carry()});
-    }
-    SECTION("half carry") {
-      CHECK(!Alu::add16(0x0f, 0x00, false, Flags()).flags.half_carry());
-      CHECK(!Alu::add16(0x03, 0x0a, false, Flags()).flags.half_carry());
-      CHECK(!Alu::add16(0x01, 0x0f, false, Flags()).flags.half_carry());
-      CHECK(!Alu::add16(0x0f, 0x0f, false, Flags()).flags.half_carry());
-    }
-    SECTION("doesn't set overflow") {
-      CHECK(!Alu::add16(0xff, 0x00, false, Flags()).flags.overflow());
-      CHECK(!Alu::add16(0x01, 0x7f, false, Flags()).flags.overflow());
-      CHECK(!Alu::add16(0x00, 0x7f00, false, Flags()).flags.overflow());
-      CHECK(!Alu::add16(0x0100, 0x7f00, false, Flags()).flags.overflow());
-      CHECK(!Alu::add16(0x0000, 0x7f00, false, Flags()).flags.overflow());
-      CHECK(!Alu::add16(0x0100, 0x7f00, false, Flags()).flags.overflow());
-    }
-    SECTION("presereves previous flags") {
-      CHECK(Alu::add16(1, 1, false, Flags::Sign() | Flags::Zero() | Flags::Parity()) ==
-            Alu::R16{2, Flags::Sign() | Flags::Zero() | Flags::Parity()});
+    SECTION("no carry") {
+      // According to z80-heaven: "preserves the S, Z and P/V flags, and H is undefined. Rest of flags modified by
+      // definition." Half carry set by the result, it seems.
+      SECTION("preserves previous flags") {
+        CHECK(Alu::add16(1, 1, Flags::Sign() | Flags::Zero() | Flags::Parity()) ==
+              Alu::R16{2, Flags::Sign() | Flags::Zero() | Flags::Parity()});
+      }
+      SECTION("half carry") {
+        CHECK(!Alu::add16(0x0f, 0x00, Flags()).flags.half_carry());
+        CHECK(!Alu::add16(0x03, 0x0a, Flags()).flags.half_carry());
+        CHECK(!Alu::add16(0x01, 0x0f, Flags()).flags.half_carry());
+        CHECK(!Alu::add16(0x0f, 0x0f, Flags()).flags.half_carry());
+        CHECK(!Alu::add16(0x0fff, 0x0000, Flags()).flags.half_carry());
+        CHECK(!Alu::add16(0x03ff, 0x0a00, Flags()).flags.half_carry());
+        CHECK(Alu::add16(0x01ff, 0x0fff, Flags()).flags.half_carry());
+        CHECK(Alu::add16(0x0fff, 0x0fff, Flags()).flags.half_carry());
+        CHECK(Alu::add16(0x0eff, 0x0101, Flags()).flags.half_carry());
+      }
+      SECTION("no overflow") {
+        CHECK(!Alu::add16(0xff, 0x00, Flags()).flags.overflow());
+        CHECK(!Alu::add16(0x01, 0x7f, Flags()).flags.overflow());
+        CHECK(!Alu::add16(0x00, 0x7f00, Flags()).flags.overflow());
+        CHECK(!Alu::add16(0x0100, 0x7f00, Flags()).flags.overflow());
+        CHECK(!Alu::add16(0x0000, 0x7f00, Flags()).flags.overflow());
+        CHECK(!Alu::add16(0x0100, 0x7f00, Flags()).flags.overflow());
+      }
     }
   }
 
