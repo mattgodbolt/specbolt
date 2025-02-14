@@ -133,11 +133,11 @@ constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t o
 constexpr std::uint8_t operand_length(const Instruction::Operand operand) {
   switch (operand) {
     default: return 0;
-    case Operand::IX_Offset_Indirect8:
-    case Operand::IY_Offset_Indirect8:
     case Operand::WordImmediateIndirect8:
     case Operand::WordImmediateIndirect16:
     case Operand::WordImmediate: return 2;
+    case Operand::IX_Offset_Indirect8:
+    case Operand::IY_Offset_Indirect8:
     case Operand::ByteImmediate: return 1;
   }
 }
