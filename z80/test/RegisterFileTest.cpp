@@ -7,22 +7,23 @@ using specbolt::RegisterFile;
 
 TEST_CASE("RegisterFile tests") {
   RegisterFile rf;
-  SECTION("starts out zero") {
+  SECTION("starts out as appropriate") {
+    // Apparently according to "The Undocumented Z80 Documented".
     SECTION("8 bit") {
       const auto r8 = GENERATE(RegisterFile::R8::A, RegisterFile::R8::F, RegisterFile::R8::B, RegisterFile::R8::B_);
-      CHECK(rf.get(r8) == 0);
+      CHECK(rf.get(r8) == 0xff);
     }
     SECTION("16 bit") {
       const auto r8 = GENERATE(RegisterFile::R16::AF, RegisterFile::R16::AF_, RegisterFile::R16::HL);
-      CHECK(rf.get(r8) == 0);
+      CHECK(rf.get(r8) == 0xffff);
     }
     SECTION("special") {
-      CHECK(rf.ix() == 0);
-      CHECK(rf.iy() == 0);
-      CHECK(rf.pc() == 0);
-      CHECK(rf.sp() == 0);
-      CHECK(rf.r() == 0);
-      CHECK(rf.i() == 0);
+      CHECK(rf.ix() == 0xffff);
+      CHECK(rf.iy() == 0xffff);
+      CHECK(rf.pc() == 0x0000);
+      CHECK(rf.sp() == 0xffff);
+      CHECK(rf.r() == 0x00);
+      CHECK(rf.i() == 0x00);
     }
   }
   SECTION("Can set and get register pairs correctly") {

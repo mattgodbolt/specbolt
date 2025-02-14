@@ -48,8 +48,8 @@ private:
     void highlow(uint16_t highlow);
 
   private:
-    uint8_t low_{};
-    uint8_t high_{};
+    uint8_t low_{0xff};
+    uint8_t high_{0xff};
   };
   [[nodiscard]] RegPair &reg_for(R8 r8);
   [[nodiscard]] const RegPair &reg_for(R8 r8) const;
@@ -57,9 +57,9 @@ private:
   [[nodiscard]] const RegPair &reg_for(R16 r16) const;
 
   std::array<RegPair, 8> regs_{};
-  std::uint16_t ix_{};
-  std::uint16_t iy_{};
-  std::uint16_t sp_{};
+  std::uint16_t ix_{0xffff};
+  std::uint16_t iy_{0xffff};
+  std::uint16_t sp_{0xffff};
   std::uint16_t pc_{};
   std::uint8_t r_{};
   std::uint8_t i_{};
