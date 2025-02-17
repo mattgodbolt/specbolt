@@ -3,12 +3,15 @@
 #include "z80/Disassembler.hpp"
 #include "z80/Z80.hpp"
 
+#include <csignal>
 #include <format>
 #include <functional>
 #include <iostream>
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <thread>
+
 #include <unordered_map>
 #include <unordered_set>
 
@@ -37,6 +40,7 @@ struct App {
   const specbolt::Disassembler dis{memory};
   std::unordered_set<std::uint16_t> breakpoints = {};
   std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
+  std::atomic<bool> interrupted{false};
 
   static App *the_app;
 
@@ -120,6 +124,8 @@ struct App {
   }
   ~App() { the_app = nullptr; }
 
+  void interrupt() { interrupted = true; }
+
   bool _step() {
     try {
       const auto cycles_elapsed = z80.execute_one();
@@ -127,6 +133,11 @@ struct App {
     }
     catch (const std::exception &e) {
       std::print(std::cout, "Exception: {}\n", e.what());
+      return true;
+    }
+    if (interrupted) {
+      interrupted = false;
+      std::print(std::cout, "Interrupted\n");
       return true;
     }
     if (breakpoints.contains(z80.pc())) {
@@ -147,6 +158,12 @@ struct App {
     }
     catch (const std::exception &e) {
       std::print(std::cout, "Exception: {}\n", e.what());
+      return true;
+    }
+    // TODO deduplicate this mess, it's the same as in _step, also use atomic CAS here.
+    if (interrupted) {
+      interrupted = false;
+      std::print(std::cout, "Interrupted\n");
       return true;
     }
     if (breakpoints.contains(z80.pc())) {
@@ -249,9 +266,28 @@ App *App::the_app{};
 
 } // namespace
 
-int main(int argc, const char **argv) {
+int main(const int argc, const char **argv) {
+  App app;
+  sigset_t blocked_signals{};
+  // todo check errors etc. extract?
+  sigemptyset(&blocked_signals);
+  sigaddset(&blocked_signals, SIGINT);
+  sigprocmask(SIG_BLOCK, &blocked_signals, nullptr);
+
+  std::jthread t([&](const std::stop_token &stop_token) {
+    constexpr timespec timeout{0, 100};
+    while (!stop_token.stop_requested()) {
+      if (sigtimedwait(&blocked_signals, nullptr, &timeout) != -1) {
+        app.interrupt();
+        continue;
+      }
+      if (errno != EAGAIN) {
+        throw std::system_error();
+      }
+    }
+  });
+
   try {
-    App app;
     app.main(argc, argv);
     return 0;
   }
