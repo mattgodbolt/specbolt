@@ -281,7 +281,7 @@ int main(const int argc, const char **argv) {
         app.interrupt();
         continue;
       }
-      if (errno != EAGAIN) {
+      if (errno != EAGAIN && errno != EINTR) {
         throw std::system_error();
       }
     }

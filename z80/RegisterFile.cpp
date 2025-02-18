@@ -43,6 +43,8 @@ std::uint8_t RegisterFile::r() const { return r_; }
 void RegisterFile::r(const std::uint8_t r) { r_ = r; }
 std::uint8_t RegisterFile::i() const { return i_; }
 void RegisterFile::i(const std::uint8_t i) { i_ = i; }
+std::uint16_t RegisterFile::wz() const { return wz_; }
+void RegisterFile::wz(const std::uint16_t wz) { wz_ = wz; }
 
 void RegisterFile::ex(const R16 lhs, const R16 rhs) { std::swap(reg_for(lhs), reg_for(rhs)); }
 

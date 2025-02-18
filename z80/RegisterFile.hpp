@@ -40,6 +40,9 @@ public:
   [[nodiscard]] std::uint8_t i() const;
   void i(std::uint8_t i);
 
+  [[nodiscard]] std::uint16_t wz() const;
+  void wz(std::uint16_t wz);
+
   void exx();
   void ex(R16 lhs, R16 rhs);
 
@@ -68,6 +71,7 @@ private:
   std::uint16_t ix_{0xffff};
   std::uint16_t iy_{0xffff};
   std::uint16_t sp_{0xffff};
+  std::uint16_t wz_{0xffff};
   std::uint16_t pc_{};
   std::uint8_t r_{};
   std::uint8_t i_{};

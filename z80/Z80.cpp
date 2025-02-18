@@ -37,7 +37,7 @@ std::uint16_t Z80::read16(const std::uint16_t address) const {
 
 void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
 
-std::uint16_t Z80::read(const Instruction::Operand operand) const {
+std::uint16_t Z80::read(const Instruction::Operand operand) {
   switch (operand) {
     case Instruction::Operand::A: return regs_.get(RegisterFile::R8::A);
     case Instruction::Operand::B: return regs_.get(RegisterFile::R8::B);
@@ -61,7 +61,12 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
     case Instruction::Operand::I: return regs_.i();
     case Instruction::Operand::BC_Indirect8: return read8(regs_.get(RegisterFile::R16::BC));
     case Instruction::Operand::DE_Indirect8: return read8(regs_.get(RegisterFile::R16::DE));
-    case Instruction::Operand::HL_Indirect8: return read8(regs_.get(RegisterFile::R16::HL));
+    case Instruction::Operand::HL_Indirect8: {
+      // TODO work out when the wz is actually updated.
+      const auto address = regs_.get(RegisterFile::R16::HL);
+      regs_.wz(address);
+      return read8(address);
+    }
     case Instruction::Operand::HL_Indirect16: return read16(regs_.get(RegisterFile::R16::HL));
     case Instruction::Operand::SP_Indirect16: return read16(regs_.get(RegisterFile::R16::HL));
     case Instruction::Operand::Const_0:
@@ -87,10 +92,17 @@ std::uint16_t Z80::read(const Instruction::Operand operand) const {
     case Instruction::Operand::WordImmediateIndirect16: return read16(read16(regs_.pc() - 2));
     case Instruction::Operand::PcOffset:
       return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
-    case Instruction::Operand::IX_Offset_Indirect8:
-      return read8(static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1))));
-    case Instruction::Operand::IY_Offset_Indirect8:
-      return read8(static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1))));
+    case Instruction::Operand::IX_Offset_Indirect8: {
+      const auto address = static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
+      // TODO this isn't right? I think? what about the indirect offset? TODO!!! super important
+      regs_.wz(address);
+      return read8(address);
+    }
+    case Instruction::Operand::IY_Offset_Indirect8: {
+      const auto address = static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
+      regs_.wz(address);
+      return read8(address);
+    }
     default: break; // TODO NOT THIS
   }
   throw std::runtime_error("bad operand for read");
