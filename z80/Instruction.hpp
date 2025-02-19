@@ -98,7 +98,9 @@ struct Instruction {
     Pop,
     Inc8,
     Dec8,
-    Neg
+    Neg,
+    Rrd,
+    Rld,
   };
   std::string_view opcode; // todo rename mnemonic
   std::uint8_t length;

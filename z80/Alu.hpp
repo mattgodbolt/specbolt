@@ -33,6 +33,8 @@ public:
 
   static R8 daa(std::uint8_t lhs, Flags current_flags);
 
+  static Flags parity_flags_for(std::uint8_t value);
+
   enum class Direction { Left, Right };
 
   // "Fast" here means the flags aren't properly calculated, as in RLCA, RRCA etc.

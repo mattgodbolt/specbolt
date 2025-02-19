@@ -246,6 +246,22 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {0, input.flags, 7};
     }
 
+    case Operation::Rrd: {
+      const auto prev_a = cpu.registers().get(RegisterFile::R8::A);
+      const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | (input.lhs & 0xf));
+      cpu.registers().set(RegisterFile::R8::A, new_a);
+      return {static_cast<std::uint16_t>(input.lhs >> 4 | ((prev_a & 0xf) << 4)),
+          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 0};
+    }
+
+    case Operation::Rld: {
+      const auto prev_a = cpu.registers().get(RegisterFile::R8::A);
+      const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | ((input.lhs >> 4) & 0xf));
+      cpu.registers().set(RegisterFile::R8::A, new_a);
+      return {static_cast<std::uint16_t>(input.lhs << 4 | (prev_a & 0xf)),
+          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 0};
+    }
+
     case Operation::Shift: {
       if (const auto [direction, type, fast] = std::get<ShiftArgs>(args); fast) {
         if (type == ShiftArgs::Type::RotateCircular) {

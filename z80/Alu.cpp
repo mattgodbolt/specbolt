@@ -104,6 +104,8 @@ Alu::R8 Alu::daa(const std::uint8_t lhs, const Flags current_flags) {
   return {result, sz53_parity(result) | carry | half_carry | preserved_flags};
 }
 
+Flags Alu::parity_flags_for(const std::uint8_t value) { return sz53_parity(value); }
+
 Alu::R8 Alu::fast_rotate8(const std::uint8_t lhs, const Direction direction, const Flags flags) {
   const auto [result, result_flags] = rotate8(lhs, direction, flags.carry());
   constexpr auto preserved_original_flags = Flags::Sign() | Flags::Zero() | Flags::Parity();
