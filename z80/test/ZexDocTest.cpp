@@ -46,7 +46,7 @@ int Main() {
   static constexpr auto FileSize = 8704;
   memory.load(filename, 0x100, FileSize);
   memory.set_rom_size(0);
-  memory.write(0x120, memory.read(0x120) + 22 * 2);
+  memory.write(0x120, memory.read(0x120) + 58 * 2);
   const Disassembler dis{memory};
 
   Z80 z80(memory);
@@ -74,7 +74,7 @@ int Main() {
     //       z80.registers().ix(), z80.registers().iy(), z80.registers().sp(), memory.read(0x1d42),
     //       memory.read(0x1d43));
     // else
-    // break;
+    //   break;
     try {
       z80.execute_one();
     }

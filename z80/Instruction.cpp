@@ -270,8 +270,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
           return {result, flags, 0};
         }
         if (type == ShiftArgs::Type::Rotate) {
-          const auto [result, flags] =
-              Alu::fast_rotate_circular8(static_cast<std::uint8_t>(input.lhs), direction, input.flags);
+          const auto [result, flags] = Alu::fast_rotate8(static_cast<std::uint8_t>(input.lhs), direction, input.flags);
           return {result, flags, 0};
         }
       }

@@ -303,6 +303,8 @@ Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
       return {names[static_cast<std::size_t>(op) | (increment ? 0 : 4) | (repeat ? 8 : 0)], 2, Op::EdOp, Operand::None,
           Operand::None, Instruction::EdOpArgs{op, increment, repeat}};
     }
+    case 0x67: return {"rrd", 2, Op::Rrd, Operand::HL_Indirect8};
+    case 0x6f: return {"rld", 2, Op::Rld, Operand::HL_Indirect8};
     default: break;
   }
   return invalid_2;
