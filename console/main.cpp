@@ -42,10 +42,13 @@ struct App {
   std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
   std::atomic<bool> interrupted{false};
 
-  static App *the_app;
+  static App *&self() {
+    static App *the_app = nullptr;
+    return the_app;
+  }
 
   App() {
-    the_app = this;
+    self() = this;
     commands["help"] = [this](const std::vector<std::string> &) {
       std::cout << "Commands:\n";
       for (const auto &command: commands) {
@@ -107,12 +110,12 @@ struct App {
       if (start != 0)
         return nullptr;
       return rl_completion_matches(text, [](const char *text, const int state) -> char * {
-        if (!the_app)
+        if (!self())
           return nullptr;
         static decltype(commands)::iterator the_iterator;
         if (state == 0)
-          the_iterator = std::begin(the_app->commands);
-        while (the_iterator != std::end(the_app->commands)) {
+          the_iterator = std::begin(self()->commands);
+        while (the_iterator != std::end(self()->commands)) {
           auto &command = the_iterator->first;
           ++the_iterator;
           if (command.contains(text))
@@ -122,9 +125,31 @@ struct App {
       });
     };
   }
-  ~App() { the_app = nullptr; }
+  ~App() { self() = nullptr; }
 
-  void interrupt() { interrupted = true; }
+  bool interrupt() { return interrupted.exchange(true); }
+
+  static void disable_interrupt_handle() { signal(SIGINT, SIG_DFL); }
+
+  static void setup_interrupt_handler() {
+    signal(
+        SIGINT, +[](int) {
+          self()->interrupt();
+          disable_interrupt_handle();
+        });
+  }
+
+  bool _check_for_interrupt_or_breakpoint() {
+    if (interrupted.exchange(false)) {
+      std::print(std::cout, "Interrupted\n");
+      return true;
+    }
+    if (breakpoints.contains(z80.pc())) {
+      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", z80.pc());
+      return true;
+    }
+    return false;
+  }
 
   bool _step() {
     try {
@@ -135,16 +160,7 @@ struct App {
       std::print(std::cout, "Exception: {}\n", e.what());
       return true;
     }
-    if (interrupted) {
-      interrupted = false;
-      std::print(std::cout, "Interrupted\n");
-      return true;
-    }
-    if (breakpoints.contains(z80.pc())) {
-      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", z80.pc());
-      return true;
-    }
-    return false;
+    return _check_for_interrupt_or_breakpoint();
   }
 
   bool _next() {
@@ -160,17 +176,7 @@ struct App {
       std::print(std::cout, "Exception: {}\n", e.what());
       return true;
     }
-    // TODO deduplicate this mess, it's the same as in _step, also use atomic CAS here.
-    if (interrupted) {
-      interrupted = false;
-      std::print(std::cout, "Interrupted\n");
-      return true;
-    }
-    if (breakpoints.contains(z80.pc())) {
-      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", z80.pc());
-      return true;
-    }
-    return false;
+    return _check_for_interrupt_or_breakpoint();
   }
 
   void step(const int num_steps) {
@@ -236,6 +242,7 @@ struct App {
       if (line.empty())
         continue;
       add_history(line.c_str());
+
       if (!execute(line))
         break;
     }
@@ -250,10 +257,12 @@ struct App {
           std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(), std::back_inserter(inputs));
     }
     if (const auto found = commands.find(inputs[0]); found != std::end(commands)) {
+      setup_interrupt_handler();
       if (const auto result = found->second(std::vector<std::string>(std::next(std::begin(inputs)), std::end(inputs)));
           result != 0) {
         return false;
       }
+      disable_interrupt_handle();
     }
     else {
       std::cout << "Unknown command " << inputs[0] << "\n";
@@ -261,8 +270,6 @@ struct App {
     return true;
   }
 };
-
-App *App::the_app{};
 
 } // namespace
 
