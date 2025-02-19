@@ -274,6 +274,7 @@ int main(const int argc, const char **argv) {
   sigaddset(&blocked_signals, SIGINT);
   sigprocmask(SIG_BLOCK, &blocked_signals, nullptr);
 
+#ifdef __LINUX__
   std::jthread t([&](const std::stop_token &stop_token) {
     constexpr timespec timeout{0, 100};
     while (!stop_token.stop_requested()) {
@@ -286,6 +287,7 @@ int main(const int argc, const char **argv) {
       }
     }
   });
+#endif
 
   try {
     app.main(argc, argv);
