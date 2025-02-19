@@ -34,13 +34,14 @@ Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
 Alu::R8 Alu::inc8(const std::uint8_t lhs, const Flags current_flags) {
   const auto result = static_cast<std::uint8_t>(lhs + 1);
   const auto flags = sz53_8(result) | Flags(result) & mask53 | Flags(result ^ lhs) & Flags::HalfCarry() |
-                     (current_flags & Flags::Carry());
+                     (result == 0x80 ? Flags::Overflow() : Flags()) | (current_flags & Flags::Carry());
   return {result, flags};
 }
 Alu::R8 Alu::dec8(const std::uint8_t lhs, const Flags current_flags) {
   const auto result = static_cast<std::uint8_t>(lhs - 1);
   const auto flags = Flags::Subtract() | sz53_8(result) | Flags(result) & mask53 |
-                     Flags(result ^ lhs) & Flags::HalfCarry() | (current_flags & Flags::Carry());
+                     (result == 0x7f ? Flags::Overflow() : Flags()) | Flags(result ^ lhs) & Flags::HalfCarry() |
+                     (current_flags & Flags::Carry());
   return {result, flags};
 }
 

@@ -189,9 +189,12 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
   switch (opcode) {
     case 0x09: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::BC};
     case 0x19: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::DE};
+    case 0x23: return {"inc {}", 2, Op::Add16NoFlags, RegisterSet::direct, Operand::Const_1};
+    case 0x2b: return {"dec {}", 2, Op::Add16NoFlags, RegisterSet::direct, Operand::Const_ffff};
+    case 0x34: return {"inc {}", 3, Op::Inc8, RegisterSet::indirect8, Operand::None, {}, offset};
+    case 0x35: return {"dec {}", 3, Op::Dec8, RegisterSet::indirect8, Operand::None, {}, offset};
     case 0x29: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, RegisterSet::direct};
     case 0x39: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::SP};
-    case 0x35: return {"dec {}", 3, Op::Add16NoFlags, RegisterSet::indirect8, Operand::Const_ffff, {}, offset};
     case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
     case 0xe5: return {"push {1}", 2, Op::Push, Operand::None, RegisterSet::direct};
     case 0xcb: {
