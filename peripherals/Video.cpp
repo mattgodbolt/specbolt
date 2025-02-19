@@ -86,10 +86,10 @@ void Video::render_line(std::size_t line) {
 
   const auto display_span = line_span.subspan(XBorder, ScreenWidth * ScaleFactor);
   const auto screen_line = line / ScaleFactor;
-  const auto y76 = screen_line >> 8;
-  const auto y543 = screen_line >> 3 & 0x07;
+  const auto y76 = (screen_line >> 6) & 0x03;
+  const auto y543 = (screen_line >> 3) & 0x07;
   const auto y210 = screen_line & 0x07;
-  const auto screen_address = PixelDataAddress + (y76 << 11) + (y543 << 5) + y210;
+  const auto screen_address = PixelDataAddress + (y76 << 11) + (y543 << 5) + (y210 << 8);
   const auto char_row = screen_line / 8;
   for (std::size_t x = 0; x < ColumnCount; ++x) {
     const auto pixel_data = memory_.read(static_cast<std::uint16_t>(screen_address + x));
@@ -98,7 +98,7 @@ void Video::render_line(std::size_t line) {
     const auto paper_color = palette[attributes >> 3 & 0x07];
     const auto invert = attributes & 0x80 && flash_on_;
     for (std::size_t bit = 0; bit < 8; ++bit) {
-      const auto colour = ((pixel_data & (1 << bit)) ^ invert) ? pen_color : paper_color;
+      const auto colour = ((pixel_data & (1 << (7 - bit))) ^ invert) ? pen_color : paper_color;
       std::ranges::fill(display_span.subspan((x * 8u + bit) * ScaleFactor, ScaleFactor), colour);
     }
   }
