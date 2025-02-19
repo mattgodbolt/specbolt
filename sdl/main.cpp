@@ -7,7 +7,7 @@
 
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
-#include "z80/Disassembler.hpp"
+#include "spectrum/Spectrum.hpp"
 #include "z80/Z80.hpp"
 
 namespace {
@@ -54,11 +54,7 @@ void Main() {
 
   bool quit = false;
 
-  specbolt::Memory memory;
-  specbolt::Video video(memory);
-  memory.load("48.rom", 0, 16 * 1024);
-  specbolt::Z80 z80(memory);
-  static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
+  specbolt::Spectrum spectrum("48.rom");
 
   bool z80_running{true};
   auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
@@ -73,9 +69,7 @@ void Main() {
     if (z80_running) {
       const auto start_time = std::chrono::high_resolution_clock::now();
       try {
-        std::size_t cycles_elapsed = 0;
-        while (cycles_elapsed < cycles_per_frame)
-          cycles_elapsed += z80.execute_one();
+        const auto cycles_elapsed = spectrum.run_frame();
         const auto end_time = std::chrono::high_resolution_clock::now();
         const auto time_taken = end_time - start_time;
         const auto cycles_per_second = static_cast<double>(cycles_elapsed) /
@@ -87,16 +81,15 @@ void Main() {
       }
       catch (const std::exception &e) {
         std::print(std::cout, "Exception: {}\n", e.what());
-        z80.dump();
+        spectrum.z80().dump();
         z80_running = false;
       }
     }
-    video.set_border(z80.port_fe() & 0x7);
-    video.poll(cycles_per_frame);
 
     void *pixels;
     int pitch;
     SDL_LockTexture(texture.get(), nullptr, &pixels, &pitch);
+    const auto &video = spectrum.video();
     memcpy(pixels, video.screen().data(), video.screen().size_bytes());
     SDL_UnlockTexture(texture.get());
 

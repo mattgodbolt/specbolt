@@ -1,0 +1,29 @@
+#pragma once
+
+#include "peripherals/Memory.hpp"
+#include "peripherals/Video.hpp"
+#include "z80/Z80.hpp"
+
+#include <filesystem>
+
+namespace specbolt {
+
+class Spectrum {
+public:
+  explicit Spectrum(const std::filesystem::path &rom);
+
+  static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
+
+  size_t run_cycles(size_t cycles);
+  size_t run_frame() { return run_cycles(cycles_per_frame); }
+
+  [[nodiscard]] const auto &z80() const { return z80_; }
+  [[nodiscard]] const auto &video() const { return video_; }
+
+private:
+  Memory memory_;
+  Video video_;
+  Z80 z80_;
+};
+
+} // namespace specbolt
