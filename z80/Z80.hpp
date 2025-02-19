@@ -65,8 +65,8 @@ private:
   std::array<RegisterFile, RegHistory> reg_history_{};
   size_t current_reg_history_index_{};
 
-  [[nodiscard]] std::uint16_t read(Instruction::Operand operand);
-  void write(Instruction::Operand operand, std::uint16_t value);
+  [[nodiscard]] std::uint16_t read(Instruction::Operand operand, std::int8_t index_offset);
+  void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
   void pass_time(std::size_t tstates);
   void execute(const Instruction &instr);
 };

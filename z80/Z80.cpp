@@ -37,7 +37,7 @@ std::uint16_t Z80::read16(const std::uint16_t address) const {
 
 void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
 
-std::uint16_t Z80::read(const Instruction::Operand operand) {
+std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t index_offset) {
   switch (operand) {
     case Instruction::Operand::A: return regs_.get(RegisterFile::R8::A);
     case Instruction::Operand::B: return regs_.get(RegisterFile::R8::B);
@@ -93,13 +93,12 @@ std::uint16_t Z80::read(const Instruction::Operand operand) {
     case Instruction::Operand::PcOffset:
       return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
     case Instruction::Operand::IX_Offset_Indirect8: {
-      const auto address = static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
-      // TODO this isn't right? I think? what about the indirect offset? TODO!!! super important
+      const auto address = static_cast<uint16_t>(regs_.ix() + index_offset);
       regs_.wz(address);
       return read8(address);
     }
     case Instruction::Operand::IY_Offset_Indirect8: {
-      const auto address = static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
+      const auto address = static_cast<uint16_t>(regs_.iy() + index_offset);
       regs_.wz(address);
       return read8(address);
     }
@@ -109,14 +108,15 @@ std::uint16_t Z80::read(const Instruction::Operand operand) {
 }
 
 void Z80::execute(const Instruction &instr) {
-  const auto [value, flags, extra_t_states] =
-      instr.apply({read(instr.lhs), read(instr.rhs), Flags(regs_.get(RegisterFile::R8::F))}, *this);
+  const auto [value, flags, extra_t_states] = instr.apply(
+      {read(instr.lhs, instr.index_offset), read(instr.rhs, instr.index_offset), Flags(regs_.get(RegisterFile::R8::F))},
+      *this);
   regs_.set(RegisterFile::R8::F, flags.to_u8());
   pass_time(extra_t_states);
-  write(instr.lhs, value);
+  write(instr.lhs, instr.index_offset, value);
 }
 
-void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
+void Z80::write(const Instruction::Operand operand, const std::int8_t index_offset, const std::uint16_t value) {
   switch (operand) {
     case Instruction::Operand::A: regs_.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value)); break;
     case Instruction::Operand::B: regs_.set(RegisterFile::R8::B, static_cast<std::uint8_t>(value)); break;
@@ -163,12 +163,10 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
       break;
     case Instruction::Operand::WordImmediateIndirect16: write16(read16(regs_.pc() - 2), value); break;
     case Instruction::Operand::IX_Offset_Indirect8:
-      write8(static_cast<std::uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1))),
-          static_cast<std::uint8_t>(value));
+      write8(static_cast<std::uint16_t>(regs_.ix() + index_offset), static_cast<std::uint8_t>(value));
       break;
     case Instruction::Operand::IY_Offset_Indirect8:
-      write8(static_cast<std::uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1))),
-          static_cast<std::uint8_t>(value));
+      write8(static_cast<std::uint16_t>(regs_.iy() + index_offset), static_cast<std::uint8_t>(value));
       break;
     default:
       // TODO NOT THIS
