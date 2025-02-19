@@ -31,6 +31,8 @@ public:
   // add to SP allegedly updates flags, bit 11 to 12? not done in jsspeccy?
   // https://stackoverflow.com/questions/57958631/game-boy-half-carry-flag-and-16-bit-instructions-especially-opcode-0xe8
 
+  static R8 daa(std::uint8_t lhs, Flags current_flags);
+
   enum class Direction { Left, Right };
 
   // "Fast" here means the flags aren't properly calculated, as in RLCA, RRCA etc.

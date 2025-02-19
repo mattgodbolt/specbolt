@@ -46,7 +46,7 @@ int Main() {
   static constexpr auto FileSize = 8704;
   memory.load(filename, 0x100, FileSize);
   memory.set_rom_size(0);
-  // memory.write(0x120, memory.read(0x120) + 10 * 2);
+  // memory.write(0x120, memory.read(0x120) + 12 * 2);
   const Disassembler dis{memory};
 
   Z80 z80(memory);
@@ -68,10 +68,11 @@ int Main() {
 
   for (;;) {
     // if (++x < 100000)
-    //   std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x}\n", z80.pc(),
+    //   std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:02x}{:02x}\n", z80.pc(),
     //       z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
     //       z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL),
-    //       z80.registers().ix(), z80.registers().iy(), z80.registers().sp());
+    //       z80.registers().ix(), z80.registers().iy(), z80.registers().sp(), memory.read(0x1d42),
+    //       memory.read(0x1d43));
     // else
     // break;
     try {

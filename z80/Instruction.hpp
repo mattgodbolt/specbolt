@@ -81,6 +81,8 @@ struct Instruction {
     Djnz,
     Call,
     Return,
+    Cpl,
+    Daa,
     Ccf,
     Scf,
     Invalid,

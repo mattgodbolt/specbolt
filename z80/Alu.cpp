@@ -91,6 +91,18 @@ Alu::R8 Alu::or8(const std::uint8_t lhs, const std::uint8_t rhs) {
   return {result, sz53_parity(result)};
 }
 
+Alu::R8 Alu::daa(const std::uint8_t lhs, const Flags current_flags) {
+  const auto sign_adjust = current_flags.subtract() ? -1 : 1;
+  const auto low_nibble_carry = (lhs & 0xf) > 0x09 || current_flags.half_carry();
+  const auto high_nibble_carry = lhs > 0x99 || current_flags.carry();
+  const auto result = static_cast<std::uint8_t>(
+      lhs + (low_nibble_carry ? 0x06 * sign_adjust : 0) + (high_nibble_carry ? 0x60 * sign_adjust : 0));
+  const auto carry = lhs > 0x99 ? Flags::Carry() : Flags();
+  const auto half_carry = (lhs ^ result) & 0x10 ? Flags::HalfCarry() : Flags();
+  const auto preserved_flags = current_flags & (Flags::Carry() | Flags::Subtract());
+  return {result, sz53_parity(result) | carry | half_carry | preserved_flags};
+}
+
 Alu::R8 Alu::fast_rotate8(const std::uint8_t lhs, const Direction direction, const Flags flags) {
   const auto [result, result_flags] = rotate8(lhs, direction, flags.carry());
   constexpr auto preserved_original_flags = Flags::Sign() | Flags::Zero() | Flags::Parity();

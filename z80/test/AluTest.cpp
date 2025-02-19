@@ -234,6 +234,38 @@ TEST_CASE("ALU tests") {
       }
     }
   }
+
+  SECTION("daa") {
+    SECTION("from test case") { CHECK(Alu::daa(0x8e, Flags(0x04)) == Alu::R8{0x94, Flags(0x90)}); }
+    SECTION("no adjustment") {
+      CHECK(Alu::daa(0, Flags()) == Alu::R8{0, Flags::Zero() | Flags::Parity()});
+      CHECK(Alu::daa(1, Flags()) == Alu::R8{1, Flags()});
+    }
+    SECTION("addition") {
+      CHECK(Alu::daa(0, Flags::HalfCarry()) == Alu::R8{0x06, Flags::Parity()});
+      CHECK(Alu::daa(0xa, Flags()) == Alu::R8{0x10, Flags::HalfCarry()});
+      CHECK(Alu::daa(0xaa, Flags()) == Alu::R8{0x10, Flags::Carry() | Flags::HalfCarry()});
+      CHECK(Alu::daa(0, Flags::HalfCarry()) == Alu::R8{0x06, Flags::Parity()});
+      CHECK(Alu::daa(0xa0, Flags::HalfCarry()) == Alu::R8{0x06, Flags::Parity() | Flags::Carry()});
+    }
+    SECTION("subtraction") {
+      CHECK(Alu::daa(0, Flags::Subtract() | Flags::HalfCarry()) ==
+            Alu::R8{0xfa, Flags::Subtract() | Flags::Parity() | Flags::Flag5() | Flags::Flag3() | Flags::HalfCarry() |
+                              Flags::Sign()});
+      CHECK(Alu::daa(0xf, Flags::Subtract()) == Alu::R8{0x09, Flags::Subtract() | Flags::Flag3() | Flags::Parity()});
+      CHECK(Alu::daa(0xff, Flags::Subtract()) ==
+            Alu::R8{0x99, Flags::Subtract() | Flags::Sign() | Flags::Parity() | Flags::Carry() | Flags::Flag3()});
+      CHECK(Alu::daa(0, Flags::Subtract() | Flags::HalfCarry()) ==
+            Alu::R8{0xfa, Flags::Subtract() | Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() |
+                              Flags::Parity()});
+      CHECK(Alu::daa(0xf0, Flags::Subtract() | Flags::HalfCarry()) ==
+            Alu::R8{
+                0x8a, Flags::Flags::Subtract() | Flags::Sign() | Flags::HalfCarry() | Flags::Flag3() | Flags::Carry()});
+    }
+    SECTION("preserves Carry") {
+      CHECK(Alu::daa(0, Flags::Carry()) == Alu::R8{0x60, Flags::Parity() | Flags::Flag5() | Flags::Carry()});
+    }
+  }
 }
 
 } // namespace specbolt

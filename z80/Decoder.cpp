@@ -331,8 +331,6 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x30: return {"jr nc {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::NoCarry};
     case 0x38: return {"jr c {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::Carry};
 
-    case 0x2f: return {"cpl", 1, Op::Xor, Operand::A, Operand::Const_ffff};
-
     case 0x03: return {"inc {}", 1, Op::Add16NoFlags, Operand::BC, Operand::Const_1};
     case 0x13: return {"inc {}", 1, Op::Add16NoFlags, Operand::DE, Operand::Const_1};
     case 0x23: return {"inc {}", 1, Op::Add16NoFlags, Operand::HL, Operand::Const_1};
@@ -496,6 +494,8 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xc0: return {"ret nz", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::NonZero};
     case 0xd0: return {"ret nc", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::NoCarry};
 
+    case 0x27: return {"daa", 1, Op::Daa, Operand::A};
+    case 0x2f: return {"cpl", 1, Op::Cpl, Operand::A};
     case 0x37: return {"scf", 1, Op::Scf};
     case 0x3f: return {"ccf", 1, Op::Ccf};
 
