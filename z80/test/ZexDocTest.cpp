@@ -46,7 +46,9 @@ int Main() {
   static constexpr auto FileSize = 8704;
   memory.load(filename, 0x100, FileSize);
   memory.set_rom_size(0);
-  memory.write(0x120, memory.read(0x120) + 58 * 2);
+  [[maybe_unused]] int dump_from = -1;
+  if (dump_from >= 0)
+    memory.write(0x120, memory.read(0x120) + dump_from * 2);
   const Disassembler dis{memory};
 
   Z80 z80(memory);
@@ -64,17 +66,19 @@ int Main() {
     std::print(to, "Output: {}\n", output.output);
   };
 
-  [[maybe_unused]] uint64_t x = 0;
+  uint64_t instructions_executed = 0;
 
   for (;;) {
-    // if (++x < 200000)
-    //   std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:02x}{:02x}\n", z80.pc(),
-    //       z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
-    //       z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL),
-    //       z80.registers().ix(), z80.registers().iy(), z80.registers().sp(), memory.read(0x1d42),
-    //       memory.read(0x1d43));
-    // else
-    //   break;
+    if (dump_from) {
+      if (++instructions_executed < 200000)
+        std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:02x}{:02x}{:02x}{:02x}\n",
+            z80.pc(), z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
+            z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL),
+            z80.registers().ix(), z80.registers().iy(), z80.registers().sp(), memory.read(0x1d42), memory.read(0x1d43),
+            memory.read(0x1d44), memory.read(0x1d45));
+      else
+        break;
+    }
     try {
       z80.execute_one();
     }

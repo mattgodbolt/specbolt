@@ -129,28 +129,28 @@ Alu::R8 Alu::rotate8(const std::uint8_t lhs, const Direction direction, const bo
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result = direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1 | carry_in)
                                                    : static_cast<std::uint8_t>(lhs >> 1 | (carry_in ? 0x80 : 0));
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 Alu::R8 Alu::rotate_circular8(const std::uint8_t lhs, const Direction direction) {
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result = direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1 | (carry_out ? 0x01 : 0x00))
                                                    : static_cast<std::uint8_t>(lhs >> 1 | (carry_out ? 0x80 : 0x00));
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 Alu::R8 Alu::shift_logical8(const std::uint8_t lhs, const Direction direction) {
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result =
-      direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1) : static_cast<std::uint8_t>(lhs >> 1);
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+      direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1 | 1) : static_cast<std::uint8_t>(lhs >> 1);
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 Alu::R8 Alu::shift_arithmetic8(const std::uint8_t lhs, const Direction direction) {
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result = direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1)
                                                    : static_cast<std::uint8_t>(lhs >> 1 | (lhs & 0x80));
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 } // namespace specbolt
