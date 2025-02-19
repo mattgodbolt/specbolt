@@ -190,6 +190,10 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
     case 0x09: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::BC};
     case 0x19: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::DE};
     case 0x23: return {"inc {}", 2, Op::Add16NoFlags, RegisterSet::direct, Operand::Const_1};
+    case 0x24: return {"inc {}", 2, Op::Inc8, RegisterSet::direct_high, Operand::None};
+    case 0x25: return {"dec {}", 2, Op::Dec8, RegisterSet::direct_high, Operand::None};
+    case 0x2c: return {"inc {}", 2, Op::Inc8, RegisterSet::direct_low, Operand::None};
+    case 0x2d: return {"dec {}", 2, Op::Dec8, RegisterSet::direct_low, Operand::None};
     case 0x2b: return {"dec {}", 2, Op::Add16NoFlags, RegisterSet::direct, Operand::Const_ffff};
     case 0x34: return {"inc {}", 3, Op::Inc8, RegisterSet::indirect8, Operand::None, {}, offset};
     case 0x35: return {"dec {}", 3, Op::Dec8, RegisterSet::indirect8, Operand::None, {}, offset};
@@ -220,7 +224,7 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
   };
   // The load group...
   if (const auto maybe_load_dest = load_dest_for(opcode); maybe_load_dest.has_value()) {
-    const auto dest = transform(maybe_load_dest.value());
+    const auto dest = opcode == 0x66 || opcode == 0x6e ? maybe_load_dest.value() : transform(maybe_load_dest.value());
     const auto source_opt = load_source_for(opcode);
     if (!source_opt)
       throw std::runtime_error(std::format("Impossible sourceless load for 0x{:02x}", opcode));
