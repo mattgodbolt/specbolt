@@ -43,6 +43,24 @@ TEST_CASE("RegisterFile tests") {
     CHECK(rf.get(low) == 0xff);
     CHECK(rf.get(highlow) == 0x00ff);
   }
+  SECTION("IX and IY") {
+    rf.ix(0x1234);
+    rf.iy(0x2345);
+    CHECK(rf.ix() == 0x1234);
+    CHECK(rf.ixh() == 0x12);
+    CHECK(rf.ixl() == 0x34);
+    CHECK(rf.iy() == 0x2345);
+    CHECK(rf.iyh() == 0x23);
+    CHECK(rf.iyl() == 0x45);
+    rf.ixh(0xff);
+    CHECK(rf.ix() == 0xff34);
+    rf.iyh(0xee);
+    CHECK(rf.iy() == 0xee45);
+    rf.ixl(0xaa);
+    CHECK(rf.ix() == 0xffaa);
+    rf.iyl(0x99);
+    CHECK(rf.iy() == 0xee99);
+  }
   SECTION("exchanges") {
     rf.set(RegisterFile::R16::BC, 0x1234);
     rf.set(RegisterFile::R16::DE, 0x2345);

@@ -30,11 +30,11 @@ void RegisterFile::iy(const std::uint16_t iy) { iy_ = iy; }
 std::uint8_t RegisterFile::ixh() const { return static_cast<std::uint8_t>(ix_ >> 8); }
 void RegisterFile::ixh(const std::uint8_t ixh) { ix_ = (ix_ & 0xff) | static_cast<std::uint16_t>(ixh << 8); }
 std::uint8_t RegisterFile::iyh() const { return static_cast<std::uint8_t>(iy_ >> 8); }
-void RegisterFile::iyh(const std::uint8_t iyh) { ix_ = (iy_ & 0xff) | static_cast<std::uint16_t>(iyh << 8); }
+void RegisterFile::iyh(const std::uint8_t iyh) { iy_ = (iy_ & 0xff) | static_cast<std::uint16_t>(iyh << 8); }
 std::uint8_t RegisterFile::ixl() const { return static_cast<std::uint8_t>(ix_ & 0xff); }
 void RegisterFile::ixl(const std::uint8_t ixl) { ix_ = (ix_ & 0xff00) | ixl; }
 std::uint8_t RegisterFile::iyl() const { return static_cast<std::uint8_t>(iy_ & 0xff); }
-void RegisterFile::iyl(const std::uint8_t iyl) { ix_ = (iy_ & 0xff00) | iyl; }
+void RegisterFile::iyl(const std::uint8_t iyl) { iy_ = (iy_ & 0xff00) | iyl; }
 std::uint16_t RegisterFile::sp() const { return sp_; }
 void RegisterFile::sp(const std::uint16_t sp) { sp_ = sp; }
 std::uint16_t RegisterFile::pc() const { return pc_; }
