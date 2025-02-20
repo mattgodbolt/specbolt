@@ -205,6 +205,7 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
     case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
     case 0xe5: return {"push {1}", 2, Op::Push, Operand::None, RegisterSet::direct};
     case 0xe9: return {"jp ({1})", 3, Op::Jump, Operand::None, RegisterSet::direct};
+    case 0xe3: return {"ex {}, {}", 1, Op::Exchange, Operand::SP_Indirect16, RegisterSet::direct};
     case 0xcb: {
       // Next byte is the offset, then finally the opcode.
       auto result = decode_bit<RegisterSet>(opcodes.subspan(2));
@@ -558,7 +559,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xdd: return decode_ddfd<RegisterSetIx>(operands);
     case 0xed: return decode_ed(operands);
     case 0xd3: return {"out ({}), {}", 2, Op::Out, Operand::ByteImmediate_A, Operand::A};
-    case 0xdb: return {"in {}, ({})", 2, Op::In, Operand::A, Operand::ByteImmediate_A};
+    case 0xdb: return {"in {}, ({})", 2, Op::In, Operand::A, Operand::ByteImmediate_A, Instruction::NoFlags{}};
     case 0xe3: return {"ex {}, {}", 1, Op::Exchange, Operand::SP_Indirect16, Operand::HL};
     case 0xeb: return {"ex {}, {}", 1, Op::Exchange, Operand::DE, Operand::HL};
     case 0xf3: return {"di", 1, Op::Irq, Operand::None, Operand::Const_0};

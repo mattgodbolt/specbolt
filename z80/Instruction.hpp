@@ -111,6 +111,7 @@ struct Instruction {
   Operand lhs{Operand::None};
   Operand rhs{Operand::None};
   struct WithCarry {};
+  struct NoFlags {};
   enum class Condition { NonZero, Zero, NoCarry, Carry, NoParity, Parity, Positive, Negative };
   struct EdOpArgs {
     enum class Op { Load = 0x00, Compare = 0x01, In = 0x02, Out = 0x03 };
@@ -124,7 +125,7 @@ struct Instruction {
     Type type;
     bool fast;
   };
-  using Args = std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs>;
+  using Args = std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs, NoFlags>;
   Args args{};
   std::int8_t index_offset{};
 

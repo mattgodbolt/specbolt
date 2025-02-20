@@ -32,6 +32,7 @@ private:
   Audio audio_;
   Keyboard keyboard_;
   Z80 z80_;
+  size_t trace_next_instructions_{};
 };
 
 } // namespace specbolt
