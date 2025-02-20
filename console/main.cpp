@@ -35,7 +35,7 @@ int get_number_arg(const std::vector<std::string> &args) {
 }
 
 struct App {
-  specbolt::Spectrum spectrum{"48.rom"};
+  specbolt::Spectrum spectrum{"48.rom", 48'000};
   const specbolt::Disassembler dis{spectrum.memory()};
   std::unordered_set<std::uint16_t> breakpoints = {};
   std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
@@ -128,16 +128,6 @@ struct App {
   ~App() { self() = nullptr; }
 
   bool interrupt() { return interrupted.exchange(true); }
-
-  static void disable_interrupt_handle() { signal(SIGINT, SIG_DFL); }
-
-  static void setup_interrupt_handler() {
-    signal(
-        SIGINT, +[](int) {
-          self()->interrupt();
-          disable_interrupt_handle();
-        });
-  }
 
   bool _check_for_interrupt_or_breakpoint() {
     if (interrupted.exchange(false)) {
@@ -258,12 +248,10 @@ struct App {
           std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(), std::back_inserter(inputs));
     }
     if (const auto found = commands.find(inputs[0]); found != std::end(commands)) {
-      setup_interrupt_handler();
-      if (const auto result = found->second(std::vector<std::string>(std::next(std::begin(inputs)), std::end(inputs)));
+      if (const auto result = found->second(std::vector(std::next(std::begin(inputs)), std::end(inputs)));
           result != 0) {
         return false;
       }
-      disable_interrupt_handle();
     }
     else {
       std::cout << "Unknown command " << inputs[0] << "\n";
@@ -276,17 +264,17 @@ struct App {
 
 int main(const int argc, const char **argv) {
   App app;
+
   sigset_t blocked_signals{};
   // todo check errors etc. extract?
   sigemptyset(&blocked_signals);
   sigaddset(&blocked_signals, SIGINT);
   sigprocmask(SIG_BLOCK, &blocked_signals, nullptr);
 
-#ifdef __LINUX__
   std::jthread t([&](const std::stop_token &stop_token) {
-    constexpr timespec timeout{0, 100};
     while (!stop_token.stop_requested()) {
-      if (sigtimedwait(&blocked_signals, nullptr, &timeout) != -1) {
+      int signum{};
+      if (sigwait(&blocked_signals, &signum) != -1) {
         app.interrupt();
         continue;
       }
@@ -295,7 +283,9 @@ int main(const int argc, const char **argv) {
       }
     }
   });
-#endif
+  struct SelfInterrupt {
+    ~SelfInterrupt() { kill(0, SIGINT); }
+  } self_irq;
 
   try {
     return app.main(argc, argv);
