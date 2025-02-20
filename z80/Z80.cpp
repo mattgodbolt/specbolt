@@ -179,7 +179,10 @@ void Z80::write(const Instruction::Operand operand, const std::int8_t index_offs
 void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
 void Z80::write16(const std::uint16_t address, const std::uint16_t value) { memory_.write16(address, value); }
 
-void Z80::halt() { halted_ = true; }
+void Z80::halt() {
+  halted_ = true;
+  registers().pc(registers().pc() - 1);
+}
 void Z80::irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
 
 void Z80::out(const std::uint16_t port, const std::uint8_t value) {
@@ -245,6 +248,7 @@ void Z80::interrupt() {
   // Some dark business with parity flag here ignored.
   if (halted_) {
     halted_ = false;
+    registers().pc(registers().pc() + 1);
   }
   iff1_ = iff2_ = false;
   pass_time(7);

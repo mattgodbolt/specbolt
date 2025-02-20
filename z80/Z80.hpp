@@ -31,6 +31,7 @@ public:
   auto &memory() { return memory_; }
 
   void halt();
+  [[nodiscard]] bool halted() const { return halted_; }
 
   void irq_mode(std::uint8_t mode);
 
