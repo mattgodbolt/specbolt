@@ -213,10 +213,13 @@ struct App {
   }
 
   std::vector<std::string> exec_on_startup;
-  void main(int argc, const char **argv) {
+  int main(int argc, const char **argv) {
     const auto cli =
         lyra::cli() | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup");
-    const auto result = cli.parse({argc, argv});
+    if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
+      std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
+      return 1;
+    }
     memory.load("48.rom", 0, 16 * 1024);
 
     for (const auto &cmd: exec_on_startup)
@@ -239,6 +242,7 @@ struct App {
       if (!execute(line))
         break;
     }
+    return 0;
   }
 
   bool execute(const std::string &line) {
@@ -288,8 +292,7 @@ int main(const int argc, const char **argv) {
   });
 
   try {
-    app.main(argc, argv);
-    return 0;
+    return app.main(argc, argv);
   }
   catch (const std::exception &e) {
     std::cerr << "Exception: " << e.what() << "\n";

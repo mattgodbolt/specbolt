@@ -31,9 +31,7 @@ std::size_t Z80::execute_one() {
 }
 
 std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read(address); }
-std::uint16_t Z80::read16(const std::uint16_t address) const {
-  return static_cast<uint16_t>(memory_.read(address + 1) << 8) | memory_.read(address);
-}
+std::uint16_t Z80::read16(const std::uint16_t address) const { return memory_.read16(address); }
 
 void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
 
@@ -175,10 +173,7 @@ void Z80::write(const Instruction::Operand operand, const std::int8_t index_offs
 }
 
 void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
-void Z80::write16(const std::uint16_t address, const std::uint16_t value) {
-  memory_.write(address, static_cast<uint8_t>(value));
-  memory_.write(address + 1, static_cast<uint8_t>(value >> 8));
-}
+void Z80::write16(const std::uint16_t address, const std::uint16_t value) { memory_.write16(address, value); }
 
 void Z80::irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
 
