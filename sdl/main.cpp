@@ -1,5 +1,6 @@
 #include <SDL.h>
 
+#include <chrono>
 #include <format>
 #include <iostream>
 #include <memory>
@@ -109,18 +110,17 @@ int Main(const int argc, const char *argv[]) {
   auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
   auto next_frame = std::chrono::high_resolution_clock::now();
   while (!quit) {
-    SDL_Event e{};
-    while (SDL_PollEvent(&e) != 0) {
-      switch (e.type) {
+    SDL_Event sdl_event{};
+    while (SDL_PollEvent(&sdl_event) != 0) {
+      switch (sdl_event.type) {
         case SDL_QUIT: quit = true; break;
-        case SDL_KEYDOWN: spectrum.keyboard().key_down(e.key.keysym.sym); break;
-        case SDL_KEYUP: spectrum.keyboard().key_up(e.key.keysym.sym); break;
+        case SDL_KEYDOWN: spectrum.keyboard().key_down(sdl_event.key.keysym.sym); break;
+        case SDL_KEYUP: spectrum.keyboard().key_up(sdl_event.key.keysym.sym); break;
         default: break;
       }
     }
 
     if (const auto now = std::chrono::high_resolution_clock::now(); now > next_frame) {
-      next_frame += std::chrono::milliseconds(20);
       if (z80_running) {
         const auto start_time = std::chrono::high_resolution_clock::now();
         try {
@@ -130,7 +130,7 @@ int Main(const int argc, const char *argv[]) {
           const auto cycles_per_second = static_cast<double>(cycles_elapsed) /
                                          std::chrono::duration_cast<std::chrono::duration<double>>(time_taken).count();
           if (end_time > next_print) {
-            std::print(std::cout, "Cycles/sec: {:.2f}\n", cycles_per_second);
+            std::print(std::cout, "Cycles/sec: {:.2f} | lag {}\n", cycles_per_second, now - next_frame);
             std::print(
                 std::cout, "Audio over/under: {}/{}\n", spectrum.audio().overruns(), spectrum.audio().underruns());
             next_print = end_time + std::chrono::seconds(1);
@@ -157,6 +157,7 @@ int Main(const int argc, const char *argv[]) {
       SDL_RenderClear(renderer.get());
       SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
       SDL_RenderPresent(renderer.get());
+      next_frame += std::chrono::milliseconds(20);
     }
   }
   SDL_CloseAudioDevice(audio_device_id);
