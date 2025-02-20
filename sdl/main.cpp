@@ -5,6 +5,7 @@
 #include <memory>
 #include <stdexcept>
 
+#include "Disassembler.hpp"
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
@@ -55,6 +56,7 @@ void Main() {
   bool quit = false;
 
   specbolt::Spectrum spectrum("48.rom");
+  const specbolt::Disassembler dis{spectrum.memory()};
 
   bool z80_running{true};
   auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
@@ -84,6 +86,10 @@ void Main() {
       }
       catch (const std::exception &e) {
         std::print(std::cout, "Exception: {}\n", e.what());
+        for (const auto &trace: spectrum.z80().history()) {
+          trace.dump(std::cout, "  ");
+          std::print(std::cout, "{}\n", dis.disassemble(trace.pc()).to_string());
+        }
         spectrum.z80().dump();
         z80_running = false;
       }
@@ -111,7 +117,7 @@ int main() {
     return 0;
   }
   catch (const std::exception &e) {
-    std::cerr << "Exception: " << e.what() << "\n";
+    std::cerr << "Fatal exception: " << e.what() << "\n";
     return 1;
   }
 }
