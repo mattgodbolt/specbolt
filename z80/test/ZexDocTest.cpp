@@ -48,7 +48,7 @@ int Main() {
   memory.set_rom_size(0);
   [[maybe_unused]] int dump_from = -1;
   if (dump_from >= 0)
-    memory.write(0x120, memory.read(0x120) + dump_from * 2);
+    memory.write(0x120, static_cast<std::uint8_t>(memory.read(0x120) + dump_from * 2));
   const Disassembler dis{memory};
 
   Z80 z80(memory);
