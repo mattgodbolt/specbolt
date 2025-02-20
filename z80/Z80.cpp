@@ -244,7 +244,6 @@ void Z80::interrupt() {
   // Some dark business with parity flag here ignored.
   if (halted_) {
     halted_ = false;
-    registers().pc(registers().pc() + 1);
   }
   iff1_ = iff2_ = false;
   pass_time(7);
