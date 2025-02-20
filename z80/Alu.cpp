@@ -34,13 +34,14 @@ Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
 Alu::R8 Alu::inc8(const std::uint8_t lhs, const Flags current_flags) {
   const auto result = static_cast<std::uint8_t>(lhs + 1);
   const auto flags = sz53_8(result) | Flags(result) & mask53 | Flags(result ^ lhs) & Flags::HalfCarry() |
-                     (current_flags & Flags::Carry());
+                     (result == 0x80 ? Flags::Overflow() : Flags()) | (current_flags & Flags::Carry());
   return {result, flags};
 }
 Alu::R8 Alu::dec8(const std::uint8_t lhs, const Flags current_flags) {
   const auto result = static_cast<std::uint8_t>(lhs - 1);
   const auto flags = Flags::Subtract() | sz53_8(result) | Flags(result) & mask53 |
-                     Flags(result ^ lhs) & Flags::HalfCarry() | (current_flags & Flags::Carry());
+                     (result == 0x7f ? Flags::Overflow() : Flags()) | Flags(result ^ lhs) & Flags::HalfCarry() |
+                     (current_flags & Flags::Carry());
   return {result, flags};
 }
 
@@ -91,6 +92,20 @@ Alu::R8 Alu::or8(const std::uint8_t lhs, const std::uint8_t rhs) {
   return {result, sz53_parity(result)};
 }
 
+Alu::R8 Alu::daa(const std::uint8_t lhs, const Flags current_flags) {
+  const auto sign_adjust = current_flags.subtract() ? -1 : 1;
+  const auto low_nibble_carry = (lhs & 0xf) > 0x09 || current_flags.half_carry();
+  const auto high_nibble_carry = lhs > 0x99 || current_flags.carry();
+  const auto result = static_cast<std::uint8_t>(
+      lhs + (low_nibble_carry ? 0x06 * sign_adjust : 0) + (high_nibble_carry ? 0x60 * sign_adjust : 0));
+  const auto carry = lhs > 0x99 ? Flags::Carry() : Flags();
+  const auto half_carry = (lhs ^ result) & 0x10 ? Flags::HalfCarry() : Flags();
+  const auto preserved_flags = current_flags & (Flags::Carry() | Flags::Subtract());
+  return {result, sz53_parity(result) | carry | half_carry | preserved_flags};
+}
+
+Flags Alu::parity_flags_for(const std::uint8_t value) { return sz53_parity(value); }
+
 Alu::R8 Alu::fast_rotate8(const std::uint8_t lhs, const Direction direction, const Flags flags) {
   const auto [result, result_flags] = rotate8(lhs, direction, flags.carry());
   constexpr auto preserved_original_flags = Flags::Sign() | Flags::Zero() | Flags::Parity();
@@ -114,28 +129,28 @@ Alu::R8 Alu::rotate8(const std::uint8_t lhs, const Direction direction, const bo
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result = direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1 | carry_in)
                                                    : static_cast<std::uint8_t>(lhs >> 1 | (carry_in ? 0x80 : 0));
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 Alu::R8 Alu::rotate_circular8(const std::uint8_t lhs, const Direction direction) {
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result = direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1 | (carry_out ? 0x01 : 0x00))
                                                    : static_cast<std::uint8_t>(lhs >> 1 | (carry_out ? 0x80 : 0x00));
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 Alu::R8 Alu::shift_logical8(const std::uint8_t lhs, const Direction direction) {
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result =
-      direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1) : static_cast<std::uint8_t>(lhs >> 1);
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+      direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1 | 1) : static_cast<std::uint8_t>(lhs >> 1);
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 Alu::R8 Alu::shift_arithmetic8(const std::uint8_t lhs, const Direction direction) {
   const bool carry_out = direction == Direction::Left ? lhs & 0x80 : lhs & 1;
   const auto result = direction == Direction::Left ? static_cast<std::uint8_t>(lhs << 1)
                                                    : static_cast<std::uint8_t>(lhs >> 1 | (lhs & 0x80));
-  return {result, sz53_8(result) | (carry_out ? Flags::Carry() : Flags())};
+  return {result, sz53_parity(result) | (carry_out ? Flags::Carry() : Flags())};
 }
 
 } // namespace specbolt

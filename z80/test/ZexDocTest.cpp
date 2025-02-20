@@ -5,7 +5,7 @@
 #include "z80/Z80.hpp"
 
 #include <format>
-#include <iostream>
+#include <lyra/lyra.hpp>
 
 namespace specbolt {
 
@@ -40,13 +40,25 @@ struct Vt52Emu {
   }
 };
 
-int Main() {
+int Main(int argc, const char *argv[]) {
+  uint64_t dump_instructions = 0;
+  int skip = 0;
+  const auto cli = lyra::cli() //
+                   | lyra::opt(dump_instructions, "NUM")["-d"]["--dump-instructions"](
+                         "Dump the first NUM instructions, then exit.") //
+                   | lyra::opt(skip, "NUM")["-s"]["--skip"]("Skip the first NUM tests.");
+  if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
+    std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
+    return 1;
+  }
+
   Memory memory;
   const auto filename = std::filesystem::path("z80/test/zexdoc.com");
   static constexpr auto FileSize = 8704;
   memory.load(filename, 0x100, FileSize);
   memory.set_rom_size(0);
-  memory.write(0x120, memory.read(0x120) + 8 * 2);
+  if (skip >= 0)
+    memory.write16(0x120, static_cast<std::uint16_t>(memory.read16(0x120) + skip * 2));
   const Disassembler dis{memory};
 
   Z80 z80(memory);
@@ -64,20 +76,23 @@ int Main() {
     std::print(to, "Output: {}\n", output.output);
   };
 
-  uint64_t x = 0;
+  uint64_t instructions_executed = 0;
 
-  for (;;) {
-    if (++x < 100000)
-      std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x}\n", z80.pc(),
-          z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
-          z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL), z80.registers().ix(),
-          z80.registers().iy(), z80.registers().sp());
-    else
-      break;
+  while (z80.pc() != 0) {
+    if (dump_instructions) {
+      if (++instructions_executed < dump_instructions)
+        std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:02x}{:02x}{:02x}{:02x}\n",
+            z80.pc(), z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
+            z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL),
+            z80.registers().ix(), z80.registers().iy(), z80.registers().sp(), memory.read(0x1d42), memory.read(0x1d43),
+            memory.read(0x1d44), memory.read(0x1d45));
+      else
+        break;
+    }
     try {
       z80.execute_one();
     }
-    catch (const std::runtime_error &e) {
+    catch (const std::runtime_error &) {
       dump_state(std::cerr);
       throw;
     }
@@ -98,64 +113,27 @@ int Main() {
       // Fake out a RET.
       z80.registers().pc(z80.pop16());
     }
-    if (z80.pc() == 0) {
-      dump_state(std::cout);
-      break;
-    }
-    if (z80.pc() > FileSize + 0x100) {
-      dump_state(std::cerr);
-      throw std::runtime_error("PC out of bounds");
-    }
-    // constexpr std::uint16_t iut = 0x1d42;
-    // constexpr std::uint16_t msbt = 0x0103;
-    // auto dump = [&](const std::uint16_t addr, const std::size_t len) {
-    //   for (auto x = 0uz; x < len; ++x)
-    //     std::print(std::cerr, "{:02x} ", memory.read(static_cast<std::uint16_t>(addr + x)));
-    // };
-    // if (z80.pc() == 0x1b93) {
-    //   const auto test_addr = z80.registers().get(RegisterFile::R16::HL);
-    //   std::print(std::cerr, "20_0 = ");
-    //   dump(test_addr, 20);
-    //   std::print(std::cerr, "\n20_1 = ");
-    //   dump(test_addr + 20, 20);
-    //   std::print(std::cerr, "\n20_2 = ");
-    //   dump(test_addr + 40, 20);
-    //   std::print(std::cerr, "\n");
-    // }
-    // if (z80.pc() == 0x1ba1) {
-    //   std::print(std::cerr, "iut = ");
-    //   dump(iut, 4);
-    //   std::print(std::cerr, "\nmsbt = ");
-    //   dump(msbt, 16);
-    //   std::print(std::cerr, "\n");
-    //
-    //   static int moose = 0;
-    //   if (++moose == 100)
-    //     throw std::runtime_error("moose");
-    // }
-    // if (z80.pc() >= 0x1cad && z80.pc() <= 0x1cda) {
-    // if (z80.pc() >= 0x1b3b && z80.pc() <= 0x1b44) {
-    // if (z80.pc() >= 0x1c49 && z80.pc() <= 0x1c88) {
-    //   z80.registers().dump(std::cerr, "  ");
-    //   const auto disassembled = dis.disassemble(z80.pc());
-    //   std::print(std::cerr, "{}\n", disassembled.to_string());
-    //   // static int moose = 0;
-    //   // if (++moose == 5000) FAIL("moose");
-    //   if (z80.pc() == 0x1c88)
-    //     FAIL("baddger");
-    // }
   }
-  // TODO look for error/pass
-  return 1;
+  std::print(std::cout, "\n---\n");
+  if (!output.output.contains("Tests complete")) {
+    std::print(std::cerr, "Output missing 'Test complete'.\n");
+    return 1;
+  }
+  if (output.output.contains("ERROR")) {
+    std::print(std::cerr, "Found errors.\n");
+    return 1;
+  }
+  std::print(std::cout, "All tests passed!\n");
+  return 0;
 }
 
 } // namespace
 
 } // namespace specbolt
 
-int main(int, const char **) {
+int main(const int argc, const char *argv[]) {
   try {
-    return specbolt::Main();
+    return specbolt::Main(argc, argv);
   }
   catch (const std::runtime_error &e) {
     std::print(std::cerr, "Caught exception: {}\n", e.what());

@@ -46,12 +46,14 @@ static_assert(XBorder + ScreenWidth * ScaleFactor + XBorder == Video::Width);
 
 Video::Video(const Memory &memory) : memory_(memory) {}
 
-void Video::poll(const std::size_t num_cycles) {
+bool Video::poll(const std::size_t num_cycles) {
+  bool irq = false;
   total_cycles_ += num_cycles;
   while (total_cycles_ > next_line_cycles_) {
     render_line(current_line_);
     current_line_ = (current_line_ + 1) % (Height + VSyncLines);
     if (current_line_ == 0) {
+      irq = true;
       if (++flash_counter_ == FramesPerFlash) {
         flash_counter_ = 0;
         flash_on_ = !flash_on_;
@@ -59,7 +61,7 @@ void Video::poll(const std::size_t num_cycles) {
     }
     next_line_cycles_ += CyclesPerScanLine;
   }
-  // TODO irqs
+  return irq;
 }
 
 void Video::render_line(std::size_t line) {
@@ -86,10 +88,10 @@ void Video::render_line(std::size_t line) {
 
   const auto display_span = line_span.subspan(XBorder, ScreenWidth * ScaleFactor);
   const auto screen_line = line / ScaleFactor;
-  const auto y76 = screen_line >> 8;
-  const auto y543 = screen_line >> 3 & 0x07;
+  const auto y76 = (screen_line >> 6) & 0x03;
+  const auto y543 = (screen_line >> 3) & 0x07;
   const auto y210 = screen_line & 0x07;
-  const auto screen_address = PixelDataAddress + (y76 << 11) + (y543 << 5) + y210;
+  const auto screen_address = PixelDataAddress + (y76 << 11) + (y543 << 5) + (y210 << 8);
   const auto char_row = screen_line / 8;
   for (std::size_t x = 0; x < ColumnCount; ++x) {
     const auto pixel_data = memory_.read(static_cast<std::uint16_t>(screen_address + x));
@@ -98,7 +100,7 @@ void Video::render_line(std::size_t line) {
     const auto paper_color = palette[attributes >> 3 & 0x07];
     const auto invert = attributes & 0x80 && flash_on_;
     for (std::size_t bit = 0; bit < 8; ++bit) {
-      const auto colour = ((pixel_data & (1 << bit)) ^ invert) ? pen_color : paper_color;
+      const auto colour = ((pixel_data & (1 << (7 - bit))) ^ invert) ? pen_color : paper_color;
       std::ranges::fill(display_span.subspan((x * 8u + bit) * ScaleFactor, ScaleFactor), colour);
     }
   }

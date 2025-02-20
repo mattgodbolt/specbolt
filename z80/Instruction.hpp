@@ -81,12 +81,15 @@ struct Instruction {
     Djnz,
     Call,
     Return,
+    Cpl,
+    Daa,
     Ccf,
     Scf,
     Invalid,
     Irq,
     IrqMode,
-    Out, // what to do about this?
+    In,
+    Out,
     Exx,
     Exchange,
     EdOp,
@@ -96,7 +99,10 @@ struct Instruction {
     Pop,
     Inc8,
     Dec8,
-    Neg
+    Neg,
+    Rrd,
+    Rld,
+    Halt,
   };
   std::string_view opcode; // todo rename mnemonic
   std::uint8_t length;

@@ -37,6 +37,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
   const bool carry = std::holds_alternative<WithCarry>(args) ? input.flags.carry() : false;
   switch (operation) {
     case Operation::None: return {0, input.flags, 0};
+    case Operation::Halt: cpu.halt(); return {0, input.flags, 0};
 
     case Operation::Add8: {
       const auto [result, flags] =
@@ -109,7 +110,13 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       cpu.iff2(input.rhs);
       return {0, input.flags, 0};
     case Operation::IrqMode: cpu.irq_mode(static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 4};
-    case Operation::Out: cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 7};
+    case Operation::Out:
+      cpu.out(static_cast<std::uint16_t>(input.lhs | cpu.registers().get(RegisterFile::R8::B) << 8),
+          static_cast<std::uint8_t>(input.rhs));
+      return {0, input.flags, 7};
+    case Operation::In:
+      return {cpu.in(static_cast<std::uint16_t>(input.rhs | cpu.registers().get(RegisterFile::R8::B) << 8)),
+          input.flags, 7};
     case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
       switch (lhs) {
@@ -159,17 +166,16 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         }
         case EdOpArgs::Op::Compare: {
           const auto byte = cpu.memory().read(hl);
-          const auto compare_flags = Alu::cmp8(cpu.registers().get(RegisterFile::R8::A), byte).flags;
-          // TODO: flag 3 and flag 5 are supposedly set from "HL - A"'s left over bits?!
-#if 0 // TODO test this,
-      // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
-          const auto flag_bits = static_cast<std::uint8_t>(byte - cpu.registers().get(RegisterFile::R8::A));
+          const auto subtract_result = Alu::sub8(cpu.registers().get(RegisterFile::R8::A), byte, false);
+          // bits 3 and 5 come from the result, where bit 3 goes to flag 5, and bit 1 to flag 3....and where if HF is
+          // set we use res--....
+          const auto flag_bits =
+              subtract_result.flags.half_carry() ? subtract_result.result - 1 : subtract_result.result;
           flags = flags & ~(Flags::Flag3() | Flags::Flag5()) | //
                   (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | //
                   (flag_bits & 0x02 ? Flags::Flag5() : Flags());
-#endif
-          constexpr auto flags_to_copy = Flags::HalfCarry() | Flags::Zero() | Flags::Sign();
-          flags = flags & ~flags_to_copy | (compare_flags & flags_to_copy);
+          constexpr auto flags_to_copy = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
+          flags = flags & ~flags_to_copy | subtract_result.flags & flags_to_copy;
           if (flags.zero())
             should_continue = false;
           break;
@@ -215,8 +221,28 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     }
 
     case Operation::Pop: return {cpu.pop16(), input.flags, 6};
-    case Operation::Ccf: return {0, input.flags ^ Flags::Carry(), 0};
-    case Operation::Scf: return {0, input.flags | Flags::Carry(), 0};
+    case Operation::Ccf: {
+      const auto preserved = input.flags & (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry());
+      const auto flags53 = Flags(cpu.registers().get(RegisterFile::R8::A)) & (Flags::Flag3() | Flags::Flag5());
+      const auto other_flag = input.flags.carry() ? Flags::HalfCarry() : Flags();
+      return {0, (preserved | flags53 | other_flag) ^ Flags::Carry(), 0};
+    }
+    case Operation::Scf: {
+      const auto preserved = input.flags & (Flags::Sign() | Flags::Zero() | Flags::Parity());
+      const auto flags53 = Flags(cpu.registers().get(RegisterFile::R8::A)) & (Flags::Flag3() | Flags::Flag5());
+      return {0, preserved | flags53 | Flags::Carry(), 0};
+    }
+    case Operation::Daa: {
+      const auto [result, flags] = Alu::daa(static_cast<std::uint8_t>(input.lhs), input.flags);
+      return {result, flags, 0};
+    }
+    case Operation::Cpl: {
+      const auto result = static_cast<uint8_t>(input.lhs ^ 0xff);
+      const auto preserved_flags = input.flags & (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry());
+      constexpr auto set_flags = Flags::HalfCarry() | Flags::Subtract();
+      const auto flags_from_result = Flags(result) & (Flags::Flag3() | Flags::Flag5());
+      return {result, preserved_flags | set_flags | flags_from_result, 0};
+    }
     case Operation::Neg: {
       const auto [result, flags] = Alu::sub8(0, static_cast<std::uint8_t>(input.lhs), false);
       return {result, flags, 0};
@@ -227,6 +253,22 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {0, input.flags, 7};
     }
 
+    case Operation::Rrd: {
+      const auto prev_a = cpu.registers().get(RegisterFile::R8::A);
+      const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | (input.lhs & 0xf));
+      cpu.registers().set(RegisterFile::R8::A, new_a);
+      return {static_cast<std::uint16_t>(input.lhs >> 4 | ((prev_a & 0xf) << 4)),
+          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 0};
+    }
+
+    case Operation::Rld: {
+      const auto prev_a = cpu.registers().get(RegisterFile::R8::A);
+      const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | ((input.lhs >> 4) & 0xf));
+      cpu.registers().set(RegisterFile::R8::A, new_a);
+      return {static_cast<std::uint16_t>(input.lhs << 4 | (prev_a & 0xf)),
+          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 0};
+    }
+
     case Operation::Shift: {
       if (const auto [direction, type, fast] = std::get<ShiftArgs>(args); fast) {
         if (type == ShiftArgs::Type::RotateCircular) {
@@ -235,8 +277,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
           return {result, flags, 0};
         }
         if (type == ShiftArgs::Type::Rotate) {
-          const auto [result, flags] =
-              Alu::fast_rotate_circular8(static_cast<std::uint8_t>(input.lhs), direction, input.flags);
+          const auto [result, flags] = Alu::fast_rotate8(static_cast<std::uint8_t>(input.lhs), direction, input.flags);
           return {result, flags, 0};
         }
       }

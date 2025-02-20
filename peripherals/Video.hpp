@@ -16,7 +16,7 @@ public:
   explicit Video(const Memory &memory);
 
   void set_border(std::uint8_t border) { border_ = border; }
-  void poll(std::size_t num_cycles);
+  bool poll(std::size_t num_cycles);
 
   [[nodiscard]] std::span<const std::byte> screen() const;
 

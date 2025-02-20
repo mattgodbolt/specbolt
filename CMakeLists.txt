@@ -26,4 +26,5 @@ endif()
 
 add_subdirectory(peripherals)
 add_subdirectory(sdl)
+add_subdirectory(spectrum)
 add_subdirectory(z80)

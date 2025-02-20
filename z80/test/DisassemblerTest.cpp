@@ -117,5 +117,21 @@ TEST_CASE("Disassembler tests") {
     CHECK(instr.instruction.length == 4);
     CHECK(instr.to_string() == "1287  fd cb 01 ce  set 1, (iy+0x01)");
   }
+  SECTION("ld h, (ix+nn)") {
+    memory.raw_write(0x0000, 0xdd); // dd prefix
+    memory.raw_write(0x0001, 0x66); // ld h, (ix+nn)
+    memory.raw_write(0x0002, 0x01); // offset +0x01
+    const auto instr = dis.disassemble(0);
+    CHECK(instr.instruction.length == 3);
+    CHECK(instr.to_string() == "0000  dd 66 01     ld h, (ix+0x01)");
+  }
+  SECTION("ld iyh, nn") {
+    memory.raw_write(0x0000, 0xfd); // fd prefix
+    memory.raw_write(0x0001, 0x26); // ld iyh, nn
+    memory.raw_write(0x0002, 0xde); // 0xde
+    const auto instr = dis.disassemble(0);
+    CHECK(instr.instruction.length == 3);
+    CHECK(instr.to_string() == "0000  fd 26 de     ld iyh, 0xde");
+  }
   // TODO the other prefix bytes... cb dd ed fd, bit prefixes
 }

@@ -24,7 +24,7 @@ public:
   [[nodiscard]] std::uint16_t iy() const;
   void iy(std::uint16_t iy);
   [[nodiscard]] std::uint8_t ixl() const;
-  void ixl(std::uint8_t ix);
+  void ixl(std::uint8_t ixl);
   [[nodiscard]] std::uint8_t iyl() const;
   void iyl(std::uint8_t iyl);
   [[nodiscard]] std::uint8_t ixh() const;

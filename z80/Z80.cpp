@@ -9,6 +9,10 @@
 namespace specbolt {
 
 std::size_t Z80::execute_one() {
+  if (halted_) {
+    ++now_tstates_;
+    return 1;
+  }
   ++num_instructions_;
   reg_history_[current_reg_history_index_] = regs_;
   current_reg_history_index_ = (current_reg_history_index_ + 1) % RegHistory;
@@ -31,13 +35,11 @@ std::size_t Z80::execute_one() {
 }
 
 std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read(address); }
-std::uint16_t Z80::read16(const std::uint16_t address) const {
-  return static_cast<uint16_t>(memory_.read(address + 1) << 8) | memory_.read(address);
-}
+std::uint16_t Z80::read16(const std::uint16_t address) const { return memory_.read16(address); }
 
 void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
 
-std::uint16_t Z80::read(const Instruction::Operand operand) {
+std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t index_offset) {
   switch (operand) {
     case Instruction::Operand::A: return regs_.get(RegisterFile::R8::A);
     case Instruction::Operand::B: return regs_.get(RegisterFile::R8::B);
@@ -93,13 +95,12 @@ std::uint16_t Z80::read(const Instruction::Operand operand) {
     case Instruction::Operand::PcOffset:
       return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
     case Instruction::Operand::IX_Offset_Indirect8: {
-      const auto address = static_cast<uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
-      // TODO this isn't right? I think? what about the indirect offset? TODO!!! super important
+      const auto address = static_cast<uint16_t>(regs_.ix() + index_offset);
       regs_.wz(address);
       return read8(address);
     }
     case Instruction::Operand::IY_Offset_Indirect8: {
-      const auto address = static_cast<uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
+      const auto address = static_cast<uint16_t>(regs_.iy() + index_offset);
       regs_.wz(address);
       return read8(address);
     }
@@ -109,14 +110,15 @@ std::uint16_t Z80::read(const Instruction::Operand operand) {
 }
 
 void Z80::execute(const Instruction &instr) {
-  const auto [value, flags, extra_t_states] =
-      instr.apply({read(instr.lhs), read(instr.rhs), Flags(regs_.get(RegisterFile::R8::F))}, *this);
+  const auto [value, flags, extra_t_states] = instr.apply(
+      {read(instr.lhs, instr.index_offset), read(instr.rhs, instr.index_offset), Flags(regs_.get(RegisterFile::R8::F))},
+      *this);
   regs_.set(RegisterFile::R8::F, flags.to_u8());
   pass_time(extra_t_states);
-  write(instr.lhs, value);
+  write(instr.lhs, instr.index_offset, value);
 }
 
-void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
+void Z80::write(const Instruction::Operand operand, const std::int8_t index_offset, const std::uint16_t value) {
   switch (operand) {
     case Instruction::Operand::A: regs_.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value)); break;
     case Instruction::Operand::B: regs_.set(RegisterFile::R8::B, static_cast<std::uint8_t>(value)); break;
@@ -163,12 +165,10 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
       break;
     case Instruction::Operand::WordImmediateIndirect16: write16(read16(regs_.pc() - 2), value); break;
     case Instruction::Operand::IX_Offset_Indirect8:
-      write8(static_cast<std::uint16_t>(regs_.ix() + static_cast<std::int8_t>(read8(regs_.pc() - 1))),
-          static_cast<std::uint8_t>(value));
+      write8(static_cast<std::uint16_t>(regs_.ix() + index_offset), static_cast<std::uint8_t>(value));
       break;
     case Instruction::Operand::IY_Offset_Indirect8:
-      write8(static_cast<std::uint16_t>(regs_.iy() + static_cast<std::int8_t>(read8(regs_.pc() - 1))),
-          static_cast<std::uint8_t>(value));
+      write8(static_cast<std::uint16_t>(regs_.iy() + index_offset), static_cast<std::uint8_t>(value));
       break;
     default:
       // TODO NOT THIS
@@ -177,19 +177,22 @@ void Z80::write(const Instruction::Operand operand, const std::uint16_t value) {
 }
 
 void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
-void Z80::write16(const std::uint16_t address, const std::uint16_t value) {
-  memory_.write(address, static_cast<uint8_t>(value));
-  memory_.write(address + 1, static_cast<uint8_t>(value >> 8));
-}
+void Z80::write16(const std::uint16_t address, const std::uint16_t value) { memory_.write16(address, value); }
 
+void Z80::halt() { halted_ = true; }
 void Z80::irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
 
 void Z80::out(const std::uint16_t port, const std::uint8_t value) {
-  // TODO starts to smell a bit here... also , even / odd ports?
-  if (port == 0xfe)
-    port_fe_ = value;
-  else
-    std::print(std::cout, "zomg OUT({:04x}, {:02x})\n", port, value);
+  for (const auto &handler: out_handlers_)
+    handler(port, value);
+}
+
+std::uint8_t Z80::in(const std::uint16_t port) {
+  for (const auto &handler: in_handlers_) {
+    if (const auto result = handler(port); result.has_value())
+      return *result;
+  }
+  return 0xff;
 }
 
 void Z80::dump() const { regs_.dump(std::cout, ""); }
@@ -219,6 +222,10 @@ std::uint8_t Z80::pop8() {
   return read8(old_sp);
 }
 
+void Z80::add_out_handler(OutHandler handler) { out_handlers_.emplace_back(std::move(handler)); }
+
+void Z80::add_in_handler(InHandler handler) { in_handlers_.emplace_back(std::move(handler)); }
+
 std::vector<RegisterFile> Z80::history() const {
   std::vector<RegisterFile> result;
   const auto num_entries = std::min(RegHistory, num_instructions_executed());
@@ -229,6 +236,29 @@ std::vector<RegisterFile> Z80::history() const {
   }
   result.push_back(regs_);
   return result;
+}
+
+void Z80::interrupt() {
+  if (!iff1_)
+    return;
+  // Some dark business with parity flag here ignored.
+  if (halted_) {
+    halted_ = false;
+  }
+  iff1_ = iff2_ = false;
+  pass_time(7);
+  push16(registers().pc());
+  switch (irq_mode_) {
+    case 0:
+    case 1: registers().pc(0x38); break;
+    case 2: {
+      // Assume the bus is at 0xff.
+      const auto addr = static_cast<std::uint16_t>(0xff | (registers().i() << 8));
+      registers().pc(read16(addr));
+      break;
+    }
+    default: throw std::runtime_error("Inconceivable");
+  }
 }
 
 } // namespace specbolt
