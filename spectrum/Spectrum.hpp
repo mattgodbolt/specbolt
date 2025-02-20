@@ -26,13 +26,15 @@ public:
   [[nodiscard]] auto &keyboard() { return keyboard_; }
   [[nodiscard]] auto &audio() { return audio_; }
 
+  void trace_next(const std::size_t instructions) { trace_next_instructions_ = instructions; }
+
 private:
   Memory memory_;
   Video video_;
   Audio audio_;
   Keyboard keyboard_;
   Z80 z80_;
-  size_t trace_next_instructions_{};
+  std::size_t trace_next_instructions_{};
 };
 
 } // namespace specbolt

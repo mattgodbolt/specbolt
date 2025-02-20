@@ -35,9 +35,11 @@ int Main(const int argc, const char *argv[]) {
   std::filesystem::path rom{"48.rom"};
   std::filesystem::path snapshot;
   bool need_help{};
+  std::size_t trace_instructions{};
   const auto cli = lyra::cli() //
                    | lyra::help(need_help) //
                    | lyra::opt(rom, "ROM")["--rom"]("Where to find the ROM") //
+                   | lyra::opt(trace_instructions, "NUM")["--trace"]("Trace the first NUM instructions") //
                    | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
   if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
     std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
@@ -98,6 +100,9 @@ int Main(const int argc, const char *argv[]) {
   if (!snapshot.empty()) {
     specbolt::Snapshot::load(snapshot, spectrum.z80());
   }
+
+  if (trace_instructions)
+    spectrum.trace_next(trace_instructions);
 
   fill_func = [&](const std::span<std::int16_t> buffer) {
     spectrum.audio().fill(spectrum.z80().cycle_count(), buffer);
