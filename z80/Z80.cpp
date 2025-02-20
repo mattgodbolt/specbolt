@@ -262,7 +262,7 @@ void Z80::interrupt() {
 }
 
 void Z80::retn() {
-  iff2_ = iff1_;
+  iff1_ = iff2_;
   registers().pc(pop16());
 }
 
