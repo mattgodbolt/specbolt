@@ -1,0 +1,45 @@
+#include "Audio.hpp"
+
+#include <algorithm>
+
+namespace specbolt {
+
+Audio::Audio(const int sample_rate) : sample_rate_(sample_rate) { audio_.resize(65536 * 4); }
+
+void Audio::update(const std::size_t total_cycles) {
+  const auto cycles_elapsed = total_cycles - cycle_count_;
+  const auto total_fill = cycles_elapsed * static_cast<std::size_t>(sample_rate_) / 3'500'000ul;
+  const auto to_fill = std::min(total_fill, audio_.size());
+  overruns_ += total_fill - to_fill;
+  for (std::size_t i = 0; i < to_fill; ++i) {
+    audio_[write_pos_ % audio_.size()] = current_output_;
+    ++write_pos_;
+  }
+  cycle_count_ = total_cycles;
+}
+
+void Audio::set_output(const std::size_t total_cycles, const bool on) {
+  const std::int16_t output = on ? 5000 : 0;
+  if (output == current_output_)
+    return;
+  update(total_cycles);
+  current_output_ = output;
+}
+
+void Audio::fill(const size_t total_cycles, const std::span<std::int16_t> span) {
+  if (const auto behind = write_pos_ - read_pos_; behind > audio_.size())
+    read_pos_ = write_pos_ - audio_.size();
+  const auto available = std::min(write_pos_ - read_pos_, audio_.size());
+  const auto to_copy = std::min(available, span.size());
+  for (std::size_t i = 0; i < to_copy; ++i) {
+    span[i] = audio_[read_pos_ % audio_.size()];
+    read_pos_++;
+  }
+  if (to_copy < span.size()) {
+    std::ranges::fill(span.subspan(to_copy), current_output_);
+    underruns_ += span.size() - to_copy;
+  }
+  cycle_count_ = total_cycles;
+}
+
+} // namespace specbolt

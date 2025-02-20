@@ -4,7 +4,8 @@
 
 namespace specbolt {
 
-Spectrum::Spectrum(const std::filesystem::path &rom) : video_(memory_), z80_(memory_) {
+Spectrum::Spectrum(const std::filesystem::path &rom, int audio_sample_rate) :
+    video_(memory_), audio_(audio_sample_rate), z80_(memory_) {
   const auto file_size = std::filesystem::file_size(rom);
   constexpr std::uint16_t SpectrumRomSize = 0x4000;
   if (file_size != SpectrumRomSize)
@@ -12,8 +13,10 @@ Spectrum::Spectrum(const std::filesystem::path &rom) : video_(memory_), z80_(mem
   memory_.load(rom, 0, SpectrumRomSize);
   memory_.set_rom_size(SpectrumRomSize);
   z80_.add_out_handler([this](const std::uint16_t port, const std::uint8_t value) {
-    if ((port & 0xff) == 0xfe)
+    if ((port & 0xff) == 0xfe) {
       video_.set_border(value & 0x07);
+      audio_.set_output(z80_.cycle_count(), value & 0x18);
+    }
     else
       std::print(std::cout, "Unexpected OUT({:04x}, {:02x})\n", port, value);
   });

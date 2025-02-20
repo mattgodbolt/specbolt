@@ -1,5 +1,6 @@
 #pragma once
 
+#include "peripherals/Audio.hpp"
 #include "peripherals/Keyboard.hpp"
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
@@ -11,7 +12,7 @@ namespace specbolt {
 
 class Spectrum {
 public:
-  explicit Spectrum(const std::filesystem::path &rom);
+  explicit Spectrum(const std::filesystem::path &rom, int audio_sample_rate);
 
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
@@ -23,10 +24,12 @@ public:
   [[nodiscard]] auto &video() { return video_; }
   [[nodiscard]] auto &memory() { return memory_; }
   [[nodiscard]] auto &keyboard() { return keyboard_; }
+  [[nodiscard]] auto &audio() { return audio_; }
 
 private:
   Memory memory_;
   Video video_;
+  Audio audio_;
   Keyboard keyboard_;
   Z80 z80_;
 };
