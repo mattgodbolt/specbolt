@@ -201,6 +201,7 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
     case 0x39: return {"add {}, {}", 2, Op::Add16, RegisterSet::direct, Operand::SP};
     case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
     case 0xe5: return {"push {1}", 2, Op::Push, Operand::None, RegisterSet::direct};
+    case 0xe9: return {"jp ({1})", 3, Op::Jump, Operand::None, RegisterSet::direct};
     case 0xcb: {
       // Next byte is the offset, then finally the opcode.
       auto result = decode_bit<RegisterSet>(opcodes.subspan(2));
