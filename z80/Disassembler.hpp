@@ -12,7 +12,7 @@ class Memory;
 
 class Disassembler {
 public:
-  explicit Disassembler(Memory &memory) : memory_(memory) {}
+  explicit Disassembler(const Memory &memory) : memory_(memory) {}
 
   struct Disassembled {
     Instruction instruction;
@@ -26,7 +26,7 @@ public:
   [[nodiscard]] Disassembled disassemble(std::uint16_t address) const;
 
 private:
-  Memory &memory_;
+  const Memory &memory_;
 };
 
 } // namespace specbolt

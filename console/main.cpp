@@ -1,5 +1,6 @@
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
+#include "spectrum/Spectrum.hpp"
 #include "z80/Disassembler.hpp"
 #include "z80/Z80.hpp"
 
@@ -34,10 +35,8 @@ int get_number_arg(const std::vector<std::string> &args) {
 }
 
 struct App {
-  specbolt::Memory memory;
-  specbolt::Video video{memory};
-  specbolt::Z80 z80{memory};
-  const specbolt::Disassembler dis{memory};
+  specbolt::Spectrum spectrum{"48.rom"};
+  const specbolt::Disassembler dis{spectrum.memory()};
   std::unordered_set<std::uint16_t> breakpoints = {};
   std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
   std::atomic<bool> interrupted{false};
@@ -72,9 +71,10 @@ struct App {
     };
     commands["dump"] = [this](const std::vector<std::string> &args) {
       if (args.empty())
-        z80.dump();
+        spectrum.z80().dump();
       else {
         const auto address = parse_num(args[0]);
+        const auto &memory = spectrum.memory();
         std::print(std::cout, "0x{:04x}: 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x} 0x{:02x}\n",
             address, memory.read(static_cast<std::uint16_t>(address + 0)),
             memory.read(static_cast<std::uint16_t>(address + 1)), memory.read(static_cast<std::uint16_t>(address + 2)),
@@ -99,7 +99,7 @@ struct App {
       return 0;
     };
     commands["reset"] = [this](const std::vector<std::string> &) {
-      z80.registers().pc(0);
+      spectrum.z80().registers().pc(0);
       return 0;
     };
 
@@ -128,8 +128,7 @@ struct App {
 
   bool _step() {
     try {
-      const auto cycles_elapsed = z80.execute_one();
-      video.poll(cycles_elapsed);
+      spectrum.run_cycles(1);
     }
     catch (const std::exception &e) {
       std::print(std::cout, "Exception: {}\n", e.what());
@@ -140,8 +139,8 @@ struct App {
       std::print(std::cout, "Interrupted\n");
       return true;
     }
-    if (breakpoints.contains(z80.pc())) {
-      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", z80.pc());
+    if (breakpoints.contains(spectrum.z80().pc())) {
+      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", spectrum.z80().pc());
       return true;
     }
     return false;
@@ -149,12 +148,11 @@ struct App {
 
   bool _next() {
     try {
-      const auto prev_pc = z80.pc();
+      const auto prev_pc = spectrum.z80().pc();
       do {
-        const auto cycles_elapsed = z80.execute_one();
-        video.poll(cycles_elapsed);
+        spectrum.run_cycles(1);
       }
-      while (z80.pc() == prev_pc);
+      while (spectrum.z80().pc() == prev_pc);
     }
     catch (const std::exception &e) {
       std::print(std::cout, "Exception: {}\n", e.what());
@@ -166,8 +164,8 @@ struct App {
       std::print(std::cout, "Interrupted\n");
       return true;
     }
-    if (breakpoints.contains(z80.pc())) {
-      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", z80.pc());
+    if (breakpoints.contains(spectrum.z80().pc())) {
+      std::print(std::cout, "Hit breakpoint at 0x{:04x}\n", spectrum.z80().pc());
       return true;
     }
     return false;
@@ -200,7 +198,7 @@ struct App {
   }
 
   void history() const {
-    for (const auto &trace: z80.history()) {
+    for (const auto &trace: spectrum.z80().history()) {
       const auto disassembled = dis.disassemble(trace.pc());
       trace.dump(std::cout, "  ");
       std::print(std::cout, "{}\n", disassembled.to_string());
@@ -208,8 +206,8 @@ struct App {
   }
 
   void report() const {
-    const auto disassembled = dis.disassemble(z80.pc());
-    std::print(std::cout, "{} ({} executed)\n", disassembled.to_string(), z80.num_instructions_executed());
+    const auto disassembled = dis.disassemble(spectrum.z80().pc());
+    std::print(std::cout, "{} ({} executed)\n", disassembled.to_string(), spectrum.z80().num_instructions_executed());
   }
 
   std::vector<std::string> exec_on_startup;
@@ -220,7 +218,6 @@ struct App {
       std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
       return 1;
     }
-    memory.load("48.rom", 0, 16 * 1024);
 
     for (const auto &cmd: exec_on_startup)
       execute(cmd);

@@ -18,8 +18,10 @@ public:
   size_t run_cycles(size_t cycles);
   size_t run_frame() { return run_cycles(cycles_per_frame); }
 
+  [[nodiscard]] auto &z80() { return z80_; }
   [[nodiscard]] const auto &z80() const { return z80_; }
-  [[nodiscard]] const auto &video() const { return video_; }
+  [[nodiscard]] auto &video() { return video_; }
+  [[nodiscard]] auto &memory() { return memory_; }
   [[nodiscard]] auto &keyboard() { return keyboard_; }
 
 private:
