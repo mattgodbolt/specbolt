@@ -94,6 +94,8 @@ constexpr std::optional<Instruction::Operand> load_source_for(const std::uint8_t
 }
 
 constexpr std::optional<Instruction::Operand> load_dest_for(const std::uint8_t opcode) {
+  if (opcode == 0x76)
+    return std::nullopt; // HALT
   if (const auto quarter = opcode >> 6; quarter == 0) {
     switch (opcode) {
       case 0x01: return Operand::BC;
@@ -380,7 +382,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0x2b: return {"dec {}", 1, Op::Add16NoFlags, Operand::HL, Operand::Const_ffff};
     case 0x3b: return {"dec {}", 1, Op::Add16NoFlags, Operand::SP, Operand::Const_ffff};
 
-    case 0x76: return {"halt", 1, Op::Invalid};
+    case 0x76: return {"halt", 1, Op::Halt};
 
     case 0x09: return {"add {}, {}", 1, Op::Add16, Operand::HL, Operand::BC};
     case 0x19: return {"add {}, {}", 1, Op::Add16, Operand::HL, Operand::DE};
@@ -514,6 +516,10 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xd8: return {"ret c", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::Carry};
     case 0xc0: return {"ret nz", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::NonZero};
     case 0xd0: return {"ret nc", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::NoCarry};
+    case 0xe0: return {"ret po", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::NoParity};
+    case 0xe8: return {"ret pe", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::Parity};
+    case 0xf0: return {"ret p", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::Positive};
+    case 0xf8: return {"ret m", 1, Op::Return, Operand::None, Operand::None, Instruction::Condition::Negative};
 
     case 0x27: return {"daa", 1, Op::Daa, Operand::A};
     case 0x2f: return {"cpl", 1, Op::Cpl, Operand::A};

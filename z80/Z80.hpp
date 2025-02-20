@@ -30,6 +30,8 @@ public:
   [[nodiscard]] const auto &memory() const { return memory_; }
   auto &memory() { return memory_; }
 
+  void halt();
+
   void irq_mode(std::uint8_t mode);
 
   void push16(std::uint16_t value);
@@ -64,6 +66,7 @@ private:
   Memory &memory_;
   std::size_t num_instructions_{};
   std::size_t now_tstates_{};
+  bool halted_{};
   bool iff1_{};
   bool iff2_{};
   std::uint8_t irq_mode_{};

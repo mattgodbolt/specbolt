@@ -37,6 +37,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
   const bool carry = std::holds_alternative<WithCarry>(args) ? input.flags.carry() : false;
   switch (operation) {
     case Operation::None: return {0, input.flags, 0};
+    case Operation::Halt: cpu.halt(); return {0, input.flags, 0};
 
     case Operation::Add8: {
       const auto [result, flags] =

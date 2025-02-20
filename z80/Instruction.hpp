@@ -102,6 +102,7 @@ struct Instruction {
     Neg,
     Rrd,
     Rld,
+    Halt,
   };
   std::string_view opcode; // todo rename mnemonic
   std::uint8_t length;
