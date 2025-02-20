@@ -48,6 +48,7 @@ public:
   void add_in_handler(InHandler handler);
 
   void interrupt();
+  void retn();
 
   void dump() const;
 

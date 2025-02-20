@@ -43,13 +43,19 @@ struct Vt52Emu {
 int Main(int argc, const char *argv[]) {
   uint64_t dump_instructions = 0;
   int skip = 0;
+  bool need_help{};
   const auto cli = lyra::cli() //
+                   | lyra::help(need_help) //
                    | lyra::opt(dump_instructions, "NUM")["-d"]["--dump-instructions"](
                          "Dump the first NUM instructions, then exit.") //
                    | lyra::opt(skip, "NUM")["-s"]["--skip"]("Skip the first NUM tests.");
   if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
     std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
     return 1;
+  }
+  if (need_help) {
+    std::cout << cli << '\n';
+    return 0;
   }
 
   Memory memory;

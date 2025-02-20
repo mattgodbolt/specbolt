@@ -5,8 +5,10 @@
 #include <memory>
 #include <stdexcept>
 
+#include <lyra/lyra.hpp>
+
 #include "Disassembler.hpp"
-#include "peripherals/Memory.hpp"
+#include "Snapshot.hpp"
 #include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/Z80.hpp"
@@ -28,7 +30,23 @@ struct SdlInit {
   ~SdlInit() { SDL_Quit(); }
 };
 
-void Main() {
+int Main(const int argc, const char *argv[]) {
+  std::filesystem::path rom{"48.rom"};
+  std::filesystem::path snapshot;
+  bool need_help{};
+  const auto cli = lyra::cli() //
+                   | lyra::help(need_help) //
+                   | lyra::opt(rom, "ROM")["--rom"]("Where to find the ROM") //
+                   | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
+  if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
+    std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
+    return 1;
+  }
+  if (need_help) {
+    std::cout << cli << '\n';
+    return 0;
+  }
+
   SdlInit sdl_init;
 
   std::unique_ptr<SDL_Window, decltype(SDL_DestroyWindow) *> window(
@@ -73,8 +91,12 @@ void Main() {
     throw std::runtime_error("Unable to initialise sound: " + std::string(SDL_GetError()));
   }
 
-  specbolt::Spectrum spectrum("48.rom", obtained_audio_spec.freq);
+  specbolt::Spectrum spectrum(rom, obtained_audio_spec.freq);
   const specbolt::Disassembler dis{spectrum.memory()};
+
+  if (!snapshot.empty()) {
+    specbolt::Snapshot::load(snapshot, spectrum.z80());
+  }
 
   fill_func = [&](const std::span<std::int16_t> buffer) {
     spectrum.audio().fill(spectrum.z80().cycle_count(), buffer);
@@ -138,14 +160,14 @@ void Main() {
     }
   }
   SDL_CloseAudioDevice(audio_device_id);
+  return 0;
 }
 
 } // namespace
 
-int main() {
+int main(const int argc, const char *argv[]) {
   try {
-    Main();
-    return 0;
+    return Main(argc, argv);
   }
   catch (const std::exception &e) {
     std::cerr << "Fatal exception: " << e.what() << "\n";

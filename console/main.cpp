@@ -208,11 +208,17 @@ struct App {
 
   std::vector<std::string> exec_on_startup;
   int main(int argc, const char **argv) {
-    const auto cli =
-        lyra::cli() | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup");
+    bool need_help{};
+    const auto cli = lyra::cli() //
+                     | lyra::help(need_help) //
+                     | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
       return 1;
+    }
+    if (need_help) {
+      std::cout << cli << '\n';
+      return 0;
     }
 
     for (const auto &cmd: exec_on_startup)

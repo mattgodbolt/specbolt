@@ -261,4 +261,9 @@ void Z80::interrupt() {
   }
 }
 
+void Z80::retn() {
+  iff2_ = iff1_;
+  registers().pc(pop16());
+}
+
 } // namespace specbolt
