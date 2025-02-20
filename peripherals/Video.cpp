@@ -100,7 +100,8 @@ void Video::render_line(std::size_t line) {
     const auto paper_color = palette[attributes >> 3 & 0x07];
     const auto invert = attributes & 0x80 && flash_on_;
     for (std::size_t bit = 0; bit < 8; ++bit) {
-      const auto colour = ((pixel_data & (1 << (7 - bit))) ^ invert) ? pen_color : paper_color;
+      const bool pixel_on = pixel_data & (1 << (7 - bit));
+      const auto colour = pixel_on == invert ? paper_color : pen_color;
       std::ranges::fill(display_span.subspan((x * 8u + bit) * ScaleFactor, ScaleFactor), colour);
     }
   }
