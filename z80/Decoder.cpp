@@ -140,6 +140,7 @@ constexpr std::uint8_t operand_length(const Instruction::Operand operand) {
     case Operand::WordImmediate: return 2;
     case Operand::IX_Offset_Indirect8:
     case Operand::IY_Offset_Indirect8:
+    case Operand::ByteImmediate_A:
     case Operand::ByteImmediate: return 1;
   }
 }
@@ -288,10 +289,23 @@ Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
     case 0x58:
     case 0x60:
     case 0x68:
+    case 0x70:
     case 0x78: {
       static constexpr std::array destinations{
           Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::None, Operand::A};
-      return {"in {}, ({})", 2, Op::In, destinations[opcode >> 3 & 7], Operand::C};
+      return {"in {}, ({})", 2, Op::In, destinations[opcode >> 3 & 7], Operand::BC};
+    }
+    case 0x41:
+    case 0x49:
+    case 0x51:
+    case 0x59:
+    case 0x61:
+    case 0x69:
+    case 0x71:
+    case 0x79: {
+      static constexpr std::array sources{
+          Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::Const_0, Operand::A};
+      return {"out ({}), {}", 2, Op::Out, Operand::BC, sources[opcode >> 3 & 7]};
     }
     case 0xa0:
     case 0xa1:
@@ -543,8 +557,8 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
 
     case 0xdd: return decode_ddfd<RegisterSetIx>(operands);
     case 0xed: return decode_ed(operands);
-    case 0xd3: return {"out ({}), {}", 2, Op::Out, Operand::ByteImmediate, Operand::A};
-    case 0xdb: return {"in {}, ({})", 2, Op::In, Operand::A, Operand::ByteImmediate};
+    case 0xd3: return {"out ({}), {}", 2, Op::Out, Operand::ByteImmediate_A, Operand::A};
+    case 0xdb: return {"in {}, ({})", 2, Op::In, Operand::A, Operand::ByteImmediate_A};
     case 0xe3: return {"ex {}, {}", 1, Op::Exchange, Operand::SP_Indirect16, Operand::HL};
     case 0xeb: return {"ex {}, {}", 1, Op::Exchange, Operand::DE, Operand::HL};
     case 0xf3: return {"di", 1, Op::Irq, Operand::None, Operand::Const_0};

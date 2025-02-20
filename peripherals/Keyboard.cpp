@@ -4,20 +4,6 @@ namespace specbolt {
 
 namespace {
 
-std::optional<std::size_t> port_to_row(const std::uint16_t port) {
-  switch (port) {
-    case 0xfefe: return 0;
-    case 0xfdfe: return 1;
-    case 0xfbfe: return 2;
-    case 0xf7fe: return 3;
-    case 0xeffe: return 4;
-    case 0xdffe: return 5;
-    case 0xbffe: return 6;
-    case 0x7ffe: return 7;
-    default: return {};
-  }
-}
-
 std::optional<std::pair<std::size_t, std::size_t>> keycode_to_row_column(const std::int32_t key_code) {
   // These are SDL keycodes but we avoid an SDL dep here.
   switch (key_code) {
@@ -81,9 +67,18 @@ std::optional<std::pair<std::size_t, std::size_t>> keycode_to_row_column(const s
 } // namespace
 
 std::optional<std::uint8_t> Keyboard::in(const std::uint16_t address) const {
-  if (const auto maybe_row = port_to_row(address))
-    return static_cast<std::uint8_t>(keys_[*maybe_row].to_ulong() ^ 0x1f);
-  return std::nullopt;
+  // Keyboard responds to any even address.
+  if (address & 1)
+    return std::nullopt;
+
+  std::uint8_t keys = 0xff;
+  const std::uint8_t res = address >> 8;
+  // The low bit in the top address picks the row. In the presence of multiple low bits, the results "and" together.
+  for (size_t row = 0; row < 8; ++row)
+    if ((res & (1 << row)) == 0)
+      keys &= static_cast<std::uint8_t>(keys_[row].to_ulong() ^ 0xff);
+
+  return keys;
 }
 
 void Keyboard::key_down(const std::int32_t key_code) {

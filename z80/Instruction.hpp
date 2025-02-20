@@ -42,6 +42,7 @@ struct Instruction {
     AF_,
     I,
     ByteImmediate,
+    ByteImmediate_A,
     WordImmediate,
     WordImmediateIndirect8,
     WordImmediateIndirect16,

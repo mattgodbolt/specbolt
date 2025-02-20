@@ -89,6 +89,8 @@ std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t in
     case Instruction::Operand::Const_52: return 52;
     case Instruction::Operand::Const_ffff: return 0xffff;
     case Instruction::Operand::ByteImmediate: return read8(regs_.pc() - 1);
+    case Instruction::Operand::ByteImmediate_A:
+      return static_cast<std::uint16_t>(read8(regs_.pc() - 1) | regs_.get(RegisterFile::R8::A) << 8);
     case Instruction::Operand::WordImmediate: return read16(regs_.pc() - 2);
     case Instruction::Operand::WordImmediateIndirect8: return read8(read16(regs_.pc() - 2));
     case Instruction::Operand::WordImmediateIndirect16: return read16(read16(regs_.pc() - 2));
@@ -154,11 +156,9 @@ void Z80::write(const Instruction::Operand operand, const std::int8_t index_offs
     case Instruction::Operand::SP_Indirect16: write16(regs_.sp(), value); break;
     case Instruction::Operand::I: regs_.i(static_cast<std::uint8_t>(value)); break;
     case Instruction::Operand::None: break;
-    case Instruction::Operand::ByteImmediate: {
-      // Does nothing; this is (currently) used in OUT (nn), a instruction.
-      // perhaps the operand should be ByteImmediateOut? But then how about IN?
+    case Instruction::Operand::ByteImmediate_A:
+      // Does nothing; this is used in OUT (nn), a instruction.
       break;
-    }
     case Instruction::Operand::WordImmediate: throw std::runtime_error("Probably didn't mean to do this");
     case Instruction::Operand::WordImmediateIndirect8:
       write8(read16(regs_.pc() - 2), static_cast<std::uint8_t>(value));
@@ -188,11 +188,12 @@ void Z80::out(const std::uint16_t port, const std::uint8_t value) {
 }
 
 std::uint8_t Z80::in(const std::uint16_t port) {
+  uint8_t combined_result = 0xff;
   for (const auto &handler: in_handlers_) {
     if (const auto result = handler(port); result.has_value())
-      return *result;
+      combined_result &= *result;
   }
-  return 0xff;
+  return combined_result;
 }
 
 void Z80::dump() const { regs_.dump(std::cout, ""); }

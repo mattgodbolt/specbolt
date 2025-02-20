@@ -33,6 +33,7 @@ std::string Disassembler::Disassembled::operand_name(
     const Instruction::Operand operand, const std::int8_t offset) const {
   switch (operand) {
     case Instruction::Operand::None: return "";
+    case Instruction::Operand::ByteImmediate_A:
     case Instruction::Operand::ByteImmediate: return std::format("0x{:02x}", bytes[instruction.length - 1]);
     case Instruction::Operand::WordImmediate:
       return std::format(

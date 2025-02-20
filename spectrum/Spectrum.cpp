@@ -18,7 +18,7 @@ Spectrum::Spectrum(const std::filesystem::path &rom, int audio_sample_rate) :
       audio_.set_output(z80_.cycle_count(), value & 0x18);
     }
     else
-      std::print(std::cout, "Unexpected OUT({:04x}, {:02x})\n", port, value);
+      std::print(std::cout, "Unexpected OUT(0x{:04x}, 0x{:02x})\n", port, value);
   });
   z80_.add_in_handler([this](const std::uint16_t port) { return keyboard_.in(port); });
 }
