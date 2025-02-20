@@ -12,7 +12,7 @@ Spectrum::Spectrum(const std::filesystem::path &rom) : video_(memory_), z80_(mem
   memory_.load(rom, 0, SpectrumRomSize);
   memory_.set_rom_size(SpectrumRomSize);
   z80_.add_out_handler([this](const std::uint16_t port, const std::uint8_t value) {
-    if (port == 0xfe)
+    if ((port & 0xff) == 0xfe)
       video_.set_border(value & 0x07);
     else
       std::print(std::cout, "Unexpected OUT({:04x}, {:02x})\n", port, value);
