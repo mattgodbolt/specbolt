@@ -109,8 +109,13 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       cpu.iff2(input.rhs);
       return {0, input.flags, 0};
     case Operation::IrqMode: cpu.irq_mode(static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 4};
-    case Operation::Out: cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 7};
-    case Operation::In: return {cpu.in(input.rhs), input.flags, 7};
+    case Operation::Out:
+      cpu.out(static_cast<std::uint16_t>(input.lhs | cpu.registers().get(RegisterFile::R8::B) << 8),
+          static_cast<std::uint8_t>(input.rhs));
+      return {0, input.flags, 7};
+    case Operation::In:
+      return {cpu.in(static_cast<std::uint16_t>(input.rhs | cpu.registers().get(RegisterFile::R8::B) << 8)),
+          input.flags, 7};
     case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
       switch (lhs) {

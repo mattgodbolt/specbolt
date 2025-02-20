@@ -1,5 +1,6 @@
 #pragma once
 
+#include "peripherals/Keyboard.hpp"
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
 #include "z80/Z80.hpp"
@@ -19,10 +20,12 @@ public:
 
   [[nodiscard]] const auto &z80() const { return z80_; }
   [[nodiscard]] const auto &video() const { return video_; }
+  [[nodiscard]] auto &keyboard() { return keyboard_; }
 
 private:
   Memory memory_;
   Video video_;
+  Keyboard keyboard_;
   Z80 z80_;
 };
 

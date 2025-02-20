@@ -17,6 +17,7 @@ Spectrum::Spectrum(const std::filesystem::path &rom) : video_(memory_), z80_(mem
     else
       std::print(std::cout, "Unexpected OUT({:04x}, {:02x})\n", port, value);
   });
+  z80_.add_in_handler([this](const std::uint16_t port) { return keyboard_.in(port); });
 }
 
 size_t Spectrum::run_cycles(const size_t cycles) {

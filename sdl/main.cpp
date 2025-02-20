@@ -61,8 +61,11 @@ void Main() {
   while (!quit) {
     SDL_Event e{};
     while (SDL_PollEvent(&e) != 0) {
-      if (e.type == SDL_QUIT) {
-        quit = true;
+      switch (e.type) {
+        case SDL_QUIT: quit = true; break;
+        case SDL_KEYDOWN: spectrum.keyboard().key_down(e.key.keysym.sym); break;
+        case SDL_KEYUP: spectrum.keyboard().key_up(e.key.keysym.sym); break;
+        default: break;
       }
     }
 
