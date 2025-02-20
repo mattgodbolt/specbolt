@@ -88,7 +88,8 @@ struct Instruction {
     Invalid,
     Irq,
     IrqMode,
-    Out, // what to do about this?
+    In,
+    Out,
     Exx,
     Exchange,
     EdOp,

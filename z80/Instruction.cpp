@@ -110,6 +110,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {0, input.flags, 0};
     case Operation::IrqMode: cpu.irq_mode(static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 4};
     case Operation::Out: cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 7};
+    case Operation::In: return {cpu.in(input.rhs), input.flags, 7};
     case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
       switch (lhs) {

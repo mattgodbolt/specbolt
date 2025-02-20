@@ -46,12 +46,14 @@ static_assert(XBorder + ScreenWidth * ScaleFactor + XBorder == Video::Width);
 
 Video::Video(const Memory &memory) : memory_(memory) {}
 
-void Video::poll(const std::size_t num_cycles) {
+bool Video::poll(const std::size_t num_cycles) {
+  bool irq = false;
   total_cycles_ += num_cycles;
   while (total_cycles_ > next_line_cycles_) {
     render_line(current_line_);
     current_line_ = (current_line_ + 1) % (Height + VSyncLines);
     if (current_line_ == 0) {
+      irq = true;
       if (++flash_counter_ == FramesPerFlash) {
         flash_counter_ = 0;
         flash_on_ = !flash_on_;
@@ -59,7 +61,7 @@ void Video::poll(const std::size_t num_cycles) {
     }
     next_line_cycles_ += CyclesPerScanLine;
   }
-  // TODO irqs
+  return irq;
 }
 
 void Video::render_line(std::size_t line) {

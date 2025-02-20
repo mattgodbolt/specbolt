@@ -279,6 +279,17 @@ Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
     case 0x5a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
     case 0x6a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
     case 0x7a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
+    case 0x40:
+    case 0x48:
+    case 0x50:
+    case 0x58:
+    case 0x60:
+    case 0x68:
+    case 0x78: {
+      static constexpr std::array destinations{
+          Operand::B, Operand::C, Operand::D, Operand::E, Operand::H, Operand::L, Operand::None, Operand::A};
+      return {"in {}, ({})", 2, Op::In, destinations[opcode >> 3 & 7], Operand::C};
+    }
     case 0xa0:
     case 0xa1:
     case 0xa2:
@@ -526,6 +537,7 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xdd: return decode_ddfd<RegisterSetIx>(operands);
     case 0xed: return decode_ed(operands);
     case 0xd3: return {"out ({}), {}", 2, Op::Out, Operand::ByteImmediate, Operand::A};
+    case 0xdb: return {"in {}, ({})", 2, Op::In, Operand::A, Operand::ByteImmediate};
     case 0xe3: return {"ex {}, {}", 1, Op::Exchange, Operand::SP_Indirect16, Operand::HL};
     case 0xeb: return {"ex {}, {}", 1, Op::Exchange, Operand::DE, Operand::HL};
     case 0xf3: return {"di", 1, Op::Irq, Operand::None, Operand::Const_0};

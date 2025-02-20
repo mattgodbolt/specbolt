@@ -183,11 +183,16 @@ void Z80::write16(const std::uint16_t address, const std::uint16_t value) {
 void Z80::irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
 
 void Z80::out(const std::uint16_t port, const std::uint8_t value) {
-  // TODO starts to smell a bit here... also , even / odd ports?
-  if (port == 0xfe)
-    port_fe_ = value;
-  else
-    std::print(std::cout, "zomg OUT({:04x}, {:02x})\n", port, value);
+  for (const auto &handler: out_handlers_)
+    handler(port, value);
+}
+
+std::uint8_t Z80::in(const std::uint16_t port) {
+  for (const auto &handler: in_handlers_) {
+    if (const auto result = handler(port); result.has_value())
+      return *result;
+  }
+  return 0xff;
 }
 
 void Z80::dump() const { regs_.dump(std::cout, ""); }
@@ -217,6 +222,10 @@ std::uint8_t Z80::pop8() {
   return read8(old_sp);
 }
 
+void Z80::add_out_handler(OutHandler handler) { out_handlers_.emplace_back(std::move(handler)); }
+
+void Z80::add_in_handler(InHandler handler) { in_handlers_.emplace_back(std::move(handler)); }
+
 std::vector<RegisterFile> Z80::history() const {
   std::vector<RegisterFile> result;
   const auto num_entries = std::min(RegHistory, num_instructions_executed());
@@ -227,6 +236,27 @@ std::vector<RegisterFile> Z80::history() const {
   }
   result.push_back(regs_);
   return result;
+}
+
+void Z80::interrupt() {
+  if (!iff1_)
+    return;
+  // Some dark business with parity flag here ignored.
+  // TODO: Some stuff with HALT
+  iff1_ = iff2_ = false;
+  pass_time(7);
+  push16(registers().pc());
+  switch (irq_mode_) {
+    case 0:
+    case 1: registers().pc(0x38); break;
+    case 2: {
+      // Assume the bus is at 0xff.
+      const auto addr = static_cast<std::uint16_t>(0xff | (registers().i() << 8));
+      registers().pc(read16(addr));
+      break;
+    }
+    default: throw std::runtime_error("Inconceivable");
+  }
 }
 
 } // namespace specbolt

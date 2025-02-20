@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <vector>
 
 namespace specbolt {
@@ -36,9 +37,15 @@ public:
   void push8(std::uint8_t value);
   [[nodiscard]] std::uint8_t pop8();
 
-  // TODO this isn't a property of the z80, we should "poke" out to a port mapper or something.
+  using OutHandler = std::function<void(std::uint16_t port, std::uint8_t value)>;
+  void add_out_handler(OutHandler handler);
   void out(std::uint16_t port, std::uint8_t value);
-  [[nodiscard]] std::uint8_t port_fe() const { return port_fe_; }
+  std::uint8_t in(std::uint16_t port);
+
+  using InHandler = std::function<std::optional<uint8_t>(std::uint16_t port)>;
+  void add_in_handler(InHandler handler);
+
+  void interrupt();
 
   void dump() const;
 
@@ -59,11 +66,12 @@ private:
   std::size_t now_tstates_{};
   bool iff1_{};
   bool iff2_{};
-  std::uint8_t port_fe_{};
   std::uint8_t irq_mode_{};
   static constexpr std::size_t RegHistory = 8z;
   std::array<RegisterFile, RegHistory> reg_history_{};
   size_t current_reg_history_index_{};
+  std::vector<InHandler> in_handlers_;
+  std::vector<OutHandler> out_handlers_;
 
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand, std::int8_t index_offset);
   void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
