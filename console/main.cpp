@@ -11,6 +11,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <thread>
 
 #include <unordered_map>
@@ -285,7 +286,7 @@ int main(const int argc, const char **argv) {
         continue;
       }
       if (errno != EAGAIN && errno != EINTR) {
-        throw std::system_error();
+        throw std::system_error(errno, std::generic_category());
       }
     }
   });
