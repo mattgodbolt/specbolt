@@ -30,8 +30,11 @@ size_t Spectrum::run_cycles(const size_t cycles) {
   size_t total_cycles_elapsed = 0;
   while (total_cycles_elapsed < cycles) {
     if (trace_next_instructions_ && !z80_.halted()) {
+      static size_t last_instr = 0;
       static constexpr auto UndocMask = static_cast<std::uint16_t>(0xff00 | ~(Flags::Flag3() | Flags::Flag5()).to_u8());
-      std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x}\n", z80_.pc(),
+      const auto time_taken = z80_.cycle_count() - last_instr;
+      last_instr = z80_.cycle_count();
+      std::print(std::cout, "{:02} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x}\n", time_taken, z80_.pc(),
           z80_.registers().get(RegisterFile::R16::AF) & UndocMask, z80_.registers().get(RegisterFile::R16::BC),
           z80_.registers().get(RegisterFile::R16::DE), z80_.registers().get(RegisterFile::R16::HL),
           z80_.registers().ix(), z80_.registers().iy(), z80_.registers().sp());

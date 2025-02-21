@@ -9,9 +9,30 @@ namespace specbolt {
 
 namespace {
 
-Instruction::Output alu8(const Instruction::Input input, Alu::R8 (*operation)(std::uint8_t, std::uint8_t)) {
+std::uint8_t access_time(const Instruction::Operand rhs) {
+  switch (rhs) {
+    case Instruction::Operand::AF:
+    case Instruction::Operand::BC:
+    case Instruction::Operand::DE:
+    case Instruction::Operand::HL:
+    case Instruction::Operand::AF_: return 6;
+    case Instruction::Operand::ByteImmediate:
+    case Instruction::Operand::BC_Indirect8:
+    case Instruction::Operand::DE_Indirect8:
+    case Instruction::Operand::HL_Indirect8: return 3;
+    case Instruction::Operand::WordImmediateIndirect8: return 9;
+    default: return 0;
+  }
+}
+
+std::uint8_t access_time(const Instruction::Operand lhs, const Instruction::Operand rhs) {
+  return access_time(lhs) + access_time(rhs);
+}
+
+Instruction::Output alu8(
+    const Instruction::Input input, Alu::R8 (*operation)(std::uint8_t, std::uint8_t), const Instruction::Operand op) {
   const auto [result, flags] = operation(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs));
-  return {result, flags, 0};
+  return {result, flags, access_time(op)};
 }
 
 } // namespace
@@ -42,7 +63,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Add8: {
       const auto [result, flags] =
           Alu::add8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs), carry);
-      return {result, flags, 0};
+      return {result, flags, access_time(lhs, rhs)};
     }
 
     case Operation::Add16: {
@@ -78,7 +99,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {result, flags, 0};
     }
 
-    case Operation::Load: return {input.rhs, input.flags, 0}; // TODO is 0 right?
+    case Operation::Load: return {input.rhs, input.flags, access_time(lhs, rhs)};
     case Operation::Jump: {
       const auto taken = should_execute(input.flags);
       if (taken)
@@ -92,19 +113,19 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         cpu.push16(cpu.registers().pc());
         cpu.registers().pc(input.rhs);
       }
-      return {0, input.flags, static_cast<std::uint8_t>(taken ? 17 : 10)};
+      return {0, input.flags, static_cast<std::uint8_t>(taken ? 13 : 6)};
     }
     case Operation::Return: {
       const auto taken = should_execute(input.flags);
-      if (taken) {
+      const auto was_conditional = std::get_if<Condition>(&args);
+      if (taken)
         cpu.registers().pc(cpu.pop16());
-      }
-      // timings not actually right here.
-      return {0, input.flags, static_cast<std::uint8_t>(taken ? 6 : 1)};
+
+      return {0, input.flags, static_cast<std::uint8_t>(was_conditional ? (taken ? 7 : 1) : 6)};
     }
-    case Operation::Xor: return alu8(input, &Alu::xor8);
-    case Operation::And: return alu8(input, &Alu::and8);
-    case Operation::Or: return alu8(input, &Alu::or8);
+    case Operation::Xor: return alu8(input, &Alu::xor8, rhs);
+    case Operation::And: return alu8(input, &Alu::and8, rhs);
+    case Operation::Or: return alu8(input, &Alu::or8, rhs);
     case Operation::Irq:
       cpu.iff1(input.rhs);
       cpu.iff2(input.rhs);
@@ -116,7 +137,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto flags = std::holds_alternative<NoFlags>(args)
                              ? input.flags
                              : input.flags & Flags::Carry() | Alu::parity_flags_for(result);
-      return {result, flags, 7};
+      return {result, flags, 8};
     }
     case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
