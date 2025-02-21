@@ -29,9 +29,9 @@ TEST_CASE("RegisterFile tests") {
   SECTION("Can set and get register pairs correctly") {
     // TODO look up how to do this properly
     // const auto [highlow, high, low] = GENERATE({RegisterFile::R16::AF, RegisterFile::R8::A, RegisterFile::R8::F});
-    const auto highlow = RegisterFile::R16::AF;
-    const auto high = RegisterFile::R8::A;
-    const auto low = RegisterFile::R8::F;
+    constexpr auto highlow = RegisterFile::R16::AF;
+    constexpr auto high = RegisterFile::R8::A;
+    constexpr auto low = RegisterFile::R8::F;
     rf.set(highlow, 0x1234);
     CHECK(rf.get(highlow) == 0x1234);
     CHECK(rf.get(high) == 0x12);
