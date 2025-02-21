@@ -280,6 +280,11 @@ TEST_CASE("ALU tests") {
       CHECK(Alu::daa(0, Flags::Carry()) == Alu::R8{0x60, Flags::Parity() | Flags::Flag5() | Flags::Carry()});
     }
   }
+
+  // TODO: Fix this half-carry for sbc
+  // SECTION("sbc16") {
+  //   SECTION("from elite test case") { CHECK(Alu::sbc16(0, 0, false) == Alu::R16{0, Flags(0x42)}); }
+  // }
 }
 
 } // namespace specbolt

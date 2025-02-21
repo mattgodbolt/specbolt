@@ -41,6 +41,7 @@ struct Instruction {
     IY_Offset_Indirect8, // TODO decide on naming
     AF_,
     I,
+    R,
     ByteImmediate,
     ByteImmediate_A,
     WordImmediate,

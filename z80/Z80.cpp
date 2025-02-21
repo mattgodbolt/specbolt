@@ -61,6 +61,7 @@ std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t in
     case Instruction::Operand::IXL: return regs_.ixl();
     case Instruction::Operand::IYL: return regs_.iyl();
     case Instruction::Operand::I: return regs_.i();
+    case Instruction::Operand::R: return regs_.r();
     case Instruction::Operand::BC_Indirect8: return read8(regs_.get(RegisterFile::R16::BC));
     case Instruction::Operand::DE_Indirect8: return read8(regs_.get(RegisterFile::R16::DE));
     case Instruction::Operand::HL_Indirect8: {
@@ -155,6 +156,7 @@ void Z80::write(const Instruction::Operand operand, const std::int8_t index_offs
     case Instruction::Operand::HL_Indirect16: write16(regs_.get(RegisterFile::R16::HL), value); break;
     case Instruction::Operand::SP_Indirect16: write16(regs_.sp(), value); break;
     case Instruction::Operand::I: regs_.i(static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::R: regs_.r(static_cast<std::uint8_t>(value)); break;
     case Instruction::Operand::None: break;
     case Instruction::Operand::ByteImmediate_A:
       // Does nothing; this is used in OUT (nn), a instruction.

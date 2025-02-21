@@ -133,5 +133,12 @@ TEST_CASE("Disassembler tests") {
     CHECK(instr.instruction.length == 3);
     CHECK(instr.to_string() == "0000  fd 26 de     ld iyh, 0xde");
   }
+  SECTION("ex (sp), iy") {
+    memory.raw_write(0x0000, 0xfd); // fd prefix
+    memory.raw_write(0x0001, 0xe3); // ex (sp), iy
+    const auto instr = dis.disassemble(0);
+    CHECK(instr.instruction.length == 2);
+    CHECK(instr.to_string() == "0000  fd e3        ex (sp), iy");
+  }
   // TODO the other prefix bytes... cb dd ed fd, bit prefixes
 }

@@ -132,10 +132,10 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         }
         case Operand::SP_Indirect16: {
           const auto sp16 = cpu.read16(cpu.registers().sp());
-          const auto hl = cpu.registers().get(RegisterFile::R16::HL);
-          cpu.write16(cpu.registers().sp(), hl);
-          cpu.registers().set(RegisterFile::R16::HL, sp16);
-          return {hl, input.flags, 15}; // TODO is this really the right thing to return?
+          const auto rhs_val = cpu.read(rhs, index_offset);
+          cpu.write16(cpu.registers().sp(), rhs_val);
+          cpu.write(rhs, index_offset, sp16);
+          return {rhs_val, input.flags, 15}; // TODO is this really the right thing to return?
         }
         default: throw std::runtime_error("Unsupported exchange");
       }

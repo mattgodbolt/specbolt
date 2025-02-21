@@ -64,6 +64,9 @@ public:
 
   [[nodiscard]] std::vector<RegisterFile> history() const;
 
+  [[nodiscard]] std::uint16_t read(Instruction::Operand operand, std::int8_t index_offset);
+  void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
+
 private:
   RegisterFile regs_;
   Memory &memory_;
@@ -79,8 +82,6 @@ private:
   std::vector<InHandler> in_handlers_;
   std::vector<OutHandler> out_handlers_;
 
-  [[nodiscard]] std::uint16_t read(Instruction::Operand operand, std::int8_t index_offset);
-  void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
   void pass_time(std::size_t tstates);
   void execute(const Instruction &instr);
 };

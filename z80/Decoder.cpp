@@ -205,7 +205,7 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
     case 0xe1: return {"pop {}", 2, Op::Pop, RegisterSet::direct};
     case 0xe5: return {"push {1}", 2, Op::Push, Operand::None, RegisterSet::direct};
     case 0xe9: return {"jp ({1})", 3, Op::Jump, Operand::None, RegisterSet::direct};
-    case 0xe3: return {"ex {}, {}", 1, Op::Exchange, Operand::SP_Indirect16, RegisterSet::direct};
+    case 0xe3: return {"ex {}, {}", 2, Op::Exchange, Operand::SP_Indirect16, RegisterSet::direct};
     case 0xcb: {
       // Next byte is the offset, then finally the opcode.
       auto result = decode_bit<RegisterSet>(opcodes.subspan(2));
@@ -270,12 +270,14 @@ Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
     case 0x56: return {"im 1", 2, Op::IrqMode, Operand::None, Operand::Const_1};
     case 0x5e: return {"im 2", 2, Op::IrqMode, Operand::None, Operand::Const_2};
     case 0x43: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::BC};
-    case 0x44: return {"neg", 4, Op::Neg, Operand::A};
+    case 0x44: return {"neg", 2, Op::Neg, Operand::A};
     case 0x53: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::DE};
     case 0x73: return {"ld {}, {}", 4, Op::Load, Operand::WordImmediateIndirect16, Operand::SP};
     case 0x4b: return {"ld {}, {}", 4, Op::Load, Operand::BC, Operand::WordImmediateIndirect16};
     case 0x5b: return {"ld {}, {}", 4, Op::Load, Operand::DE, Operand::WordImmediateIndirect16};
     case 0x7b: return {"ld {}, {}", 4, Op::Load, Operand::SP, Operand::WordImmediateIndirect16};
+    case 0x4f: return {"ld {}, {}", 2, Op::Load, Operand::R, Operand::A};
+    case 0x5f: return {"ld {}, {}", 2, Op::Load, Operand::A, Operand::R};
     case 0x42: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::BC, Instruction::WithCarry{}};
     case 0x52: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
     case 0x62: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::HL, Instruction::WithCarry{}};

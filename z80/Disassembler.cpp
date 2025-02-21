@@ -50,6 +50,7 @@ std::string Disassembler::Disassembled::operand_name(
     case Instruction::Operand::H: return "h";
     case Instruction::Operand::L: return "l";
     case Instruction::Operand::I: return "i";
+    case Instruction::Operand::R: return "r";
     case Instruction::Operand::AF: return "af";
     case Instruction::Operand::BC: return "bc";
     case Instruction::Operand::DE: return "de";
