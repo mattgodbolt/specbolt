@@ -286,6 +286,8 @@ Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
     case 0x5a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
     case 0x6a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::HL, Instruction::WithCarry{}};
     case 0x7a: return {"adc {}, {}", 2, Op::Add16, Operand::HL, Operand::SP, Instruction::WithCarry{}};
+    case 0x45: return {"retn", 2, Op::Return, Operand::None, Operand::None, Instruction::WithIrq::Retn};
+    case 0x4d: return {"reti", 2, Op::Return, Operand::None, Operand::None, Instruction::WithIrq::Reti};
     case 0x40:
     case 0x48:
     case 0x50:

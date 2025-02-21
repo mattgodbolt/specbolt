@@ -127,8 +127,12 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Return: {
       const auto taken = should_execute(input.flags);
       const auto was_conditional = std::get_if<Condition>(&args);
-      if (taken)
-        cpu.registers().pc(cpu.pop16());
+      if (taken) {
+        if (const auto was_retirq = std::get_if<WithIrq>(&args); *was_retirq == WithIrq::Retn)
+          cpu.retn();
+        else // this treats reti and retn the same...
+          cpu.registers().pc(cpu.pop16());
+      }
 
       return {0, input.flags, static_cast<std::uint8_t>(was_conditional ? (taken ? 7 : 1) : 6)};
     }

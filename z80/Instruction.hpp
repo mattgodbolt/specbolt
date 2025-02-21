@@ -127,7 +127,8 @@ struct Instruction {
     Type type;
     bool fast;
   };
-  using Args = std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs, NoFlags>;
+  enum class WithIrq { Retn, Reti };
+  using Args = std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs, NoFlags, WithIrq>;
   Args args{};
   std::int8_t index_offset{};
 
