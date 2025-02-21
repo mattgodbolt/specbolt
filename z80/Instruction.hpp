@@ -80,6 +80,7 @@ struct Instruction {
     Reset,
     Set,
     Jump,
+    JumpRelative,
     Djnz,
     Call,
     Return,

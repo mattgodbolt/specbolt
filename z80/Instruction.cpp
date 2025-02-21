@@ -24,6 +24,14 @@ std::uint8_t access_time(const Instruction::Operand rhs) {
     default: return 0;
   }
 }
+std::uint8_t rmw_access_time(const Instruction::Operand lhs) {
+  switch (lhs) {
+    case Instruction::Operand::BC_Indirect8:
+    case Instruction::Operand::DE_Indirect8:
+    case Instruction::Operand::HL_Indirect8: return 7;
+    default: return 0;
+  }
+}
 
 std::uint8_t access_time(const Instruction::Operand lhs, const Instruction::Operand rhs) {
   return access_time(lhs) + access_time(rhs);
@@ -76,8 +84,8 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {static_cast<std::uint16_t>(input.lhs + input.rhs), input.flags, 2};
     }
     case Operation::Compare:
-      return {
-          input.lhs, Alu::cmp8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs)).flags, 0};
+      return {input.lhs, Alu::cmp8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs)).flags,
+          access_time(rhs)};
     case Operation::Subtract8: {
       const auto [result, flags] =
           Alu::sub8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs), carry);
@@ -92,20 +100,21 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
 
     case Operation::Inc8: {
       const auto [result, flags] = Alu::inc8(static_cast<std::uint8_t>(input.lhs), input.flags);
-      return {result, flags, 0};
+      return {result, flags, rmw_access_time(lhs)};
     }
     case Operation::Dec8: {
       const auto [result, flags] = Alu::dec8(static_cast<std::uint8_t>(input.lhs), input.flags);
-      return {result, flags, 0};
+      return {result, flags, rmw_access_time(lhs)};
     }
 
     case Operation::Load: return {input.rhs, input.flags, access_time(lhs, rhs)};
+    case Operation::JumpRelative:
     case Operation::Jump: {
       const auto taken = should_execute(input.flags);
       if (taken)
         cpu.registers().pc(input.rhs);
-      // TODO t-states not right for jp vs jr
-      return {0, input.flags, static_cast<std::uint8_t>(taken ? 6 : 3)};
+      // TODO jp indirect is faster...
+      return {0, input.flags, static_cast<std::uint8_t>(operation == Operation::Jump ? 6 : taken ? 8 : 3)};
     }
     case Operation::Call: {
       const auto taken = should_execute(input.flags);

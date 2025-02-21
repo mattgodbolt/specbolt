@@ -365,11 +365,14 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
           Operand::None,
           Operand::PcOffset,
       };
-    case 0x18: return {"jr {1}", 2, Op::Jump, Operand::None, Operand::PcOffset};
-    case 0x20: return {"jr nz {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::NonZero};
-    case 0x28: return {"jr z {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::Zero};
-    case 0x30: return {"jr nc {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::NoCarry};
-    case 0x38: return {"jr c {1}", 2, Op::Jump, Operand::None, Operand::PcOffset, Instruction::Condition::Carry};
+    case 0x18: return {"jr {1}", 2, Op::JumpRelative, Operand::None, Operand::PcOffset};
+    case 0x20:
+      return {"jr nz {1}", 2, Op::JumpRelative, Operand::None, Operand::PcOffset, Instruction::Condition::NonZero};
+    case 0x28: return {"jr z {1}", 2, Op::JumpRelative, Operand::None, Operand::PcOffset, Instruction::Condition::Zero};
+    case 0x30:
+      return {"jr nc {1}", 2, Op::JumpRelative, Operand::None, Operand::PcOffset, Instruction::Condition::NoCarry};
+    case 0x38:
+      return {"jr c {1}", 2, Op::JumpRelative, Operand::None, Operand::PcOffset, Instruction::Condition::Carry};
 
     case 0x03: return {"inc {}", 1, Op::Add16NoFlags, Operand::BC, Operand::Const_1};
     case 0x13: return {"inc {}", 1, Op::Add16NoFlags, Operand::DE, Operand::Const_1};
