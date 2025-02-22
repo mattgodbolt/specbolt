@@ -45,3 +45,31 @@ was tricky. It _does_ let me hide the "read indirect" part etc, that is I could 
 
 Hana's suggestion was to template parameterize each instruction and have each have its own `apply`. I think that's the
 way forward honestly.
+
+
+---
+
+### First working version.
+
+As of `e2d332346520aa722475d21fbf9b267227bf9800`.
+
+A lot of subtleties lost in the above description. Eventually went with routines taking a cut down input and output
+but also a mutable "cpu" that has access to everything else, like in/out ports, memory etc.
+
+Eventually gave up on a lot of the "generic" stuff and just wrote a lot of code. Not as testable or tested as I would
+like. Passes the zexdoc test and works with manic miner, jetpac, dizzy and a few other games. Timings are way off and
+started looking in to that. But really want a more principled way forward.
+
+Plan is to refactor to use micro-ops; then model each instruction as a sequence of those ops. Can fill in a big table
+of them and use it to:
+- drive code gen for C++14ish version (?) or at least "my default style"
+- actually constexpr-ify and generate functions for each instruction.
+
+Using a similar approach to https://github.com/floooh/chips/blob/master/codegen/z80_desc.yml but programmatically done
+in C++. http://www.z80.info/decoding.htm is a good reference, as is the python code from André.
+
+Minimally an instruction takes 4 cycles:
+- 1 as part of the "previous" instruction (overlapped)
+- 3 cycles decode/memory access/execute
+
+On top of that regular reads and writes take 3, IO takes 4.
