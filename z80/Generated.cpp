@@ -30,7 +30,9 @@ struct MicroOp {
   Source source;
   RegisterFile::R8 dest;
   int cycles;
-  static MicroOp read_imm(const RegisterFile::R8 dest) { return MicroOp{Type::MemRead, Source::Immediate, dest, 3}; }
+  static constexpr MicroOp read_imm(const RegisterFile::R8 dest) {
+    return MicroOp{Type::MemRead, Source::Immediate, dest, 3};
+  }
 };
 
 struct CompiledOp {
@@ -45,13 +47,13 @@ struct Opcode {
   std::uint8_t p;
   std::uint8_t q;
 
-  explicit Opcode(const std::uint8_t opcode) :
+  explicit constexpr Opcode(const std::uint8_t opcode) :
       x(opcode >> 6), y((opcode >> 3) & 0x7), z(opcode & 0x7), p(y >> 1), q(y & 1) {}
 };
 
 struct SourceOp {
-  std::function<CompiledOp(const Opcode &opcode)> create;
-  std::function<bool(const Opcode &opcode)> matches;
+  CompiledOp (*create)(const Opcode &opcode);
+  bool (*matches)(const Opcode &opcode);
 };
 
 constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
@@ -65,7 +67,7 @@ constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, Registe
 // }
 
 // http://www.z80.info/decoding.htm
-const std::array z80_source_ops = {
+constexpr std::array z80_source_ops = {
     // First quadrant, x == 0
     SourceOp{[](const Opcode &) { return CompiledOp{"nop", {}}; },
         [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 0 && opcode.z == 0; }},
@@ -115,13 +117,13 @@ std::array<std::string_view, 256> make_opcode_names() {
   return result;
 }
 
-Z80_Op *compile(const CompiledOp &) {
+constexpr Z80_Op *compile(const CompiledOp &) {
   // TODO! zomg...how to do this? Heeelllllp!
-  static Z80_Op *nop = +[](Z80 &) -> size_t { return 0; };
+  static constexpr Z80_Op *nop = +[](Z80 &) -> size_t { return 0; };
   return nop;
 }
 
-std::array<Z80_Op *, 256> make_opcode_ops() {
+constexpr std::array<Z80_Op *, 256> make_opcode_ops() {
   std::array<Z80_Op *, 256> result;
   for (auto x = 0uz; x < 256uz; ++x) {
     result[x] = compile(ops[x]);
@@ -137,7 +139,7 @@ const std::array<std::string_view, 256> &base_opcode_names() {
 }
 
 const std::array<Z80_Op *, 256> &base_opcode_ops() {
-  static auto result = make_opcode_ops();
+  static constexpr auto result = make_opcode_ops();
   return result;
 }
 
