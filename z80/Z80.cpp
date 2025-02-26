@@ -17,6 +17,7 @@ std::size_t Z80::execute_one() {
   reg_history_[current_reg_history_index_] = regs_;
   current_reg_history_index_ = (current_reg_history_index_ + 1) % RegHistory;
 
+  regs_.r(regs_.r() + 1);
   const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
   const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
