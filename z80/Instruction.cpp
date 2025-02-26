@@ -128,7 +128,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto taken = should_execute(input.flags);
       const auto was_conditional = std::get_if<Condition>(&args);
       if (taken) {
-        if (const auto was_retirq = std::get_if<WithIrq>(&args); *was_retirq == WithIrq::Retn)
+        if (const auto was_retirq = std::get_if<WithIrq>(&args); was_retirq && *was_retirq == WithIrq::Retn)
           cpu.retn();
         else // this treats reti and retn the same...
           cpu.registers().pc(cpu.pop16());
