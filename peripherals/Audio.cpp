@@ -29,6 +29,7 @@ void Audio::set_output(const std::size_t total_cycles, const bool beeper_on, con
 }
 
 void Audio::fill(const size_t total_cycles, const std::span<std::int16_t> span) {
+  update(total_cycles);
   if (const auto behind = write_pos_ - read_pos_; behind > audio_.size())
     read_pos_ = write_pos_ - audio_.size();
   const auto available = std::min(write_pos_ - read_pos_, audio_.size());
