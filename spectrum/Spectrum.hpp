@@ -35,6 +35,7 @@ private:
   Keyboard keyboard_;
   Z80 z80_;
   std::size_t trace_next_instructions_{};
+  std::size_t last_traced_instr_cycle_count_{};
 };
 
 } // namespace specbolt

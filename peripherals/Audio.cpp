@@ -18,8 +18,10 @@ void Audio::update(const std::size_t total_cycles) {
   cycle_count_ = total_cycles;
 }
 
-void Audio::set_output(const std::size_t total_cycles, const bool on) {
-  const std::int16_t output = on ? 5000 : 0;
+void Audio::set_output(const std::size_t total_cycles, const bool beeper_on, const bool tape_on) {
+  static constexpr std::int16_t beeper_on_volume = 50 * 256;
+  static constexpr std::int16_t tape_on_volume = 2 * 256;
+  const auto output = static_cast<std::int16_t>((beeper_on ? beeper_on_volume : 0) + (tape_on ? tape_on_volume : 0));
   if (output == current_output_)
     return;
   update(total_cycles);

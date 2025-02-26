@@ -11,7 +11,7 @@ public:
   explicit Audio(int sample_rate);
 
   void update(std::size_t total_cycles);
-  void set_output(std::size_t total_cycles, bool on);
+  void set_output(std::size_t total_cycles, bool beeper_on, bool tape_on);
 
   auto sample_rate() const { return sample_rate_; }
   void fill(size_t total_cycles, std::span<std::int16_t> span);
