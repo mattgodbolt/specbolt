@@ -53,7 +53,7 @@ public:
 
   void dump() const;
 
-  [[nodiscard]] const auto &regs() const { return regs_; }
+  [[nodiscard]] auto &regs() { return regs_; }
   [[nodiscard]] std::uint8_t read8(std::uint16_t address) const;
   [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
   void write8(std::uint16_t address, std::uint8_t value);
@@ -66,6 +66,8 @@ public:
 
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand, std::int8_t index_offset);
   void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
+
+  void pass_time(std::size_t tstates);
 
 private:
   RegisterFile regs_;
@@ -82,7 +84,6 @@ private:
   std::vector<InHandler> in_handlers_;
   std::vector<OutHandler> out_handlers_;
 
-  void pass_time(std::size_t tstates);
   void execute(const Instruction &instr);
 };
 
