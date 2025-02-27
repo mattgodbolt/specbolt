@@ -28,7 +28,7 @@ struct MicroOp {
     Register,
     Memory,
   };
-  Source source{Source::Immediate};
+  Source source{Source::None};
   RegisterFile::R8 dest;
   std::size_t cycles;
   static constexpr MicroOp read_imm(const RegisterFile::R8 dest) {
@@ -138,80 +138,40 @@ std::array<std::string_view, 256> make_opcode_names() {
   return result;
 }
 
-// template<MicroOp op>
-// struct MicroOpCompiler {
-//   static std::size_t operator()(Z80 &cpu) {
-//     if constexpr (op.type == MicroOp::Type::MemRead) {
-//       if constexpr (op.source == MicroOp::Source::Immediate) {
-//         cpu.registers().set(op.dest, cpu.memory().read(cpu.registers().pc()));
-//       }
-//     }
-//     return op.cycles;
-//   }
-// };
+template<MicroOp::Source source>
+struct SourceGetter;
+template<>
+struct SourceGetter<MicroOp::Source::Immediate> {
+  static constexpr std::uint8_t operator()(Z80 &z80) {
+    const auto addr = z80.regs().pc();
+    z80.regs().pc(addr + 1);
+    return z80.read8(addr);
+  }
+};
+
+template<>
+struct SourceGetter<MicroOp::Source::None> {
+  static constexpr std::uint8_t operator()(Z80 &) { return 0; }
+};
 
 
-// constexpr Z80_Op *compile(const MicroOp micro_op) {
-//   constexpr auto op = micro_op;
-//   static constexpr Z80_Op *nop = +[](Z80 &) -> size_t { return 0; };
-//   switch (micro_op.type) {
-//     case MicroOp::Type::MemRead:
-//       return +[](Z80 &cpu) -> size_t {
-//         cpu.registers().set(op.dest, cpu.memory().read(cpu.registers().pc()));
-//         return op.cycles;
-//       };
-//     default: return nop;
-//     // case MicroOp::Type::MemWrite:
-//     //   return +[](Z80 &cpu) -> size_t {
-//     //     cpu.memory().write(cpu.registers().pc(), cpu.registers().get(micro_op.dest));
-//     //     return micro_op.cycles;
-//     //   };
-//     // case MicroOp::Type::IoRead:
-//     //   return +[](Z80 &cpu) -> size_t {
-//     //     cpu.registers().set(micro_op.dest, cpu.io().read(cpu.registers().pc()));
-//     //     return micro_op.cycles;
-//     //   };
-//     // case MicroOp::Type::IoWrite:
-//     //   return +[](Z80 &cpu) -> size_t {
-//     //     cpu.io().write(cpu.registers().pc(), cpu.registers().get(micro_op.dest));
-//     //     return micro_op.cycles;
-//     //   };
-//   }
-// }
-
-// constexpr Z80_Op *compile(const CompiledOp &) {
-//   // TODO! zomg...how to do this? Heeelllllp!
-//   // static constexpr Z80_Op *nop = +[](Z80 &) -> size_t { return 0; };
-//   // read_imm
-//   // return nop;
-//   constexpr auto read_op = MicroOp::read_imm(RegisterFile::R8::A);
-//   return &MicroOpCompiler<read_op>::operator();
-// }
-//
-// constexpr std::array<Z80_Op *, 256> make_opcode_ops() {
-//   std::array<Z80_Op *, 256> result{};
-//   for (auto x = 0uz; x < 256uz; ++x) {
-//     result[x] = compile(ops[x]);
-//   }
-//   return result;
-// }
-
-constexpr bool execute(const MicroOp op, Z80 &z80) {
+constexpr bool execute(const MicroOp op, auto rhs, Z80 &z80) {
   z80.pass_time(op.cycles);
   switch (op.type) {
-    case MicroOp::Type::MemRead: z80.regs().set(op.dest, z80.read8(z80.regs().pc())); break;
+    case MicroOp::Type::MemRead: z80.regs().set(op.dest, rhs); break;
     default: break;
   }
   return true;
 }
 
-template<CompiledOp Instruction> /*[[gnu::flatten]] */ constexpr void evaluate(Z80 &z80) {
+template<CompiledOp Instruction>
+[[gnu::flatten]] constexpr void evaluate(Z80 &z80) {
   // c++26 (not yet implemented)
   // template for (constexpr micro_instruction MicroOps: Instruction.micro) {
   //    microexec(micro_opcode_v<MicroOps.op>, c, source_accessor<MicroOps.source>(c),
   //    target_accessor<MicroOps.target>(c));
   // }
-
+  // also not in current clang compiler I'm using:
   // const auto &[... MicroOps] = Instruction.micro_ops;
   //
   // (microexec(micro_opcode_v<MicroOps.op>, c, source_accessor<MicroOps.source>(c),
@@ -219,7 +179,10 @@ template<CompiledOp Instruction> /*[[gnu::flatten]] */ constexpr void evaluate(Z
   //     ...);
   bool keep_going = true;
   [&]<size_t... Idx>(std::index_sequence<Idx...>) {
-    ((keep_going = keep_going ? execute(Instruction.micro_ops[Idx], z80) : false), ...);
+    ((keep_going = keep_going ? execute(Instruction.micro_ops[Idx],
+                                    SourceGetter<Instruction.micro_ops[Idx].source>{}(z80), z80)
+                              : false),
+        ...);
   }(std::make_index_sequence<Instruction.micro_ops.size()>());
 }
 

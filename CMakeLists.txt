@@ -14,6 +14,9 @@ option(SPECBOLT_PREFER_SYSTEM_DEPS "Prefer using system dependencies" OFF)
 
 find_package(SDL2 REQUIRED)
 
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
+
 if (SPECBOLT_TESTS)
   enable_testing()
 endif()
