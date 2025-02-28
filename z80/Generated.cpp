@@ -72,14 +72,8 @@ struct SourceOp {
 };
 
 constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
-constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H,
-    RegisterFile::R8::A /* TODO NOT THIS should be SP */};
-constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L,
-    RegisterFile::R8::A /* TODO NOT THIS should be SP */};
-
-// std::function<std::string(const Opcode &opcode)> rp_p_name(const std::string &format) {
-//   return [format](const Opcode &opcode) { return std::vformat(format, std::make_format_args(rp[opcode.p])); };
-// }
+constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
+constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
 
 // http://www.z80.info/decoding.htm
 constexpr std::array z80_source_ops = {

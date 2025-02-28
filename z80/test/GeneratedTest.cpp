@@ -33,9 +33,15 @@ TEST_CASE("Opcode generation tests") {
       ops[opcode](z80);
     };
 
-    SECTION("LD bc, nnnn") {
+    SECTION("ld bc, nnnn") {
       run_one_instruction(0x01, 0x34, 0x12);
       CHECK(z80.regs().get(RegisterFile::R16::BC) == 0x1234);
+      CHECK(z80.pc() == 3);
+      CHECK(z80.cycle_count() == 10);
+    }
+    SECTION("ld sp, nnnn") {
+      run_one_instruction(0x31, 0x34, 0x12);
+      CHECK(z80.regs().sp() == 0x1234);
       CHECK(z80.pc() == 3);
       CHECK(z80.cycle_count() == 10);
     }

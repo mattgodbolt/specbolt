@@ -15,6 +15,15 @@ std::uint8_t RegisterFile::get(const R8 reg) const {
   return is_high(reg) ? reg_pair.high() : reg_pair.low();
 }
 void RegisterFile::set(const R8 reg, const std::uint8_t value) {
+  // TODO: this is catastrophically awful.
+  if (reg == R8::SPH) {
+    sp_ = static_cast<std::uint16_t>((sp_ & 0xff) | (static_cast<std::uint16_t>(value) << 8));
+    return;
+  }
+  if (reg == R8::SPL) {
+    sp_ = (sp_ & 0xff00) | value;
+    return;
+  }
   auto &reg_pair = reg_for(reg);
   if (is_high(reg))
     reg_pair.high(value);
