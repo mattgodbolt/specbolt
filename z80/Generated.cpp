@@ -120,31 +120,6 @@ constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
 // };
 
 
-template<MicroOp::Source source>
-struct SourceGetter;
-template<>
-struct SourceGetter<MicroOp::Source::Immediate> {
-  static constexpr std::uint8_t operator()(Z80 &z80) {
-    const auto addr = z80.regs().pc();
-    z80.regs().pc(addr + 1);
-    return z80.read8(addr);
-  }
-};
-
-template<>
-struct SourceGetter<MicroOp::Source::None> {
-  static constexpr std::uint8_t operator()(Z80 &) { return 0; }
-};
-
-constexpr bool execute(const MicroOp op, auto rhs, Z80 &z80) {
-  z80.pass_time(op.cycles);
-  switch (op.type) {
-    case MicroOp::Type::MemRead: z80.regs().set(op.dest, rhs); break;
-    default: break;
-  }
-  return true;
-}
-
 template<template<auto> typename Transform>
 constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
   return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};
