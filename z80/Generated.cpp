@@ -14,6 +14,8 @@ using namespace std::literals;
 namespace specbolt {
 
 namespace {
+// TODO! use bespoke types for each microop instead of "type" etc. time can pass and the "framework"? or just write
+// instructions out longhand? Harder to generalise? maybe? what do I lose avoiding microops?
 struct MicroOp {
   enum class Type {
     Nop,
@@ -51,7 +53,6 @@ struct Mnemonic {
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), len}; }
 };
 
-
 struct Opcode {
   std::uint8_t x;
   std::uint8_t y;
@@ -82,7 +83,7 @@ struct Load16ImmOp {
 };
 
 template<Opcode opcode>
-constexpr auto instruction = NopType{}; // TODO once we cover all instructions this will be an error.
+constexpr auto instruction = NopType{}; // TODO once we cover all instructions this will be an error.(maybe not
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 0 && opcode.z == 0)
@@ -91,6 +92,20 @@ constexpr auto instruction<opcode> = NopType{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 0)
 constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
+
+struct DjnzOp {
+  static constexpr Mnemonic mnemonic{"djnz $d"};
+  static constexpr std::array micro_ops{
+      MicroOp::delay(1),
+      // MicroOp::read_to_dlatch(),
+      // MicroOp::decrement_b(),
+      // MicroOp::
+  };
+};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
+constexpr auto instruction<opcode> = DjnzOp{};
 
 // http://www.z80.info/decoding.htm
 // constexpr std::array z80_source_ops = {
@@ -152,17 +167,6 @@ constexpr bool execute(const MicroOp op, auto rhs, Z80 &z80) {
 
 template<auto Instruction>
 [[gnu::flatten]] constexpr void evaluate(Z80 &z80) {
-  // c++26 (not yet implemented)
-  // template for (constexpr micro_instruction MicroOps: Instruction.micro) {
-  //    microexec(micro_opcode_v<MicroOps.op>, c, source_accessor<MicroOps.source>(c),
-  //    target_accessor<MicroOps.target>(c));
-  // }
-  // also not in current clang compiler I'm using:
-  // const auto &[... MicroOps] = Instruction.micro_ops;
-  //
-  // (microexec(micro_opcode_v<MicroOps.op>, c, source_accessor<MicroOps.source>(c),
-  // target_accessor<MicroOps.target>(c)),
-  //     ...);
   bool keep_going = true;
   [&]<size_t... Idx>(std::index_sequence<Idx...>) {
     ((keep_going = keep_going ? execute(Instruction.micro_ops[Idx],
@@ -175,16 +179,6 @@ template<template<auto> typename Transform>
 constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
   return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};
 }(std::make_index_sequence<256>());
-
-template<std::array Instructions>
-consteval auto make_opcode_ops() {
-  // C++26:
-  // const auto & [...Ops] = Instructions;
-  // return std::array{fptr{&evaluate<Ops>}...};
-  // before:
-  return []<size_t... Idx>(std::index_sequence<Idx...>) { return std::array{&evaluate<Instructions[Idx]>...}; }(
-             std::make_index_sequence<Instructions.size()>());
-}
 
 template<auto Opcode>
 struct build_description {
