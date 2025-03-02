@@ -51,10 +51,6 @@ struct Mnemonic {
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), len}; }
 };
 
-struct CompiledOp { // TODO this is to be removed
-  Mnemonic mnemonic;
-  std::array<MicroOp, 8> micro_ops{};
-};
 
 struct Opcode {
   std::uint8_t x;
@@ -71,16 +67,18 @@ constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
 constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
 constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
 
-struct NopType : CompiledOp {
-  constexpr NopType() : CompiledOp{Mnemonic("nop")} {}
+struct NopType {
+  static constexpr Mnemonic mnemonic{"nop"};
+  static constexpr std::array<MicroOp, 0> micro_ops{};
 };
 
 template<std::uint8_t P>
-struct Load16ImmOp : CompiledOp {
-  constexpr Load16ImmOp() : CompiledOp{Mnemonic("ld " + std::string(rp_names[P]) + ", $nnnn")} {
-    micro_ops[0] = MicroOp::read_imm(rp_low[P]);
-    micro_ops[1] = MicroOp::read_imm(rp_high[P]);
-  }
+struct Load16ImmOp {
+  static constexpr Mnemonic mnemonic{"ld " + std::string(rp_names[P]) + ", $nnnn"};
+  static constexpr std::array micro_ops{
+      MicroOp::read_imm(rp_low[P]),
+      MicroOp::read_imm(rp_high[P]),
+  };
 };
 
 template<Opcode opcode>
@@ -152,7 +150,7 @@ constexpr bool execute(const MicroOp op, auto rhs, Z80 &z80) {
   return true;
 }
 
-template<CompiledOp Instruction>
+template<auto Instruction>
 [[gnu::flatten]] constexpr void evaluate(Z80 &z80) {
   // c++26 (not yet implemented)
   // template for (constexpr micro_instruction MicroOps: Instruction.micro) {
@@ -189,12 +187,12 @@ consteval auto make_opcode_ops() {
 }
 
 template<auto Opcode>
-struct description {
+struct build_description {
   static constexpr auto result = Opcode.mnemonic.view();
 };
 
 template<auto Opcode>
-struct monkey {
+struct build_evaluate {
   // static constexpr auto result = static_cast<Z80_Op *>(&evaluate<Opcode>);
   static void result(Z80 &z80) { evaluate<Opcode>(z80); }
 };
@@ -202,12 +200,12 @@ struct monkey {
 } // namespace
 
 const std::array<std::string_view, 256> &base_opcode_names() {
-  static auto result = table<description>;
+  static auto result = table<build_description>;
   return result;
 }
 
 const std::array<Z80_Op *, 256> &base_opcode_ops() {
-  static constexpr auto result = table<monkey>;
+  static constexpr auto result = table<build_evaluate>;
   return result;
 }
 
