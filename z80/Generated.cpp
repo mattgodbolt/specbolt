@@ -14,33 +14,6 @@ using namespace std::literals;
 namespace specbolt {
 
 namespace {
-// TODO! use bespoke types for each microop instead of "type" etc. time can pass and the "framework"? or just write
-// instructions out longhand? Harder to generalise? maybe? what do I lose avoiding microops?
-struct MicroOp {
-  enum class Type {
-    Nop,
-    MemRead,
-    MemWrite,
-    IoRead,
-    IoWrite,
-  };
-  Type type{Type::Nop};
-  enum class Source {
-    None,
-    Immediate,
-    Register,
-    Memory,
-  };
-  Source source{Source::None};
-  RegisterFile::R8 dest;
-  std::size_t cycles;
-  static constexpr MicroOp read_imm(const RegisterFile::R8 dest) {
-    return MicroOp{Type::MemRead, Source::Immediate, dest, 3};
-  }
-  static constexpr MicroOp delay(const std::size_t cycles) {
-    return MicroOp{Type::Nop, Source::None, RegisterFile::R8::A /* todo not this */, cycles};
-  }
-};
 
 struct Mnemonic {
   std::array<char, 16> storage{};
@@ -70,16 +43,23 @@ constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, Registe
 
 struct NopType {
   static constexpr Mnemonic mnemonic{"nop"};
-  static constexpr std::array<MicroOp, 0> micro_ops{};
+  static constexpr void execute(Z80 &) {}
 };
 
 template<std::uint8_t P>
 struct Load16ImmOp {
   static constexpr Mnemonic mnemonic{"ld " + std::string(rp_names[P]) + ", $nnnn"};
-  static constexpr std::array micro_ops{
-      MicroOp::read_imm(rp_low[P]),
-      MicroOp::read_imm(rp_high[P]),
-  };
+  static constexpr std::uint8_t read_immediate(Z80 &z80) {
+    z80.pass_time(3); // ?
+    const auto addr = z80.regs().pc();
+    z80.regs().pc(addr + 1);
+    return z80.read8(addr);
+  }
+
+  static constexpr auto execute(Z80 &z80) {
+    z80.regs().set(rp_low[P], read_immediate(z80));
+    z80.regs().set(rp_high[P], read_immediate(z80));
+  }
 };
 
 template<Opcode opcode>
@@ -93,19 +73,19 @@ template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 0)
 constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
 
-struct DjnzOp {
-  static constexpr Mnemonic mnemonic{"djnz $d"};
-  static constexpr std::array micro_ops{
-      MicroOp::delay(1),
-      // MicroOp::read_to_dlatch(),
-      // MicroOp::decrement_b(),
-      // MicroOp::
-  };
-};
-
-template<Opcode opcode>
-  requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
-constexpr auto instruction<opcode> = DjnzOp{};
+// struct DjnzOp {
+//   static constexpr Mnemonic mnemonic{"djnz $d"};
+//   static constexpr std::array micro_ops{
+//       MicroOp::delay(1),
+//       // MicroOp::read_to_dlatch(),
+//       // MicroOp::decrement_b(),
+//       // MicroOp::
+//   };
+// };
+//
+// template<Opcode opcode>
+//   requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
+// constexpr auto instruction<opcode> = DjnzOp{};
 
 // http://www.z80.info/decoding.htm
 // constexpr std::array z80_source_ops = {
@@ -165,16 +145,6 @@ constexpr bool execute(const MicroOp op, auto rhs, Z80 &z80) {
   return true;
 }
 
-template<auto Instruction>
-[[gnu::flatten]] constexpr void evaluate(Z80 &z80) {
-  bool keep_going = true;
-  [&]<size_t... Idx>(std::index_sequence<Idx...>) {
-    ((keep_going = keep_going ? execute(Instruction.micro_ops[Idx],
-                                    SourceGetter<Instruction.micro_ops[Idx].source>{}(z80), z80)
-                              : false),
-        ...);
-  }(std::make_index_sequence<Instruction.micro_ops.size()>());
-}
 template<template<auto> typename Transform>
 constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
   return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};
@@ -187,8 +157,7 @@ struct build_description {
 
 template<auto Opcode>
 struct build_evaluate {
-  // static constexpr auto result = static_cast<Z80_Op *>(&evaluate<Opcode>);
-  static void result(Z80 &z80) { evaluate<Opcode>(z80); }
+  static void result(Z80 &z80) { Opcode.execute(z80); }
 };
 
 } // namespace
