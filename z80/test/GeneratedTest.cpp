@@ -16,6 +16,9 @@ TEST_CASE("Opcode generation tests") {
     const auto &names = base_opcode_names();
     CHECK(names[0x00] == "nop");
     CHECK(names[0x01] == "ld bc, $nnnn");
+    CHECK(names[0x11] == "ld de, $nnnn");
+    CHECK(names[0x21] == "ld hl, $nnnn");
+    CHECK(names[0x31] == "ld sp, $nnnn");
   }
   SECTION("Test base opcode operations") {
     const auto &ops = base_opcode_ops();

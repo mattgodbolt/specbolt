@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 
+using namespace std::literals;
 namespace specbolt {
 
 namespace {
@@ -47,10 +48,10 @@ struct Mnemonic {
     std::ranges::copy(name, storage.begin());
     len = name.size();
   }
-  [[nodiscard]] std::string_view view() const { return {storage.data(), len}; }
+  [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), len}; }
 };
 
-struct CompiledOp {
+struct CompiledOp { // TODO this is to be removed
   Mnemonic mnemonic;
   std::array<MicroOp, 8> micro_ops{};
 };
@@ -66,71 +67,65 @@ struct Opcode {
       x(opcode >> 6), y((opcode >> 3) & 0x7), z(opcode & 0x7), p(y >> 1), q(y & 1) {}
 };
 
-struct SourceOp {
-  CompiledOp (*create)(const Opcode &opcode);
-  bool (*matches)(const Opcode &opcode);
-};
-
 constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
 constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
 constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
 
-// http://www.z80.info/decoding.htm
-constexpr std::array z80_source_ops = {
-    // First quadrant, x == 0
-    SourceOp{[](const Opcode &) { return CompiledOp{Mnemonic("nop"), {}}; },
-        [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 0 && opcode.z == 0; }},
-    // SourceOp{Mnemonic("ex af, af'"),
-    //     [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 1 && opcode.z == 0; }, {}},
-    SourceOp{[](const Opcode &) {
-               return CompiledOp{Mnemonic("djnz $d"), {
-                                                          MicroOp::delay(1),
-                                                          // MicroOp::read_to_dlatch(),
-                                                          // MicroOp::decrement_b(),
-                                                          // MicroOp::
-                                                      }};
-             },
-        [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 2 && opcode.z == 0; }},
-    // SourceOp{
-    //     const_name("jr d"), [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 3 && opcode.z == 0; },
-    //     {}},
-    // SourceOp{const_name("jr CC d"), [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 0; }, {}},
-    SourceOp{[](const Opcode &opcode) {
-               return CompiledOp{Mnemonic("ld " + std::string(rp_names[opcode.p]) + ", $nnnn"),
-                   {
-                       MicroOp::read_imm(rp_low[opcode.p]),
-                       MicroOp::read_imm(rp_high[opcode.p]),
-                   }};
-             },
-        [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 1 && opcode.q == 0; }},
-    // SourceOp{rp_p_name("add hl, {}"),
-    //     [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 1 && opcode.q == 1; }, {}},
+struct NopType : CompiledOp {
+  constexpr NopType() : CompiledOp{Mnemonic("nop")} {}
 };
 
-constexpr std::array<CompiledOp, 256> ops = ([] {
-  std::array<CompiledOp, 256> result;
-
-  for (auto &&[opcode_num, compiled_op]: std::ranges::views::enumerate(result)) {
-    const auto opcode = Opcode{static_cast<std::uint8_t>(opcode_num)};
-    // TODO zomg strings at constexpr time...
-    // compiled_op.mnemonic = Mnemonic("?? " + std::to_string(opcode_num));
-    for (const auto &[create, matches]: z80_source_ops) {
-      if (matches(opcode)) {
-        compiled_op = create(opcode);
-        break;
-      }
-    }
+template<std::uint8_t P>
+struct Load16ImmOp : CompiledOp {
+  constexpr Load16ImmOp() : CompiledOp{Mnemonic("ld " + std::string(rp_names[P]) + ", $nnnn")} {
+    micro_ops[0] = MicroOp::read_imm(rp_low[P]);
+    micro_ops[1] = MicroOp::read_imm(rp_high[P]);
   }
+};
 
-  return result;
-})();
+template<Opcode opcode>
+constexpr auto instruction = NopType{}; // TODO once we cover all instructions this will be an error.
 
-std::array<std::string_view, 256> make_opcode_names() {
-  std::array<std::string_view, 256> result;
-  for (auto x = 0uz; x < 256uz; ++x)
-    result[x] = ops[x].mnemonic.view();
-  return result;
-}
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 0 && opcode.z == 0)
+constexpr auto instruction<opcode> = NopType{};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 0)
+constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
+
+// http://www.z80.info/decoding.htm
+// constexpr std::array z80_source_ops = {
+//     // First quadrant, x == 0
+//     SourceOp{[](const Opcode &) { return CompiledOp{Mnemonic("nop"), {}}; },
+//         [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 0 && opcode.z == 0; }},
+//     // SourceOp{Mnemonic("ex af, af'"),
+//     //     [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 1 && opcode.z == 0; }, {}},
+//     SourceOp{[](const Opcode &) {
+//                return CompiledOp{Mnemonic("djnz $d"), {
+//                                                           MicroOp::delay(1),
+//                                                           // MicroOp::read_to_dlatch(),
+//                                                           // MicroOp::decrement_b(),
+//                                                           // MicroOp::
+//                                                       }};
+//              },
+//         [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 2 && opcode.z == 0; }},
+//     // SourceOp{
+//     //     const_name("jr d"), [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 3 && opcode.z == 0; },
+//     //     {}},
+//     // SourceOp{const_name("jr CC d"), [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 0; }, {}},
+//     SourceOp{[](const Opcode &opcode) {
+//                return CompiledOp{Mnemonic("ld " + std::string(rp_names[opcode.p]) + ", $nnnn"),
+//                    {
+//                        MicroOp::read_imm(rp_low[opcode.p]),
+//                        MicroOp::read_imm(rp_high[opcode.p]),
+//                    }};
+//              },
+//         [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 1 && opcode.q == 0; }},
+//     // SourceOp{rp_p_name("add hl, {}"),
+//     //     [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 1 && opcode.q == 1; }, {}},
+// };
+
 
 template<MicroOp::Source source>
 struct SourceGetter;
@@ -147,7 +142,6 @@ template<>
 struct SourceGetter<MicroOp::Source::None> {
   static constexpr std::uint8_t operator()(Z80 &) { return 0; }
 };
-
 
 constexpr bool execute(const MicroOp op, auto rhs, Z80 &z80) {
   z80.pass_time(op.cycles);
@@ -179,6 +173,10 @@ template<CompiledOp Instruction>
         ...);
   }(std::make_index_sequence<Instruction.micro_ops.size()>());
 }
+template<template<auto> typename Transform>
+constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
+  return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};
+}(std::make_index_sequence<256>());
 
 template<std::array Instructions>
 consteval auto make_opcode_ops() {
@@ -190,19 +188,33 @@ consteval auto make_opcode_ops() {
              std::make_index_sequence<Instructions.size()>());
 }
 
+template<auto Opcode>
+struct description {
+  static constexpr auto result = Opcode.mnemonic.view();
+};
+
+template<auto Opcode>
+struct monkey {
+  // static constexpr auto result = static_cast<Z80_Op *>(&evaluate<Opcode>);
+  static void result(Z80 &z80) { evaluate<Opcode>(z80); }
+};
+
 } // namespace
 
 const std::array<std::string_view, 256> &base_opcode_names() {
-  static auto result = make_opcode_names();
+  static auto result = table<description>;
   return result;
 }
 
 const std::array<Z80_Op *, 256> &base_opcode_ops() {
-  static constexpr auto result = make_opcode_ops<ops>();
+  static constexpr auto result = table<monkey>;
   return result;
 }
 
 } // namespace specbolt
 
+// With huge thanks to Hana!
 // https://compiler-explorer.com/z/rr15c7hE9
 // https://compiler-explorer.com/z/xqhTe9h7c
+// https://compiler-explorer.com/z/EE16rPK9E
+// https://compiler-explorer.com/z/8v4Yq8n8T
