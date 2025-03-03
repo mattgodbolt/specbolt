@@ -556,6 +556,90 @@ TEST_CASE("Opcode execution tests") {
           (Flags::Parity() | Flags::Carry() | Flags::Sign() | Flags::Flag3() | Flags::Overflow() | Flags::Subtract()));
     CHECK(regs.get(RegisterFile::R8::A) == 0x5f);
   }
+  SECTION("return") {
+    regs.sp(0xfffd);
+    memory.write16(0xfffd, 0xcafe);
+    SECTION("ret") {
+      run_one_instruction(0xc9); // ret
+      CHECK(z80.pc() == 0xcafe);
+      CHECK(z80.cycle_count() == 10);
+    }
+    SECTION("ret nz") {
+      SECTION("taken") {
+        z80.flags(Flags());
+        run_one_instruction(0xc0); // ret nz
+        CHECK(z80.pc() == 0xcafe);
+        CHECK(z80.cycle_count() == 11);
+      }
+      SECTION("not taken") {
+        z80.flags(Flags::Zero());
+        run_one_instruction(0xc0); // ret nz
+        CHECK(z80.pc() == 1);
+        CHECK(z80.cycle_count() == 5);
+      }
+    }
+    SECTION("ret z") {
+      SECTION("taken") {
+        z80.flags(Flags::Zero());
+        run_one_instruction(0xc8); // ret z
+        CHECK(z80.pc() == 0xcafe);
+        CHECK(z80.cycle_count() == 11);
+      }
+      SECTION("not taken") {
+        z80.flags(Flags());
+        run_one_instruction(0xc8); // ret z
+        CHECK(z80.pc() == 1);
+        CHECK(z80.cycle_count() == 5);
+      }
+    }
+    // todo ... consider testing the others though honestly...
+  }
+  SECTION("pop bc") {
+    regs.sp(0xfffd);
+    memory.write16(0xfffd, 0xbabe);
+    run_one_instruction(0xc1); // pop bc
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 10);
+    CHECK(z80.regs().get(RegisterFile::R16::BC) == 0xbabe);
+  }
+  SECTION("pop af") {
+    regs.sp(0xfffd);
+    memory.write16(0xfffd, 0xbabe);
+    run_one_instruction(0xf1); // pop af
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 10);
+    CHECK(z80.regs().get(RegisterFile::R16::AF) == 0xbabe);
+  }
+  SECTION("exx") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R16::DE, 0x2345);
+    regs.set(RegisterFile::R16::BC, 0x3456);
+    regs.set(RegisterFile::R16::HL_, 0xfeed);
+    regs.set(RegisterFile::R16::DE_, 0xbeef);
+    regs.set(RegisterFile::R16::BC_, 0xdead);
+    run_one_instruction(0xd9); // exx
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(z80.regs().get(RegisterFile::R16::HL) == 0xfeed);
+    CHECK(z80.regs().get(RegisterFile::R16::DE) == 0xbeef);
+    CHECK(z80.regs().get(RegisterFile::R16::BC) == 0xdead);
+    CHECK(z80.regs().get(RegisterFile::R16::HL_) == 0x1234);
+    CHECK(z80.regs().get(RegisterFile::R16::DE_) == 0x2345);
+    CHECK(z80.regs().get(RegisterFile::R16::BC_) == 0x3456);
+  }
+  SECTION("jp (hl)") {
+    regs.set(RegisterFile::R16::HL, 0x8008);
+    run_one_instruction(0xe9); // jp (hl)
+    CHECK(z80.pc() == 0x8008);
+    CHECK(z80.cycle_count() == 4);
+  }
+  SECTION("ld sp, hl") {
+    regs.set(RegisterFile::R16::HL, 0x8008);
+    run_one_instruction(0xf9); // ld sp, hl
+    CHECK(z80.pc() == 1);
+    CHECK(z80.regs().sp() == 0x8008);
+    CHECK(z80.cycle_count() == 6);
+  }
 }
 
 } // namespace specbolt

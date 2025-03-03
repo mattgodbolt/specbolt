@@ -200,6 +200,22 @@ TEST_CASE("Opcode generation tests") {
     CHECK(names[0xbd] == "cp l");
     CHECK(names[0xbe] == "cp (hl)");
     CHECK(names[0xbf] == "cp a");
+    CHECK(names[0xc0] == "ret nz");
+    CHECK(names[0xc8] == "ret z");
+    CHECK(names[0xd0] == "ret nc");
+    CHECK(names[0xd8] == "ret c");
+    CHECK(names[0xe0] == "ret po");
+    CHECK(names[0xe8] == "ret pe");
+    CHECK(names[0xf0] == "ret p");
+    CHECK(names[0xf8] == "ret m");
+    CHECK(names[0xc1] == "pop bc");
+    CHECK(names[0xd1] == "pop de");
+    CHECK(names[0xe1] == "pop hl");
+    CHECK(names[0xf1] == "pop af");
+    CHECK(names[0xc9] == "ret");
+    CHECK(names[0xd9] == "exx");
+    CHECK(names[0xe9] == "jp (hl)");
+    CHECK(names[0xf9] == "ld sp, hl");
   }
 }
 

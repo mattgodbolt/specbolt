@@ -26,12 +26,16 @@ struct Mnemonic {
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), len}; }
 };
 
+// TODO put these on the z80 itself and either:
+// - split z80 into two for the in- and out-band
+// - or update the Instruction etc code accordingly. as these model time.
 constexpr std::uint8_t read_immediate(Z80 &z80) {
   z80.pass_time(3);
   const auto addr = z80.regs().pc();
   z80.regs().pc(addr + 1);
   return z80.read8(addr);
 }
+
 constexpr std::uint16_t read_immediate16(Z80 &z80) {
   const auto low = read_immediate(z80);
   const auto high = read_immediate(z80);
@@ -46,6 +50,18 @@ constexpr void write(Z80 &z80, const std::uint16_t address, const std::uint8_t b
 constexpr std::uint8_t read(Z80 &z80, const std::uint16_t address) {
   z80.pass_time(3);
   return z80.read8(address);
+}
+
+constexpr std::uint8_t pop8(Z80 &z80) {
+  const auto value = read(z80, z80.regs().sp());
+  z80.regs().sp(z80.regs().sp() + 1);
+  return value;
+}
+
+constexpr std::uint16_t pop16(Z80 &z80) {
+  const auto low = pop8(z80);
+  const auto high = pop8(z80);
+  return static_cast<std::uint16_t>(high << 8 | low);
 }
 
 constexpr std::array r_names = {"b", "c", "d", "e", "h", "l", "(hl)", "a"};
@@ -73,6 +89,9 @@ constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, Regist
 constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
 constexpr std::array rp_highlow = {
     RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::HL, RegisterFile::R16::SP};
+constexpr std::array rp2_names = {"bc", "de", "hl", "af"};
+constexpr std::array rp2_highlow = {
+    RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::HL, RegisterFile::R16::AF};
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
 template<std::uint8_t>
@@ -93,22 +112,22 @@ template<>
 bool cc_check<3>(const Flags flags) {
   return flags.carry();
 }
-// template<>
-// bool cc_check<4>(const Flags flags) {
-//   return !flags.parity();
-// }
-// template<>
-// bool cc_check<5>(const Flags flags) {
-//   return flags.parity();
-// }
-// template<>
-// bool cc_check<6>(const Flags flags) {
-//   return !flags.sign();
-// }
-// template<>
-// bool cc_check<7>(const Flags flags) {
-//   return flags.sign();
-// }
+template<>
+bool cc_check<4>(const Flags flags) {
+  return !flags.parity();
+}
+template<>
+bool cc_check<5>(const Flags flags) {
+  return flags.parity();
+}
+template<>
+bool cc_check<6>(const Flags flags) {
+  return !flags.sign();
+}
+template<>
+bool cc_check<7>(const Flags flags) {
+  return flags.sign();
+}
 
 struct InvalidType {
   static constexpr Mnemonic mnemonic{"???"};
@@ -398,6 +417,48 @@ template<Opcode opcode>
   requires(opcode.x == 2 && opcode.y == 7)
 constexpr auto instruction<opcode> = AluOp<Mnemonic("cp"), opcode.z,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::cmp8(lhs, rhs); }>{};
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// X = 3
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ret " + std::string(cc_names[opcode.y])), [](Z80 &z80) {
+  z80.pass_time(1);
+  if (cc_check<opcode.y>(z80.flags())) {
+    const auto return_address = pop16(z80);
+    z80.regs().pc(return_address);
+  }
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("pop " + std::string(rp2_names[opcode.p])), [](Z80 &z80) {
+  const auto result = pop16(z80);
+  z80.regs().set(rp2_highlow[opcode.p], result);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ret"), [](Z80 &z80) {
+  const auto return_address = pop16(z80);
+  z80.regs().pc(return_address);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 1)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("exx"), [](Z80 &z80) { z80.regs().exx(); }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 2)
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("jp (hl)"), [](Z80 &z80) { z80.regs().pc(z80.regs().get(RegisterFile::R16::HL)); }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 3)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld sp, hl"), [](Z80 &z80) {
+  z80.pass_time(2);
+  z80.regs().sp(z80.regs().get(RegisterFile::R16::HL));
+}>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

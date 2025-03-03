@@ -37,6 +37,9 @@ std::uint8_t rmw_access_time(const Instruction::Operand lhs) {
 }
 
 std::uint8_t access_time(const Instruction::Operand lhs, const Instruction::Operand rhs) {
+  // Heinous hack to make this flawed approach agree with reality.
+  if (lhs == Instruction::Operand::SP && rhs == Instruction::Operand::HL)
+    return 2;
   return access_time(lhs) + access_time(rhs);
 }
 
@@ -116,7 +119,8 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto taken = should_execute(input.flags);
       if (taken)
         cpu.registers().pc(input.rhs);
-      // TODO jp indirect is faster...
+      if (rhs == Operand::HL)
+        return {0, input.flags, 0};
       return {0, input.flags, static_cast<std::uint8_t>(operation == Operation::Jump ? 6 : taken ? 8 : 3)};
     }
     case Operation::Call: {
