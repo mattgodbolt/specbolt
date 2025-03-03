@@ -108,7 +108,7 @@ struct Load16ImmOp {
 template<Mnemonic mnem, auto op>
 struct SimpleOp {
   static constexpr auto mnemonic = mnem;
-  static constexpr auto execute(Z80 &z80) { op(z80); }
+  static constexpr auto execute = op;
 };
 
 // http://www.z80.info/decoding.htm
