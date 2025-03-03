@@ -288,6 +288,57 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("dec " + std::string(r_na
   z80.flags(flags);
 }>{};
 
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 6)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld " + std::string(r_names[opcode.y]) + ", $nn"), [](Z80 &z80) {
+  const auto value = read_immediate((z80));
+  set_r<opcode.y>(z80, value);
+}>{};
+
+template<Mnemonic mnem, auto alu_op>
+struct FastAluOp {
+  static constexpr Mnemonic mnemonic = mnem;
+  static constexpr void execute(Z80 &z80) {
+    const auto [result, flags] = alu_op(z80.regs().get(RegisterFile::R8::A), z80.flags());
+    z80.regs().set(RegisterFile::R8::A, result);
+    z80.flags(flags);
+  }
+};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 0)
+constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rlca"), [](const std::uint8_t a, const Flags flags) {
+  return Alu::fast_rotate_circular8(a, Alu::Direction::Left, flags);
+}>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 1)
+constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rrca"), [](const std::uint8_t a, const Flags flags) {
+  return Alu::fast_rotate_circular8(a, Alu::Direction::Right, flags);
+}>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 2)
+constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rla"),
+    [](const std::uint8_t a, const Flags flags) { return Alu::fast_rotate8(a, Alu::Direction::Left, flags); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 3)
+constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rra"),
+    [](const std::uint8_t a, const Flags flags) { return Alu::fast_rotate8(a, Alu::Direction::Right, flags); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 4)
+constexpr auto instruction<opcode> =
+    FastAluOp<Mnemonic("daa"), [](const std::uint8_t a, const Flags flags) { return Alu::daa(a, flags); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 5)
+constexpr auto instruction<opcode> =
+    FastAluOp<Mnemonic("cpl"), [](const std::uint8_t a, const Flags flags) { return Alu::cpl(a, flags); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 6)
+constexpr auto instruction<opcode> =
+    FastAluOp<Mnemonic("scf"), [](const std::uint8_t a, const Flags flags) { return Alu::scf(a, flags); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 7)
+constexpr auto instruction<opcode> =
+    FastAluOp<Mnemonic("ccf"), [](const std::uint8_t a, const Flags flags) { return Alu::ccf(a, flags); }>{};
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<template<auto> typename Transform>

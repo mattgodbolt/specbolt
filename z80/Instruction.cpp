@@ -260,26 +260,20 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
 
     case Operation::Pop: return {cpu.pop16(), input.flags, 6};
     case Operation::Ccf: {
-      const auto preserved = input.flags & (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry());
-      const auto flags53 = Flags(cpu.registers().get(RegisterFile::R8::A)) & (Flags::Flag3() | Flags::Flag5());
-      const auto other_flag = input.flags.carry() ? Flags::HalfCarry() : Flags();
-      return {0, (preserved | flags53 | other_flag) ^ Flags::Carry(), 0};
+      const auto [result, flags] = Alu::ccf(static_cast<std::uint8_t>(input.lhs), input.flags);
+      return {result, flags, 0};
     }
     case Operation::Scf: {
-      const auto preserved = input.flags & (Flags::Sign() | Flags::Zero() | Flags::Parity());
-      const auto flags53 = Flags(cpu.registers().get(RegisterFile::R8::A)) & (Flags::Flag3() | Flags::Flag5());
-      return {0, preserved | flags53 | Flags::Carry(), 0};
+      const auto [result, flags] = Alu::scf(static_cast<std::uint8_t>(input.lhs), input.flags);
+      return {result, flags, 0};
     }
     case Operation::Daa: {
       const auto [result, flags] = Alu::daa(static_cast<std::uint8_t>(input.lhs), input.flags);
       return {result, flags, 0};
     }
     case Operation::Cpl: {
-      const auto result = static_cast<uint8_t>(input.lhs ^ 0xff);
-      const auto preserved_flags = input.flags & (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry());
-      constexpr auto set_flags = Flags::HalfCarry() | Flags::Subtract();
-      const auto flags_from_result = Flags(result) & (Flags::Flag3() | Flags::Flag5());
-      return {result, preserved_flags | set_flags | flags_from_result, 0};
+      const auto [result, flags] = Alu::cpl(static_cast<std::uint8_t>(input.lhs), input.flags);
+      return {result, flags, 0};
     }
     case Operation::Neg: {
       const auto [result, flags] = Alu::sub8(0, static_cast<std::uint8_t>(input.lhs), false);

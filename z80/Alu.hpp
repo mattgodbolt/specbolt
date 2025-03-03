@@ -32,6 +32,9 @@ public:
   // https://stackoverflow.com/questions/57958631/game-boy-half-carry-flag-and-16-bit-instructions-especially-opcode-0xe8
 
   static R8 daa(std::uint8_t lhs, Flags current_flags);
+  static R8 cpl(std::uint8_t lhs, Flags current_flags);
+  static R8 scf(std::uint8_t lhs, Flags current_flags);
+  static R8 ccf(std::uint8_t lhs, Flags current_flags);
 
   static Flags parity_flags_for(std::uint8_t value);
 

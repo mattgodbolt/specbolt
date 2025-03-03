@@ -545,8 +545,8 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
 
     case 0x27: return {"daa", 1, Op::Daa, Operand::A};
     case 0x2f: return {"cpl", 1, Op::Cpl, Operand::A};
-    case 0x37: return {"scf", 1, Op::Scf};
-    case 0x3f: return {"ccf", 1, Op::Ccf};
+    case 0x37: return {"scf", 1, Op::Scf, Operand::A};
+    case 0x3f: return {"ccf", 1, Op::Ccf, Operand::A};
 
     case 0xc2:
       return {"jp nz, {1}", 3, Op::Jump, Operand::None, Operand::WordImmediate, Instruction::Condition::NonZero};

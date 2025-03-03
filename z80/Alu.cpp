@@ -104,6 +104,27 @@ Alu::R8 Alu::daa(const std::uint8_t lhs, const Flags current_flags) {
   return {result, sz53_parity(result) | carry | half_carry | preserved_flags};
 }
 
+Alu::R8 Alu::cpl(const std::uint8_t lhs, const Flags current_flags) {
+  const auto result = static_cast<uint8_t>(lhs ^ 0xff);
+  const auto preserved_flags = current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry());
+  constexpr auto set_flags = Flags::HalfCarry() | Flags::Subtract();
+  const auto flags_from_result = Flags(result) & (Flags::Flag3() | Flags::Flag5());
+  return {result, preserved_flags | set_flags | flags_from_result};
+}
+
+Alu::R8 Alu::scf(const std::uint8_t lhs, const Flags current_flags) {
+  const auto preserved = current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity());
+  const auto flags53 = Flags(lhs) & (Flags::Flag3() | Flags::Flag5());
+  return {lhs, preserved | flags53 | Flags::Carry()};
+}
+
+Alu::R8 Alu::ccf(const std::uint8_t lhs, const Flags current_flags) {
+  const auto preserved = current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry());
+  const auto flags53 = Flags(lhs) & (Flags::Flag3() | Flags::Flag5());
+  const auto other_flag = current_flags.carry() ? Flags::HalfCarry() : Flags();
+  return {lhs, (preserved | flags53 | other_flag) ^ Flags::Carry()};
+}
+
 Flags Alu::parity_flags_for(const std::uint8_t value) { return sz53_parity(value); }
 
 Alu::R8 Alu::fast_rotate8(const std::uint8_t lhs, const Direction direction, const Flags flags) {
