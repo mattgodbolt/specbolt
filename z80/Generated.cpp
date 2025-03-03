@@ -8,6 +8,7 @@
 #include <format>
 #include <string>
 #include <string_view>
+#include <utility>
 
 using namespace std::literals;
 namespace specbolt {
@@ -28,6 +29,42 @@ struct Mnemonic {
 constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
 constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
 constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
+
+constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
+template<std::uint8_t>
+bool cc_check(Flags flags) = delete;
+template<>
+bool cc_check<0>(const Flags flags) {
+  return !flags.zero();
+}
+template<>
+bool cc_check<1>(const Flags flags) {
+  return flags.zero();
+}
+template<>
+bool cc_check<2>(const Flags flags) {
+  return !flags.carry();
+}
+template<>
+bool cc_check<3>(const Flags flags) {
+  return flags.carry();
+}
+// template<>
+// bool cc_check<4>(const Flags flags) {
+//   return !flags.parity();
+// }
+// template<>
+// bool cc_check<5>(const Flags flags) {
+//   return flags.parity();
+// }
+// template<>
+// bool cc_check<6>(const Flags flags) {
+//   return !flags.sign();
+// }
+// template<>
+// bool cc_check<7>(const Flags flags) {
+//   return flags.sign();
+// }
 
 constexpr std::uint8_t read_immediate(Z80 &z80) {
   z80.pass_time(3); // ?
@@ -51,6 +88,12 @@ struct Load16ImmOp {
   }
 };
 
+template<Mnemonic mnem, auto op>
+struct SimpleOp {
+  static constexpr auto mnemonic = mnem;
+  static constexpr auto execute(Z80 &z80) { op(z80); }
+};
+
 // http://www.z80.info/decoding.htm
 struct Opcode {
   std::uint8_t x;
@@ -71,59 +114,45 @@ template<Opcode opcode>
 constexpr auto instruction<opcode> = NopType{};
 
 template<Opcode opcode>
-  requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 0)
-constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
-
-struct DjnzOp {
-  static constexpr Mnemonic mnemonic{"djnz $d"};
-  static constexpr auto execute(Z80 &z80) {
-    z80.pass_time(1);
-    const auto offset = static_cast<std::int8_t>(read_immediate(z80));
-    const std::uint8_t new_b = z80.regs().get(RegisterFile::R8::B) - 1;
-    z80.regs().set(RegisterFile::R8::B, new_b);
-    if (new_b == 0)
-      return;
-    z80.pass_time(5);
-    z80.branch(offset);
-  }
-};
+  requires(opcode.x == 0 && opcode.y == 1 && opcode.z == 0)
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("ex af, af'"), [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
-constexpr auto instruction<opcode> = DjnzOp{};
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("djnz $d"), [](Z80 &z80) {
+  z80.pass_time(1);
+  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  const std::uint8_t new_b = z80.regs().get(RegisterFile::R8::B) - 1;
+  z80.regs().set(RegisterFile::R8::B, new_b);
+  if (new_b == 0)
+    return;
+  z80.pass_time(5);
+  z80.branch(offset);
+}>{};
 
-// http://www.z80.info/decoding.htm
-// constexpr std::array z80_source_ops = {
-//     // First quadrant, x == 0
-//     SourceOp{[](const Opcode &) { return CompiledOp{Mnemonic("nop"), {}}; },
-//         [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 0 && opcode.z == 0; }},
-//     // SourceOp{Mnemonic("ex af, af'"),
-//     //     [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 1 && opcode.z == 0; }, {}},
-//     SourceOp{[](const Opcode &) {
-//                return CompiledOp{Mnemonic("djnz $d"), {
-//                                                           MicroOp::delay(1),
-//                                                           // MicroOp::read_to_dlatch(),
-//                                                           // MicroOp::decrement_b(),
-//                                                           // MicroOp::
-//                                                       }};
-//              },
-//         [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 2 && opcode.z == 0; }},
-//     // SourceOp{
-//     //     const_name("jr d"), [](const Opcode &opcode) { return opcode.x == 0 && opcode.y == 3 && opcode.z == 0; },
-//     //     {}},
-//     // SourceOp{const_name("jr CC d"), [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 0; }, {}},
-//     SourceOp{[](const Opcode &opcode) {
-//                return CompiledOp{Mnemonic("ld " + std::string(rp_names[opcode.p]) + ", $nnnn"),
-//                    {
-//                        MicroOp::read_imm(rp_low[opcode.p]),
-//                        MicroOp::read_imm(rp_high[opcode.p]),
-//                    }};
-//              },
-//         [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 1 && opcode.q == 0; }},
-//     // SourceOp{rp_p_name("add hl, {}"),
-//     //     [](const Opcode &opcode) { return opcode.x == 0 && opcode.z == 1 && opcode.q == 1; }, {}},
-// };
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 3 && opcode.z == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("jr $d"), [](Z80 &z80) {
+  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  z80.pass_time(5);
+  z80.branch(offset);
+}>{};
 
+template<Opcode opcode>
+  requires(opcode.x == 0 && (opcode.y >= 4 && opcode.y <= 7) && opcode.z == 0)
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("jr " + std::string(cc_names[opcode.y - 4]) + "$d"), [](Z80 &z80) {
+      const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+      if (cc_check<opcode.y - 4>(z80.flags())) {
+        z80.pass_time(5);
+        z80.branch(offset);
+      }
+    }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 0)
+constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
 
 template<template<auto> typename Transform>
 constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {

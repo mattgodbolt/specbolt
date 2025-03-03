@@ -56,6 +56,7 @@ public:
   void branch(std::int8_t offset);
 
   [[nodiscard]] auto &regs() { return regs_; }
+  [[nodiscard]] Flags flags() const;
   [[nodiscard]] std::uint8_t read8(std::uint16_t address) const;
   [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
   void write8(std::uint16_t address, std::uint8_t value);

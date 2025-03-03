@@ -35,6 +35,7 @@ std::size_t Z80::execute_one() {
   return now_tstates_ - initial_time;
 }
 
+Flags Z80::flags() const { return Flags(regs_.get(RegisterFile::R8::F)); }
 std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read(address); }
 std::uint16_t Z80::read16(const std::uint16_t address) const { return memory_.read16(address); }
 
