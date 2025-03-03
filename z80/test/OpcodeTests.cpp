@@ -131,6 +131,37 @@ TEST_CASE("Opcode execution tests") {
       CHECK(z80.cycle_count() == 7);
     }
   }
+  SECTION("add hl, ...") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    SECTION("bc") {
+      regs.set(RegisterFile::R16::BC, 0x1111);
+      run_one_instruction(0x09); // add hl, bc
+      CHECK(z80.pc() == 1);
+      CHECK(z80.cycle_count() == 11);
+      CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
+      CHECK(z80.flags() == Flags());
+    }
+    SECTION("de") {
+      regs.set(RegisterFile::R16::DE, 0x1111);
+      run_one_instruction(0x19); // add hl, de
+      CHECK(z80.pc() == 1);
+      CHECK(z80.cycle_count() == 11);
+      CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
+    }
+    SECTION("hl") {
+      run_one_instruction(0x29); // add hl, hl
+      CHECK(z80.pc() == 1);
+      CHECK(z80.cycle_count() == 11);
+      CHECK(regs.get(RegisterFile::R16::HL) == 0x2468);
+    }
+    // SECTION("sp") {
+    //   regs.sp(0x1111);
+    //   run_one_instruction(0x39); // add hl, sp
+    //   CHECK(z80.pc() == 1);
+    //   CHECK(z80.cycle_count() == 11);
+    //   CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
+    // }
+  }
 }
 
 } // namespace specbolt
