@@ -26,6 +26,48 @@ struct Mnemonic {
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), len}; }
 };
 
+constexpr std::uint8_t read_immediate(Z80 &z80) {
+  z80.pass_time(3);
+  const auto addr = z80.regs().pc();
+  z80.regs().pc(addr + 1);
+  return z80.read8(addr);
+}
+constexpr std::uint16_t read_immediate16(Z80 &z80) {
+  const auto low = read_immediate(z80);
+  const auto high = read_immediate(z80);
+  return static_cast<std::uint16_t>(high << 8 | low);
+}
+
+constexpr void write(Z80 &z80, const std::uint16_t address, const std::uint8_t byte) {
+  z80.pass_time(3);
+  z80.write8(address, byte);
+}
+
+constexpr std::uint8_t read(Z80 &z80, const std::uint16_t address) {
+  z80.pass_time(3);
+  return z80.read8(address);
+}
+
+constexpr std::array r_names = {"b", "c", "d", "e", "h", "l", "(hl)", "a"};
+constexpr std::array r_regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D, RegisterFile::R8::E,
+    RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */, RegisterFile::R8::A};
+template<std::uint8_t y>
+constexpr uint8_t get_r(Z80 &z80) {
+  return z80.regs().get(r_regs[y]);
+}
+template<>
+constexpr uint8_t get_r<6>(Z80 &z80) {
+  return read(z80, z80.regs().get(RegisterFile::R16::HL));
+}
+template<std::uint8_t y>
+constexpr void set_r(Z80 &z80, const std::uint8_t value) {
+  z80.regs().set(r_regs[y], value);
+}
+template<>
+constexpr void set_r<6>(Z80 &z80, const std::uint8_t value) {
+  write(z80, z80.regs().get(RegisterFile::R16::HL), value);
+}
+
 constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
 constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
 constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
@@ -68,23 +110,6 @@ bool cc_check<3>(const Flags flags) {
 //   return flags.sign();
 // }
 
-constexpr std::uint8_t read_immediate(Z80 &z80) {
-  z80.pass_time(3);
-  const auto addr = z80.regs().pc();
-  z80.regs().pc(addr + 1);
-  return z80.read8(addr);
-}
-
-constexpr void write(Z80 &z80, const std::uint16_t address, const std::uint8_t byte) {
-  z80.pass_time(3);
-  z80.write8(address, byte);
-}
-
-constexpr std::uint8_t read(Z80 &z80, const std::uint16_t address) {
-  z80.pass_time(3);
-  return z80.read8(address);
-}
-
 struct InvalidType {
   static constexpr Mnemonic mnemonic{"???"};
   static constexpr void execute(Z80 &) {}
@@ -100,6 +125,7 @@ struct Load16ImmOp {
   static constexpr Mnemonic mnemonic{"ld " + std::string(rp_names[P]) + ", $nnnn"};
 
   static constexpr auto execute(Z80 &z80) {
+    // TODO: just go straight to low/high? or is there a visible difference?
     z80.regs().set(rp_low[P], read_immediate(z80));
     z80.regs().set(rp_high[P], read_immediate(z80));
   }
@@ -191,6 +217,19 @@ template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 1)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld (de), a"),
     [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::DE), z80.regs().get(RegisterFile::R8::A)); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 2)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld ($nnnn), hl"), [](Z80 &z80) {
+  const auto address = read_immediate16(z80);
+  write(z80, address, z80.regs().get(RegisterFile::R8::L));
+  write(z80, address + 1, z80.regs().get(RegisterFile::R8::H));
+}>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 3)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld ($nnnn), a"), [](Z80 &z80) {
+  const auto address = read_immediate16(z80);
+  write(z80, address, z80.regs().get(RegisterFile::R8::A));
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 0)
@@ -200,6 +239,54 @@ template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 1)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld a, (de)"),
     [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::DE))); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 2)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld hl, ($nnnn)"), [](Z80 &z80) {
+  const auto address = read_immediate16(z80);
+  z80.regs().set(RegisterFile::R8::L, read(z80, address));
+  z80.regs().set(RegisterFile::R8::H, read(z80, address + 1));
+}>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 3)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld a, ($nnnn)"), [](Z80 &z80) {
+  const auto address = read_immediate16(z80);
+  z80.regs().set(RegisterFile::R8::A, read(z80, address));
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 3 && opcode.q == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("inc " + std::string(rp_names[opcode.p])), [](Z80 &z80) {
+  z80.regs().set(rp_highlow[opcode.p], z80.regs().get(rp_highlow[opcode.p]) + 1);
+  z80.pass_time(2);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 3 && opcode.q == 1)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("dec " + std::string(rp_names[opcode.p])), [](Z80 &z80) {
+  z80.regs().set(rp_highlow[opcode.p], z80.regs().get(rp_highlow[opcode.p]) - 1);
+  z80.pass_time(2);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 4)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("inc " + std::string(r_names[opcode.y])), [](Z80 &z80) {
+  if constexpr (opcode.y == 6) // TODO can we better generalise?
+    z80.pass_time(1);
+  const auto rhs = get_r<opcode.y>(z80);
+  const auto [result, flags] = Alu::inc8(rhs, z80.flags());
+  set_r<opcode.y>(z80, result);
+  z80.flags(flags);
+}>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 5)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("dec " + std::string(r_names[opcode.y])), [](Z80 &z80) {
+  if constexpr (opcode.y == 6) // TODO can we better generalise?
+    z80.pass_time(1);
+  const auto rhs = get_r<opcode.y>(z80);
+  const auto [result, flags] = Alu::dec8(rhs, z80.flags());
+  set_r<opcode.y>(z80, result);
+  z80.flags(flags);
+}>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -231,9 +318,3 @@ const std::array<Z80_Op *, 256> &base_opcode_ops() {
 }
 
 } // namespace specbolt
-
-// With huge thanks to Hana!
-// https://compiler-explorer.com/z/rr15c7hE9
-// https://compiler-explorer.com/z/xqhTe9h7c
-// https://compiler-explorer.com/z/EE16rPK9E
-// https://compiler-explorer.com/z/8v4Yq8n8T

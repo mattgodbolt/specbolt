@@ -198,6 +198,109 @@ TEST_CASE("Opcode execution tests") {
     CHECK(z80.cycle_count() == 7);
     CHECK(memory.read(0x1234) == 0xf0);
   }
+  SECTION("ld ($nnnn), hl") {
+    regs.set(RegisterFile::R16::HL, 0xf00f);
+    run_one_instruction(0x22, 0x34, 0x12); // ld (0x1234), hl
+    CHECK(z80.pc() == 3);
+    CHECK(z80.cycle_count() == 16);
+    CHECK(memory.read16(0x1234) == 0xf00f);
+  }
+  SECTION("ld ($nnnn), a") {
+    regs.set(RegisterFile::R16::HL, 0xf00f);
+    regs.set(RegisterFile::R8::A, 0xc7);
+    run_one_instruction(0x32, 0x34, 0x12); // ld (0x1234), a
+    CHECK(z80.pc() == 3);
+    CHECK(z80.cycle_count() == 13);
+    CHECK(memory.read(0x1234) == 0xc7);
+  }
+  SECTION("ld hl, ($nnnn)") {
+    memory.write16(0x1234, 0xf11f);
+    run_one_instruction(0x2a, 0x34, 0x12); // ld hl, ($nnnn)
+    CHECK(z80.pc() == 3);
+    CHECK(z80.cycle_count() == 16);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0xf11f);
+  }
+  SECTION("ld a, ($nnnn)") {
+    memory.write(0x1234, 0xc2);
+    run_one_instruction(0x3a, 0x34, 0x12); // ld a, ($nnnn)
+    CHECK(z80.pc() == 3);
+    CHECK(z80.cycle_count() == 13);
+    CHECK(regs.get(RegisterFile::R8::A) == 0xc2);
+  }
+  SECTION("inc hl") {
+    regs.set(RegisterFile::R16::HL, 0xffff);
+    regs.set(RegisterFile::R8::F, 0);
+    run_one_instruction(0x23); // inc hl
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 6);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0x0000);
+    CHECK(z80.flags() == Flags());
+  }
+  SECTION("dec hl") {
+    regs.set(RegisterFile::R16::HL, 0x0000);
+    regs.set(RegisterFile::R8::F, 0);
+    run_one_instruction(0x2b); // dec hl
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 6);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0xffff);
+    CHECK(z80.flags() == Flags());
+  }
+  SECTION("inc h") {
+    regs.set(RegisterFile::R8::F, 0);
+    regs.set(RegisterFile::R8::H, 0xff);
+    run_one_instruction(0x24); // inc h
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(regs.get(RegisterFile::R8::H) == 0x00);
+    CHECK(z80.flags() == (Flags::Zero() | Flags::HalfCarry()));
+  }
+  SECTION("inc a") {
+    regs.set(RegisterFile::R8::F, 0);
+    regs.set(RegisterFile::R8::A, 0xff);
+    run_one_instruction(0x3c); // inc a
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(regs.get(RegisterFile::R8::A) == 0x00);
+    CHECK(z80.flags() == (Flags::Zero() | Flags::HalfCarry()));
+  }
+  SECTION("inc (hl)") {
+    regs.set(RegisterFile::R8::F, 0);
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    memory.write(0x1234, 0xff);
+    run_one_instruction(0x34);
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 11);
+    CHECK(memory.read(0x1234) == 0);
+    CHECK(z80.flags() == (Flags::Zero() | Flags::HalfCarry()));
+  }
+  SECTION("dec h") {
+    regs.set(RegisterFile::R8::F, 0);
+    regs.set(RegisterFile::R8::H, 0x00);
+    run_one_instruction(0x25); // dec h
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(regs.get(RegisterFile::R8::H) == 0xff);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() | Flags::Subtract()));
+  }
+  SECTION("dec a") {
+    regs.set(RegisterFile::R8::F, 0);
+    regs.set(RegisterFile::R8::A, 0x00);
+    run_one_instruction(0x3d); // dec a
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(regs.get(RegisterFile::R8::A) == 0xff);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() | Flags::Subtract()));
+  }
+  SECTION("dec (hl)") {
+    regs.set(RegisterFile::R8::F, 0);
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    memory.write(0x1234, 0x00);
+    run_one_instruction(0x35);
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 11);
+    CHECK(memory.read(0x1234) == 0xff);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() | Flags::Subtract()));
+  }
 }
 
 } // namespace specbolt

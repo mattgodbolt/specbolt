@@ -22,6 +22,8 @@ std::uint8_t access_time(const Instruction::Operand rhs) {
     case Instruction::Operand::DE_Indirect8:
     case Instruction::Operand::HL_Indirect8: return 3;
     case Instruction::Operand::WordImmediateIndirect8: return 9;
+    // Doesn't make sense but I am just trying to fix up the bad timings before I go all principled on this...
+    case Instruction::Operand::WordImmediateIndirect16: return 6;
     default: return 0;
   }
 }
