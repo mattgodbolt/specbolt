@@ -69,11 +69,26 @@ bool cc_check<3>(const Flags flags) {
 // }
 
 constexpr std::uint8_t read_immediate(Z80 &z80) {
-  z80.pass_time(3); // ?
+  z80.pass_time(3);
   const auto addr = z80.regs().pc();
   z80.regs().pc(addr + 1);
   return z80.read8(addr);
 }
+
+constexpr void write(Z80 &z80, const std::uint16_t address, const std::uint8_t byte) {
+  z80.pass_time(3);
+  z80.write8(address, byte);
+}
+
+constexpr std::uint8_t read(Z80 &z80, const std::uint16_t address) {
+  z80.pass_time(3);
+  return z80.read8(address);
+}
+
+struct InvalidType {
+  static constexpr Mnemonic mnemonic{"???"};
+  static constexpr void execute(Z80 &) {}
+};
 
 struct NopType {
   static constexpr Mnemonic mnemonic{"nop"};
@@ -109,7 +124,7 @@ struct Opcode {
 };
 
 template<Opcode opcode>
-constexpr auto instruction = NopType{}; // TODO once we cover all instructions this will be an error.(maybe not
+constexpr auto instruction = InvalidType{}; // TODO once we cover all instructions this will be an error.(maybe not
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // X = 0
@@ -167,6 +182,24 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("add hl, " + std::string(
   z80.flags(flags);
   z80.pass_time(7);
 }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld (bc), a"),
+    [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::BC), z80.regs().get(RegisterFile::R8::A)); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 1)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld (de), a"),
+    [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::DE), z80.regs().get(RegisterFile::R8::A)); }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld a, (bc)"),
+    [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::BC))); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 1)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld a, (de)"),
+    [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::DE))); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
