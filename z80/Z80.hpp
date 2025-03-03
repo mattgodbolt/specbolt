@@ -53,6 +53,8 @@ public:
 
   void dump() const;
 
+  void branch(std::int8_t offset);
+
   [[nodiscard]] auto &regs() { return regs_; }
   [[nodiscard]] std::uint8_t read8(std::uint16_t address) const;
   [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;

@@ -6,7 +6,6 @@
 #include <array>
 #include <cstdint>
 #include <format>
-#include <ranges>
 #include <string>
 #include <string_view>
 
@@ -26,20 +25,16 @@ struct Mnemonic {
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), len}; }
 };
 
-struct Opcode {
-  std::uint8_t x;
-  std::uint8_t y;
-  std::uint8_t z;
-  std::uint8_t p;
-  std::uint8_t q;
-
-  explicit constexpr Opcode(const std::uint8_t opcode) :
-      x(opcode >> 6), y((opcode >> 3) & 0x7), z(opcode & 0x7), p(y >> 1), q(y & 1) {}
-};
-
 constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
 constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
 constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
+
+constexpr std::uint8_t read_immediate(Z80 &z80) {
+  z80.pass_time(3); // ?
+  const auto addr = z80.regs().pc();
+  z80.regs().pc(addr + 1);
+  return z80.read8(addr);
+}
 
 struct NopType {
   static constexpr Mnemonic mnemonic{"nop"};
@@ -49,17 +44,23 @@ struct NopType {
 template<std::uint8_t P>
 struct Load16ImmOp {
   static constexpr Mnemonic mnemonic{"ld " + std::string(rp_names[P]) + ", $nnnn"};
-  static constexpr std::uint8_t read_immediate(Z80 &z80) {
-    z80.pass_time(3); // ?
-    const auto addr = z80.regs().pc();
-    z80.regs().pc(addr + 1);
-    return z80.read8(addr);
-  }
 
   static constexpr auto execute(Z80 &z80) {
     z80.regs().set(rp_low[P], read_immediate(z80));
     z80.regs().set(rp_high[P], read_immediate(z80));
   }
+};
+
+// http://www.z80.info/decoding.htm
+struct Opcode {
+  std::uint8_t x;
+  std::uint8_t y;
+  std::uint8_t z;
+  std::uint8_t p;
+  std::uint8_t q;
+
+  explicit constexpr Opcode(const std::uint8_t opcode) :
+      x(opcode >> 6), y((opcode >> 3) & 0x7), z(opcode & 0x7), p(y >> 1), q(y & 1) {}
 };
 
 template<Opcode opcode>
@@ -73,19 +74,23 @@ template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 0)
 constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
 
-// struct DjnzOp {
-//   static constexpr Mnemonic mnemonic{"djnz $d"};
-//   static constexpr std::array micro_ops{
-//       MicroOp::delay(1),
-//       // MicroOp::read_to_dlatch(),
-//       // MicroOp::decrement_b(),
-//       // MicroOp::
-//   };
-// };
-//
-// template<Opcode opcode>
-//   requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
-// constexpr auto instruction<opcode> = DjnzOp{};
+struct DjnzOp {
+  static constexpr Mnemonic mnemonic{"djnz $d"};
+  static constexpr auto execute(Z80 &z80) {
+    z80.pass_time(1);
+    const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+    const std::uint8_t new_b = z80.regs().get(RegisterFile::R8::B) - 1;
+    z80.regs().set(RegisterFile::R8::B, new_b);
+    if (new_b == 0)
+      return;
+    z80.pass_time(5);
+    z80.branch(offset);
+  }
+};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
+constexpr auto instruction<opcode> = DjnzOp{};
 
 // http://www.z80.info/decoding.htm
 // constexpr std::array z80_source_ops = {

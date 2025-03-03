@@ -15,6 +15,7 @@ std::uint8_t access_time(const Instruction::Operand rhs) {
     case Instruction::Operand::BC:
     case Instruction::Operand::DE:
     case Instruction::Operand::HL:
+    case Instruction::Operand::SP:
     case Instruction::Operand::AF_: return 6;
     case Instruction::Operand::ByteImmediate:
     case Instruction::Operand::BC_Indirect8:

@@ -39,6 +39,7 @@ std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read
 std::uint16_t Z80::read16(const std::uint16_t address) const { return memory_.read16(address); }
 
 void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
+void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
 
 std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t index_offset) {
   switch (operand) {

@@ -6,7 +6,8 @@ add_executable(
         RegisterFileTest.cpp
         DisassemblerTest.cpp
         FlagsTest.cpp
-        GeneratedTest.cpp)
+        GeneratedTest.cpp
+        OpcodeTests.cpp)
 target_link_libraries(z80_test z80 Catch2::Catch2WithMain)
 
 add_test(NAME "Z80 Unit Tests" COMMAND z80_test)
