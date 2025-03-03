@@ -133,13 +133,14 @@ TEST_CASE("Opcode execution tests") {
   }
   SECTION("add hl, ...") {
     regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::F, 0);
     SECTION("bc") {
       regs.set(RegisterFile::R16::BC, 0x1111);
       run_one_instruction(0x09); // add hl, bc
       CHECK(z80.pc() == 1);
       CHECK(z80.cycle_count() == 11);
       CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
-      CHECK(z80.flags() == Flags());
+      CHECK(z80.flags() == Flags::Flag5());
     }
     SECTION("de") {
       regs.set(RegisterFile::R16::DE, 0x1111);
@@ -147,20 +148,23 @@ TEST_CASE("Opcode execution tests") {
       CHECK(z80.pc() == 1);
       CHECK(z80.cycle_count() == 11);
       CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
+      CHECK(z80.flags() == Flags::Flag5());
     }
     SECTION("hl") {
       run_one_instruction(0x29); // add hl, hl
       CHECK(z80.pc() == 1);
       CHECK(z80.cycle_count() == 11);
       CHECK(regs.get(RegisterFile::R16::HL) == 0x2468);
+      CHECK(z80.flags() == Flags::Flag5());
     }
-    // SECTION("sp") {
-    //   regs.sp(0x1111);
-    //   run_one_instruction(0x39); // add hl, sp
-    //   CHECK(z80.pc() == 1);
-    //   CHECK(z80.cycle_count() == 11);
-    //   CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
-    // }
+    SECTION("sp") {
+      regs.sp(0x1111);
+      run_one_instruction(0x39); // add hl, sp
+      CHECK(z80.pc() == 1);
+      CHECK(z80.cycle_count() == 11);
+      CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
+      CHECK(z80.flags() == Flags::Flag5());
+    }
   }
 }
 

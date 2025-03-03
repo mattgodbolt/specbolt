@@ -15,15 +15,6 @@ std::uint8_t RegisterFile::get(const R8 reg) const {
   return is_high(reg) ? reg_pair.high() : reg_pair.low();
 }
 void RegisterFile::set(const R8 reg, const std::uint8_t value) {
-  // TODO: this is catastrophically awful.
-  if (reg == R8::SPH) {
-    sp_ = static_cast<std::uint16_t>((sp_ & 0xff) | (static_cast<std::uint16_t>(value) << 8));
-    return;
-  }
-  if (reg == R8::SPL) {
-    sp_ = (sp_ & 0xff00) | value;
-    return;
-  }
   auto &reg_pair = reg_for(reg);
   if (is_high(reg))
     reg_pair.high(value);
@@ -32,20 +23,10 @@ void RegisterFile::set(const R8 reg, const std::uint8_t value) {
 }
 std::uint16_t RegisterFile::get(const R16 reg) const { return reg_for(reg).highlow(); }
 void RegisterFile::set(const R16 reg, const std::uint16_t value) { reg_for(reg).highlow(value); }
-std::uint16_t RegisterFile::ix() const { return ix_; }
-void RegisterFile::ix(const std::uint16_t ix) { ix_ = ix; }
-std::uint16_t RegisterFile::iy() const { return iy_; }
-void RegisterFile::iy(const std::uint16_t iy) { iy_ = iy; }
-std::uint8_t RegisterFile::ixh() const { return static_cast<std::uint8_t>(ix_ >> 8); }
-void RegisterFile::ixh(const std::uint8_t ixh) { ix_ = (ix_ & 0xff) | static_cast<std::uint16_t>(ixh << 8); }
-std::uint8_t RegisterFile::iyh() const { return static_cast<std::uint8_t>(iy_ >> 8); }
-void RegisterFile::iyh(const std::uint8_t iyh) { iy_ = (iy_ & 0xff) | static_cast<std::uint16_t>(iyh << 8); }
-std::uint8_t RegisterFile::ixl() const { return static_cast<std::uint8_t>(ix_ & 0xff); }
-void RegisterFile::ixl(const std::uint8_t ixl) { ix_ = (ix_ & 0xff00) | ixl; }
-std::uint8_t RegisterFile::iyl() const { return static_cast<std::uint8_t>(iy_ & 0xff); }
-void RegisterFile::iyl(const std::uint8_t iyl) { iy_ = (iy_ & 0xff00) | iyl; }
-std::uint16_t RegisterFile::sp() const { return sp_; }
-void RegisterFile::sp(const std::uint16_t sp) { sp_ = sp; }
+std::uint16_t RegisterFile::ix() const { return reg_for(R16::IX).highlow(); }
+std::uint16_t RegisterFile::iy() const { return reg_for(R16::IY).highlow(); }
+std::uint16_t RegisterFile::sp() const { return reg_for(R16::SP).highlow(); }
+void RegisterFile::sp(const std::uint16_t sp) { reg_for(R16::SP).highlow(sp); }
 std::uint16_t RegisterFile::pc() const { return pc_; }
 void RegisterFile::pc(const std::uint16_t pc) { pc_ = pc; }
 std::uint8_t RegisterFile::r() const { return r_; }

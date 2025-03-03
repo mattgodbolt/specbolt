@@ -29,8 +29,8 @@ struct Mnemonic {
 constexpr std::array rp_names = {"bc", "de", "hl", "sp"};
 constexpr std::array rp_high = {RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
 constexpr std::array rp_low = {RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
-constexpr std::array rp_hl = {
-    RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::HL, RegisterFile::R16::AF /*TODO NOT THIS*/};
+constexpr std::array rp_highlow = {
+    RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::HL, RegisterFile::R16::SP};
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
 template<std::uint8_t>
@@ -146,7 +146,7 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("jr $d"), [](Z80 &z80) {
 template<Opcode opcode>
   requires(opcode.x == 0 && (opcode.y >= 4 && opcode.y <= 7) && opcode.z == 0)
 constexpr auto instruction<opcode> =
-    SimpleOp<Mnemonic("jr " + std::string(cc_names[opcode.y - 4]) + "$d"), [](Z80 &z80) {
+    SimpleOp<Mnemonic("jr " + std::string(cc_names[opcode.y - 4]) + " $d"), [](Z80 &z80) {
       const auto offset = static_cast<std::int8_t>(read_immediate(z80));
       if (cc_check<opcode.y - 4>(z80.flags())) {
         z80.pass_time(5);
@@ -161,7 +161,7 @@ constexpr auto instruction<opcode> = Load16ImmOp<opcode.p>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 1)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("add hl, " + std::string(rp_names[opcode.p])), [](Z80 &z80) {
-  const auto rhs = z80.regs().get(rp_hl[opcode.p]);
+  const auto rhs = z80.regs().get(rp_highlow[opcode.p]);
   const auto [result, flags] = Alu::add16(z80.regs().get(RegisterFile::R16::HL), rhs, z80.flags());
   z80.regs().set(RegisterFile::R16::HL, result);
   z80.flags(flags);

@@ -69,8 +69,8 @@ void Snapshot::load(const std::filesystem::path &snapshot, Z80 &z80) {
   registers.set(RegisterFile::R16::BC_, header.bc_);
   registers.set(RegisterFile::R16::DE_, header.de_);
   registers.set(RegisterFile::R16::HL_, header.hl_);
-  registers.ix(header.ix);
-  registers.iy(header.iy);
+  registers.set(RegisterFile::R16::IX, header.ix);
+  registers.set(RegisterFile::R16::IY, header.iy);
   registers.sp(header.sp);
 
   registers.i(header.i);
