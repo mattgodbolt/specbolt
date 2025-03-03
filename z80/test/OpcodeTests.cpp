@@ -386,6 +386,176 @@ TEST_CASE("Opcode execution tests") {
     CHECK(z80.flags() == (Flags::Flag3() | Flags::HalfCarry()));
     CHECK(regs.get(RegisterFile::R8::A) == 0x59);
   }
+  SECTION("halt") {
+    run_one_instruction(0x76); // halt
+    CHECK(z80.halted());
+    CHECK(z80.pc() == 0);
+    CHECK(z80.cycle_count() == 4);
+  }
+  SECTION("ld a, h") {
+    regs.set(RegisterFile::R8::H, 0x12);
+    run_one_instruction(0x7c); // ld a, h
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(regs.get(RegisterFile::R8::A) == 0x12);
+  }
+  SECTION("ld h, a") {
+    regs.set(RegisterFile::R8::A, 0x23);
+    run_one_instruction(0x67); // ld h, a
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(regs.get(RegisterFile::R8::H) == 0x23);
+  }
+  SECTION("ld h, (hl)") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    memory.write(0x1234, 0xc0);
+    run_one_instruction(0x66); // ld h, (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(regs.get(RegisterFile::R8::H) == 0xc0);
+  }
+  SECTION("ld (hl), d") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::D, 0xfa);
+    run_one_instruction(0x72); // ld (hl), d
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(memory.read(0x1234) == 0xfa);
+  }
+  SECTION("add a, (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x55);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0x86); // add a, (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag3()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xdd);
+  }
+  SECTION("add a, d") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R8::D, 0x88);
+    regs.set(RegisterFile::R8::A, 0x55);
+    run_one_instruction(0x82); // add a, d
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag3()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xdd);
+  }
+  SECTION("adc a, (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x55);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0x8e); // adc a, (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag3()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xde);
+  }
+  SECTION("adc a, d") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R8::D, 0x88);
+    regs.set(RegisterFile::R8::A, 0x55);
+    run_one_instruction(0x8a); // adc a, d
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag3()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xde);
+  }
+
+  SECTION("sub a, (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x55);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0x96); // sub a, (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::HalfCarry() | Flags::Flag3() | Flags::Subtract() | Flags::Overflow() |
+                             Flags::Carry()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xcd);
+  }
+  SECTION("sub a, d") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R8::D, 0x88);
+    regs.set(RegisterFile::R8::A, 0x55);
+    run_one_instruction(0x92); // sub a, d
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::HalfCarry() | Flags::Flag3() | Flags::Subtract() | Flags::Overflow() |
+                             Flags::Carry()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xcd);
+  }
+  SECTION("sbc a, (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x55);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0x9e); // sbc a, (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::HalfCarry() | Flags::Flag3() | Flags::Subtract() | Flags::Overflow() |
+                             Flags::Carry()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xcc);
+  }
+  SECTION("sbc a, d") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R8::D, 0x88);
+    regs.set(RegisterFile::R8::A, 0x55);
+    run_one_instruction(0x9a); // sbc a, d
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::HalfCarry() | Flags::Flag3() | Flags::Subtract() | Flags::Overflow() |
+                             Flags::Carry()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0xcc);
+  }
+  SECTION("and (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x5f);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0xa6); // and (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::HalfCarry() | Flags::Flag3()));
+    CHECK(regs.get(RegisterFile::R8::A) == (0x5f & 0x88));
+  }
+  SECTION("or (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x5f);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0xb6); // or (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag3()));
+    CHECK(regs.get(RegisterFile::R8::A) == (0x5f | 0x88));
+  }
+  SECTION("xor (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x5f);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0xae); // xor (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::Parity() | Flags::Sign()));
+    CHECK(regs.get(RegisterFile::R8::A) == (0x5f ^ 0x88));
+  }
+  SECTION("cp (hl)") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R8::A, 0x5f);
+    memory.write(0x1234, 0x88);
+    run_one_instruction(0xbe); // cp (hl)
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() ==
+          (Flags::Parity() | Flags::Carry() | Flags::Sign() | Flags::Flag3() | Flags::Overflow() | Flags::Subtract()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0x5f);
+  }
 }
 
 } // namespace specbolt

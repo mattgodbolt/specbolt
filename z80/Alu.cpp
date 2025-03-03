@@ -48,7 +48,7 @@ Alu::R8 Alu::dec8(const std::uint8_t lhs, const Flags current_flags) {
 Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs) {
   const auto [result, flags] = sub8(lhs, rhs, false);
   // Per http://www.z80.info/z80sflag.htm; F5 and F3 are copied from the operand, not the result
-  return {result, flags & ~mask53 | Flags(rhs) & mask53};
+  return {lhs, flags & ~mask53 | Flags(rhs) & mask53};
 }
 
 Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const Flags current_flags) {

@@ -92,7 +92,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Subtract8: {
       const auto [result, flags] =
           Alu::sub8(static_cast<std::uint8_t>(input.lhs), static_cast<std::uint8_t>(input.rhs), carry);
-      return {result, flags, 0};
+      return {result, flags, access_time(lhs, rhs)};
     }
     case Operation::Subtract16: {
       const auto [result, flags] = std::holds_alternative<WithCarry>(args)

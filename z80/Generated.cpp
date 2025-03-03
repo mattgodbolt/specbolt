@@ -340,6 +340,66 @@ constexpr auto instruction<opcode> =
     FastAluOp<Mnemonic("ccf"), [](const std::uint8_t a, const Flags flags) { return Alu::ccf(a, flags); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// X = 1
+template<Opcode opcode>
+  requires(opcode.x == 1 && !(opcode.y == 6 && opcode.z == 6))
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("ld " + std::string(r_names[opcode.y]) + ", " + std::string(r_names[opcode.z])),
+        [](Z80 &z80) { set_r<opcode.y>(z80, get_r<opcode.z>(z80)); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 1 && opcode.y == 6 && opcode.z == 6)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("halt"), [](Z80 &z80) { z80.halt(); }>{};
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// X = 2
+template<Mnemonic mnem, std::uint8_t z, auto alu_op>
+struct AluOp {
+  static constexpr Mnemonic mnemonic = Mnemonic(std::string(mnem.view()) + " " + r_names[z]);
+  static constexpr void execute(Z80 &z80) {
+    const auto [result, flags] = alu_op(z80.regs().get(RegisterFile::R8::A), get_r<z>(z80), z80.flags());
+    z80.regs().set(RegisterFile::R8::A, result);
+    z80.flags(flags);
+  }
+};
+
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 0)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("add a,"), opcode.z,
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::add8(lhs, rhs, false); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 1)
+constexpr auto instruction<opcode> =
+    AluOp<Mnemonic("adc a,"), opcode.z, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
+      return Alu::add8(lhs, rhs, flags.carry());
+    }>{};
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 2)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("sub a,"), opcode.z,
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::sub8(lhs, rhs, false); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 3)
+constexpr auto instruction<opcode> =
+    AluOp<Mnemonic("sbc a,"), opcode.z, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
+      return Alu::sub8(lhs, rhs, flags.carry());
+    }>{};
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 4)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("and"), opcode.z,
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::and8(lhs, rhs); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 5)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("xor"), opcode.z,
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::xor8(lhs, rhs); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 6)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("or"), opcode.z,
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::or8(lhs, rhs); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 2 && opcode.y == 7)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("cp"), opcode.z,
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::cmp8(lhs, rhs); }>{};
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<template<auto> typename Transform>
 constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
