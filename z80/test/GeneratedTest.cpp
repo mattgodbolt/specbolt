@@ -247,7 +247,22 @@ TEST_CASE("Opcode generation tests") {
     CHECK(names[0xf5] == "push af");
     CHECK(names[0xdd] == "DD");
     CHECK(names[0xed] == "ED");
-    CHECK(names[0xfd] == "FD");
+    CHECK(names[0xc6] == "add a, $nn");
+    CHECK(names[0xce] == "adc a, $nn");
+    CHECK(names[0xd6] == "sub a, $nn");
+    CHECK(names[0xde] == "sbc a, $nn");
+    CHECK(names[0xe6] == "and $nn");
+    CHECK(names[0xee] == "xor $nn");
+    CHECK(names[0xf6] == "or $nn");
+    CHECK(names[0xfe] == "cp $nn");
+    CHECK(names[0xc7] == "rst 0x00");
+    CHECK(names[0xcf] == "rst 0x08");
+    CHECK(names[0xd7] == "rst 0x10");
+    CHECK(names[0xdf] == "rst 0x18");
+    CHECK(names[0xe7] == "rst 0x20");
+    CHECK(names[0xef] == "rst 0x28");
+    CHECK(names[0xf7] == "rst 0x30");
+    CHECK(names[0xff] == "rst 0x38");
   }
 }
 

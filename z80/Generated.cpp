@@ -74,7 +74,7 @@ constexpr void push16(Z80 &z80, const std::uint16_t value) {
   push8(z80, static_cast<std::uint8_t>(value));
 }
 
-constexpr std::array r_names = {"b", "c", "d", "e", "h", "l", "(hl)", "a"};
+constexpr std::array r_names = {"b", "c", "d", "e", "h", "l", "(hl)", "a", "$nn"};
 constexpr std::array r_regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D, RegisterFile::R8::E,
     RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */, RegisterFile::R8::A};
 template<std::uint8_t y>
@@ -84,6 +84,10 @@ constexpr uint8_t get_r(Z80 &z80) {
 template<>
 constexpr uint8_t get_r<6>(Z80 &z80) {
   return read(z80, z80.regs().get(RegisterFile::R16::HL));
+}
+template<>
+constexpr uint8_t get_r<8>(Z80 &z80) {
+  return read_immediate(z80);
 }
 template<std::uint8_t y>
 constexpr void set_r(Z80 &z80, const std::uint8_t value) {
@@ -139,10 +143,7 @@ bool cc_check<7>(const Flags flags) {
   return flags.sign();
 }
 
-struct InvalidType {
-  static constexpr Mnemonic mnemonic{"???"};
-  static constexpr void execute(Z80 &) {}
-};
+struct InvalidType {};
 
 struct NopType {
   static constexpr Mnemonic mnemonic{"nop"};
@@ -176,6 +177,10 @@ struct Opcode {
 
   explicit constexpr Opcode(const std::uint8_t opcode) :
       x(opcode >> 6), y((opcode >> 3) & 0x7), z(opcode & 0x7), p(y >> 1), q(y & 1) {}
+
+  constexpr bool is_alu_op() const { return x == 2 || (x == 3 && z == 6); }
+  constexpr int alu_op() const { return is_alu_op() ? y : -1; }
+  constexpr std::uint8_t alu_input_selector() const { return x == 2 ? z : 8; }
 };
 
 template<Opcode opcode>
@@ -380,10 +385,10 @@ template<Opcode opcode>
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("halt"), [](Z80 &z80) { z80.halt(); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// X = 2
+// X = 2 (and parts of X = 3)
 template<Mnemonic mnem, std::uint8_t z, auto alu_op>
 struct AluOp {
-  static constexpr Mnemonic mnemonic = Mnemonic(std::string(mnem.view()) + " " + r_names[z]);
+  static constexpr auto mnemonic = Mnemonic(std::string(mnem.view()) + " " + r_names[z]);
   static constexpr void execute(Z80 &z80) {
     const auto [result, flags] = alu_op(z80.regs().get(RegisterFile::R8::A), get_r<z>(z80), z80.flags());
     z80.regs().set(RegisterFile::R8::A, result);
@@ -392,44 +397,44 @@ struct AluOp {
 };
 
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 0)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("add a,"), opcode.z,
+  requires(opcode.alu_op() == 0)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("add a,"), opcode.alu_input_selector(),
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::add8(lhs, rhs, false); }>{};
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 1)
-constexpr auto instruction<opcode> =
-    AluOp<Mnemonic("adc a,"), opcode.z, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
+  requires(opcode.alu_op() == 1)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("adc a,"), opcode.alu_input_selector(),
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
       return Alu::add8(lhs, rhs, flags.carry());
     }>{};
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 2)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("sub a,"), opcode.z,
+  requires(opcode.alu_op() == 2)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("sub a,"), opcode.alu_input_selector(),
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::sub8(lhs, rhs, false); }>{};
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 3)
-constexpr auto instruction<opcode> =
-    AluOp<Mnemonic("sbc a,"), opcode.z, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
+  requires(opcode.alu_op() == 3)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("sbc a,"), opcode.alu_input_selector(),
+    [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
       return Alu::sub8(lhs, rhs, flags.carry());
     }>{};
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 4)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("and"), opcode.z,
+  requires(opcode.alu_op() == 4)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("and"), opcode.alu_input_selector(),
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::and8(lhs, rhs); }>{};
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 5)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("xor"), opcode.z,
+  requires(opcode.alu_op() == 5)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("xor"), opcode.alu_input_selector(),
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::xor8(lhs, rhs); }>{};
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 6)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("or"), opcode.z,
+  requires(opcode.alu_op() == 6)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("or"), opcode.alu_input_selector(),
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::or8(lhs, rhs); }>{};
 template<Opcode opcode>
-  requires(opcode.x == 2 && opcode.y == 7)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("cp"), opcode.z,
+  requires(opcode.alu_op() == 7)
+constexpr auto instruction<opcode> = AluOp<Mnemonic("cp"), opcode.alu_input_selector(),
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::cmp8(lhs, rhs); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// X = 3
+// X = 3 (some alu ops are definewd in X = 1 above)
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 0)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ret " + std::string(cc_names[opcode.y])), [](Z80 &z80) {
@@ -576,6 +581,16 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ED"), [](Z80 &) {}>{};
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 3)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("FD"), [](Z80 &) {}>{};
+
+constexpr std::array num_table{"0x00", "0x08", "0x10", "0x18", "0x20", "0x28", "0x30", "0x38"};
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 7)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("rst " + std::string(num_table[opcode.y])), [](Z80 &z80) {
+  z80.pass_time(1);
+  push16(z80, z80.pc());
+  z80.regs().pc(opcode.y * 8);
+}>{};
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

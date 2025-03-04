@@ -803,6 +803,24 @@ TEST_CASE("Opcode execution tests") {
     CHECK(memory.read16(0xfffb) == 0xabcd);
     CHECK(regs.sp() == 0xfffb);
   }
+  SECTION("add $nn") {
+    z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R8::A, 0x5f);
+    run_one_instruction(0xc6, 0x87); // add 0x87
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 7);
+    CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry()));
+    CHECK(regs.get(RegisterFile::R8::A) == 0x5f + 0x87);
+    // assumed the other ALU ops work if this one does...
+  }
+  SECTION("rst 0x20") {
+    regs.sp(0x0000);
+    run_one_instruction(0xe7); // rst 20
+    CHECK(z80.pc() == 0x20);
+    CHECK(z80.cycle_count() == 11);
+    CHECK(memory.read16(0xfffe) == 0x0001);
+    CHECK(regs.sp() == 0xfffe);
+  }
 }
 
 } // namespace specbolt

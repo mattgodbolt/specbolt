@@ -129,6 +129,10 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         cpu.push16(cpu.registers().pc());
         cpu.registers().pc(input.rhs);
       }
+      // horrid check for rst
+      if (rhs >= Operand::Const_0 && rhs <= Operand::Const_52)
+        return {0, input.flags, 7};
+
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 13 : 6)};
     }
     case Operation::Return: {
