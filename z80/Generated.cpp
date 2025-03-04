@@ -577,16 +577,6 @@ template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 3)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("FD"), [](Z80 &) {}>{};
 
-template<Mnemonic mnem, std::uint8_t z, auto alu_op>
-struct AluOp {
-  static constexpr Mnemonic mnemonic = Mnemonic(std::string(mnem.view()) + " " + r_names[z]);
-  static constexpr void execute(Z80 &z80) {
-    const auto [result, flags] = alu_op(z80.regs().get(RegisterFile::R8::A), get_r<z>(z80), z80.flags());
-    z80.regs().set(RegisterFile::R8::A, result);
-    z80.flags(flags);
-  }
-};
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<template<auto> typename Transform>
