@@ -23,12 +23,7 @@ TEST_CASE("Opcode execution tests") {
       memory.write(static_cast<std::uint16_t>(z80.pc() + index), static_cast<std::uint8_t>(val));
     }
     if (use_new_code) {
-      // simulate fetch
-      const auto opcode = z80.read8(z80.pc());
-      regs.pc(z80.pc() + 1);
-      z80.pass_time(4);
-      // Dispatch and run.
-      base_opcode_ops()[opcode](z80);
+      decode_and_run(z80);
     }
     else {
       z80.execute_one();

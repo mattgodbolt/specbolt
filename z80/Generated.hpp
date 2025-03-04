@@ -9,6 +9,7 @@ class Z80;
 
 const std::array<std::string_view, 256> &base_opcode_names();
 using Z80_Op = void(Z80 &);
-const std::array<Z80_Op *, 256> &base_opcode_ops();
+
+void decode_and_run(Z80 &z80);
 
 } // namespace specbolt

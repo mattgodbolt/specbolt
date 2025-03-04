@@ -616,9 +616,13 @@ const std::array<std::string_view, 256> &base_opcode_names() {
   return result;
 }
 
-const std::array<Z80_Op *, 256> &base_opcode_ops() {
-  static constexpr auto result = table<build_evaluate>;
-  return result;
+void decode_and_run(Z80 &z80) {
+  // Fetch the first opcode.
+  const auto opcode = z80.read8(z80.pc());
+  z80.regs().pc(z80.pc() + 1);
+  z80.pass_time(4); // Decode...
+  // Dispatch and run.
+  table<build_evaluate>[opcode](z80);
 }
 
 } // namespace specbolt
