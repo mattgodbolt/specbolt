@@ -216,6 +216,22 @@ TEST_CASE("Opcode generation tests") {
     CHECK(names[0xd9] == "exx");
     CHECK(names[0xe9] == "jp (hl)");
     CHECK(names[0xf9] == "ld sp, hl");
+    CHECK(names[0xc2] == "jp nz, $nnnn");
+    CHECK(names[0xca] == "jp z, $nnnn");
+    CHECK(names[0xd2] == "jp nc, $nnnn");
+    CHECK(names[0xda] == "jp c, $nnnn");
+    CHECK(names[0xe2] == "jp po, $nnnn");
+    CHECK(names[0xea] == "jp pe, $nnnn");
+    CHECK(names[0xf2] == "jp p, $nnnn");
+    CHECK(names[0xfa] == "jp m, $nnnn");
+    CHECK(names[0xc3] == "jp $nnnn");
+    CHECK(names[0xcb] == "CB");
+    CHECK(names[0xd3] == "out ($nn), a");
+    CHECK(names[0xdb] == "in a, ($nn)");
+    CHECK(names[0xe3] == "ex (sp), hl");
+    CHECK(names[0xeb] == "ex de, hl");
+    CHECK(names[0xf3] == "di");
+    CHECK(names[0xfb] == "ei");
   }
 }
 

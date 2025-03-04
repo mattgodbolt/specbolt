@@ -640,6 +640,104 @@ TEST_CASE("Opcode execution tests") {
     CHECK(z80.regs().sp() == 0x8008);
     CHECK(z80.cycle_count() == 6);
   }
+  SECTION("jump") {
+    SECTION("unconditional") {
+      run_one_instruction(0xc3, 0xfe, 0xca); // jp 0xcafe
+      CHECK(z80.pc() == 0xcafe);
+      CHECK(z80.cycle_count() == 10);
+    }
+    SECTION("jp nz") {
+      SECTION("taken") {
+        z80.flags(Flags());
+        run_one_instruction(0xc2, 0xfe, 0xca); // jp nz, 0xcafe
+        CHECK(z80.pc() == 0xcafe);
+        CHECK(z80.cycle_count() == 10);
+      }
+      SECTION("not taken") {
+        z80.flags(Flags::Zero());
+        run_one_instruction(0xc2, 0xfe, 0xca); // jp nz, 0xcafe
+        CHECK(z80.pc() == 3);
+        CHECK(z80.cycle_count() == 10);
+      }
+    }
+    SECTION("jp z") {
+      SECTION("taken") {
+        z80.flags(Flags::Zero());
+        run_one_instruction(0xca, 0xfe, 0xca); // jp z, 0xcafe
+        CHECK(z80.pc() == 0xcafe);
+        CHECK(z80.cycle_count() == 10);
+      }
+      SECTION("not taken") {
+        z80.flags(Flags());
+        run_one_instruction(0xca, 0xfe, 0xca); // jp z, 0xcafe
+        CHECK(z80.pc() == 3);
+        CHECK(z80.cycle_count() == 10);
+      }
+    }
+    // todo ... consider testing the others though honestly...
+  }
+  SECTION("out ($nn), a") {
+    std::vector<std::pair<std::uint16_t, std::uint8_t>> outs;
+    z80.add_out_handler(
+        [&](const std::uint16_t port, const std::uint8_t value) { outs.emplace_back(std::make_pair(port, value)); });
+    z80.regs().set(RegisterFile::R8::A, 0xbe);
+    run_one_instruction(0xd3, 0x12); // out (0x12), a
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 11);
+    CHECK(outs == std::vector{std::make_pair<std::uint16_t, std::uint8_t>(0xbe12, 0xbe)});
+  }
+  SECTION("in a, ($nn)") {
+    z80.flags(Flags());
+    std::vector<std::uint16_t> ins;
+    z80.add_in_handler([&](const std::uint16_t port) {
+      ins.emplace_back(port);
+      return 0xac;
+    });
+    z80.regs().set(RegisterFile::R8::A, 0xbe);
+    run_one_instruction(0xdb, 0x21); // in a, (0x21)
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 11);
+    CHECK(z80.regs().get(RegisterFile::R8::A) == 0xac);
+    CHECK(z80.flags() == Flags());
+    CHECK(ins == std::vector<std::uint16_t>{0xbe21});
+  }
+  SECTION("ex (sp), hl") {
+    regs.sp(0xfffd);
+    memory.write16(0xfffd, 0xbabe);
+    regs.set(RegisterFile::R16::HL, 0xcafe);
+    run_one_instruction(0xe3); // ex (sp), hl
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 19);
+    CHECK(z80.regs().get(RegisterFile::R16::HL) == 0xbabe);
+    CHECK(memory.read16(0xfffd) == 0xcafe);
+  }
+  SECTION("ex de, hl") {
+    regs.set(RegisterFile::R16::DE, 0x0102);
+    regs.set(RegisterFile::R16::HL, 0xcafe);
+    run_one_instruction(0xeb); // ex de, hl
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(z80.regs().get(RegisterFile::R16::HL) == 0x0102);
+    CHECK(z80.regs().get(RegisterFile::R16::DE) == 0xcafe);
+  }
+  SECTION("di") {
+    z80.iff1(false);
+    z80.iff2(true);
+    run_one_instruction(0xf3); // di
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(!z80.iff1());
+    CHECK(!z80.iff2());
+  }
+  SECTION("ei") {
+    z80.iff1(false);
+    z80.iff2(true);
+    run_one_instruction(0xfb); // ei
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 4);
+    CHECK(z80.iff1());
+    CHECK(z80.iff2());
+  }
 }
 
 } // namespace specbolt

@@ -460,6 +460,75 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld sp, hl"), [](Z80 &z80
   z80.regs().sp(z80.regs().get(RegisterFile::R16::HL));
 }>{};
 
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 2)
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("jp " + std::string(cc_names[opcode.y]) + ", $nnnn"), [](Z80 &z80) {
+      const auto jump_address = read_immediate16((z80));
+      if (cc_check<opcode.y>(z80.flags())) {
+        z80.regs().pc(jump_address);
+      }
+    }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("jp $nnnn"), [](Z80 &z80) {
+  const auto jump_address = read_immediate16((z80));
+  z80.regs().pc(jump_address);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 1)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("CB"), [](Z80 &) {}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 2)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("out ($nn), a"), [](Z80 &z80) {
+  const auto a = z80.regs().get(RegisterFile::R8::A);
+  const auto port = static_cast<std::uint16_t>(read_immediate(z80) | a << 8);
+  z80.pass_time(4); // OUT time (TODO pass time as IO?)
+  z80.out(port, a);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 3)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("in a, ($nn)"), [](Z80 &z80) {
+  const auto port = static_cast<std::uint16_t>(read_immediate(z80) | z80.regs().get(RegisterFile::R8::A) << 8);
+  z80.pass_time(4); // IN time (TODO pass time as IO?)
+  z80.regs().set(RegisterFile::R8::A, z80.in(port));
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 4)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ex (sp), hl"), [](Z80 &z80) {
+  const auto sp_old_low = read(z80, z80.regs().sp());
+  z80.pass_time(1);
+  const auto sp_old_high = read(z80, z80.regs().sp() + 1);
+  write(z80, z80.regs().sp(), z80.regs().get(RegisterFile::R8::L));
+  z80.pass_time(2);
+  write(z80, z80.regs().sp() + 1, z80.regs().get(RegisterFile::R8::H));
+  z80.regs().set(RegisterFile::R16::HL, static_cast<std::uint16_t>(sp_old_low | sp_old_high << 8));
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 5)
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("ex de, hl"), [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 6)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("di"), [](Z80 &z80) {
+  z80.iff1(false);
+  z80.iff2(false);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 7)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ei"), [](Z80 &z80) {
+  z80.iff1(true);
+  z80.iff2(true);
+}>{};
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<template<auto> typename Transform>

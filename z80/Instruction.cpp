@@ -157,7 +157,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto flags = std::holds_alternative<NoFlags>(args)
                              ? input.flags
                              : input.flags & Flags::Carry() | Alu::parity_flags_for(result);
-      return {result, flags, 8};
+      return {result, flags, 7};
     }
     case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
