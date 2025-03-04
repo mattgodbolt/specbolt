@@ -64,6 +64,16 @@ constexpr std::uint16_t pop16(Z80 &z80) {
   return static_cast<std::uint16_t>(high << 8 | low);
 }
 
+constexpr void push8(Z80 &z80, const std::uint8_t value) {
+  z80.regs().sp(z80.regs().sp() - 1);
+  write(z80, z80.regs().sp(), value);
+}
+
+constexpr void push16(Z80 &z80, const std::uint16_t value) {
+  push8(z80, static_cast<std::uint8_t>(value >> 8));
+  push8(z80, static_cast<std::uint8_t>(value));
+}
+
 constexpr std::array r_names = {"b", "c", "d", "e", "h", "l", "(hl)", "a"};
 constexpr std::array r_regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D, RegisterFile::R8::E,
     RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */, RegisterFile::R8::A};
@@ -528,6 +538,54 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ei"), [](Z80 &z80) {
   z80.iff1(true);
   z80.iff2(true);
 }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 4)
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("call " + std::string(cc_names[opcode.y]) + ", $nnnn"), [](Z80 &z80) {
+      const auto jump_address = read_immediate16((z80));
+      if (cc_check<opcode.y>(z80.flags())) {
+        z80.pass_time(1);
+        push16(z80, z80.pc());
+        z80.regs().pc(jump_address);
+      }
+    }>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("push " + std::string(rp2_names[opcode.p])), [](Z80 &z80) {
+  z80.pass_time(1);
+  push16(z80, z80.regs().get(rp2_highlow[opcode.p]));
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 0)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("call $nnnn"), [](Z80 &z80) {
+  const auto jump_address = read_immediate16((z80));
+  z80.pass_time(1);
+  push16(z80, z80.pc());
+  z80.regs().pc(jump_address);
+}>{};
+
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 1)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("DD"), [](Z80 &) {}>{};
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 2)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ED"), [](Z80 &) {}>{};
+template<Opcode opcode>
+  requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 3)
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("FD"), [](Z80 &) {}>{};
+
+template<Mnemonic mnem, std::uint8_t z, auto alu_op>
+struct AluOp {
+  static constexpr Mnemonic mnemonic = Mnemonic(std::string(mnem.view()) + " " + r_names[z]);
+  static constexpr void execute(Z80 &z80) {
+    const auto [result, flags] = alu_op(z80.regs().get(RegisterFile::R8::A), get_r<z>(z80), z80.flags());
+    z80.regs().set(RegisterFile::R8::A, result);
+    z80.flags(flags);
+  }
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

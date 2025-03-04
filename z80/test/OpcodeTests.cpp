@@ -594,21 +594,68 @@ TEST_CASE("Opcode execution tests") {
     }
     // todo ... consider testing the others though honestly...
   }
+  SECTION("call") {
+    regs.sp(0x0000);
+    SECTION("call") {
+      run_one_instruction(0xcd, 0x34, 0x12); // call 0x1234
+      CHECK(z80.pc() == 0x1234);
+      CHECK(z80.cycle_count() == 17);
+      CHECK(memory.read16(0xfffe) == 0x0003);
+      CHECK(regs.sp() == 0xfffe);
+    }
+    SECTION("call nc") {
+      SECTION("taken") {
+        z80.flags(Flags());
+        run_one_instruction(0xd4, 0x34, 0x12); // call nc 0x1234
+        CHECK(z80.pc() == 0x1234);
+        CHECK(z80.cycle_count() == 17);
+        CHECK(memory.read16(0xfffe) == 0x0003);
+        CHECK(regs.sp() == 0xfffe);
+      }
+      SECTION("not taken") {
+        z80.flags(Flags::Carry());
+        run_one_instruction(0xd4, 0x34, 0x12); // call nc 0x1234
+        CHECK(z80.pc() == 3);
+        CHECK(z80.cycle_count() == 10);
+        CHECK(regs.sp() == 0);
+      }
+    }
+    SECTION("call c") {
+      SECTION("taken") {
+        z80.flags(Flags::Carry());
+        run_one_instruction(0xdc, 0x34, 0x12); // call c 0x1234
+        CHECK(z80.pc() == 0x1234);
+        CHECK(z80.cycle_count() == 17);
+        CHECK(memory.read16(0xfffe) == 0x0003);
+        CHECK(regs.sp() == 0xfffe);
+      }
+      SECTION("not taken") {
+        z80.flags(Flags());
+        run_one_instruction(0xdc, 0x34, 0x12); // call c 0x1234
+        CHECK(z80.pc() == 3);
+        CHECK(z80.cycle_count() == 10);
+        CHECK(regs.sp() == 0);
+      }
+    }
+    // todo ... consider testing the others though honestly...
+  }
   SECTION("pop bc") {
     regs.sp(0xfffd);
-    memory.write16(0xfffd, 0xbabe);
+    memory.write16(0xfffd, 0xbab1);
     run_one_instruction(0xc1); // pop bc
     CHECK(z80.pc() == 1);
     CHECK(z80.cycle_count() == 10);
-    CHECK(z80.regs().get(RegisterFile::R16::BC) == 0xbabe);
+    CHECK(z80.regs().get(RegisterFile::R16::BC) == 0xbab1);
+    CHECK(z80.regs().get(RegisterFile::R16::SP) == 0xffff);
   }
   SECTION("pop af") {
     regs.sp(0xfffd);
-    memory.write16(0xfffd, 0xbabe);
+    memory.write16(0xfffd, 0xbab1);
     run_one_instruction(0xf1); // pop af
     CHECK(z80.pc() == 1);
     CHECK(z80.cycle_count() == 10);
-    CHECK(z80.regs().get(RegisterFile::R16::AF) == 0xbabe);
+    CHECK(z80.regs().get(RegisterFile::R16::AF) == 0xbab1);
+    CHECK(z80.regs().get(RegisterFile::R16::SP) == 0xffff);
   }
   SECTION("exx") {
     regs.set(RegisterFile::R16::HL, 0x1234);
@@ -737,6 +784,24 @@ TEST_CASE("Opcode execution tests") {
     CHECK(z80.cycle_count() == 4);
     CHECK(z80.iff1());
     CHECK(z80.iff2());
+  }
+  SECTION("push bc") {
+    regs.sp(0xfffd);
+    regs.set(RegisterFile::R16::BC, 0xabcd);
+    run_one_instruction(0xc5); // push bc
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 11);
+    CHECK(memory.read16(0xfffb) == 0xabcd);
+    CHECK(regs.sp() == 0xfffb);
+  }
+  SECTION("push af") {
+    regs.sp(0xfffd);
+    regs.set(RegisterFile::R16::AF, 0xabcd);
+    run_one_instruction(0xf5); // push af
+    CHECK(z80.pc() == 1);
+    CHECK(z80.cycle_count() == 11);
+    CHECK(memory.read16(0xfffb) == 0xabcd);
+    CHECK(regs.sp() == 0xfffb);
   }
 }
 
