@@ -16,7 +16,7 @@ namespace specbolt {
 namespace {
 
 struct Mnemonic {
-  std::array<char, 16> storage{};
+  std::array<char, 14> storage{};
   size_t len{};
   Mnemonic() = default;
   explicit constexpr Mnemonic(const std::string_view name) {
