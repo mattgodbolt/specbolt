@@ -1,15 +1,24 @@
 #pragma once
 
-#include <array>
+#include <cstdint>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace specbolt {
 
+class Memory;
 class Z80;
 
-const std::array<std::string_view, 256> &base_opcode_names();
 using Z80_Op = void(Z80 &);
 
 void decode_and_run(Z80 &z80);
+
+struct Disassembled {
+  std::string disassembly;
+  std::size_t length;
+};
+
+Disassembled disassemble(const Memory &memory, std::uint16_t address);
 
 } // namespace specbolt

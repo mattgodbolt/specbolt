@@ -611,11 +611,6 @@ struct build_evaluate {
 
 } // namespace
 
-const std::array<std::string_view, 256> &base_opcode_names() {
-  static auto result = table<build_description>;
-  return result;
-}
-
 void decode_and_run(Z80 &z80) {
   // Fetch the first opcode.
   const auto opcode = z80.read8(z80.pc());
@@ -624,5 +619,29 @@ void decode_and_run(Z80 &z80) {
   // Dispatch and run.
   table<build_evaluate>[opcode](z80);
 }
+
+Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
+  const auto opcode = memory.read(address);
+  std::size_t length{1};
+  auto disassembly = std::string(table<build_description>[opcode]);
+  if (const auto pos = disassembly.find("$nnnn"); pos != std::string::npos) {
+    disassembly = std::format(
+        "{}0x{:04x}{}", disassembly.substr(0, pos), memory.read16(address + 1), disassembly.substr(pos + 5));
+    length += 2;
+  }
+  if (const auto pos = disassembly.find("$nn"); pos != std::string::npos) {
+    disassembly =
+        std::format("{}0x{:02x}{}", disassembly.substr(0, pos), memory.read(address + 1), disassembly.substr(pos + 3));
+    length += 1;
+  }
+  if (const auto pos = disassembly.find("$d"); pos != std::string::npos) {
+    disassembly = std::format("{}0x{:02x}{}", disassembly.substr(0, pos),
+        static_cast<std::uint16_t>(address + static_cast<std::int8_t>(memory.read(address + 1)) + 2),
+        disassembly.substr(pos + 2));
+    length += 1;
+  }
+  return {disassembly, length};
+}
+
 
 } // namespace specbolt
