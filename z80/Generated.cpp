@@ -15,6 +15,8 @@ namespace specbolt {
 
 namespace {
 
+void decode_and_run_cb(Z80 &z80);
+
 struct Mnemonic {
   std::array<char, 14> storage{};
   size_t len{};
@@ -184,7 +186,7 @@ struct Opcode {
 };
 
 template<Opcode opcode>
-constexpr auto instruction = InvalidType{}; // TODO once we cover all instructions this will be an error.(maybe not
+constexpr auto instruction = InvalidType{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // X = 0
@@ -304,9 +306,9 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("dec " + std::string(rp_n
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 4)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("inc " + std::string(r_names[opcode.y])), [](Z80 &z80) {
+  const auto rhs = get_r<opcode.y>(z80);
   if constexpr (opcode.y == 6) // TODO can we better generalise?
     z80.pass_time(1);
-  const auto rhs = get_r<opcode.y>(z80);
   const auto [result, flags] = Alu::inc8(rhs, z80.flags());
   set_r<opcode.y>(z80, result);
   z80.flags(flags);
@@ -314,9 +316,9 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("inc " + std::string(r_na
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 5)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("dec " + std::string(r_names[opcode.y])), [](Z80 &z80) {
+  const auto rhs = get_r<opcode.y>(z80);
   if constexpr (opcode.y == 6) // TODO can we better generalise?
     z80.pass_time(1);
-  const auto rhs = get_r<opcode.y>(z80);
   const auto [result, flags] = Alu::dec8(rhs, z80.flags());
   set_r<opcode.y>(z80, result);
   z80.flags(flags);
@@ -494,7 +496,7 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("jp $nnnn"), [](Z80 &z80)
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 1)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("CB"), [](Z80 &) {}>{};
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("CB"), [](Z80 &z80) { decode_and_run_cb(z80); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 2)
@@ -593,10 +595,71 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("rst " + std::string(num_
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// CB prefixed opcodes
+template<Opcode opcode>
+constexpr auto cb_instruction = NopType{}; // InvalidType{}; TODO
+
+template<Mnemonic mnem, std::uint8_t z, auto rotate_op>
+struct RotateOp {
+  static constexpr auto mnemonic = Mnemonic(std::string(mnem.view()) + " " + r_names[z]);
+  static constexpr void execute(Z80 &z80) {
+    const auto [result, flags] = rotate_op(get_r<z>(z80), z80.flags());
+    if constexpr (z == 6) // TODO can we better generalise?
+      z80.pass_time(1);
+    set_r<z>(z80, result);
+    z80.regs().set(RegisterFile::R8::A, result);
+    z80.flags(flags);
+  }
+};
+
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 0)
+constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("rlc"), opcode.z,
+    [](const std::uint8_t lhs, const Flags) { return Alu::rotate_circular8(lhs, Alu::Direction::Left); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 1)
+constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("rrc"), opcode.z,
+    [](const std::uint8_t lhs, const Flags) { return Alu::rotate_circular8(lhs, Alu::Direction::Right); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 2)
+constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("rl"), opcode.z,
+    [](const std::uint8_t lhs, const Flags flags) { return Alu::rotate8(lhs, Alu::Direction::Left, flags.carry()); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 3)
+constexpr auto cb_instruction<opcode> =
+    RotateOp<Mnemonic("rr"), opcode.z, [](const std::uint8_t lhs, const Flags flags) {
+      return Alu::rotate8(lhs, Alu::Direction::Right, flags.carry());
+    }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 4)
+constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("sla"), opcode.z,
+    [](const std::uint8_t lhs, const Flags) { return Alu::shift_arithmetic8(lhs, Alu::Direction::Left); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 5)
+constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("sra"), opcode.z,
+    [](const std::uint8_t lhs, const Flags) { return Alu::shift_arithmetic8(lhs, Alu::Direction::Right); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 6)
+constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("sll"), opcode.z,
+    [](const std::uint8_t lhs, const Flags) { return Alu::shift_logical8(lhs, Alu::Direction::Left); }>{};
+template<Opcode opcode>
+  requires(opcode.x == 0 && opcode.y == 7)
+constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("srl"), opcode.z,
+    [](const std::uint8_t lhs, const Flags) { return Alu::shift_logical8(lhs, Alu::Direction::Right); }>{};
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 template<template<auto> typename Transform>
 constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
   return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};
+}(std::make_index_sequence<256>());
+
+// TODO hana can we generalise this?
+template<template<auto> typename Transform>
+constexpr auto cb_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
+  return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};
 }(std::make_index_sequence<256>());
 
 template<auto Opcode>
@@ -609,6 +672,16 @@ struct build_evaluate {
   static void result(Z80 &z80) { Opcode.execute(z80); }
 };
 
+void decode_and_run_cb(Z80 &z80) {
+  // Fetch the next opcode.
+  const auto opcode = z80.read8(z80.pc());
+  z80.regs().pc(z80.pc() + 1);
+  // TODO does refresh in here...
+  z80.pass_time(4); // Decode...
+  // Dispatch and run.
+  cb_table<build_evaluate>[opcode](z80);
+}
+
 } // namespace
 
 void decode_and_run(Z80 &z80) {
@@ -620,27 +693,29 @@ void decode_and_run(Z80 &z80) {
   table<build_evaluate>[opcode](z80);
 }
 
-Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
-  const auto opcode = memory.read(address);
-  std::size_t length{1};
+Disassembled disassemble(const Memory &memory, std::uint16_t address) {
+  const auto initial_address = address;
+  auto opcode = memory.read(address++);
   auto disassembly = std::string(table<build_description>[opcode]);
+  if (opcode == 0xcb) {
+    opcode = memory.read(address++);
+    disassembly = std::string(cb_table<build_description>[opcode]);
+  }
   if (const auto pos = disassembly.find("$nnnn"); pos != std::string::npos) {
-    disassembly = std::format(
-        "{}0x{:04x}{}", disassembly.substr(0, pos), memory.read16(address + 1), disassembly.substr(pos + 5));
-    length += 2;
+    disassembly =
+        std::format("{}0x{:04x}{}", disassembly.substr(0, pos), memory.read16(address), disassembly.substr(pos + 5));
+    address += 2;
   }
   if (const auto pos = disassembly.find("$nn"); pos != std::string::npos) {
     disassembly =
-        std::format("{}0x{:02x}{}", disassembly.substr(0, pos), memory.read(address + 1), disassembly.substr(pos + 3));
-    length += 1;
+        std::format("{}0x{:02x}{}", disassembly.substr(0, pos), memory.read(address++), disassembly.substr(pos + 3));
   }
   if (const auto pos = disassembly.find("$d"); pos != std::string::npos) {
-    disassembly = std::format("{}0x{:02x}{}", disassembly.substr(0, pos),
-        static_cast<std::uint16_t>(address + static_cast<std::int8_t>(memory.read(address + 1)) + 2),
+    const auto offset = static_cast<std::int8_t>(memory.read(address++));
+    disassembly = std::format("{}0x{:02x}{}", disassembly.substr(0, pos), static_cast<std::uint16_t>(address + offset),
         disassembly.substr(pos + 2));
-    length += 1;
   }
-  return {disassembly, length};
+  return {disassembly, static_cast<std::size_t>(address - initial_address)};
 }
 
 

@@ -11,17 +11,17 @@
 namespace specbolt {
 
 TEST_CASE("Opcode generation tests") {
+  constexpr auto base_address = 0x8000;
+  auto dis = [](auto... bytes) {
+    Memory memory;
+    for (auto &&[index, val]: std::views::enumerate(std::array{bytes...})) {
+      memory.write(static_cast<std::uint16_t>(base_address + index), static_cast<std::uint8_t>(val));
+    }
+    const auto result = disassemble(memory, base_address);
+    CHECK(result.length == sizeof...(bytes));
+    return result.disassembly;
+  };
   SECTION("Test base opcode disassembly") {
-    constexpr auto base_address = 0x8000;
-    auto dis = [](auto... bytes) {
-      Memory memory;
-      for (auto &&[index, val]: std::views::enumerate(std::array{bytes...})) {
-        memory.write(static_cast<std::uint16_t>(base_address + index), static_cast<std::uint8_t>(val));
-      }
-      const auto result = disassemble(memory, base_address);
-      CHECK(result.length == sizeof...(bytes));
-      return result.disassembly;
-    };
     CHECK(dis(0x00) == "nop");
     CHECK(dis(0x01, 0x34, 0x12) == "ld bc, 0x1234");
     CHECK(dis(0x02) == "ld (bc), a");
@@ -220,7 +220,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xc8) == "ret z");
     CHECK(dis(0xc9) == "ret");
     CHECK(dis(0xca, 0x34, 0x12) == "jp z, 0x1234");
-    CHECK(dis(0xcb) == "CB");
+    // CB prefix tested elsewhere
     CHECK(dis(0xcc, 0x34, 0x12) == "call z, 0x1234");
     CHECK(dis(0xcd, 0x34, 0x12) == "call 0x1234");
     CHECK(dis(0xce, 0x00) == "adc a, 0x00");
@@ -272,6 +272,32 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xfc, 0x34, 0x12) == "call m, 0x1234");
     CHECK(dis(0xfe, 0x00) == "cp 0x00");
     CHECK(dis(0xff) == "rst 0x38");
+  }
+  SECTION("Test CB prefix opcode disassembly") {
+    CHECK(dis(0xcb, 0x00) == "rlc b");
+    CHECK(dis(0xcb, 0x06) == "rlc (hl)");
+    CHECK(dis(0xcb, 0x07) == "rlc a");
+    CHECK(dis(0xcb, 0x08) == "rrc b");
+    CHECK(dis(0xcb, 0x0e) == "rrc (hl)");
+    CHECK(dis(0xcb, 0x0f) == "rrc a");
+    CHECK(dis(0xcb, 0x10) == "rl b");
+    CHECK(dis(0xcb, 0x16) == "rl (hl)");
+    CHECK(dis(0xcb, 0x17) == "rl a");
+    CHECK(dis(0xcb, 0x18) == "rr b");
+    CHECK(dis(0xcb, 0x1e) == "rr (hl)");
+    CHECK(dis(0xcb, 0x1f) == "rr a");
+    CHECK(dis(0xcb, 0x20) == "sla b");
+    CHECK(dis(0xcb, 0x26) == "sla (hl)");
+    CHECK(dis(0xcb, 0x27) == "sla a");
+    CHECK(dis(0xcb, 0x28) == "sra b");
+    CHECK(dis(0xcb, 0x2e) == "sra (hl)");
+    CHECK(dis(0xcb, 0x2f) == "sra a");
+    CHECK(dis(0xcb, 0x30) == "sll b");
+    CHECK(dis(0xcb, 0x36) == "sll (hl)");
+    CHECK(dis(0xcb, 0x37) == "sll a");
+    CHECK(dis(0xcb, 0x38) == "srl b");
+    CHECK(dis(0xcb, 0x3e) == "srl (hl)");
+    CHECK(dis(0xcb, 0x3f) == "srl a");
   }
 }
 
