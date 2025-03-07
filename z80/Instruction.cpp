@@ -325,20 +325,20 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         switch (type) {
           case ShiftArgs::Type::RotateCircular: {
             const auto [result, flags] = Alu::rotate_circular8(static_cast<std::uint8_t>(input.lhs), direction);
-            return {result, flags, 0};
+            return {result, flags, static_cast<std::uint8_t>(4 + rmw_access_time(lhs))};
           }
           case ShiftArgs::Type::Rotate: {
             const auto [result, flags] =
                 Alu::rotate8(static_cast<std::uint8_t>(input.lhs), direction, input.flags.carry());
-            return {result, flags, 0};
+            return {result, flags, static_cast<std::uint8_t>(4 + rmw_access_time(lhs))};
           }
           case ShiftArgs::Type::ShiftArithmetic: {
             const auto [result, flags] = Alu::shift_arithmetic8(static_cast<std::uint8_t>(input.lhs), direction);
-            return {result, flags, 0};
+            return {result, flags, static_cast<std::uint8_t>(4 + rmw_access_time(lhs))};
           }
           case ShiftArgs::Type::Shift: {
             const auto [result, flags] = Alu::shift_logical8(static_cast<std::uint8_t>(input.lhs), direction);
-            return {result, flags, 0};
+            return {result, flags, static_cast<std::uint8_t>(4 + rmw_access_time(lhs))};
           }
         }
       }
