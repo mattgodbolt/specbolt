@@ -238,7 +238,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xda, 0x34, 0x12) == "jp c, 0x1234");
     CHECK(dis(0xdb, 0x00) == "in a, (0x00)");
     CHECK(dis(0xdc, 0x34, 0x12) == "call c, 0x1234");
-    CHECK(dis(0xdd) == "DD");
+    // DD tested elsewhere
     CHECK(dis(0xde, 0x00) == "sbc a, 0x00");
     CHECK(dis(0xdf) == "rst 0x18");
     CHECK(dis(0xe0) == "ret po");
@@ -270,6 +270,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xfa, 0x34, 0x12) == "jp m, 0x1234");
     CHECK(dis(0xfb) == "ei");
     CHECK(dis(0xfc, 0x34, 0x12) == "call m, 0x1234");
+    // FD tested elsewhere
     CHECK(dis(0xfe, 0x00) == "cp 0x00");
     CHECK(dis(0xff) == "rst 0x38");
   }
@@ -313,6 +314,15 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xcb, 0xc8) == "set 1, b");
     CHECK(dis(0xcb, 0xcf) == "set 1, a");
     CHECK(dis(0xcb, 0xff) == "set 7, a");
+  }
+  SECTION("Test dd prefixes") {
+    CHECK(dis(0xdd, 0x04) == "inc b");
+    CHECK(dis(0xdd, 0x36, 0x1f, 0x52) == "ld (ix+0x1f), 0x52");
+    CHECK(dis(0xdd, 0x34, 0xff) == "inc (ix-0x01)");
+    CHECK(dis(0xdd, 0x65) == "ld ixh, ixl");
+    CHECK(dis(0xdd, 0xe9) == "jp (ix)");
+    CHECK(dis(0xdd, 0xe5) == "push ix");
+    // TODO check add hl, nnnn; ld $(nnnn), hl etc AND TEST THEM IN THE EXECUTION PART TOO
   }
 }
 
