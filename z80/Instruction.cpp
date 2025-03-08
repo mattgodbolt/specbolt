@@ -119,7 +119,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto taken = should_execute(input.flags);
       if (taken)
         cpu.registers().pc(input.rhs);
-      if (rhs == Operand::HL)
+      if (rhs == Operand::HL || rhs == Operand::IX || rhs == Operand::IY)
         return {0, input.flags, 0};
       return {0, input.flags, static_cast<std::uint8_t>(operation == Operation::Jump ? 6 : taken ? 8 : 3)};
     }

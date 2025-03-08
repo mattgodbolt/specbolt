@@ -11,6 +11,7 @@
 #include <utility>
 
 using namespace std::literals;
+
 namespace specbolt {
 
 namespace {
@@ -21,8 +22,32 @@ void decode_and_run_fd(Z80 &z80);
 
 enum class HlSet { Base, Ix, Iy };
 
+template<HlSet hl_set>
+struct IndexReg;
+template<>
+struct IndexReg<HlSet::Base> {
+  static constexpr auto name = "hl";
+  static constexpr auto highlow = RegisterFile::R16::HL;
+  static constexpr auto high = RegisterFile::R8::H;
+  static constexpr auto low = RegisterFile::R8::L;
+};
+template<>
+struct IndexReg<HlSet::Ix> {
+  static constexpr auto name = "ix";
+  static constexpr auto highlow = RegisterFile::R16::IX;
+  static constexpr auto high = RegisterFile::R8::IXH;
+  static constexpr auto low = RegisterFile::R8::IXL;
+};
+template<>
+struct IndexReg<HlSet::Iy> {
+  static constexpr auto name = "iy";
+  static constexpr auto highlow = RegisterFile::R16::IY;
+  static constexpr auto high = RegisterFile::R8::IYH;
+  static constexpr auto low = RegisterFile::R8::IYL;
+};
+
 struct Mnemonic {
-  std::array<char, 14> storage{};
+  std::array<char, 15> storage{};
   size_t len{};
   Mnemonic() = default;
   explicit constexpr Mnemonic(const std::string_view name) {
@@ -82,8 +107,8 @@ constexpr void push16(Z80 &z80, const std::uint16_t value) {
 
 constexpr std::string get_r_name(const std::uint8_t index, const HlSet hl_set) {
   constexpr std::array base_r_names{"b", "c", "d", "e", "h", "l", "(hl)", "a", "$nn"};
-  constexpr std::array ix_r_names{"b", "c", "d", "e", "ixh", "ixl", "(ix)", "a", "$nn"};
-  constexpr std::array iy_r_names = {"b", "c", "d", "e", "iyh", "iyl", "(iy)", "a", "$nn"};
+  constexpr std::array ix_r_names{"b", "c", "d", "e", "ixh", "ixl", "(ix$o)", "a", "$nn"};
+  constexpr std::array iy_r_names = {"b", "c", "d", "e", "iyh", "iyl", "(iy$o)", "a", "$nn"};
 
   switch (hl_set) {
     case HlSet::Base: return base_r_names[index];
@@ -105,13 +130,6 @@ constexpr std::array r_regs<HlSet::Iy> = {RegisterFile::R8::B, RegisterFile::R8:
     RegisterFile::R8::E, RegisterFile::R8::IYH, RegisterFile::R8::IYL, RegisterFile::R8::A /* NOT REALLY */,
     RegisterFile::R8::A};
 
-template<HlSet hl_set>
-constexpr auto hl_reg = RegisterFile::R16::HL;
-template<>
-constexpr auto hl_reg<HlSet::Ix> = RegisterFile::R16::IX;
-template<>
-constexpr auto hl_reg<HlSet::Iy> = RegisterFile::R16::IY;
-
 template<std::uint8_t index, HlSet hl_set>
 struct OperandGetSetter {
   constexpr static uint8_t get(Z80 &z80) { return z80.regs().get(r_regs<hl_set>[index]); }
@@ -123,12 +141,12 @@ template<HlSet hl_set>
 struct OperandGetSetter<6, hl_set> {
   constexpr static uint8_t get(Z80 &z80) {
     // TODO work out when the wz is actually updated.
-    const auto address = z80.regs().get(hl_reg<hl_set>);
+    const auto address = z80.regs().get(IndexReg<hl_set>::highlow);
     z80.regs().wz(address);
     return read(z80, address);
   }
   constexpr static void set(Z80 &z80, const std::uint8_t value) {
-    const auto address = z80.regs().get(hl_reg<hl_set>);
+    const auto address = z80.regs().get(IndexReg<hl_set>::highlow);
     write(z80, address, value);
   }
 };
@@ -149,57 +167,21 @@ constexpr void set_r(Z80 &z80, const std::uint8_t value) {
 }
 
 template<HlSet hl_set>
-struct TableRp;
-template<>
-struct TableRp<HlSet::Base> {
-  static constexpr std::array names = {"bc", "de", "hl", "sp"};
+struct TableRp {
+  static constexpr std::array names = {"bc", "de", IndexReg<hl_set>::name, "sp"};
   static constexpr std::array high = {
-      RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::H, RegisterFile::R8::SPH};
+      RegisterFile::R8::B, RegisterFile::R8::D, IndexReg<hl_set>::high, RegisterFile::R8::SPH};
   static constexpr std::array low = {
-      RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::L, RegisterFile::R8::SPL};
+      RegisterFile::R8::C, RegisterFile::R8::E, IndexReg<hl_set>::low, RegisterFile::R8::SPL};
   static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::HL, RegisterFile::R16::SP};
-};
-template<>
-struct TableRp<HlSet::Ix> {
-  static constexpr std::array names = {"bc", "de", "ix", "sp"};
-  static constexpr std::array high = {
-      RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::IXH, RegisterFile::R8::SPH};
-  static constexpr std::array low = {
-      RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::IXL, RegisterFile::R8::SPL};
-  static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::IX, RegisterFile::R16::SP};
-};
-template<>
-struct TableRp<HlSet::Iy> {
-  static constexpr std::array names = {"bc", "de", "iy", "sp"};
-  static constexpr std::array high = {
-      RegisterFile::R8::B, RegisterFile::R8::D, RegisterFile::R8::IYH, RegisterFile::R8::SPH};
-  static constexpr std::array low = {
-      RegisterFile::R8::C, RegisterFile::R8::E, RegisterFile::R8::IYL, RegisterFile::R8::SPL};
-  static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::IY, RegisterFile::R16::SP};
+      RegisterFile::R16::BC, RegisterFile::R16::DE, IndexReg<hl_set>::highlow, RegisterFile::R16::SP};
 };
 
 template<HlSet hl_set>
-struct TableRp2;
-template<>
-struct TableRp2<HlSet::Base> {
-  static constexpr std::array names = {"bc", "de", "hl", "af"};
+struct TableRp2 {
+  static constexpr std::array names = {"bc", "de", IndexReg<hl_set>::name, "af"};
   static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::HL, RegisterFile::R16::AF};
-};
-template<>
-struct TableRp2<HlSet::Ix> {
-  static constexpr std::array names = {"bc", "de", "ix", "af"};
-  static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::IX, RegisterFile::R16::AF};
-};
-template<>
-struct TableRp2<HlSet::Iy> {
-  static constexpr std::array names = {"bc", "de", "iy", "af"};
-  static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, RegisterFile::R16::IY, RegisterFile::R16::AF};
+      RegisterFile::R16::BC, RegisterFile::R16::DE, IndexReg<hl_set>::highlow, RegisterFile::R16::AF};
 };
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
@@ -332,12 +314,12 @@ constexpr auto instruction<opcode> = Load16ImmOp<opcode.p, opcode.hl_set>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 1)
-constexpr auto instruction<opcode> =
-    SimpleOp<Mnemonic("add hl, " + std::string(TableRp<opcode.hl_set>::names[opcode.p])), [](Z80 &z80) {
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("add "s + IndexReg<opcode.hl_set>::name + ", " +
+                                                       std::string(TableRp<opcode.hl_set>::names[opcode.p])),
+    [](Z80 &z80) {
       const auto rhs = z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]);
-      // TODODODODODOD NEXT
-      const auto [result, flags] = Alu::add16(z80.regs().get(RegisterFile::R16::HL), rhs, z80.flags());
-      z80.regs().set(RegisterFile::R16::HL, result);
+      const auto [result, flags] = Alu::add16(z80.regs().get(IndexReg<opcode.hl_set>::highlow), rhs, z80.flags());
+      z80.regs().set(IndexReg<opcode.hl_set>::highlow, result);
       z80.flags(flags);
       z80.pass_time(7);
     }>{};
@@ -352,10 +334,10 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld (de), a"),
     [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::DE), z80.regs().get(RegisterFile::R8::A)); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 2)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld ($nnnn), hl"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld ($nnnn), "s + IndexReg<opcode.hl_set>::name), [](Z80 &z80) {
   const auto address = read_immediate16(z80);
-  write(z80, address, z80.regs().get(RegisterFile::R8::L));
-  write(z80, address + 1, z80.regs().get(RegisterFile::R8::H));
+  write(z80, address, z80.regs().get(IndexReg<opcode.hl_set>::low));
+  write(z80, address + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 3)
@@ -374,11 +356,12 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld a, (de)"),
     [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::DE))); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 2)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld hl, ($nnnn)"), [](Z80 &z80) {
-  const auto address = read_immediate16(z80);
-  z80.regs().set(RegisterFile::R8::L, read(z80, address));
-  z80.regs().set(RegisterFile::R8::H, read(z80, address + 1));
-}>{};
+constexpr auto instruction<opcode> =
+    SimpleOp<Mnemonic("ld "s + IndexReg<opcode.hl_set>::name + ", ($nnnn)"), [](Z80 &z80) {
+      const auto address = read_immediate16(z80);
+      z80.regs().set(IndexReg<opcode.hl_set>::low, read(z80, address));
+      z80.regs().set(IndexReg<opcode.hl_set>::high, read(z80, address + 1));
+    }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 3)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld a, ($nnnn)"), [](Z80 &z80) {
@@ -572,14 +555,14 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("exx"), [](Z80 &z80) { z8
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 2)
-constexpr auto instruction<opcode> =
-    SimpleOp<Mnemonic("jp (hl)"), [](Z80 &z80) { z80.regs().pc(z80.regs().get(RegisterFile::R16::HL)); }>{};
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("jp ("s + IndexReg<opcode.hl_set>::name + ")"),
+    [](Z80 &z80) { z80.regs().pc(z80.regs().get(IndexReg<opcode.hl_set>::highlow)); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 3)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld sp, hl"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld sp, "s + IndexReg<opcode.hl_set>::name), [](Z80 &z80) {
   z80.pass_time(2);
-  z80.regs().sp(z80.regs().get(RegisterFile::R16::HL));
+  z80.regs().sp(z80.regs().get(IndexReg<opcode.hl_set>::highlow));
 }>{};
 
 template<Opcode opcode>
@@ -622,20 +605,20 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("in a, ($nn)"), [](Z80 &z
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 4)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ex (sp), hl"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ex (sp), "s + IndexReg<opcode.hl_set>::name), [](Z80 &z80) {
   const auto sp_old_low = read(z80, z80.regs().sp());
   z80.pass_time(1);
   const auto sp_old_high = read(z80, z80.regs().sp() + 1);
-  write(z80, z80.regs().sp(), z80.regs().get(RegisterFile::R8::L));
+  write(z80, z80.regs().sp(), z80.regs().get(IndexReg<opcode.hl_set>::low));
   z80.pass_time(2);
-  write(z80, z80.regs().sp() + 1, z80.regs().get(RegisterFile::R8::H));
-  z80.regs().set(RegisterFile::R16::HL, static_cast<std::uint16_t>(sp_old_low | sp_old_high << 8));
+  write(z80, z80.regs().sp() + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
+  z80.regs().set(IndexReg<opcode.hl_set>::highlow, static_cast<std::uint16_t>(sp_old_low | sp_old_high << 8));
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 5)
-constexpr auto instruction<opcode> =
-    SimpleOp<Mnemonic("ex de, hl"), [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }>{};
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ex de, "s + IndexReg<opcode.hl_set>::name),
+    [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, IndexReg<opcode.hl_set>::highlow); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 6)
@@ -878,6 +861,11 @@ Disassembled disassemble(const Memory &memory, std::uint16_t address) {
       disassembly = std::string(fd_table<build_description>[opcode]);
       break;
     default: break;
+  }
+  if (const auto pos = disassembly.find("$o"); pos != std::string::npos) {
+    const auto offset = static_cast<std::int8_t>(memory.read(address++)); // NOT RIGHT YET
+    disassembly = std::format("{}{}0x{:02x}{}", disassembly.substr(0, pos), offset < 0 ? "-" : "+", std::abs(offset),
+        disassembly.substr(pos + 2));
   }
   if (const auto pos = disassembly.find("$nnnn"); pos != std::string::npos) {
     disassembly =

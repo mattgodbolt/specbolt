@@ -1005,7 +1005,7 @@ struct OpcodeTester {
   }
 
   void dd_prefix() {
-    SECTION("ihc b") { // prefixed version should be same as original, just slower
+    SECTION("inc b") { // prefixed version should be same as original, just slower
       if (use_new_code) {
         z80.flags(Flags());
         regs.set(RegisterFile::R8::B, 0xff);
@@ -1037,6 +1037,73 @@ struct OpcodeTester {
       CHECK(z80.cycle_count() == 8);
       CHECK(regs.ix() == 0x1235);
     }
+    SECTION("jp (ix)") {
+      regs.set(RegisterFile::R16::IX, 0x8008);
+      run(0xdd, 0xe9); // jp (ix)
+      CHECK(z80.pc() == 0x8008);
+      CHECK(z80.cycle_count() == 8);
+    }
+    SECTION("ld sp, ix") {
+      regs.set(RegisterFile::R16::IX, 0x8008);
+      run(0xdd, 0xf9); // ld sp, ix
+      CHECK(z80.pc() == 2);
+      CHECK(z80.regs().sp() == 0x8008);
+      if (use_new_code)
+        CHECK(z80.cycle_count() == 10); // TODO fix old code path
+    }
+    SECTION("push ix") {
+      regs.sp(0xfffd);
+      regs.set(RegisterFile::R16::IX, 0xabcd);
+      run(0xdd, 0xe5); // push ix
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 15);
+      CHECK(memory.read16(0xfffb) == 0xabcd);
+      CHECK(regs.sp() == 0xfffb);
+    }
+    SECTION("add ix, bc") {
+      regs.set(RegisterFile::R16::IX, 0x1234);
+      z80.flags(Flags());
+      regs.set(RegisterFile::R16::BC, 0x1111);
+      run(0xdd, 0x09); // add ix, bc
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 15);
+      CHECK(regs.get(RegisterFile::R16::IX) == 0x2345);
+      CHECK(z80.flags() == Flags::Flag5());
+    }
+    SECTION("ld ($nnnn), ix") {
+      regs.set(RegisterFile::R16::IX, 0xf00f);
+      run(0xdd, 0x22, 0x34, 0x12); // ld (0x1234), ix
+      CHECK(z80.pc() == 4);
+      if (use_new_code)
+        CHECK(z80.cycle_count() == 20); // TODO fix old code path
+      CHECK(memory.read16(0x1234) == 0xf00f);
+    }
+    // TODO test offsets
+  }
+
+  void fd_prefix() {
+    // Assumed that if we turned HL->IX for all the 0xdd prefix, then 0xfd works if one of them works...
+    SECTION("inc iy") {
+      regs.set(RegisterFile::R16::IY, 0x12ff);
+      run(0xfd, 0x23); // inc iy
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 10);
+      CHECK(regs.iy() == 0x1300);
+    }
+    SECTION("inc iyh") {
+      regs.set(RegisterFile::R16::IY, 0x1234);
+      run(0xfd, 0x24); // inc ixh
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 8);
+      CHECK(regs.iy() == 0x1334);
+    }
+    SECTION("inc iyl") {
+      regs.set(RegisterFile::R16::IY, 0x1234);
+      run(0xfd, 0x2c); // inc ixl
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 8);
+      CHECK(regs.iy() == 0x1235);
+    }
   }
 };
 
@@ -1053,6 +1120,11 @@ TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "cb opcode execution tests", "[opcod
 TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcode][generated]",
     ((bool use_new_code), use_new_code), false, true) {
   OpcodeTester<use_new_code>::dd_prefix();
+}
+
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fd opcode execution tests", "[opcode][generated]",
+    ((bool use_new_code), use_new_code), false, true) {
+  OpcodeTester<use_new_code>::fd_prefix();
 }
 
 } // namespace specbolt

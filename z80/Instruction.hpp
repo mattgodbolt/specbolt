@@ -131,6 +131,7 @@ struct Instruction {
   using Args = std::variant<std::monostate, WithCarry, Condition, EdOpArgs, ShiftArgs, NoFlags, WithIrq>;
   Args args{};
   std::int8_t index_offset{};
+  std::uint8_t decode_t_states{};
 
   struct Input {
     std::uint16_t lhs;

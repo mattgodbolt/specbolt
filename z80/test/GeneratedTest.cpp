@@ -17,9 +17,9 @@ TEST_CASE("Opcode generation tests") {
     for (auto &&[index, val]: std::views::enumerate(std::array{bytes...})) {
       memory.write(static_cast<std::uint16_t>(base_address + index), static_cast<std::uint8_t>(val));
     }
-    const auto result = disassemble(memory, base_address);
-    CHECK(result.length == sizeof...(bytes));
-    return result.disassembly;
+    const auto [disassembly, length] = disassemble(memory, base_address);
+    CHECK(length == sizeof...(bytes));
+    return disassembly;
   };
   SECTION("Test base opcode disassembly") {
     CHECK(dis(0x00) == "nop");
@@ -322,7 +322,8 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xdd, 0x65) == "ld ixh, ixl");
     CHECK(dis(0xdd, 0xe9) == "jp (ix)");
     CHECK(dis(0xdd, 0xe5) == "push ix");
-    // TODO check add hl, nnnn; ld $(nnnn), hl etc AND TEST THEM IN THE EXECUTION PART TOO
+    CHECK(dis(0xdd, 0x09) == "add ix, bc");
+    CHECK(dis(0xdd, 0x22, 0xad, 0xba) == "ld (0xbaad), ix");
   }
 }
 

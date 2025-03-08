@@ -38,6 +38,10 @@ struct RegisterSetIy {
   static constexpr auto extra_bytes = 1u;
 };
 
+Instruction add_4(Instruction i) {
+  i.decode_t_states += 4;
+  return i;
+}
 
 Instruction::Operand source_operand_for(const std::uint8_t opcode) {
   // todo unify with load_source_for
@@ -563,15 +567,15 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
     case 0xfa:
       return {"jp m, {1}", 3, Op::Jump, Operand::None, Operand::WordImmediate, Instruction::Condition::Negative};
 
-    case 0xdd: return decode_ddfd<RegisterSetIx>(operands);
-    case 0xed: return decode_ed(operands);
+    case 0xdd: return add_4(decode_ddfd<RegisterSetIx>(operands));
+    case 0xed: return add_4(decode_ed(operands));
     case 0xd3: return {"out ({}), {}", 2, Op::Out, Operand::ByteImmediate_A, Operand::A};
     case 0xdb: return {"in {}, ({})", 2, Op::In, Operand::A, Operand::ByteImmediate_A, Instruction::NoFlags{}};
     case 0xe3: return {"ex {}, {}", 1, Op::Exchange, Operand::SP_Indirect16, Operand::HL};
     case 0xeb: return {"ex {}, {}", 1, Op::Exchange, Operand::DE, Operand::HL};
     case 0xf3: return {"di", 1, Op::Irq, Operand::None, Operand::Const_0};
     case 0xfb: return {"ei", 1, Op::Irq, Operand::None, Operand::Const_1};
-    case 0xfd: return decode_ddfd<RegisterSetIy>(operands);
+    case 0xfd: return add_4(decode_ddfd<RegisterSetIy>(operands));
     case 0xc7: return {"rst 0x00", 1, Op::Call, Operand::None, Operand::Const_0};
     case 0xcf: return {"rst 0x08", 1, Op::Call, Operand::None, Operand::Const_8};
     case 0xd7: return {"rst 0x10", 1, Op::Call, Operand::None, Operand::Const_16};

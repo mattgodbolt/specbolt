@@ -122,7 +122,7 @@ void Z80::execute(const Instruction &instr) {
       {read(instr.lhs, instr.index_offset), read(instr.rhs, instr.index_offset), Flags(regs_.get(RegisterFile::R8::F))},
       *this);
   regs_.set(RegisterFile::R8::F, flags.to_u8());
-  pass_time(extra_t_states);
+  pass_time(extra_t_states + instr.decode_t_states);
   write(instr.lhs, instr.index_offset, value);
 }
 
