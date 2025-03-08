@@ -125,6 +125,15 @@ Alu::R8 Alu::ccf(const std::uint8_t lhs, const Flags current_flags) {
   return {lhs, (preserved | flags53 | other_flag) ^ Flags::Carry()};
 }
 
+Flags Alu::bit(
+    const std::uint8_t lhs, const std::uint8_t rhs, const Flags current_flags, const std::uint8_t bus_noise) {
+  const auto flags_persisted = current_flags & Flags::Carry();
+  const auto flags_from_value = Flags(bus_noise) & (Flags::Flag3() | Flags::Flag5());
+  const auto flags_from_sign = (rhs & lhs & 0x80) ? Flags::Sign() : Flags();
+  const auto flags_from_bit = lhs & rhs ? Flags() : (Flags::Zero() | Flags::Parity());
+  return flags_persisted | flags_from_value | flags_from_sign | flags_from_bit | Flags::HalfCarry();
+}
+
 Flags Alu::parity_flags_for(const std::uint8_t value) { return sz53_parity(value); }
 
 Alu::R8 Alu::fast_rotate8(const std::uint8_t lhs, const Direction direction, const Flags flags) {

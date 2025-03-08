@@ -85,7 +85,10 @@ constexpr uint8_t get_r(Z80 &z80) {
 }
 template<>
 constexpr uint8_t get_r<6>(Z80 &z80) {
-  return read(z80, z80.regs().get(RegisterFile::R16::HL));
+  // TODO work out when the wz is actually updated.
+  const auto address = z80.regs().get(RegisterFile::R16::HL);
+  z80.regs().wz(address);
+  return read(z80, address);
 }
 template<>
 constexpr uint8_t get_r<8>(Z80 &z80) {
@@ -607,7 +610,6 @@ struct RotateOp {
     if constexpr (z == 6) // TODO can we better generalise?
       z80.pass_time(1);
     set_r<z>(z80, result);
-    z80.regs().set(RegisterFile::R8::A, result);
     z80.flags(flags);
   }
 };
@@ -647,6 +649,38 @@ template<Opcode opcode>
 constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("srl"), opcode.z,
     [](const std::uint8_t lhs, const Flags) { return Alu::shift_logical8(lhs, Alu::Direction::Right); }>{};
 
+template<Opcode opcode>
+struct BitOp {
+  static constexpr auto mnemonic = Mnemonic("bit " + std::string(1, '0' + opcode.y) + ", " + r_names[opcode.z]);
+  static constexpr void execute(Z80 &z80) {
+    const auto lhs = get_r<opcode.z>(z80);
+    if constexpr (opcode.z == 6) // TODO can we better generalise?
+      z80.pass_time(1);
+    const auto bus_noise = static_cast<std::uint8_t>(opcode.z == 6 ? (z80.regs().wz() >> 8) : lhs);
+    z80.flags(Alu::bit(lhs, static_cast<std::uint8_t>(1 << opcode.y), z80.flags(), bus_noise));
+  }
+};
+template<Opcode opcode>
+  requires(opcode.x == 1)
+constexpr auto cb_instruction<opcode> = BitOp<opcode>{};
+
+template<Opcode opcode>
+struct SetResetOp {
+  static constexpr auto mnemonic =
+      Mnemonic((opcode.x == 2 ? "res " : "set ") + std::string(1, '0' + opcode.y) + ", " + r_names[opcode.z]);
+  static constexpr void execute(Z80 &z80) {
+    const auto lhs = get_r<opcode.z>(z80);
+    if constexpr (opcode.z == 6) // TODO can we better generalise?
+      z80.pass_time(1);
+    const auto bit = static_cast<std::uint8_t>(1 << opcode.y);
+    const auto result = static_cast<std::uint8_t>(opcode.x == 2 ? lhs & ~bit : lhs | bit);
+    set_r<opcode.z>(z80, result);
+  }
+};
+template<Opcode opcode>
+  requires(opcode.x == 2 || opcode.x == 3)
+constexpr auto cb_instruction<opcode> = SetResetOp<opcode>{};
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -656,7 +690,8 @@ constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNu
   return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};
 }(std::make_index_sequence<256>());
 
-// TODO hana can we generalise this?
+// TODO hana can we generalise this? - Yes!!! https://compiler-explorer.com/z/dboW4ndfj -
+// https://compiler-explorer.com/z/5vE7756hv
 template<template<auto> typename Transform>
 constexpr auto cb_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
   return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum)}>>::result...};

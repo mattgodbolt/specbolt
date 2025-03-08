@@ -236,9 +236,11 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       return {0, flags, 12};
     }
     case Operation::Set:
-      return {static_cast<std::uint16_t>(input.lhs | static_cast<std::uint16_t>(1u << input.rhs)), input.flags, 4};
+      return {static_cast<std::uint16_t>(input.lhs | static_cast<std::uint16_t>(1u << input.rhs)), input.flags,
+          static_cast<std::uint8_t>(4 + rmw_access_time(lhs))};
     case Operation::Reset:
-      return {static_cast<std::uint16_t>(input.lhs & ~static_cast<std::uint16_t>(1u << input.rhs)), input.flags, 4};
+      return {static_cast<std::uint16_t>(input.lhs & ~static_cast<std::uint16_t>(1u << input.rhs)), input.flags,
+          static_cast<std::uint8_t>(4 + rmw_access_time(lhs))};
 
     case Operation::Djnz: {
       const auto new_b = static_cast<std::uint8_t>(cpu.registers().get(RegisterFile::R8::B) - 1);
@@ -251,19 +253,13 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
 
     case Operation::Bit: {
       const auto bit = static_cast<std::uint8_t>(1 << static_cast<std::uint8_t>(input.rhs));
-      const auto flags_persisted = input.flags & Flags::Carry();
+      const auto is_indirect =
+          lhs == Operand::HL_Indirect8 || lhs == Operand::IX_Offset_Indirect8 || lhs == Operand::IY_Offset_Indirect8;
       // For indirect reads, the undefined bits are the top 8 bits of the fetched address (aka "wz" register). Else
       // it's the lhs value.
-      const auto bits_left_on_bus =
-          lhs == Operand::HL_Indirect8 || lhs == Operand::IX_Offset_Indirect8 || lhs == Operand::IY_Offset_Indirect8
-              ? cpu.registers().wz() >> 8
-              : input.lhs;
-      const auto flags_from_value =
-          Flags(static_cast<std::uint8_t>(bits_left_on_bus)) & (Flags::Flag3() | Flags::Flag5());
-      const auto flags_from_sign = (bit & input.lhs & 0x80) ? Flags::Sign() : Flags();
-      const auto flags_from_bit = input.lhs & bit ? Flags() : (Flags::Zero() | Flags::Parity());
-      const auto flags = flags_persisted | flags_from_value | flags_from_sign | flags_from_bit | Flags::HalfCarry();
-      return {input.lhs, flags, 4};
+      const auto bits_left_on_bus = static_cast<std::uint8_t>(is_indirect ? cpu.registers().wz() >> 8 : input.lhs);
+      const auto flags = Alu::bit(static_cast<std::uint8_t>(input.lhs), bit, input.flags, bits_left_on_bus);
+      return {input.lhs, flags, static_cast<std::uint8_t>(is_indirect ? 8 : 4)};
     }
 
     case Operation::Pop: return {cpu.pop16(), input.flags, 6};

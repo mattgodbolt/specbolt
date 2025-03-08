@@ -934,6 +934,71 @@ TEST_CASE("Opcode execution tests") {
       CHECK(z80.flags() == (Flags::Flag5() | Flags::Carry()));
     }
   }
+  SECTION("bit 0, b") {
+    z80.flags(Flags());
+    regs.set(RegisterFile::R8::B, 0x00);
+    run_one_instruction(0xcb, 0x40); // bit 0, b
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 8);
+    CHECK(z80.flags() == (Flags::Zero() | Flags::HalfCarry() | Flags::Parity()));
+    regs.set(RegisterFile::R8::B, 0x01);
+    run_one_instruction(0xcb, 0x40); // bit 0, b
+    CHECK(z80.flags() == Flags::HalfCarry());
+    regs.set(RegisterFile::R8::B, 0xff);
+    run_one_instruction(0xcb, 0x40); // bit 0, b
+    CHECK(z80.flags() == (Flags::HalfCarry() | Flags::Flag3() | Flags::Flag5()));
+  }
+  SECTION("bit 0, (hl)") {
+    z80.flags(Flags());
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    memory.write(0x1234, 0x00);
+    regs.set(RegisterFile::R8::B, 0x00);
+    run_one_instruction(0xcb, 0x46); // bit 0, (hl)
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 12);
+    CHECK(z80.flags() == (Flags::Zero() | Flags::HalfCarry() | Flags::Parity()));
+    memory.write(0x1234, 0x01);
+    run_one_instruction(0xcb, 0x46); // bit 0, (hl)
+    CHECK(z80.flags() == Flags::HalfCarry());
+    memory.write(0x1234, 0xff);
+    run_one_instruction(0xcb, 0x46); // bit 0, (hl)
+    CHECK(z80.flags() == Flags::HalfCarry());
+    // Test behaviour with wz bits that come from the top bits of the address of HL.
+    regs.set(RegisterFile::R16::HL, 0xff34);
+    memory.write(0xff34, 0xff);
+    run_one_instruction(0xcb, 0x46); // bit 0, (hl)
+    CHECK(z80.flags() == (Flags::HalfCarry() | Flags::Flag3() | Flags::Flag5()));
+  }
+  SECTION("res 4, e") {
+    regs.set(RegisterFile::R8::E, 0x7f);
+    run_one_instruction(0xcb, 0xa3); // res 4, e
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 8);
+    CHECK(regs.get(RegisterFile::R8::E) == (0x7f & ~(1 << 4)));
+  }
+  SECTION("res 4, (hl)") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    memory.write(0x1234, 0x7f);
+    run_one_instruction(0xcb, 0xa6); // res 4, e
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 15);
+    CHECK(memory.read(0x1234) == (0x7f & ~(1 << 4)));
+  }
+  SECTION("set 7, a") {
+    regs.set(RegisterFile::R8::A, 0x12);
+    run_one_instruction(0xcb, 0xff); // set 7, a
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 8);
+    CHECK(regs.get(RegisterFile::R8::A) == (0x12 | (1 << 7)));
+  }
+  SECTION("set 7, (hl)") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    memory.write(0x1234, 0x12);
+    run_one_instruction(0xcb, 0xfe); // set 7, (hl)
+    CHECK(z80.pc() == 2);
+    CHECK(z80.cycle_count() == 15);
+    CHECK(memory.read(0x1234) == (0x12 | (1 << 7)));
+  }
 }
 
 } // namespace specbolt

@@ -36,6 +36,8 @@ public:
   static R8 scf(std::uint8_t lhs, Flags current_flags);
   static R8 ccf(std::uint8_t lhs, Flags current_flags);
 
+  static Flags bit(std::uint8_t lhs, std::uint8_t rhs, Flags current_flags, std::uint8_t bus_noise);
+
   static Flags parity_flags_for(std::uint8_t value);
 
   enum class Direction { Left, Right };

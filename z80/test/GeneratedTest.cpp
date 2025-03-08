@@ -298,6 +298,21 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xcb, 0x38) == "srl b");
     CHECK(dis(0xcb, 0x3e) == "srl (hl)");
     CHECK(dis(0xcb, 0x3f) == "srl a");
+    CHECK(dis(0xcb, 0x40) == "bit 0, b");
+    CHECK(dis(0xcb, 0x46) == "bit 0, (hl)");
+    CHECK(dis(0xcb, 0x48) == "bit 1, b");
+    CHECK(dis(0xcb, 0x4f) == "bit 1, a");
+    CHECK(dis(0xcb, 0x7f) == "bit 7, a");
+    CHECK(dis(0xcb, 0x80) == "res 0, b");
+    CHECK(dis(0xcb, 0x86) == "res 0, (hl)");
+    CHECK(dis(0xcb, 0x88) == "res 1, b");
+    CHECK(dis(0xcb, 0x8f) == "res 1, a");
+    CHECK(dis(0xcb, 0xbf) == "res 7, a");
+    CHECK(dis(0xcb, 0xc0) == "set 0, b");
+    CHECK(dis(0xcb, 0xc6) == "set 0, (hl)");
+    CHECK(dis(0xcb, 0xc8) == "set 1, b");
+    CHECK(dis(0xcb, 0xcf) == "set 1, a");
+    CHECK(dis(0xcb, 0xff) == "set 7, a");
   }
 }
 
