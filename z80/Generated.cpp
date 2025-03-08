@@ -600,7 +600,7 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("rst " + std::string(num_
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // CB prefixed opcodes
 template<Opcode opcode>
-constexpr auto cb_instruction = NopType{}; // InvalidType{}; TODO
+constexpr auto cb_instruction = InvalidType{};
 
 template<Mnemonic mnem, std::uint8_t z, auto rotate_op>
 struct RotateOp {
