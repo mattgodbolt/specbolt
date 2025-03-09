@@ -1307,6 +1307,107 @@ struct OpcodeTester {
       CHECK(memory.read(0x1234) == 0xa2);
       CHECK(z80.flags() == Flags::Carry());
     }
+    SECTION("block loads") {
+      for (auto x = 0uz; x < 256uz; ++x)
+        memory.write(static_cast<std::uint16_t>(0xf000 + x), static_cast<std::uint8_t>(x ^ 0x55));
+      regs.set(RegisterFile::R16::DE, 0x2345);
+      regs.set(RegisterFile::R16::HL, 0xf000);
+      SECTION("ldi") {
+        SECTION("bc > 1") {
+          regs.set(RegisterFile::R16::BC, 123);
+          run(0xed, 0xa0);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(memory.read(0x2345) == 0x55);
+          CHECK(memory.read(0x2346) == 0x00);
+          CHECK(regs.get(RegisterFile::R16::BC) == 122);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry()));
+        }
+        SECTION("bc == 1") {
+          regs.set(RegisterFile::R16::BC, 1);
+          run(0xed, 0xa0);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(memory.read(0x2345) == 0x55);
+          CHECK(memory.read(0x2346) == 0x00);
+          CHECK(regs.get(RegisterFile::R16::BC) == 0);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Carry()));
+        }
+        CHECK(regs.get(RegisterFile::R16::HL) == 0xf001);
+        CHECK(regs.get(RegisterFile::R16::DE) == 0x2346);
+      }
+      SECTION("ldir") {
+        SECTION("bc > 1") {
+          regs.set(RegisterFile::R16::BC, 123);
+          run(0xed, 0xb0);
+          CHECK(z80.pc() == 0);
+          CHECK(z80.cycle_count() == 21);
+          CHECK(memory.read(0x2345) == 0x55);
+          CHECK(memory.read(0x2346) == 0x00);
+          CHECK(regs.get(RegisterFile::R16::BC) == 122);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry()));
+        }
+        SECTION("bc == 1") {
+          regs.set(RegisterFile::R16::BC, 1);
+          run(0xed, 0xb0);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Carry()));
+        }
+        CHECK(regs.get(RegisterFile::R16::HL) == 0xf001);
+        CHECK(regs.get(RegisterFile::R16::DE) == 0x2346);
+      }
+      SECTION("ldd") {
+        SECTION("bc > 1") {
+          regs.set(RegisterFile::R16::BC, 123);
+          run(0xed, 0xa8);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(memory.read(0x2345) == 0x55);
+          CHECK(memory.read(0x2346) == 0x00);
+          CHECK(regs.get(RegisterFile::R16::BC) == 122);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry()));
+        }
+        SECTION("bc == 1") {
+          regs.set(RegisterFile::R16::BC, 1);
+          run(0xed, 0xa8);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(memory.read(0x2345) == 0x55);
+          CHECK(memory.read(0x2346) == 0x00);
+          CHECK(regs.get(RegisterFile::R16::BC) == 0);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Carry()));
+        }
+        CHECK(regs.get(RegisterFile::R16::HL) == 0xefff);
+        CHECK(regs.get(RegisterFile::R16::DE) == 0x2344);
+      }
+      SECTION("ldir") {
+        regs.set(RegisterFile::R16::HL, 0xf000);
+        SECTION("bc > 1") {
+          regs.set(RegisterFile::R16::BC, 123);
+          run(0xed, 0xb8);
+          CHECK(z80.pc() == 0);
+          CHECK(z80.cycle_count() == 21);
+          CHECK(memory.read(0x2345) == 0x55);
+          CHECK(memory.read(0x2346) == 0x00);
+          CHECK(regs.get(RegisterFile::R16::BC) == 122);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry()));
+        }
+        SECTION("bc == 1") {
+          regs.set(RegisterFile::R16::BC, 1);
+          run(0xed, 0xb8);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Zero() | Flags::Carry()));
+        }
+        CHECK(regs.get(RegisterFile::R16::HL) == 0xefff);
+        CHECK(regs.get(RegisterFile::R16::DE) == 0x2344);
+      }
+    }
+    // CHECK(dis(0xed, 0xa0) == "ldi");
+    // CHECK(dis(0xed, 0xa8) == "ldd");
+    // CHECK(dis(0xed, 0xb0) == "ldir");
+    // CHECK(dis(0xed, 0xb8) == "lddr");
   }
 };
 

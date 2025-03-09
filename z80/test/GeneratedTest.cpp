@@ -379,6 +379,10 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xed, 0x79) == "out (c), a");
     CHECK(dis(0xed, 0x7a) == "adc hl, sp");
     CHECK(dis(0xed, 0x7b, 0x34, 0x12) == "ld sp, (0x1234)");
+    CHECK(dis(0xed, 0xa0) == "ldi");
+    CHECK(dis(0xed, 0xa8) == "ldd");
+    CHECK(dis(0xed, 0xb0) == "ldir");
+    CHECK(dis(0xed, 0xb8) == "lddr");
   }
 }
 

@@ -241,9 +241,9 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       }
       if (should_continue) {
         cpu.registers().pc(cpu.registers().pc() - 2);
-        return {0, flags, 21};
+        return {0, flags, 13};
       }
-      return {0, flags, 12};
+      return {0, flags, 8};
     }
     case Operation::Set:
       return {static_cast<std::uint16_t>(input.lhs | static_cast<std::uint16_t>(1u << input.rhs)), input.flags,

@@ -982,9 +982,40 @@ constexpr auto ed_instruction<opcode> = SimpleOp<Mnemonic("rld"), [](Z80 &z80) {
   z80.flags(z80.flags() & Flags::Carry() | Alu::parity_flags_for(new_a));
 }>{};
 
+template<bool increment, bool repeat>
+struct BlockLoadOp {
+  static constexpr auto mnemonic = Mnemonic("ld"s + (increment ? "i" : "d") + (repeat ? "r" : ""));
+  static void execute(Z80 &z80) {
+    constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
+    const auto hl = z80.regs().get(RegisterFile::R16::HL);
+    z80.regs().set(RegisterFile::R16::HL, hl + add);
+    const auto byte = read(z80, hl);
+    const auto de = z80.regs().get(RegisterFile::R16::DE);
+    z80.regs().set(RegisterFile::R16::DE, de + add);
+    write(z80, de, byte);
+    z80.pass_time(2);
+    // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
+    const auto flag_bits = static_cast<std::uint8_t>(byte + z80.registers().get(RegisterFile::R8::A));
+
+    const auto new_bc = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::BC) - 1);
+    z80.regs().set(RegisterFile::R16::BC, new_bc);
+    const auto preserved_flags = z80.flags() & (Flags::Sign() | Flags::Zero() | Flags::Carry());
+    const auto flags_from_bits =
+        (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | (flag_bits & 0x02 ? Flags::Flag5() : Flags());
+    const auto flags_from_bc = (new_bc ? Flags::Overflow() : Flags());
+    z80.flags(preserved_flags | flags_from_bits | flags_from_bc);
+    if (repeat && new_bc) {
+      z80.regs().wz(z80.pc() - 1);
+      z80.regs().pc(z80.pc() - 2);
+      z80.pass_time(5);
+    }
+  }
+};
+
 template<Opcode opcode>
   requires(opcode.x == 2 && opcode.z == 0)
-constexpr auto ed_instruction<opcode> = InvalidInstruction{};
+constexpr auto ed_instruction<opcode> =
+    BlockLoadOp<!static_cast<bool>(opcode.y & 1), static_cast<bool>(opcode.y & 2)>{};
 template<Opcode opcode>
   requires(opcode.x == 2 && opcode.z == 1)
 constexpr auto ed_instruction<opcode> = InvalidInstruction{};
@@ -1043,8 +1074,8 @@ struct build_description {
 
 template<auto Opcode>
 struct build_evaluate {
-  static void result(Z80 &z80) { Opcode.execute(z80); }
-};
+  static void result(Z80 &z80) { Opcode.execute(z80); } // namespace
+}; // namespace specbolt
 
 template<auto Opcode>
 struct build_is_indirect {
