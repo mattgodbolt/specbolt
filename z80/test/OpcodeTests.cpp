@@ -1078,7 +1078,22 @@ struct OpcodeTester {
         CHECK(z80.cycle_count() == 20); // TODO fix old code path
       CHECK(memory.read16(0x1234) == 0xf00f);
     }
-    // TODO test offsets
+    SECTION("ld (ix+d), n") {
+      regs.set(RegisterFile::R16::IX, 0x1234);
+      run(0xdd, 0x36, 0x02, 0x12); // ld (ix+2), 0x12
+      CHECK(z80.pc() == 4);
+      CHECK(z80.cycle_count() == 19);
+      CHECK(memory.read(0x1236) == 0x12);
+    }
+    SECTION("ld (ix+d), h") { // NB really is "h" not ix
+      regs.set(RegisterFile::R8::H, 0xbe);
+      regs.set(RegisterFile::R16::IX, 0x1234);
+      run(0xdd, 0x74, 0x02); // ld (ix+2), h
+      CHECK(z80.pc() == 3);
+      if (use_new_code)
+        CHECK(z80.cycle_count() == 19); // TODO fix old code path
+      CHECK(memory.read(0x1236) == 0xbe);
+    }
   }
 
   void fd_prefix() {

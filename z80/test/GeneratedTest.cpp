@@ -318,12 +318,31 @@ TEST_CASE("Opcode generation tests") {
   SECTION("Test dd prefixes") {
     CHECK(dis(0xdd, 0x04) == "inc b");
     CHECK(dis(0xdd, 0x36, 0x1f, 0x52) == "ld (ix+0x1f), 0x52");
+    CHECK(dis(0xdd, 0x74, 0x02) == "ld (ix+0x02), h");
+    CHECK(dis(0xdd, 0x6e, 0x02) == "ld l, (ix+0x02)");
     CHECK(dis(0xdd, 0x34, 0xff) == "inc (ix-0x01)");
     CHECK(dis(0xdd, 0x65) == "ld ixh, ixl");
     CHECK(dis(0xdd, 0xe9) == "jp (ix)");
     CHECK(dis(0xdd, 0xe5) == "push ix");
     CHECK(dis(0xdd, 0x09) == "add ix, bc");
     CHECK(dis(0xdd, 0x22, 0xad, 0xba) == "ld (0xbaad), ix");
+  }
+}
+
+TEST_CASE("Check indirect flags") {
+  static constexpr std::bitset<256> expected_but_backwards{
+      // clang-format off
+    // 0000000000000000                0000000000000000
+    //                 0000000000000000                0000000000000000
+      "0000000000000000000000000000000000000000000000000000111000000000"
+      "0000001000000010000000100000001000000010000000101111110100000010"
+      "0000001000000010000000100000001000000010000000100000001000000010"
+      "0000000000000000000000000000000000000000000000000000000000000000"
+      // clang-format-on
+    };
+  for (auto opcode = 0uz; opcode < 256uz; ++opcode) {
+    INFO(std::format("opcode: 0x{:02x}", opcode));
+    CHECK(is_indirect_for_testing()[opcode] == expected_but_backwards[255-opcode]);
   }
 }
 

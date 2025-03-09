@@ -1,9 +1,8 @@
 #pragma once
 
+#include <bitset>
 #include <cstdint>
 #include <string>
-#include <string_view>
-#include <vector>
 
 namespace specbolt {
 
@@ -20,5 +19,8 @@ struct Disassembled {
 };
 
 Disassembled disassemble(const Memory &memory, std::uint16_t address);
+
+// For testing.
+std::bitset<256> is_indirect_for_testing();
 
 } // namespace specbolt

@@ -105,65 +105,72 @@ constexpr void push16(Z80 &z80, const std::uint16_t value) {
   push8(z80, static_cast<std::uint8_t>(value));
 }
 
-constexpr std::string get_r_name(const std::uint8_t index, const HlSet hl_set) {
+// TODO combine with the r_regs below etcetc
+constexpr std::string get_r_name(const std::uint8_t index, const HlSet hl_set, const bool no_remap_ixiy_8b = false) {
   constexpr std::array base_r_names{"b", "c", "d", "e", "h", "l", "(hl)", "a", "$nn"};
   constexpr std::array ix_r_names{"b", "c", "d", "e", "ixh", "ixl", "(ix$o)", "a", "$nn"};
   constexpr std::array iy_r_names = {"b", "c", "d", "e", "iyh", "iyl", "(iy$o)", "a", "$nn"};
+  constexpr std::array ix_rr_names{"b", "c", "d", "e", "h", "l", "(ix$o)", "a", "$nn"};
+  constexpr std::array iy_rr_names = {"b", "c", "d", "e", "h", "l", "(iy$o)", "a", "$nn"};
 
   switch (hl_set) {
     case HlSet::Base: return base_r_names[index];
-    case HlSet::Ix: return ix_r_names[index];
-    case HlSet::Iy: return iy_r_names[index];
+    case HlSet::Ix: return no_remap_ixiy_8b ? ix_rr_names[index] : ix_r_names[index];
+    case HlSet::Iy: return no_remap_ixiy_8b ? iy_rr_names[index] : iy_r_names[index];
   }
   std::unreachable();
 }
 
-template<HlSet hl_set>
+constexpr auto is_r_indirect(const std::uint8_t index) { return index == 6; }
+
+template<HlSet hl_set, bool no_remap_ixiy_8b>
 constexpr std::array r_regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D, RegisterFile::R8::E,
     RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */, RegisterFile::R8::A};
 template<>
-constexpr std::array r_regs<HlSet::Ix> = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
+constexpr std::array r_regs<HlSet::Ix, false> = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
     RegisterFile::R8::E, RegisterFile::R8::IXH, RegisterFile::R8::IXL, RegisterFile::R8::A /* NOT REALLY */,
     RegisterFile::R8::A};
 template<>
-constexpr std::array r_regs<HlSet::Iy> = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
+constexpr std::array r_regs<HlSet::Iy, false> = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
     RegisterFile::R8::E, RegisterFile::R8::IYH, RegisterFile::R8::IYL, RegisterFile::R8::A /* NOT REALLY */,
     RegisterFile::R8::A};
+template<>
+constexpr std::array r_regs<HlSet::Ix, true> = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
+    RegisterFile::R8::E, RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */,
+    RegisterFile::R8::A};
+template<>
+constexpr std::array r_regs<HlSet::Iy, true> = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
+    RegisterFile::R8::E, RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */,
+    RegisterFile::R8::A};
 
-template<std::uint8_t index, HlSet hl_set>
+template<std::uint8_t index, HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter {
-  constexpr static uint8_t get(Z80 &z80) { return z80.regs().get(r_regs<hl_set>[index]); }
-  constexpr static void set(Z80 &z80, const std::uint8_t value) { z80.regs().set(r_regs<hl_set>[index], value); }
-};
-
-// Special case for indirect HL
-template<HlSet hl_set>
-struct OperandGetSetter<6, hl_set> {
-  constexpr static uint8_t get(Z80 &z80) {
-    // TODO work out when the wz is actually updated.
-    const auto address = z80.regs().get(IndexReg<hl_set>::highlow);
-    z80.regs().wz(address);
-    return read(z80, address);
-  }
+  constexpr static uint8_t get(Z80 &z80) { return z80.regs().get(r_regs<hl_set, no_remap_ixiy_8b>[index]); }
   constexpr static void set(Z80 &z80, const std::uint8_t value) {
-    const auto address = z80.regs().get(IndexReg<hl_set>::highlow);
-    write(z80, address, value);
+    z80.regs().set(r_regs<hl_set, no_remap_ixiy_8b>[index], value);
   }
 };
 
-template<HlSet hl_set>
-struct OperandGetSetter<8, hl_set> {
-  constexpr static uint8_t get(Z80 &z80) { return read_immediate(z80); };
-  constexpr static void set(Z80 &z80, const std::uint8_t value) = delete;
+// Special case for indirect indexed register.
+template<HlSet hl_set, bool no_remap_ixiy_8b>
+struct OperandGetSetter<6, hl_set, no_remap_ixiy_8b> {
+  constexpr static uint8_t get(Z80 &z80) { return read(z80, z80.regs().wz()); }
+  constexpr static void set(Z80 &z80, const std::uint8_t value) { write(z80, z80.regs().wz(), value); }
 };
 
-template<std::uint8_t y, HlSet hl_set>
+template<HlSet hl_set, bool no_remap_ixiy_8b>
+struct OperandGetSetter<8, hl_set, no_remap_ixiy_8b> {
+  constexpr static uint8_t get(Z80 &z80) { return read_immediate(z80); };
+  constexpr static void set(Z80 &z80, std::uint8_t) = delete;
+};
+
+template<std::uint8_t y, HlSet hl_set, bool no_remap_ixiy_8b = false>
 constexpr uint8_t get_r(Z80 &z80) {
-  return OperandGetSetter<y, hl_set>::get(z80);
+  return OperandGetSetter<y, hl_set, no_remap_ixiy_8b>::get(z80);
 }
-template<std::uint8_t y, HlSet hl_set>
+template<std::uint8_t y, HlSet hl_set, bool no_remap_ixiy_8b = false>
 constexpr void set_r(Z80 &z80, const std::uint8_t value) {
-  OperandGetSetter<y, hl_set>::set(z80, value);
+  OperandGetSetter<y, hl_set, no_remap_ixiy_8b>::set(z80, value);
 }
 
 template<HlSet hl_set>
@@ -225,12 +232,14 @@ struct InvalidType {};
 struct NopType {
   static constexpr Mnemonic mnemonic{"nop"};
   static constexpr void execute(Z80 &) {}
+  static constexpr bool indirect = false;
 };
 
 template<std::uint8_t P, HlSet hl_set>
 struct Load16ImmOp {
   using TableRp = TableRp<hl_set>;
   static constexpr Mnemonic mnemonic{"ld " + std::string(TableRp::names[P]) + ", $nnnn"};
+  static constexpr bool indirect = false;
 
   static constexpr auto execute(Z80 &z80) {
     // TODO: just go straight to low/high? or is there a visible difference?
@@ -239,10 +248,11 @@ struct Load16ImmOp {
   }
 };
 
-template<Mnemonic mnem, auto op>
+template<Mnemonic mnem, auto op, bool ind = false>
 struct SimpleOp {
   static constexpr auto mnemonic = mnem;
   static constexpr auto execute = op;
+  static constexpr auto indirect = ind;
 };
 
 // http://www.z80.info/decoding.htm
@@ -389,32 +399,37 @@ constexpr auto instruction<opcode> =
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 4)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("inc " + get_r_name(opcode.y, opcode.hl_set)), [](Z80 &z80) {
-  const auto rhs = get_r<opcode.y, opcode.hl_set>(z80);
-  if constexpr (opcode.y == 6) // TODO can we better generalise?
-    z80.pass_time(1);
-  const auto [result, flags] = Alu::inc8(rhs, z80.flags());
-  set_r<opcode.y, opcode.hl_set>(z80, result);
-  z80.flags(flags);
-}>{};
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("inc " + get_r_name(opcode.y, opcode.hl_set)),
+    [](Z80 &z80) {
+      const auto rhs = get_r<opcode.y, opcode.hl_set>(z80);
+      if constexpr (opcode.y == 6) // TODO can we better generalise?
+        z80.pass_time(1);
+      const auto [result, flags] = Alu::inc8(rhs, z80.flags());
+      set_r<opcode.y, opcode.hl_set>(z80, result);
+      z80.flags(flags);
+    },
+    is_r_indirect(opcode.y)>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 5)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("dec " + get_r_name(opcode.y, opcode.hl_set)), [](Z80 &z80) {
-  const auto rhs = get_r<opcode.y, opcode.hl_set>(z80);
-  if constexpr (opcode.y == 6) // TODO can we better generalise?
-    z80.pass_time(1);
-  const auto [result, flags] = Alu::dec8(rhs, z80.flags());
-  set_r<opcode.y, opcode.hl_set>(z80, result);
-  z80.flags(flags);
-}>{};
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("dec " + get_r_name(opcode.y, opcode.hl_set)),
+    [](Z80 &z80) {
+      const auto rhs = get_r<opcode.y, opcode.hl_set>(z80);
+      if constexpr (opcode.y == 6) // TODO can we better generalise?
+        z80.pass_time(1);
+      const auto [result, flags] = Alu::dec8(rhs, z80.flags());
+      set_r<opcode.y, opcode.hl_set>(z80, result);
+      z80.flags(flags);
+    },
+    is_r_indirect(opcode.y)>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 6)
-constexpr auto instruction<opcode> =
-    SimpleOp<Mnemonic("ld " + get_r_name(opcode.y, opcode.hl_set) + ", $nn"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("ld " + get_r_name(opcode.y, opcode.hl_set) + ", $nn"),
+    [](Z80 &z80) {
       const auto value = read_immediate((z80));
       set_r<opcode.y, opcode.hl_set>(z80, value);
-    }>{};
+    },
+    is_r_indirect(opcode.y)>{};
 
 template<Mnemonic mnem, auto alu_op>
 struct FastAluOp {
@@ -424,6 +439,7 @@ struct FastAluOp {
     z80.regs().set(RegisterFile::R8::A, result);
     z80.flags(flags);
   }
+  static constexpr bool indirect = false;
 };
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 0)
@@ -465,8 +481,13 @@ constexpr auto instruction<opcode> =
 template<Opcode opcode>
   requires(opcode.x == 1 && !(opcode.y == 6 && opcode.z == 6))
 constexpr auto instruction<opcode> =
-    SimpleOp<Mnemonic("ld " + get_r_name(opcode.y, opcode.hl_set) + ", " + get_r_name(opcode.z, opcode.hl_set)),
-        [](Z80 &z80) { set_r<opcode.y, opcode.hl_set>(z80, get_r<opcode.z, opcode.hl_set>(z80)); }>{};
+    SimpleOp<Mnemonic("ld " + get_r_name(opcode.y, opcode.hl_set, is_r_indirect(opcode.z)) + ", " +
+                      get_r_name(opcode.z, opcode.hl_set, is_r_indirect(opcode.y))),
+        [](Z80 &z80) {
+          set_r<opcode.y, opcode.hl_set, is_r_indirect(opcode.z)>(
+              z80, get_r<opcode.z, opcode.hl_set, is_r_indirect(opcode.y)>(z80));
+        },
+        is_r_indirect(opcode.y) || is_r_indirect(opcode.z)>{};
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.y == 6 && opcode.z == 6)
 constexpr auto instruction<opcode> = SimpleOp<Mnemonic("halt"), [](Z80 &z80) { z80.halt(); }>{};
@@ -483,6 +504,7 @@ struct AluOp {
     z80.regs().set(RegisterFile::R8::A, result);
     z80.flags(flags);
   }
+  static constexpr bool indirect = is_r_indirect(opcode.alu_input_selector());
 };
 
 template<Opcode opcode>
@@ -698,6 +720,7 @@ struct RotateOp {
     set_r<opcode.z, opcode.hl_set>(z80, result);
     z80.flags(flags);
   }
+  static constexpr bool indirect = is_r_indirect(opcode.z);
 };
 
 template<Opcode opcode>
@@ -745,6 +768,7 @@ struct BitOp {
     const auto bus_noise = static_cast<std::uint8_t>(opcode.z == 6 ? (z80.regs().wz() >> 8) : lhs);
     z80.flags(Alu::bit(lhs, static_cast<std::uint8_t>(1 << opcode.y), z80.flags(), bus_noise));
   }
+  static constexpr auto indirect = is_r_indirect(opcode.z);
 };
 template<Opcode opcode>
   requires(opcode.x == 1)
@@ -762,6 +786,7 @@ struct SetResetOp {
     const auto result = static_cast<std::uint8_t>(opcode.x == 2 ? lhs & ~bit : lhs | bit);
     set_r<opcode.z, opcode.hl_set>(z80, result);
   }
+  static constexpr auto indirect = is_r_indirect(opcode.z);
 };
 template<Opcode opcode>
   requires(opcode.x == 2 || opcode.x == 3)
@@ -803,31 +828,50 @@ struct build_evaluate {
   static void result(Z80 &z80) { Opcode.execute(z80); }
 };
 
+template<auto Opcode>
+struct build_is_indirect {
+  static constexpr bool result = Opcode.indirect;
+};
+
 void decode_and_run_cb(Z80 &z80) {
   // Fetch the next opcode.
   const auto opcode = z80.read8(z80.pc());
   z80.regs().pc(z80.pc() + 1);
   // TODO does refresh in here...
   z80.pass_time(4); // Decode...
+  if (cb_table<build_is_indirect>[opcode]) { // TODO can de-dupe with HL IX IY? maybe?
+    z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
+  }
   // Dispatch and run.
   cb_table<build_evaluate>[opcode](z80);
 }
 
 void decode_and_run_dd(Z80 &z80) {
   // Fetch the next opcode.
-  const auto opcode = z80.read8(z80.pc());
-  z80.regs().pc(z80.pc() + 1);
+  const auto opcode = read_immediate(z80);
   // TODO does refresh in here...
-  z80.pass_time(4); // Decode...
+  z80.pass_time(1);
+  if (table<build_is_indirect>[opcode]) { // TODO can de-dupe with IX IY
+    const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IX) + read_immediate(z80));
+    // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right
+    z80.pass_time(opcode == 0x36 ? 2 : 5);
+    z80.regs().wz(address);
+  }
   // Dispatch and run.
   dd_table<build_evaluate>[opcode](z80);
 }
+
 void decode_and_run_fd(Z80 &z80) {
   // Fetch the next opcode.
-  const auto opcode = z80.read8(z80.pc());
-  z80.regs().pc(z80.pc() + 1);
+  const auto opcode = read_immediate(z80);
+  z80.pass_time(1);
   // TODO does refresh in here...
-  z80.pass_time(4); // Decode...
+  if (table<build_is_indirect>[opcode]) { // TODO can de-dupe with IX IY
+    const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IY) + read_immediate(z80));
+    // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right
+    z80.pass_time(opcode == 0x36 ? 2 : 5);
+    z80.regs().wz(address);
+  }
   // Dispatch and run.
   fd_table<build_evaluate>[opcode](z80);
 }
@@ -839,6 +883,8 @@ void decode_and_run(Z80 &z80) {
   const auto opcode = z80.read8(z80.pc());
   z80.regs().pc(z80.pc() + 1);
   z80.pass_time(4); // Decode...
+  if (table<build_is_indirect>[opcode])
+    z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
   // Dispatch and run.
   table<build_evaluate>[opcode](z80);
 }
@@ -882,6 +928,13 @@ Disassembled disassemble(const Memory &memory, std::uint16_t address) {
         disassembly.substr(pos + 2));
   }
   return {disassembly, static_cast<std::size_t>(address - initial_address)};
+}
+
+std::bitset<256> is_indirect_for_testing() {
+  std::bitset<256> result{};
+  for (std::size_t i = 0; i < 256; ++i)
+    result.set(i, table<build_is_indirect>[i]);
+  return result;
 }
 
 
