@@ -12,7 +12,7 @@ namespace specbolt {
 
 class Spectrum {
 public:
-  explicit Spectrum(const std::filesystem::path &rom, int audio_sample_rate);
+  explicit Spectrum(const std::filesystem::path &rom, int audio_sample_rate, bool new_impl);
 
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
@@ -34,6 +34,7 @@ private:
   Audio audio_;
   Keyboard keyboard_;
   Z80 z80_;
+  bool new_impl_;
   std::size_t trace_next_instructions_{};
   std::size_t last_traced_instr_cycle_count_{};
 };

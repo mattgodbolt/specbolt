@@ -17,6 +17,6 @@ add_executable(zexdoc_test ZexDocTest.cpp)
 target_link_libraries(zexdoc_test PRIVATE z80 lyra)
 
 if (NOT (CMAKE_BUILD_TYPE STREQUAL "Debug"))
-    add_test(NAME "Z80 Regression Test (old impo)" COMMAND zexdoc_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    add_test(NAME "Z80 Regression Test (new impl)" COMMAND zexdoc_test --new-impl WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    add_test(NAME "Z80 Regression Test (old implementation)" COMMAND zexdoc_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    add_test(NAME "Z80 Regression Test (new implementation)" COMMAND zexdoc_test --new-impl WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endif ()

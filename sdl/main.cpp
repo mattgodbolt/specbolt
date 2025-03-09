@@ -36,10 +36,13 @@ int Main(const int argc, const char *argv[]) {
   std::filesystem::path snapshot;
   bool need_help{};
   std::size_t trace_instructions{};
+  bool new_impl{};
+
   const auto cli = lyra::cli() //
                    | lyra::help(need_help) //
                    | lyra::opt(rom, "ROM")["--rom"]("Where to find the ROM") //
                    | lyra::opt(trace_instructions, "NUM")["--trace"]("Trace the first NUM instructions") //
+                   | lyra::opt(new_impl)["--new-impl"]("Use new implementation.") //
                    | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
   if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
     std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
@@ -94,7 +97,7 @@ int Main(const int argc, const char *argv[]) {
     throw std::runtime_error("Unable to initialise sound: " + std::string(SDL_GetError()));
   }
 
-  specbolt::Spectrum spectrum(rom, obtained_audio_spec.freq);
+  specbolt::Spectrum spectrum(rom, obtained_audio_spec.freq, new_impl);
   const specbolt::Disassembler dis{spectrum.memory()};
 
   if (!snapshot.empty()) {

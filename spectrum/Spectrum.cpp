@@ -2,10 +2,12 @@
 
 #include <iostream>
 
+#include "Generated.hpp"
+
 namespace specbolt {
 
-Spectrum::Spectrum(const std::filesystem::path &rom, const int audio_sample_rate) :
-    video_(memory_), audio_(audio_sample_rate), z80_(memory_) {
+Spectrum::Spectrum(const std::filesystem::path &rom, const int audio_sample_rate, const bool new_impl) :
+    video_(memory_), audio_(audio_sample_rate), z80_(memory_), new_impl_(new_impl) {
   const auto file_size = std::filesystem::file_size(rom);
   constexpr std::uint16_t SpectrumRomSize = 0x4000;
   if (file_size != SpectrumRomSize)
@@ -39,7 +41,15 @@ size_t Spectrum::run_cycles(const size_t cycles) {
           z80_.registers().ix(), z80_.registers().iy(), z80_.registers().sp());
       --trace_next_instructions_;
     }
-    const auto cycles_elapsed = z80_.execute_one();
+    std::size_t cycles_elapsed{};
+    if (new_impl_) {
+      const auto before = z80_.cycle_count();
+      decode_and_run(z80_);
+      cycles_elapsed = z80_.cycle_count() - before;
+    }
+    else {
+      cycles_elapsed = z80_.execute_one();
+    }
     total_cycles_elapsed += cycles_elapsed;
     if (video_.poll(cycles_elapsed))
       z80_.interrupt();
