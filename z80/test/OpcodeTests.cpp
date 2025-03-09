@@ -1120,6 +1120,53 @@ struct OpcodeTester {
       CHECK(regs.iy() == 0x1235);
     }
   }
+  void ddcb_prefix() {
+    SECTION("rl (ix+d)") {
+      regs.set(RegisterFile::R16::IX, 0x1236);
+      memory.write(0x1234, 0b11110101);
+      run(0xdd, 0xcb, 0xfe, 0x06); // rlc (ix-2)
+      CHECK(z80.pc() == 4);
+      if (use_new_code)
+        CHECK(z80.cycle_count() == 23); // TODO fix old code path
+      CHECK(memory.read(0x1234) == 0b11101011);
+    }
+    SECTION("bit 0, (ix+d)") {
+      z80.flags(Flags());
+      regs.set(RegisterFile::R16::IX, 0x1234);
+      memory.write(0x1236, 0x00);
+      run(0xdd, 0xcb, 0x02, 0x46); // bit 0, (ix+2)
+      CHECK(z80.pc() == 4);
+      if (use_new_code)
+        CHECK(z80.cycle_count() == 20); // TODO fix old code path
+      CHECK(z80.flags() == (Flags::Zero() | Flags::HalfCarry() | Flags::Parity()));
+      memory.write(0x1236, 0x01);
+      run(0xdd, 0xcb, 0x02, 0x46); // bit 0, (ix+2)
+      CHECK(z80.flags() == Flags::HalfCarry());
+      memory.write(0x1236, 0xff);
+      run(0xdd, 0xcb, 0x02, 0x46); // bit 0, (ix+2)
+      CHECK(z80.flags() == Flags::HalfCarry());
+    }
+    SECTION("set 4, (ix+d)") {
+      regs.set(RegisterFile::R16::IX, 0x1236);
+      memory.write(0x1234, 0x00);
+      run(0xdd, 0xcb, 0xfe, 0xe6); // set 4, (ix-2)
+      CHECK(z80.pc() == 4);
+      if (use_new_code)
+        CHECK(z80.cycle_count() == 23); // TODO fix old code path
+      CHECK(memory.read(0x1234) == 0b0001'0000);
+    }
+  }
+  void fdcb_prefix() {
+    SECTION("rl (iy+d)") {
+      regs.set(RegisterFile::R16::IY, 0x1236);
+      memory.write(0x1234, 0b11110101);
+      run(0xfd, 0xcb, 0xfe, 0x06); // rlc (iy-2)
+      CHECK(z80.pc() == 4);
+      if (use_new_code)
+        CHECK(z80.cycle_count() == 23); // TODO fix old code path
+      CHECK(memory.read(0x1234) == 0b11101011);
+    }
+  }
 };
 
 TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]",
@@ -1140,6 +1187,16 @@ TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcod
 TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fd opcode execution tests", "[opcode][generated]",
     ((bool use_new_code), use_new_code), false, true) {
   OpcodeTester<use_new_code>::fd_prefix();
+}
+
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]",
+    ((bool use_new_code), use_new_code), false, true) {
+  OpcodeTester<use_new_code>::ddcb_prefix();
+}
+
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]",
+    ((bool use_new_code), use_new_code), false, true) {
+  OpcodeTester<use_new_code>::fdcb_prefix();
 }
 
 } // namespace specbolt

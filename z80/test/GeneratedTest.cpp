@@ -327,6 +327,14 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xdd, 0x09) == "add ix, bc");
     CHECK(dis(0xdd, 0x22, 0xad, 0xba) == "ld (0xbaad), ix");
   }
+  SECTION("Test ddcb prefixes") {
+    CHECK(dis(0xdd, 0xcb, 0xff, 0x06) == "rlc (ix-0x01)");
+    CHECK(dis(0xdd, 0xcb, 0x23, 0xf6) == "set 6, (ix+0x23)");
+  }
+  SECTION("Test fdcb prefixes") {
+    CHECK(dis(0xfd, 0xcb, 0xff, 0x06) == "rlc (iy-0x01)");
+    CHECK(dis(0xfd, 0xcb, 0x23, 0xf6) == "set 6, (iy+0x23)");
+  }
 }
 
 TEST_CASE("Check indirect flags") {

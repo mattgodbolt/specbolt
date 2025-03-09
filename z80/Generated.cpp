@@ -19,6 +19,8 @@ namespace {
 void decode_and_run_cb(Z80 &z80);
 void decode_and_run_dd(Z80 &z80);
 void decode_and_run_fd(Z80 &z80);
+void decode_and_run_ddcb(Z80 &z80);
+void decode_and_run_fdcb(Z80 &z80);
 
 enum class HlSet { Base, Ix, Iy };
 
@@ -606,7 +608,16 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("jp $nnnn"), [](Z80 &z80)
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 1)
-constexpr auto instruction<opcode> = SimpleOp<Mnemonic("CB"), [](Z80 &z80) { decode_and_run_cb(z80); }>{};
+constexpr auto instruction<opcode> = SimpleOp<Mnemonic("CB"), [](Z80 &z80) {
+  if constexpr (opcode.hl_set == HlSet::Base)
+    decode_and_run_cb(z80);
+  else if constexpr (opcode.hl_set == HlSet::Ix)
+    decode_and_run_ddcb(z80);
+  else if constexpr (opcode.hl_set == HlSet::Iy)
+    decode_and_run_fdcb(z80);
+  else
+    std::unreachable();
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 2)
@@ -818,6 +829,16 @@ constexpr auto cb_table = []<std::size_t... OpcodeNum>(std::index_sequence<Opcod
   return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Base}>>::result...};
 }(std::make_index_sequence<256>());
 
+template<template<auto> typename Transform>
+constexpr auto ddcb_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
+  return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Ix}>>::result...};
+}(std::make_index_sequence<256>());
+
+template<template<auto> typename Transform>
+constexpr auto fdcb_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
+  return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Iy}>>::result...};
+}(std::make_index_sequence<256>());
+
 template<auto Opcode>
 struct build_description {
   static constexpr auto result = Opcode.mnemonic.view();
@@ -876,6 +897,35 @@ void decode_and_run_fd(Z80 &z80) {
   fd_table<build_evaluate>[opcode](z80);
 }
 
+void decode_and_run_ddcb(Z80 &z80) {
+  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  z80.pass_time(1); // TODO this?
+  const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IX) + offset);
+  z80.regs().wz(address);
+  // Fetch the next opcode.
+  const auto opcode = read_immediate(z80);
+  // TODO does refresh in here...
+  z80.pass_time(1);
+  // Dispatch and run.
+  ddcb_table<build_evaluate>[opcode](z80);
+}
+
+void decode_and_run_fdcb(Z80 &z80) {
+  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  z80.pass_time(1); // TODO this?
+  const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IY) + offset);
+  z80.regs().wz(address);
+  // Fetch the next opcode.
+  const auto opcode = read_immediate(z80);
+  // TODO does refresh in here...
+  z80.pass_time(1);
+  // Dispatch and run.
+  fdcb_table<build_evaluate>[opcode](z80);
+}
+
+// TODO the fdcb and ddcb tables miss out on the duplicated encodings and the `res 0,(ix+d,b)` type instructions.
+//   Hopefully won't matter for now...
+
 } // namespace
 
 void decode_and_run(Z80 &z80) {
@@ -893,6 +943,7 @@ Disassembled disassemble(const Memory &memory, std::uint16_t address) {
   const auto initial_address = address;
   auto opcode = memory.read(address++);
   auto disassembly = std::string(table<build_description>[opcode]);
+  std::optional<std::int8_t> offset{};
   switch (opcode) {
     case 0xcb:
       opcode = memory.read(address++);
@@ -900,17 +951,30 @@ Disassembled disassemble(const Memory &memory, std::uint16_t address) {
       break;
     case 0xdd:
       opcode = memory.read(address++);
-      disassembly = std::string(dd_table<build_description>[opcode]);
+      if (opcode == 0xcb) {
+        offset = static_cast<std::int8_t>(memory.read(address++));
+        opcode = memory.read(address++);
+        disassembly = std::string(ddcb_table<build_description>[opcode]);
+      }
+      else
+        disassembly = std::string(dd_table<build_description>[opcode]);
       break;
     case 0xfd:
       opcode = memory.read(address++);
-      disassembly = std::string(fd_table<build_description>[opcode]);
+      if (opcode == 0xcb) {
+        offset = static_cast<std::int8_t>(memory.read(address++));
+        opcode = memory.read(address++);
+        disassembly = std::string(fdcb_table<build_description>[opcode]);
+      }
+      else
+        disassembly = std::string(fd_table<build_description>[opcode]);
       break;
     default: break;
   }
   if (const auto pos = disassembly.find("$o"); pos != std::string::npos) {
-    const auto offset = static_cast<std::int8_t>(memory.read(address++)); // NOT RIGHT YET
-    disassembly = std::format("{}{}0x{:02x}{}", disassembly.substr(0, pos), offset < 0 ? "-" : "+", std::abs(offset),
+    if (!offset)
+      offset = static_cast<std::int8_t>(memory.read(address++));
+    disassembly = std::format("{}{}0x{:02x}{}", disassembly.substr(0, pos), *offset < 0 ? "-" : "+", std::abs(*offset),
         disassembly.substr(pos + 2));
   }
   if (const auto pos = disassembly.find("$nnnn"); pos != std::string::npos) {
@@ -923,9 +987,9 @@ Disassembled disassemble(const Memory &memory, std::uint16_t address) {
         std::format("{}0x{:02x}{}", disassembly.substr(0, pos), memory.read(address++), disassembly.substr(pos + 3));
   }
   if (const auto pos = disassembly.find("$d"); pos != std::string::npos) {
-    const auto offset = static_cast<std::int8_t>(memory.read(address++));
-    disassembly = std::format("{}0x{:02x}{}", disassembly.substr(0, pos), static_cast<std::uint16_t>(address + offset),
-        disassembly.substr(pos + 2));
+    const auto displacement = static_cast<std::int8_t>(memory.read(address++));
+    disassembly = std::format("{}0x{:02x}{}", disassembly.substr(0, pos),
+        static_cast<std::uint16_t>(address + displacement), disassembly.substr(pos + 2));
   }
   return {disassembly, static_cast<std::size_t>(address - initial_address)};
 }
