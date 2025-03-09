@@ -2,10 +2,12 @@
 
 #include "peripherals/Memory.hpp"
 #include "z80/Disassembler.hpp"
+#include "z80/Generated.hpp"
 #include "z80/Z80.hpp"
 
 #include <format>
 #include <lyra/lyra.hpp>
+
 
 namespace specbolt {
 
@@ -44,10 +46,12 @@ int Main(int argc, const char *argv[]) {
   uint64_t dump_instructions = 0;
   int skip = 0;
   bool need_help{};
+  bool new_impl{};
   const auto cli = lyra::cli() //
                    | lyra::help(need_help) //
                    | lyra::opt(dump_instructions, "NUM")["-d"]["--dump-instructions"](
                          "Dump the first NUM instructions, then exit.") //
+                   | lyra::opt(new_impl)["--new-impl"]("Use new implementation.") //
                    | lyra::opt(skip, "NUM")["-s"]["--skip"]("Skip the first NUM tests.");
   if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
     std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
@@ -96,7 +100,10 @@ int Main(int argc, const char *argv[]) {
         break;
     }
     try {
-      z80.execute_one();
+      if (new_impl)
+        decode_and_run(z80);
+      else
+        z80.execute_one();
     }
     catch (const std::runtime_error &) {
       dump_state(std::cerr);
