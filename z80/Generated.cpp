@@ -1002,7 +1002,7 @@ struct BlockLoadOp {
     const auto preserved_flags = z80.flags() & (Flags::Sign() | Flags::Zero() | Flags::Carry());
     const auto flags_from_bits =
         (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | (flag_bits & 0x02 ? Flags::Flag5() : Flags());
-    const auto flags_from_bc = (new_bc ? Flags::Overflow() : Flags());
+    const auto flags_from_bc = new_bc ? Flags::Overflow() : Flags();
     z80.flags(preserved_flags | flags_from_bits | flags_from_bc);
     if (repeat && new_bc) {
       z80.regs().wz(z80.pc() - 1);
@@ -1016,9 +1016,49 @@ template<Opcode opcode>
   requires(opcode.x == 2 && opcode.z == 0)
 constexpr auto ed_instruction<opcode> =
     BlockLoadOp<!static_cast<bool>(opcode.y & 1), static_cast<bool>(opcode.y & 2)>{};
+
+template<bool increment, bool repeat>
+struct BlockCompareOp {
+  static constexpr auto mnemonic = Mnemonic("cp"s + (increment ? "i" : "d") + (repeat ? "r" : ""));
+  static void execute(Z80 &z80) {
+    constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
+    const auto hl = z80.regs().get(RegisterFile::R16::HL);
+    z80.regs().set(RegisterFile::R16::HL, hl + add);
+    const auto byte = read(z80, hl);
+
+    const auto [result, subtract_flags] = Alu::sub8(z80.registers().get(RegisterFile::R8::A), byte, false);
+
+    z80.pass_time(5);
+    // bits 3 and 5 come from the result, where bit 3 goes to flag 5, and bit 1 to flag 3....and where if HF is
+    // set we use res--....
+    const auto flag_bits = subtract_flags.half_carry() ? result - 1 : result;
+
+    const auto new_bc = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::BC) - 1);
+    z80.regs().set(RegisterFile::R16::BC, new_bc);
+
+    constexpr auto from_subtract_mask = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
+    const auto preserved_flags =
+        z80.flags() & ~(Flags::Flag3() | Flags::Flag5() | from_subtract_mask | Flags::Overflow());
+    const auto flags_from_bits =
+        (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | (flag_bits & 0x02 ? Flags::Flag5() : Flags());
+    const auto flags_from_bc = new_bc ? Flags::Overflow() : Flags();
+    z80.flags(preserved_flags | flags_from_bits | flags_from_bc | (from_subtract_mask & subtract_flags));
+    if (repeat && new_bc && !subtract_flags.zero()) {
+      z80.regs().wz(z80.pc() - 1);
+      z80.regs().pc(z80.pc() - 2);
+      z80.pass_time(5);
+    }
+  }
+};
+
+
 template<Opcode opcode>
   requires(opcode.x == 2 && opcode.z == 1)
-constexpr auto ed_instruction<opcode> = InvalidInstruction{};
+constexpr auto ed_instruction<opcode> =
+    BlockCompareOp<!static_cast<bool>(opcode.y & 1), static_cast<bool>(opcode.y & 2)>{};
+
+
+// TODO otid and inir
 template<Opcode opcode>
   requires(opcode.x == 2 && opcode.z == 2)
 constexpr auto ed_instruction<opcode> = InvalidInstruction{};

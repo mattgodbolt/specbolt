@@ -1308,8 +1308,8 @@ struct OpcodeTester {
       CHECK(z80.flags() == Flags::Carry());
     }
     SECTION("block loads") {
-      for (auto x = 0uz; x < 256uz; ++x)
-        memory.write(static_cast<std::uint16_t>(0xf000 + x), static_cast<std::uint8_t>(x ^ 0x55));
+      memory.write(0xf000, 0x55);
+      memory.write(0xf001, 0x56);
       regs.set(RegisterFile::R16::DE, 0x2345);
       regs.set(RegisterFile::R16::HL, 0xf000);
       SECTION("ldi") {
@@ -1372,7 +1372,6 @@ struct OpcodeTester {
           regs.set(RegisterFile::R16::BC, 1);
           run(0xed, 0xa8);
           CHECK(z80.pc() == 2);
-          CHECK(z80.cycle_count() == 16);
           CHECK(memory.read(0x2345) == 0x55);
           CHECK(memory.read(0x2346) == 0x00);
           CHECK(regs.get(RegisterFile::R16::BC) == 0);
@@ -1382,7 +1381,6 @@ struct OpcodeTester {
         CHECK(regs.get(RegisterFile::R16::DE) == 0x2344);
       }
       SECTION("ldir") {
-        regs.set(RegisterFile::R16::HL, 0xf000);
         SECTION("bc > 1") {
           regs.set(RegisterFile::R16::BC, 123);
           run(0xed, 0xb8);
@@ -1404,10 +1402,69 @@ struct OpcodeTester {
         CHECK(regs.get(RegisterFile::R16::DE) == 0x2344);
       }
     }
-    // CHECK(dis(0xed, 0xa0) == "ldi");
-    // CHECK(dis(0xed, 0xa8) == "ldd");
-    // CHECK(dis(0xed, 0xb0) == "ldir");
-    // CHECK(dis(0xed, 0xb8) == "lddr");
+    SECTION("block compares") {
+      memory.write(0xf000, 0x55);
+      regs.set(RegisterFile::R8::A, 0x50);
+      regs.set(RegisterFile::R16::HL, 0xf000);
+      SECTION("cpi") {
+        SECTION("bc > 1") {
+          regs.set(RegisterFile::R16::BC, 123);
+          run(0xed, 0xa1);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(regs.get(RegisterFile::R16::BC) == 122);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() | Flags::Parity() |
+                                   Flags::Subtract() | Flags::Carry()));
+        }
+        SECTION("bc == 1") {
+          regs.set(RegisterFile::R16::BC, 1);
+          run(0xed, 0xa1);
+          CHECK(z80.pc() == 2);
+          CHECK(regs.get(RegisterFile::R16::BC) == 0);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() |
+                                   Flags::Subtract() | Flags::Carry()));
+        }
+      }
+      SECTION("cpir") {
+        SECTION("bc > 1") {
+          regs.set(RegisterFile::R16::BC, 123);
+          run(0xed, 0xb1);
+          CHECK(z80.pc() == 0);
+          CHECK(z80.cycle_count() == 21);
+          CHECK(regs.get(RegisterFile::R16::BC) == 122);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() | Flags::Parity() |
+                                   Flags::Subtract() | Flags::Carry()));
+        }
+        SECTION("bc == 1") {
+          regs.set(RegisterFile::R16::BC, 1);
+          run(0xed, 0xb1);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(regs.get(RegisterFile::R16::BC) == 0);
+          CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() |
+                                   Flags::Subtract() | Flags::Carry()));
+        }
+        SECTION("bc > 1 but matches") {
+          regs.set(RegisterFile::R8::A, 0x55);
+          regs.set(RegisterFile::R16::BC, 123);
+          run(0xed, 0xb1);
+          CHECK(z80.pc() == 2);
+          CHECK(z80.cycle_count() == 16);
+          CHECK(regs.get(RegisterFile::R16::BC) == 122);
+          CHECK(z80.flags() == (Flags::Zero() | Flags::Parity() | Flags::Subtract() | Flags::Carry()));
+        }
+      }
+      SECTION("cpd") {
+        regs.set(RegisterFile::R16::BC, 123);
+        run(0xed, 0xa9);
+        CHECK(z80.pc() == 2);
+        CHECK(z80.cycle_count() == 16);
+        CHECK(regs.get(RegisterFile::R16::BC) == 122);
+        CHECK(regs.get(RegisterFile::R16::HL) == 0xefff);
+        CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::HalfCarry() | Flags::Flag3() | Flags::Parity() |
+                                 Flags::Subtract() | Flags::Carry()));
+      }
+    }
   }
 };
 

@@ -383,6 +383,10 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xed, 0xa8) == "ldd");
     CHECK(dis(0xed, 0xb0) == "ldir");
     CHECK(dis(0xed, 0xb8) == "lddr");
+    CHECK(dis(0xed, 0xa1) == "cpi");
+    CHECK(dis(0xed, 0xa9) == "cpd");
+    CHECK(dis(0xed, 0xb1) == "cpir");
+    CHECK(dis(0xed, 0xb9) == "cpdr");
   }
 }
 
