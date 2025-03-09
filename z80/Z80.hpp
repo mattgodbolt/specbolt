@@ -34,6 +34,7 @@ public:
   [[nodiscard]] bool halted() const { return halted_; }
 
   void irq_mode(std::uint8_t mode);
+  [[nodiscard]] std::uint8_t irq_mode() const { return irq_mode_; };
 
   void push16(std::uint16_t value);
   [[nodiscard]] std::uint16_t pop16();

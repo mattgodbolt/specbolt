@@ -269,7 +269,8 @@ Instruction decode_ddfd(const std::span<const std::uint8_t> opcodes) {
 
 Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
   switch (const auto opcode = opcodes[0]) {
-    case 0x47: return {"ld {}, {}", 2, Op::Load, Operand::I, Operand::A};
+    case 0x47: return {"ld {}, {}", 2, Op::LoadSpecial, Operand::I, Operand::A};
+    case 0x57: return {"ld {}, {}", 2, Op::LoadSpecial, Operand::A, Operand::I};
     case 0x46: return {"im 0", 2, Op::IrqMode, Operand::None, Operand::Const_0};
     case 0x56: return {"im 1", 2, Op::IrqMode, Operand::None, Operand::Const_1};
     case 0x5e: return {"im 2", 2, Op::IrqMode, Operand::None, Operand::Const_2};
@@ -280,8 +281,8 @@ Instruction decode_ed(const std::span<const std::uint8_t> opcodes) {
     case 0x4b: return {"ld {}, {}", 4, Op::Load, Operand::BC, Operand::WordImmediateIndirect16};
     case 0x5b: return {"ld {}, {}", 4, Op::Load, Operand::DE, Operand::WordImmediateIndirect16};
     case 0x7b: return {"ld {}, {}", 4, Op::Load, Operand::SP, Operand::WordImmediateIndirect16};
-    case 0x4f: return {"ld {}, {}", 2, Op::Load, Operand::R, Operand::A};
-    case 0x5f: return {"ld {}, {}", 2, Op::Load, Operand::A, Operand::R};
+    case 0x4f: return {"ld {}, {}", 2, Op::LoadSpecial, Operand::R, Operand::A};
+    case 0x5f: return {"ld {}, {}", 2, Op::LoadSpecial, Operand::A, Operand::R};
     case 0x42: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::BC, Instruction::WithCarry{}};
     case 0x52: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::DE, Instruction::WithCarry{}};
     case 0x62: return {"sbc {}, {}", 2, Op::Subtract16, Operand::HL, Operand::HL, Instruction::WithCarry{}};

@@ -720,8 +720,7 @@ struct OpcodeTester {
     }
     SECTION("out ($nn), a") {
       std::vector<std::pair<std::uint16_t, std::uint8_t>> outs;
-      z80.add_out_handler(
-          [&](const std::uint16_t port, const std::uint8_t value) { outs.emplace_back(std::make_pair(port, value)); });
+      z80.add_out_handler([&](const std::uint16_t port, const std::uint8_t value) { outs.emplace_back(port, value); });
       z80.regs().set(RegisterFile::R8::A, 0xbe);
       run(0xd3, 0x12); // out (0x12), a
       CHECK(z80.pc() == 2);
@@ -1167,6 +1166,148 @@ struct OpcodeTester {
       CHECK(memory.read(0x1234) == 0b11101011);
     }
   }
+  void ed_prefix() {
+    SECTION("out (c), h") {
+      regs.set(RegisterFile::R8::H, 0xab);
+      regs.set(RegisterFile::R16::BC, 0xb0c0);
+      std::vector<std::pair<std::uint16_t, std::uint8_t>> outs;
+      z80.add_out_handler([&](const std::uint16_t port, const std::uint8_t value) { outs.emplace_back(port, value); });
+      run(0xed, 0x61); // out (c), h
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 12);
+      CHECK(outs == std::vector{std::make_pair<std::uint16_t, std::uint8_t>(0xb0c0, 0xab)});
+    }
+    SECTION("in c, (c)") {
+      z80.flags(Flags());
+      regs.set(RegisterFile::R16::BC, 0xdead);
+      std::vector<std::uint16_t> ins;
+      z80.add_in_handler([&](const std::uint16_t port) {
+        ins.emplace_back(port);
+        return 0xac;
+      });
+      run(0xed, 0x48); // in c, (c)
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 12);
+      CHECK(z80.regs().get(RegisterFile::R8::C) == 0xac);
+      CHECK(z80.flags() == (Flags::Sign() | Flags::Flag5() | Flags::Flag3() | Flags::Parity()));
+      CHECK(ins == std::vector<std::uint16_t>{0xdead});
+    }
+    SECTION("adc hl, de") {
+      z80.flags(Flags::Carry());
+      regs.set(RegisterFile::R16::DE, 0x1234);
+      regs.set(RegisterFile::R16::HL, 0x3456);
+      run(0xed, 0x5a); // adc hl, de
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 15);
+      CHECK(z80.regs().get(RegisterFile::R16::HL) == (0x1234 + 0x3456 + 1));
+      CHECK(z80.flags() == Flags());
+    }
+    SECTION("sbc hl, bc") {
+      z80.flags(Flags());
+      regs.set(RegisterFile::R16::BC, 0x1234);
+      regs.set(RegisterFile::R16::HL, 0x3456);
+      run(0xed, 0x42); // sbc hl, bc
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 15);
+      CHECK(z80.regs().get(RegisterFile::R16::HL) == 0x3456 - 0x1234);
+      CHECK(z80.flags() == (Flags::Flag5() | Flags::Subtract()));
+    }
+    SECTION("ld ($nnnn), sp") {
+      regs.sp(0x1234);
+      run(0xed, 0x73, 0x56, 0x34); // ld (0x3456), sp
+      CHECK(z80.pc() == 4);
+      CHECK(z80.cycle_count() == 20);
+      CHECK(memory.read16(0x3456) == 0x1234);
+    }
+    SECTION("ld bc, $(nnnn)") {
+      memory.write16(0x1234, 0x5678);
+      run(0xed, 0x4b, 0x34, 0x12); // ld bc, (0x1234)
+      CHECK(z80.pc() == 4);
+      CHECK(z80.cycle_count() == 20);
+      CHECK(z80.regs().get(RegisterFile::R16::BC) == 0x5678);
+    }
+    SECTION("neg") {
+      regs.set(RegisterFile::R8::A, 0x12);
+      run(0xed, 0x44); // neg
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 8);
+      CHECK(regs.get(RegisterFile::R8::A) == 0xee);
+      CHECK(z80.flags() == (Flags::Sign() | Flags::Subtract() | Flags::HalfCarry() | Flags::Carry() | Flags::Flag5() |
+                               Flags::Flag3()));
+    }
+    SECTION("reti") {
+      regs.sp(0xfffd);
+      memory.write16(0xfffd, 0xcafe);
+      run(0xed, 0x4d); // reti
+      CHECK(z80.pc() == 0xcafe);
+      CHECK(z80.cycle_count() == 14);
+    }
+    SECTION("retn") {
+      z80.iff1(false);
+      z80.iff2(true);
+      regs.sp(0xfffd);
+      memory.write16(0xfffd, 0xcafe);
+      run(0xed, 0x45); // retn
+      CHECK(z80.pc() == 0xcafe);
+      CHECK(z80.cycle_count() == 14);
+      CHECK(z80.iff1());
+      CHECK(z80.iff2());
+    }
+    SECTION("im") {
+      run(0xed, 0x5e); // im 2
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 8);
+      CHECK(z80.irq_mode() == 2);
+      run(0xed, 0x56); // im 1
+      CHECK(z80.irq_mode() == 1);
+      run(0xed, 0x46); // im 0
+      CHECK(z80.irq_mode() == 0);
+    }
+    SECTION("ld i, a") {
+      regs.set(RegisterFile::R8::A, 0x12);
+      run(0xed, 0x47); // ld i, a
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 9);
+      CHECK(z80.regs().i() == 0x12);
+    }
+    SECTION("ld a, i") {
+      z80.flags(Flags::Carry());
+      regs.i(0x88);
+      run(0xed, 0x57); // ld a, i
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 9);
+      CHECK(z80.regs().get(RegisterFile::R8::A) == 0x88);
+      CHECK(z80.flags() == (Flags::Carry() | Flags::Sign() | Flags::Flag3()));
+      z80.iff2(true);
+      regs.i(0x00);
+      run(0xed, 0x57); // ld a, i
+      CHECK(z80.flags() == (Flags::Carry() | Flags::Parity() | Flags::Zero()));
+    }
+    SECTION("rrd") {
+      z80.flags(Flags::Carry());
+      memory.write(0x1234, 0x5a);
+      regs.set(RegisterFile::R8::A, 0x12);
+      regs.set(RegisterFile::R16::HL, 0x1234);
+      run(0xed, 0x67); // rrd
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 18);
+      CHECK(regs.get(RegisterFile::R8::A) == 0x1a);
+      CHECK(memory.read(0x1234) == 0x25);
+      CHECK(z80.flags() == (Flags::Carry() | Flags::Flag3()));
+    }
+    SECTION("rld") {
+      z80.flags(Flags::Carry());
+      memory.write(0x1234, 0x5a);
+      regs.set(RegisterFile::R8::A, 0x12);
+      regs.set(RegisterFile::R16::HL, 0x1234);
+      run(0xed, 0x6f); // rld
+      CHECK(z80.pc() == 2);
+      CHECK(z80.cycle_count() == 18);
+      CHECK(regs.get(RegisterFile::R8::A) == 0x15);
+      CHECK(memory.read(0x1234) == 0xa2);
+      CHECK(z80.flags() == Flags::Carry());
+    }
+  }
 };
 
 TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]",
@@ -1197,6 +1338,11 @@ TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ddcb opcode execution tests", "[opc
 TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]",
     ((bool use_new_code), use_new_code), false, true) {
   OpcodeTester<use_new_code>::fdcb_prefix();
+}
+
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ed opcode execution tests", "[opcode][generated]",
+    ((bool use_new_code), use_new_code), false, true) {
+  OpcodeTester<use_new_code>::ed_prefix();
 }
 
 } // namespace specbolt

@@ -136,6 +136,13 @@ Flags Alu::bit(
 
 Flags Alu::parity_flags_for(const std::uint8_t value) { return sz53_parity(value); }
 
+Flags Alu::iff2_flags_for(const std::uint8_t value, const Flags current_flags, const bool iff2) {
+  const auto flags_persisted = current_flags & Flags::Carry();
+  const auto flags_from_value = Flags(value) & (Flags::Flag3() | Flags::Flag5());
+  const auto flags_from_iff = iff2 ? Flags::Parity() : Flags();
+  return sz53_8(value) | flags_persisted | flags_from_value | flags_from_iff;
+}
+
 Alu::R8 Alu::fast_rotate8(const std::uint8_t lhs, const Direction direction, const Flags flags) {
   const auto [result, result_flags] = rotate8(lhs, direction, flags.carry());
   constexpr auto preserved_original_flags = Flags::Sign() | Flags::Zero() | Flags::Parity();

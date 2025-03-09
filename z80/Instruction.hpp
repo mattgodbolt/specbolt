@@ -68,6 +68,7 @@ struct Instruction {
   enum class Operation {
     None,
     Load,
+    LoadSpecial,
     Add8,
     Add16,
     Subtract8,

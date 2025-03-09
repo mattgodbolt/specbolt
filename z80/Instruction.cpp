@@ -18,6 +18,7 @@ std::uint8_t access_time(const Instruction::Operand rhs) {
     case Instruction::Operand::SP:
     case Instruction::Operand::AF_: return 6;
     case Instruction::Operand::ByteImmediate:
+    case Instruction::Operand::ByteImmediate_A:
     case Instruction::Operand::BC_Indirect8:
     case Instruction::Operand::DE_Indirect8:
     case Instruction::Operand::HL_Indirect8: return 3;
@@ -26,6 +27,8 @@ std::uint8_t access_time(const Instruction::Operand rhs) {
     case Instruction::Operand::WordImmediateIndirect8: return 9;
     // Doesn't make sense but I am just trying to fix up the bad timings before I go all principled on this...
     case Instruction::Operand::WordImmediateIndirect16: return 6;
+    case Instruction::Operand::R:
+    case Instruction::Operand::I: return 1;
     default: return 0;
   }
 }
@@ -116,6 +119,9 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     }
 
     case Operation::Load: return {input.rhs, input.flags, access_time(lhs, rhs)};
+    case Operation::LoadSpecial:
+      return {input.rhs, Alu::iff2_flags_for(static_cast<std::uint8_t>(input.rhs), input.flags, cpu.iff2()),
+          access_time(lhs, rhs)};
     case Operation::JumpRelative:
     case Operation::Jump: {
       const auto taken = should_execute(input.flags);
@@ -156,14 +162,16 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       cpu.iff1(input.rhs);
       cpu.iff2(input.rhs);
       return {0, input.flags, 0};
-    case Operation::IrqMode: cpu.irq_mode(static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 4};
-    case Operation::Out: cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 7};
+    case Operation::IrqMode: cpu.irq_mode(static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 0};
+    case Operation::Out:
+      cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs));
+      return {0, input.flags, static_cast<std::uint8_t>(4 + (lhs == Operand::ByteImmediate_A ? 3 : 0))};
     case Operation::In: {
       const auto result = cpu.in(input.rhs);
       const auto flags = std::holds_alternative<NoFlags>(args)
                              ? input.flags
                              : input.flags & Flags::Carry() | Alu::parity_flags_for(result);
-      return {result, flags, 7};
+      return {result, flags, static_cast<std::uint8_t>(4 + (rhs == Operand::ByteImmediate_A ? 3 : 0))};
     }
     case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
@@ -296,7 +304,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | (input.lhs & 0xf));
       cpu.registers().set(RegisterFile::R8::A, new_a);
       return {static_cast<std::uint16_t>(input.lhs >> 4 | ((prev_a & 0xf) << 4)),
-          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 0};
+          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 10};
     }
 
     case Operation::Rld: {
@@ -304,7 +312,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | ((input.lhs >> 4) & 0xf));
       cpu.registers().set(RegisterFile::R8::A, new_a);
       return {static_cast<std::uint16_t>(input.lhs << 4 | (prev_a & 0xf)),
-          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 0};
+          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 10};
     }
 
     case Operation::Shift: {
