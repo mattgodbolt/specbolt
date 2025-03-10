@@ -1,15 +1,15 @@
-#include "Decoder.hpp"
+module;
 
-#ifndef SPECBOLT_IN_MODULE
 #include <array>
-#include <format>
-#include <span>
-#include <stdexcept>
-#include <utility>
-#endif
+#include <cstdint>
 
+export module z80:decoder;
+
+import :instruction;
 
 namespace specbolt {
+
+Instruction decode(std::array<std::uint8_t, 4> opcodes);
 
 namespace {
 

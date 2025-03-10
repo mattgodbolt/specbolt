@@ -1,13 +1,43 @@
-#include "Video.hpp"
+module;
 
-#ifndef SPECBOLT_IN_MODULE
 #include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <ranges>
-#endif
+#include <span>
+
+export module peripherals:video;
+
+import :memory;
 
 namespace specbolt {
 
-namespace {
+export class Video {
+public:
+  static constexpr auto Width = 640 - 64;
+  static constexpr auto Height = 480 - 48;
+
+  explicit Video(const Memory &memory);
+
+  void set_border(std::uint8_t border) { border_ = border; }
+  bool poll(std::size_t num_cycles);
+
+  [[nodiscard]] std::span<const std::byte> screen() const;
+
+private:
+  const Memory &memory_;
+  std::array<std::uint32_t, Height * Width> screen_{};
+  std::uint8_t border_{3};
+  std::size_t total_cycles_{};
+  std::size_t next_line_cycles_{};
+  std::size_t current_line_{};
+  std::size_t flash_counter_{};
+  bool flash_on_{};
+
+  void render_line(std::size_t line);
+};
+
 
 constexpr std::array<std::uint32_t, 16> palette{
     0x000000,
@@ -44,8 +74,6 @@ constexpr auto ColumnCount = 32;
 
 static_assert(YBorder + ScreenHeight * ScaleFactor + YBorder == Video::Height);
 static_assert(XBorder + ScreenWidth * ScaleFactor + XBorder == Video::Width);
-
-} // namespace
 
 Video::Video(const Memory &memory) : memory_(memory) {}
 

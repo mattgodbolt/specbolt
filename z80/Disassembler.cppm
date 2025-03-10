@@ -1,14 +1,30 @@
-#include "z80/Disassembler.hpp"
+module;
 
+export module z80:disassembler;
 
-#ifndef SPECBOLT_IN_MODULE
-#include <format>
-#include "peripherals/Memory.hpp"
-#include "z80/Decoder.hpp"
-#include "z80/Instruction.hpp"
-#endif
+import :instruction;
+import peripherals;
 
 namespace specbolt {
+
+export class Disassembler {
+public:
+  explicit Disassembler(const Memory &memory) : memory_(memory) {}
+
+  struct Disassembled {
+    Instruction instruction;
+    uint16_t address{};
+    std::array<uint8_t, 4> bytes{};
+    // bool operator==(const Disassembled &other) const = default;
+    [[nodiscard]] std::string to_string() const;
+    [[nodiscard]] std::string operand_name(Instruction::Operand operand, std::int8_t offset) const;
+  };
+
+  [[nodiscard]] Disassembled disassemble(std::uint16_t address) const;
+
+private:
+  const Memory &memory_;
+};
 
 Disassembler::Disassembled Disassembler::disassemble(const std::uint16_t address) const {
   const std::array opcodes{

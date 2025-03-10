@@ -1,10 +1,39 @@
-#include "Audio.hpp"
+module;
 
-#ifndef SPECBOLT_IN_MODULE
 #include <algorithm>
-#endif
+#include <cstddef>
+#include <ranges>
+#include <span>
+#include <vector>
+
+export module peripherals:audio;
 
 namespace specbolt {
+
+export class Audio {
+public:
+  explicit Audio(int sample_rate);
+
+  void update(std::size_t total_cycles);
+  void set_output(std::size_t total_cycles, bool beeper_on, bool tape_on);
+
+  auto sample_rate() const { return sample_rate_; }
+  std::span<std::int16_t> fill(size_t total_cycles, std::span<std::int16_t> span);
+
+  [[nodiscard]] auto underruns() const { return underruns_; }
+  [[nodiscard]] auto overruns() const { return overruns_; }
+
+private:
+  int sample_rate_;
+  std::size_t cycle_count_{};
+  std::int16_t current_output_{};
+  std::size_t read_pos_{};
+  std::size_t write_pos_{};
+  std::vector<std::int16_t> audio_{};
+  std::size_t overruns_{};
+  std::size_t underruns_{};
+};
+
 
 Audio::Audio(const int sample_rate) : sample_rate_(sample_rate) { audio_.resize(65536 * 4); }
 

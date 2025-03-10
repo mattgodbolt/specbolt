@@ -1,11 +1,31 @@
-#include "Memory.hpp"
+module;
 
-#ifndef SPECBOLT_IN_MODULE
-#include <cstring>
+#include <cstddef>
+#include <filesystem>
+#include <format>
 #include <fstream>
-#endif
+#include <stdexcept>
+
+export module peripherals:memory;
 
 namespace specbolt {
+
+export class Memory {
+public:
+  [[nodiscard]] std::uint8_t read(std::uint16_t address) const;
+  [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
+  void write(uint16_t address, uint8_t byte);
+  void write16(uint16_t address, uint16_t word);
+
+  void raw_write(uint16_t address, uint8_t byte);
+  void load(const std::filesystem::path &filename, uint16_t address, uint16_t size);
+
+  void set_rom_size(const std::size_t size) { rom_size_ = size; }
+
+private:
+  std::size_t rom_size_{0x4000};
+  std::array<std::uint8_t, 65536> memory_{};
+};
 
 std::uint8_t Memory::read(const std::uint16_t address) const { return memory_[address]; }
 std::uint16_t Memory::read16(const std::uint16_t address) const {

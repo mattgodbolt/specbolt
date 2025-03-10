@@ -1,15 +1,16 @@
-#pragma once
+module;
 
-#ifndef SPECBOLT_IN_MODULE
-#include <algorithm>
 #include <array>
+#include <cstddef>
+#include <ranges>
 #include <string>
 #include <string_view>
-#endif
+
+export module z80:mnemonic;
 
 namespace specbolt {
 
-struct Mnemonic {
+export struct Mnemonic {
   std::array<char, 15> storage{};
   std::size_t len{};
   constexpr Mnemonic() = default;

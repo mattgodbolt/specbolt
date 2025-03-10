@@ -5,10 +5,12 @@ module;
 #include <iostream>
 #include <print>
 
-export module spectrum:spectrum;
+export module spectrum;
 
-import z80;
-import peripherals;
+export import :snapshot;
+
+export import z80;
+export import peripherals;
 
 namespace specbolt {
 

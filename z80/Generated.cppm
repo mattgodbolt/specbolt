@@ -1,22 +1,33 @@
-#include "z80/Generated.hpp"
+module;
 
-#ifndef SPECBOLT_IN_MODULE
 #include <array>
+#include <bitset>
+#include <cstddef>
 #include <cstdint>
 #include <format>
 #include <string>
-#include <utility>
-#include "z80/RegisterFile.hpp"
-#include "z80/Z80.hpp"
-#endif
 
-#include "z80/new/Mnemonic.hpp"
-#include "z80/new/Z80Support.hpp"
+export module z80:generated;
 
-
-using namespace std::literals;
+import peripheral;
+import :z80;
 
 namespace specbolt {
+
+
+using Z80_Op = void(Z80 &);
+
+SPECBOLT_EXPORT void decode_and_run(Z80 &z80);
+
+SPECBOLT_EXPORT struct Disassembled {
+  std::string disassembly;
+  std::size_t length;
+};
+
+SPECBOLT_EXPORT Disassembled disassemble(const Memory &memory, std::uint16_t address);
+
+// For testing.
+SPECBOLT_EXPORT std::bitset<256> is_indirect_for_testing();
 
 namespace {
 

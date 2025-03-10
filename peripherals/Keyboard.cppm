@@ -1,8 +1,27 @@
-#include "Keyboard.hpp"
+module;
+
+#include <array>
+#include <bitset>
+#include <cstddef>
+#include <optional>
+#include <utility>
+
+export module peripherals:keyboard;
 
 namespace specbolt {
 
-namespace {
+export class Keyboard {
+public:
+  void key_down(std::int32_t key_code);
+  void key_up(std::int32_t key_code);
+
+  [[nodiscard]] std::optional<std::uint8_t> in(std::uint16_t address) const;
+
+private:
+  static constexpr auto Columns = 5;
+  static constexpr auto Rows = 8;
+  std::array<std::bitset<Columns>, Rows> keys_{};
+};
 
 std::optional<std::pair<std::size_t, std::size_t>> keycode_to_row_column(const std::int32_t key_code) {
   // These are SDL keycodes but we avoid an SDL dep here.
@@ -63,8 +82,6 @@ std::optional<std::pair<std::size_t, std::size_t>> keycode_to_row_column(const s
     default: return std::nullopt;
   }
 }
-
-} // namespace
 
 std::optional<std::uint8_t> Keyboard::in(const std::uint16_t address) const {
   // Keyboard responds to any even address.

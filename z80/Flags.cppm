@@ -1,15 +1,14 @@
-#pragma once
+module;
 
-#ifndef SPECBOLT_IN_MODULE
 #include <cstdint>
+#include <format>
 #include <string>
-#endif
 
-#include "module.hpp"
+export module z80:flags;
 
 namespace specbolt {
 
-SPECBOLT_EXPORT class Flags {
+export class Flags {
 public:
   constexpr Flags() = default;
   constexpr explicit Flags(const std::uint8_t value) : value_(value) {}
@@ -57,12 +56,17 @@ private:
   };
 };
 
-} // namespace specbolt
+std::string Flags::to_string() const {
+  return std::format("{}{}{}{}{}{}{}{} (0x{:02x})", //
+      sign() ? "S" : "s", //
+      zero() ? "Z" : "z", //
+      value_ & Flag::flag5 ? "5" : "_", //
+      half_carry() ? "H" : "h", //
+      value_ & Flag::flag3 ? "3" : "_", //
+      parity() ? "P" : "p", //
+      subtract() ? "N" : "n", //
+      carry() ? "C" : "c", //
+      value_);
+}
 
-#if __has_include(<catch2/catch_tostring.hpp>)
-#include <catch2/catch_tostring.hpp>
-template<>
-struct Catch::StringMaker<specbolt::Flags> {
-  static std::string convert(const specbolt::Flags &value) { return value.to_string(); }
-};
-#endif
+} // namespace specbolt
