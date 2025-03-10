@@ -30,6 +30,9 @@ struct IndexReg;
 template<>
 struct IndexReg<HlSet::Base> {
   static constexpr auto name = "hl";
+  static constexpr auto name_indirect = "(hl)";
+  static constexpr auto namehigh = "h";
+  static constexpr auto namelow = "l";
   static constexpr auto highlow = RegisterFile::R16::HL;
   static constexpr auto high = RegisterFile::R8::H;
   static constexpr auto low = RegisterFile::R8::L;
@@ -37,6 +40,9 @@ struct IndexReg<HlSet::Base> {
 template<>
 struct IndexReg<HlSet::Ix> {
   static constexpr auto name = "ix";
+  static constexpr auto name_indirect = "(ix$o)";
+  static constexpr auto namehigh = "ixh";
+  static constexpr auto namelow = "ixl";
   static constexpr auto highlow = RegisterFile::R16::IX;
   static constexpr auto high = RegisterFile::R8::IXH;
   static constexpr auto low = RegisterFile::R8::IXL;
@@ -44,6 +50,9 @@ struct IndexReg<HlSet::Ix> {
 template<>
 struct IndexReg<HlSet::Iy> {
   static constexpr auto name = "iy";
+  static constexpr auto name_indirect = "(iy$o)";
+  static constexpr auto namehigh = "iyh";
+  static constexpr auto namelow = "iyl";
   static constexpr auto highlow = RegisterFile::R16::IY;
   static constexpr auto high = RegisterFile::R8::IYH;
   static constexpr auto low = RegisterFile::R8::IYL;
@@ -119,44 +128,20 @@ constexpr void push16(Z80 &z80, const std::uint16_t value) {
 
 template<HlSet hl_set, bool no_remap_ixiy_8b = false>
 struct TableR {
-  static constexpr std::array names{"b", "c", "d", "e", "h", "l", "(hl)", "a", "$nn"};
+  static constexpr std::array names{"b", "c", "d", "e", IndexReg<hl_set>::namehigh, IndexReg<hl_set>::namelow,
+      IndexReg<hl_set>::name_indirect, "a", "$nn"};
   static constexpr std::array regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
-      RegisterFile::R8::E, RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */,
+      RegisterFile::R8::E, IndexReg<hl_set>::high, IndexReg<hl_set>::low, RegisterFile::R8::A /* NOT REALLY */,
       RegisterFile::R8::A};
 };
-
-template<>
-struct TableR<HlSet::Ix, false> {
-  static constexpr std::array names{"b", "c", "d", "e", "ixh", "ixl", "(ix$o)", "a", "$nn"};
+template<HlSet hl_set>
+struct TableR<hl_set, true> {
+  static constexpr std::array names{"b", "c", "d", "e", IndexReg<HlSet::Base>::namehigh, IndexReg<HlSet::Base>::namelow,
+      IndexReg<hl_set>::name_indirect, "a", "$nn"};
   static constexpr std::array regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
-      RegisterFile::R8::E, RegisterFile::R8::IXH, RegisterFile::R8::IXL, RegisterFile::R8::A /* NOT REALLY */,
-      RegisterFile::R8::A};
+      RegisterFile::R8::E, IndexReg<HlSet::Base>::high, IndexReg<HlSet::Base>::low,
+      RegisterFile::R8::A /* NOT REALLY */, RegisterFile::R8::A};
 };
-
-template<>
-struct TableR<HlSet::Iy, false> {
-  static constexpr std::array names{"b", "c", "d", "e", "iyh", "iyl", "(iy$o)", "a", "$nn"};
-  static constexpr std::array regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
-      RegisterFile::R8::E, RegisterFile::R8::IYH, RegisterFile::R8::IYL, RegisterFile::R8::A /* NOT REALLY */,
-      RegisterFile::R8::A};
-};
-
-template<>
-struct TableR<HlSet::Ix, true> {
-  static constexpr std::array names{"b", "c", "d", "e", "h", "l", "(ix$o)", "a", "$nn"};
-  static constexpr std::array regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
-      RegisterFile::R8::E, RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */,
-      RegisterFile::R8::A};
-};
-
-template<>
-struct TableR<HlSet::Iy, true> {
-  static constexpr std::array names{"b", "c", "d", "e", "h", "l", "(iy$o)", "a", "$nn"};
-  static constexpr std::array regs = {RegisterFile::R8::B, RegisterFile::R8::C, RegisterFile::R8::D,
-      RegisterFile::R8::E, RegisterFile::R8::H, RegisterFile::R8::L, RegisterFile::R8::A /* NOT REALLY */,
-      RegisterFile::R8::A};
-};
-
 
 constexpr auto is_r_indirect(const std::uint8_t index) { return index == 6; }
 
