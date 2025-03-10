@@ -52,8 +52,16 @@ struct IndexReg<HlSet::Iy> {
 struct Mnemonic {
   std::array<char, 15> storage{};
   size_t len{};
-  Mnemonic() = default;
-  explicit constexpr Mnemonic(const std::string_view name) {
+  constexpr Mnemonic() = default;
+  template<std::size_t size>
+  // ReSharper disable once CppNonExplicitConvertingConstructor
+  constexpr Mnemonic(const char (&name)[size]) { // NOLINT(*-explicit-constructor)
+    std::copy(name, name + size - 1, storage.begin());
+    len = size - 1;
+  }
+  template<typename String>
+  // ReSharper disable once CppNonExplicitConvertingConstructor
+  constexpr Mnemonic(const String &name) { // NOLINT(*-explicit-constructor)
     std::ranges::copy(name, storage.begin());
     len = name.size();
   }
@@ -298,11 +306,11 @@ constexpr auto instruction<opcode> = NopType{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 1 && opcode.z == 0)
 constexpr auto instruction<opcode> =
-    Op<Mnemonic("ex af, af'"), [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }>{};
+    Op<"ex af, af'", [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("djnz $d"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"djnz $d", [](Z80 &z80) {
   z80.pass_time(1);
   const auto offset = static_cast<std::int8_t>(read_immediate(z80));
   const std::uint8_t new_b = z80.regs().get(RegisterFile::R8::B) - 1;
@@ -315,7 +323,7 @@ constexpr auto instruction<opcode> = Op<Mnemonic("djnz $d"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 3 && opcode.z == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("jr $d"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"jr $d", [](Z80 &z80) {
   const auto offset = static_cast<std::int8_t>(read_immediate(z80));
   z80.pass_time(5);
   z80.branch(offset);
@@ -323,7 +331,7 @@ constexpr auto instruction<opcode> = Op<Mnemonic("jr $d"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 0 && (opcode.y >= 4 && opcode.y <= 7) && opcode.z == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("jr " + std::string(cc_names[opcode.y - 4]) + " $d"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"jr "s + cc_names[opcode.y - 4] + " $d", [](Z80 &z80) {
   const auto offset = static_cast<std::int8_t>(read_immediate(z80));
   if (cc_check<opcode.y - 4>(z80.flags())) {
     z80.pass_time(5);
@@ -338,80 +346,77 @@ constexpr auto instruction<opcode> = Load16ImmOp<opcode.p, opcode.hl_set>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 1 && opcode.q == 1)
 constexpr auto instruction<opcode> =
-    Op<Mnemonic("add "s + IndexReg<opcode.hl_set>::name + ", " + std::string(TableRp<opcode.hl_set>::names[opcode.p])),
-        [](Z80 &z80) {
-          const auto rhs = z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]);
-          const auto [result, flags] = Alu::add16(z80.regs().get(IndexReg<opcode.hl_set>::highlow), rhs, z80.flags());
-          z80.regs().set(IndexReg<opcode.hl_set>::highlow, result);
-          z80.flags(flags);
-          z80.pass_time(7);
-        }>{};
+    Op<"add "s + IndexReg<opcode.hl_set>::name + ", " + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+      const auto rhs = z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]);
+      const auto [result, flags] = Alu::add16(z80.regs().get(IndexReg<opcode.hl_set>::highlow), rhs, z80.flags());
+      z80.regs().set(IndexReg<opcode.hl_set>::highlow, result);
+      z80.flags(flags);
+      z80.pass_time(7);
+    }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld (bc), a"),
+constexpr auto instruction<opcode> = Op<"ld (bc), a",
     [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::BC), z80.regs().get(RegisterFile::R8::A)); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 1)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld (de), a"),
+constexpr auto instruction<opcode> = Op<"ld (de), a",
     [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::DE), z80.regs().get(RegisterFile::R8::A)); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 2)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld ($nnnn), "s + IndexReg<opcode.hl_set>::name), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ld ($nnnn), "s + IndexReg<opcode.hl_set>::name, [](Z80 &z80) {
   const auto address = read_immediate16(z80);
   write(z80, address, z80.regs().get(IndexReg<opcode.hl_set>::low));
   write(z80, address + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 3)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld ($nnnn), a"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ld ($nnnn), a", [](Z80 &z80) {
   const auto address = read_immediate16(z80);
   write(z80, address, z80.regs().get(RegisterFile::R8::A));
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld a, (bc)"),
+constexpr auto instruction<opcode> = Op<"ld a, (bc)",
     [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::BC))); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 1)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld a, (de)"),
+constexpr auto instruction<opcode> = Op<"ld a, (de)",
     [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::DE))); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 2)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld "s + IndexReg<opcode.hl_set>::name + ", ($nnnn)"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ld "s + IndexReg<opcode.hl_set>::name + ", ($nnnn)", [](Z80 &z80) {
   const auto address = read_immediate16(z80);
   z80.regs().set(IndexReg<opcode.hl_set>::low, read(z80, address));
   z80.regs().set(IndexReg<opcode.hl_set>::high, read(z80, address + 1));
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 3)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld a, ($nnnn)"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ld a, ($nnnn)", [](Z80 &z80) {
   const auto address = read_immediate16(z80);
   z80.regs().set(RegisterFile::R8::A, read(z80, address));
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 3 && opcode.q == 0)
-constexpr auto instruction<opcode> =
-    Op<Mnemonic("inc " + std::string(TableRp<opcode.hl_set>::names[opcode.p])), [](Z80 &z80) {
-      z80.regs().set(
-          TableRp<opcode.hl_set>::highlow[opcode.p], z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]) + 1);
-      z80.pass_time(2);
-    }>{};
+constexpr auto instruction<opcode> = Op<"inc "s + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+  z80.regs().set(
+      TableRp<opcode.hl_set>::highlow[opcode.p], z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]) + 1);
+  z80.pass_time(2);
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 3 && opcode.q == 1)
-constexpr auto instruction<opcode> =
-    Op<Mnemonic("dec " + std::string(TableRp<opcode.hl_set>::names[opcode.p])), [](Z80 &z80) {
-      z80.regs().set(
-          TableRp<opcode.hl_set>::highlow[opcode.p], z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]) - 1);
-      z80.pass_time(2);
-    }>{};
+constexpr auto instruction<opcode> = Op<"dec "s + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+  z80.regs().set(
+      TableRp<opcode.hl_set>::highlow[opcode.p], z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]) - 1);
+  z80.pass_time(2);
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 4)
-constexpr auto instruction<opcode> = Op<Mnemonic("inc "s + TableR<opcode.hl_set>::names[opcode.y]),
+constexpr auto instruction<opcode> = Op<"inc "s + TableR<opcode.hl_set>::names[opcode.y],
     [](Z80 &z80) {
       const auto rhs = get_r<opcode.y, opcode.hl_set>(z80);
       if constexpr (opcode.y == 6) // TODO can we better generalise?
@@ -423,7 +428,7 @@ constexpr auto instruction<opcode> = Op<Mnemonic("inc "s + TableR<opcode.hl_set>
     is_r_indirect(opcode.y)>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 5)
-constexpr auto instruction<opcode> = Op<Mnemonic("dec "s + TableR<opcode.hl_set>::names[opcode.y]),
+constexpr auto instruction<opcode> = Op<"dec "s + TableR<opcode.hl_set>::names[opcode.y],
     [](Z80 &z80) {
       const auto rhs = get_r<opcode.y, opcode.hl_set>(z80);
       if constexpr (opcode.y == 6) // TODO can we better generalise?
@@ -436,7 +441,7 @@ constexpr auto instruction<opcode> = Op<Mnemonic("dec "s + TableR<opcode.hl_set>
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 6)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld "s + TableR<opcode.hl_set>::names[opcode.y] + ", $nn"),
+constexpr auto instruction<opcode> = Op<"ld "s + TableR<opcode.hl_set>::names[opcode.y] + ", $nn",
     [](Z80 &z80) {
       const auto value = read_immediate((z80));
       set_r<opcode.y, opcode.hl_set>(z80, value);
@@ -455,61 +460,59 @@ struct FastAluOp {
 };
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 0)
-constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rlca"), [](const std::uint8_t a, const Flags flags) {
+constexpr auto instruction<opcode> = FastAluOp<"rlca", [](const std::uint8_t a, const Flags flags) {
   return Alu::fast_rotate_circular8(a, Alu::Direction::Left, flags);
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 1)
-constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rrca"), [](const std::uint8_t a, const Flags flags) {
+constexpr auto instruction<opcode> = FastAluOp<"rrca", [](const std::uint8_t a, const Flags flags) {
   return Alu::fast_rotate_circular8(a, Alu::Direction::Right, flags);
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 2)
-constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rla"),
+constexpr auto instruction<opcode> = FastAluOp<"rla",
     [](const std::uint8_t a, const Flags flags) { return Alu::fast_rotate8(a, Alu::Direction::Left, flags); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 3)
-constexpr auto instruction<opcode> = FastAluOp<Mnemonic("rra"),
+constexpr auto instruction<opcode> = FastAluOp<"rra",
     [](const std::uint8_t a, const Flags flags) { return Alu::fast_rotate8(a, Alu::Direction::Right, flags); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 4)
 constexpr auto instruction<opcode> =
-    FastAluOp<Mnemonic("daa"), [](const std::uint8_t a, const Flags flags) { return Alu::daa(a, flags); }>{};
+    FastAluOp<"daa", [](const std::uint8_t a, const Flags flags) { return Alu::daa(a, flags); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 5)
 constexpr auto instruction<opcode> =
-    FastAluOp<Mnemonic("cpl"), [](const std::uint8_t a, const Flags flags) { return Alu::cpl(a, flags); }>{};
+    FastAluOp<"cpl", [](const std::uint8_t a, const Flags flags) { return Alu::cpl(a, flags); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 6)
 constexpr auto instruction<opcode> =
-    FastAluOp<Mnemonic("scf"), [](const std::uint8_t a, const Flags flags) { return Alu::scf(a, flags); }>{};
+    FastAluOp<"scf", [](const std::uint8_t a, const Flags flags) { return Alu::scf(a, flags); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 7 && opcode.y == 7)
 constexpr auto instruction<opcode> =
-    FastAluOp<Mnemonic("ccf"), [](const std::uint8_t a, const Flags flags) { return Alu::ccf(a, flags); }>{};
+    FastAluOp<"ccf", [](const std::uint8_t a, const Flags flags) { return Alu::ccf(a, flags); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // X = 1
 template<Opcode opcode>
   requires(opcode.x == 1 && !(opcode.y == 6 && opcode.z == 6))
-constexpr auto instruction<opcode> =
-    Op<Mnemonic("ld "s + TableR<opcode.hl_set, is_r_indirect(opcode.z)>::names[opcode.y] + ", " +
-                TableR<opcode.hl_set, is_r_indirect(opcode.y)>::names[opcode.z]),
-        [](Z80 &z80) {
-          set_r<opcode.y, opcode.hl_set, is_r_indirect(opcode.z)>(
-              z80, get_r<opcode.z, opcode.hl_set, is_r_indirect(opcode.y)>(z80));
-        },
-        is_r_indirect(opcode.y) || is_r_indirect(opcode.z)>{};
+constexpr auto instruction<opcode> = Op<"ld "s + TableR<opcode.hl_set, is_r_indirect(opcode.z)>::names[opcode.y] +
+                                            ", " + TableR<opcode.hl_set, is_r_indirect(opcode.y)>::names[opcode.z],
+    [](Z80 &z80) {
+      set_r<opcode.y, opcode.hl_set, is_r_indirect(opcode.z)>(
+          z80, get_r<opcode.z, opcode.hl_set, is_r_indirect(opcode.y)>(z80));
+    },
+    is_r_indirect(opcode.y) || is_r_indirect(opcode.z)>{};
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.y == 6 && opcode.z == 6)
-constexpr auto instruction<opcode> = Op<Mnemonic("halt"), [](Z80 &z80) { z80.halt(); }>{};
+constexpr auto instruction<opcode> = Op<"halt", [](Z80 &z80) { z80.halt(); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // X = 2 (and parts of X = 3)
 template<Mnemonic mnem, Opcode opcode, auto alu_op>
 struct AluOp {
-  static constexpr auto mnemonic =
-      Mnemonic(mnem.str() + " "s + TableR<opcode.hl_set>::names[opcode.alu_input_selector()]);
+  static constexpr Mnemonic mnemonic{mnem.str() + " " + TableR<opcode.hl_set>::names[opcode.alu_input_selector()]};
   static constexpr void execute(Z80 &z80) {
     const auto [result, flags] = alu_op(
         z80.regs().get(RegisterFile::R8::A), get_r<opcode.alu_input_selector(), opcode.hl_set>(z80), z80.flags());
@@ -521,46 +524,46 @@ struct AluOp {
 
 template<Opcode opcode>
   requires(opcode.alu_op() == 0)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("add a,"), opcode,
+constexpr auto instruction<opcode> = AluOp<"add a,", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::add8(lhs, rhs, false); }>{};
 template<Opcode opcode>
   requires(opcode.alu_op() == 1)
 constexpr auto instruction<opcode> =
-    AluOp<Mnemonic("adc a,"), opcode, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
+    AluOp<"adc a,", opcode, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
       return Alu::add8(lhs, rhs, flags.carry());
     }>{};
 template<Opcode opcode>
   requires(opcode.alu_op() == 2)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("sub a,"), opcode,
+constexpr auto instruction<opcode> = AluOp<"sub a,", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::sub8(lhs, rhs, false); }>{};
 template<Opcode opcode>
   requires(opcode.alu_op() == 3)
 constexpr auto instruction<opcode> =
-    AluOp<Mnemonic("sbc a,"), opcode, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
+    AluOp<"sbc a,", opcode, [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags flags) {
       return Alu::sub8(lhs, rhs, flags.carry());
     }>{};
 template<Opcode opcode>
   requires(opcode.alu_op() == 4)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("and"), opcode,
+constexpr auto instruction<opcode> = AluOp<"and", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::and8(lhs, rhs); }>{};
 template<Opcode opcode>
   requires(opcode.alu_op() == 5)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("xor"), opcode,
+constexpr auto instruction<opcode> = AluOp<"xor", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::xor8(lhs, rhs); }>{};
 template<Opcode opcode>
   requires(opcode.alu_op() == 6)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("or"), opcode,
+constexpr auto instruction<opcode> = AluOp<"or", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::or8(lhs, rhs); }>{};
 template<Opcode opcode>
   requires(opcode.alu_op() == 7)
-constexpr auto instruction<opcode> = AluOp<Mnemonic("cp"), opcode,
+constexpr auto instruction<opcode> = AluOp<"cp", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::cmp8(lhs, rhs); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // X = 3 (some alu ops are definewd in X = 1 above)
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("ret " + std::string(cc_names[opcode.y])), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ret "s + cc_names[opcode.y], [](Z80 &z80) {
   z80.pass_time(1);
   if (cc_check<opcode.y>(z80.flags())) {
     const auto return_address = pop16(z80);
@@ -570,38 +573,37 @@ constexpr auto instruction<opcode> = Op<Mnemonic("ret " + std::string(cc_names[o
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 0)
-constexpr auto instruction<opcode> =
-    Op<Mnemonic("pop " + std::string(TableRp2<opcode.hl_set>::names[opcode.p])), [](Z80 &z80) {
-      const auto result = pop16(z80);
-      z80.regs().set(TableRp2<opcode.hl_set>::highlow[opcode.p], result);
-    }>{};
+constexpr auto instruction<opcode> = Op<"pop "s + TableRp2<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+  const auto result = pop16(z80);
+  z80.regs().set(TableRp2<opcode.hl_set>::highlow[opcode.p], result);
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("ret"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ret", [](Z80 &z80) {
   const auto return_address = pop16(z80);
   z80.regs().pc(return_address);
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 1)
-constexpr auto instruction<opcode> = Op<Mnemonic("exx"), [](Z80 &z80) { z80.regs().exx(); }>{};
+constexpr auto instruction<opcode> = Op<"exx", [](Z80 &z80) { z80.regs().exx(); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 2)
-constexpr auto instruction<opcode> = Op<Mnemonic("jp ("s + IndexReg<opcode.hl_set>::name + ")"),
+constexpr auto instruction<opcode> = Op<"jp ("s + IndexReg<opcode.hl_set>::name + ")",
     [](Z80 &z80) { z80.regs().pc(z80.regs().get(IndexReg<opcode.hl_set>::highlow)); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 3)
-constexpr auto instruction<opcode> = Op<Mnemonic("ld sp, "s + IndexReg<opcode.hl_set>::name), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ld sp, "s + IndexReg<opcode.hl_set>::name, [](Z80 &z80) {
   z80.pass_time(2);
   z80.regs().sp(z80.regs().get(IndexReg<opcode.hl_set>::highlow));
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 2)
-constexpr auto instruction<opcode> = Op<Mnemonic("jp " + std::string(cc_names[opcode.y]) + ", $nnnn"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"jp "s + cc_names[opcode.y] + ", $nnnn", [](Z80 &z80) {
   const auto jump_address = read_immediate16((z80));
   if (cc_check<opcode.y>(z80.flags())) {
     z80.regs().pc(jump_address);
@@ -610,14 +612,14 @@ constexpr auto instruction<opcode> = Op<Mnemonic("jp " + std::string(cc_names[op
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("jp $nnnn"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"jp $nnnn", [](Z80 &z80) {
   const auto jump_address = read_immediate16((z80));
   z80.regs().pc(jump_address);
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 1)
-constexpr auto instruction<opcode> = Op<Mnemonic("CB"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"CB", [](Z80 &z80) {
   if constexpr (opcode.hl_set == HlSet::Base)
     decode_and_run_cb(z80);
   else if constexpr (opcode.hl_set == HlSet::Ix)
@@ -630,7 +632,7 @@ constexpr auto instruction<opcode> = Op<Mnemonic("CB"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 2)
-constexpr auto instruction<opcode> = Op<Mnemonic("out ($nn), a"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"out ($nn), a", [](Z80 &z80) {
   const auto a = z80.regs().get(RegisterFile::R8::A);
   const auto port = static_cast<std::uint16_t>(read_immediate(z80) | a << 8);
   z80.pass_time(4); // OUT time (TODO pass time as IO?)
@@ -639,7 +641,7 @@ constexpr auto instruction<opcode> = Op<Mnemonic("out ($nn), a"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 3)
-constexpr auto instruction<opcode> = Op<Mnemonic("in a, ($nn)"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"in a, ($nn)", [](Z80 &z80) {
   const auto port = static_cast<std::uint16_t>(read_immediate(z80) | z80.regs().get(RegisterFile::R8::A) << 8);
   z80.pass_time(4); // IN time (TODO pass time as IO?)
   z80.regs().set(RegisterFile::R8::A, z80.in(port));
@@ -647,7 +649,7 @@ constexpr auto instruction<opcode> = Op<Mnemonic("in a, ($nn)"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 4)
-constexpr auto instruction<opcode> = Op<Mnemonic("ex (sp), "s + IndexReg<opcode.hl_set>::name), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ex (sp), "s + IndexReg<opcode.hl_set>::name, [](Z80 &z80) {
   const auto sp_old_low = read(z80, z80.regs().sp());
   z80.pass_time(1);
   const auto sp_old_high = read(z80, z80.regs().sp() + 1);
@@ -659,26 +661,26 @@ constexpr auto instruction<opcode> = Op<Mnemonic("ex (sp), "s + IndexReg<opcode.
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 5)
-constexpr auto instruction<opcode> = Op<Mnemonic("ex de, "s + IndexReg<opcode.hl_set>::name),
+constexpr auto instruction<opcode> = Op<"ex de, "s + IndexReg<opcode.hl_set>::name,
     [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, IndexReg<opcode.hl_set>::highlow); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 6)
-constexpr auto instruction<opcode> = Op<Mnemonic("di"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"di", [](Z80 &z80) {
   z80.iff1(false);
   z80.iff2(false);
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 7)
-constexpr auto instruction<opcode> = Op<Mnemonic("ei"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"ei", [](Z80 &z80) {
   z80.iff1(true);
   z80.iff2(true);
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 4)
-constexpr auto instruction<opcode> = Op<Mnemonic("call " + std::string(cc_names[opcode.y]) + ", $nnnn"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"call "s + cc_names[opcode.y] + ", $nnnn", [](Z80 &z80) {
   const auto jump_address = read_immediate16((z80));
   if (cc_check<opcode.y>(z80.flags())) {
     z80.pass_time(1);
@@ -689,15 +691,14 @@ constexpr auto instruction<opcode> = Op<Mnemonic("call " + std::string(cc_names[
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 0)
-constexpr auto instruction<opcode> =
-    Op<Mnemonic("push " + std::string(TableRp2<opcode.hl_set>::names[opcode.p])), [](Z80 &z80) {
-      z80.pass_time(1);
-      push16(z80, z80.regs().get(TableRp2<opcode.hl_set>::highlow[opcode.p]));
-    }>{};
+constexpr auto instruction<opcode> = Op<"push "s + TableRp2<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+  z80.pass_time(1);
+  push16(z80, z80.regs().get(TableRp2<opcode.hl_set>::highlow[opcode.p]));
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 0)
-constexpr auto instruction<opcode> = Op<Mnemonic("call $nnnn"), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"call $nnnn", [](Z80 &z80) {
   const auto jump_address = read_immediate16((z80));
   z80.pass_time(1);
   push16(z80, z80.pc());
@@ -706,18 +707,18 @@ constexpr auto instruction<opcode> = Op<Mnemonic("call $nnnn"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 1)
-constexpr auto instruction<opcode> = Op<Mnemonic("DD"), [](Z80 &z80) { decode_and_run_dd(z80); }>{};
+constexpr auto instruction<opcode> = Op<"DD", [](Z80 &z80) { decode_and_run_dd(z80); }>{};
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 2)
-constexpr auto instruction<opcode> = Op<Mnemonic("ED"), [](Z80 &z80) { decode_and_run_ed(z80); }>{};
+constexpr auto instruction<opcode> = Op<"ED", [](Z80 &z80) { decode_and_run_ed(z80); }>{};
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 3)
-constexpr auto instruction<opcode> = Op<Mnemonic("FD"), [](Z80 &z80) { decode_and_run_fd(z80); }>{};
+constexpr auto instruction<opcode> = Op<"FD", [](Z80 &z80) { decode_and_run_fd(z80); }>{};
 
 constexpr std::array num_table{"0x00", "0x08", "0x10", "0x18", "0x20", "0x28", "0x30", "0x38"};
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 7)
-constexpr auto instruction<opcode> = Op<Mnemonic("rst " + std::string(num_table[opcode.y])), [](Z80 &z80) {
+constexpr auto instruction<opcode> = Op<"rst "s + num_table[opcode.y], [](Z80 &z80) {
   z80.pass_time(1);
   push16(z80, z80.pc());
   z80.regs().pc(opcode.y * 8);
@@ -731,7 +732,7 @@ constexpr auto cb_instruction = MissingInstruction{};
 
 template<Mnemonic mnem, Opcode opcode, auto rotate_op>
 struct RotateOp {
-  static constexpr auto mnemonic = Mnemonic(mnem.str() + " "s + TableR<opcode.hl_set>::names[opcode.z]);
+  static constexpr Mnemonic mnemonic{mnem.str() + " " + TableR<opcode.hl_set>::names[opcode.z]};
   static constexpr void execute(Z80 &z80) {
     const auto [result, flags] = rotate_op(get_r<opcode.z, opcode.hl_set>(z80), z80.flags());
     if constexpr (opcode.z == 6) // TODO can we better generalise?
@@ -744,42 +745,42 @@ struct RotateOp {
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 0)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("rlc"), opcode,
+constexpr auto cb_instruction<opcode> = RotateOp<"rlc", opcode,
     [](const std::uint8_t lhs, const Flags) { return Alu::rotate_circular8(lhs, Alu::Direction::Left); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 1)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("rrc"), opcode,
+constexpr auto cb_instruction<opcode> = RotateOp<"rrc", opcode,
     [](const std::uint8_t lhs, const Flags) { return Alu::rotate_circular8(lhs, Alu::Direction::Right); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 2)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("rl"), opcode,
+constexpr auto cb_instruction<opcode> = RotateOp<"rl", opcode,
     [](const std::uint8_t lhs, const Flags flags) { return Alu::rotate8(lhs, Alu::Direction::Left, flags.carry()); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 3)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("rr"), opcode, [](const std::uint8_t lhs, const Flags flags) {
+constexpr auto cb_instruction<opcode> = RotateOp<"rr", opcode, [](const std::uint8_t lhs, const Flags flags) {
   return Alu::rotate8(lhs, Alu::Direction::Right, flags.carry());
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 4)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("sla"), opcode,
+constexpr auto cb_instruction<opcode> = RotateOp<"sla", opcode,
     [](const std::uint8_t lhs, const Flags) { return Alu::shift_arithmetic8(lhs, Alu::Direction::Left); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 5)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("sra"), opcode,
+constexpr auto cb_instruction<opcode> = RotateOp<"sra", opcode,
     [](const std::uint8_t lhs, const Flags) { return Alu::shift_arithmetic8(lhs, Alu::Direction::Right); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 6)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("sll"), opcode,
+constexpr auto cb_instruction<opcode> = RotateOp<"sll", opcode,
     [](const std::uint8_t lhs, const Flags) { return Alu::shift_logical8(lhs, Alu::Direction::Left); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 7)
-constexpr auto cb_instruction<opcode> = RotateOp<Mnemonic("srl"), opcode,
+constexpr auto cb_instruction<opcode> = RotateOp<"srl", opcode,
     [](const std::uint8_t lhs, const Flags) { return Alu::shift_logical8(lhs, Alu::Direction::Right); }>{};
 
 template<Opcode opcode>
 struct BitOp {
-  static constexpr auto mnemonic =
-      Mnemonic("bit " + std::string(1, '0' + opcode.y) + ", " + TableR<opcode.hl_set>::names[opcode.z]);
+  static constexpr Mnemonic mnemonic{
+      "bit "s + std::string(1, '0' + opcode.y) + ", " + TableR<opcode.hl_set>::names[opcode.z]};
   static constexpr void execute(Z80 &z80) {
     const auto lhs = get_r<opcode.z, opcode.hl_set>(z80);
     if constexpr (opcode.z == 6) // TODO can we better generalise?
@@ -795,8 +796,8 @@ constexpr auto cb_instruction<opcode> = BitOp<opcode>{};
 
 template<Opcode opcode>
 struct SetResetOp {
-  static constexpr auto mnemonic = Mnemonic((opcode.x == 2 ? "res " : "set ") + std::string(1, '0' + opcode.y) + ", " +
-                                            TableR<opcode.hl_set>::names[opcode.z]);
+  static constexpr Mnemonic mnemonic{(opcode.x == 2 ? "res " : "set ") + std::string(1, '0' + opcode.y) + ", " +
+                                     TableR<opcode.hl_set>::names[opcode.z]};
   static constexpr void execute(Z80 &z80) {
     const auto lhs = get_r<opcode.z, opcode.hl_set>(z80);
     if constexpr (opcode.z == 6) // TODO can we better generalise?
@@ -822,18 +823,17 @@ constexpr auto ed_instruction<opcode> = InvalidInstruction{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 0 && opcode.y != 6)
-constexpr auto ed_instruction<opcode> =
-    Op<Mnemonic("in "s + TableR<opcode.hl_set>::names[opcode.y] + ", (c)"), [](Z80 &z80) {
-      z80.pass_time(4); // IN time (TODO pass time as IO?)
-      const auto port = z80.regs().get(RegisterFile::R16::BC);
-      const auto result = z80.in(port);
-      z80.flags(z80.flags() & Flags::Carry() | Alu::parity_flags_for(result));
-      set_r<opcode.y, opcode.hl_set>(z80, result);
-    }>{};
+constexpr auto ed_instruction<opcode> = Op<"in "s + TableR<opcode.hl_set>::names[opcode.y] + ", (c)", [](Z80 &z80) {
+  z80.pass_time(4); // IN time (TODO pass time as IO?)
+  const auto port = z80.regs().get(RegisterFile::R16::BC);
+  const auto result = z80.in(port);
+  z80.flags(z80.flags() & Flags::Carry() | Alu::parity_flags_for(result));
+  set_r<opcode.y, opcode.hl_set>(z80, result);
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 0 && opcode.y == 6)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("in (c)"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"in (c)", [](Z80 &z80) {
   z80.pass_time(4); // IN time (TODO pass time as IO?)
   const auto port = z80.regs().get(RegisterFile::R16::BC);
   const auto result = z80.in(port);
@@ -842,56 +842,52 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("in (c)"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 1 && opcode.y != 6)
-constexpr auto ed_instruction<opcode> =
-    Op<Mnemonic("out (c), "s + TableR<opcode.hl_set>::names[opcode.y]), [](Z80 &z80) {
-      z80.pass_time(4); // IN time (TODO pass time as IO?)
-      z80.out(z80.regs().get(RegisterFile::R16::BC), get_r<opcode.y, opcode.hl_set>(z80));
-    }>{};
+constexpr auto ed_instruction<opcode> = Op<"out (c), "s + TableR<opcode.hl_set>::names[opcode.y], [](Z80 &z80) {
+  z80.pass_time(4); // IN time (TODO pass time as IO?)
+  z80.out(z80.regs().get(RegisterFile::R16::BC), get_r<opcode.y, opcode.hl_set>(z80));
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 1 && opcode.y == 6)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("out (c), 0x00"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"out (c), 0x00", [](Z80 &z80) {
   z80.pass_time(4); // IN time (TODO pass time as IO?)
   z80.out(z80.regs().get(RegisterFile::R16::BC), 0);
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 2 && opcode.q == 0)
-constexpr auto ed_instruction<opcode> =
-    Op<Mnemonic("sbc hl, "s + TableRp<opcode.hl_set>::names[opcode.p]), [](Z80 &z80) {
-      const auto rhs = z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]);
-      const auto lhs = z80.regs().get(RegisterFile::R16::HL);
-      const auto [result, flags] = Alu::sbc16(lhs, rhs, z80.flags().carry());
-      z80.regs().set(RegisterFile::R16::HL, result);
-      z80.flags(flags);
-      z80.pass_time(7);
-    }>{};
+constexpr auto ed_instruction<opcode> = Op<"sbc hl, "s + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+  const auto rhs = z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]);
+  const auto lhs = z80.regs().get(RegisterFile::R16::HL);
+  const auto [result, flags] = Alu::sbc16(lhs, rhs, z80.flags().carry());
+  z80.regs().set(RegisterFile::R16::HL, result);
+  z80.flags(flags);
+  z80.pass_time(7);
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 2 && opcode.q == 1)
-constexpr auto ed_instruction<opcode> =
-    Op<Mnemonic("adc hl, "s + TableRp<opcode.hl_set>::names[opcode.p]), [](Z80 &z80) {
-      const auto rhs = z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]);
-      const auto lhs = z80.regs().get(RegisterFile::R16::HL);
-      const auto [result, flags] = Alu::adc16(lhs, rhs, z80.flags().carry());
-      z80.regs().set(RegisterFile::R16::HL, result);
-      z80.flags(flags);
-      z80.pass_time(7);
-    }>{};
+constexpr auto ed_instruction<opcode> = Op<"adc hl, "s + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+  const auto rhs = z80.regs().get(TableRp<opcode.hl_set>::highlow[opcode.p]);
+  const auto lhs = z80.regs().get(RegisterFile::R16::HL);
+  const auto [result, flags] = Alu::adc16(lhs, rhs, z80.flags().carry());
+  z80.regs().set(RegisterFile::R16::HL, result);
+  z80.flags(flags);
+  z80.pass_time(7);
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 3 && opcode.q == 0)
-constexpr auto ed_instruction<opcode> =
-    Op<Mnemonic("ld ($nnnn), "s + TableRp<opcode.hl_set>::names[opcode.p]), [](Z80 &z80) {
-      const auto addr = read_immediate16(z80);
-      write(z80, addr, z80.regs().get(TableRp<opcode.hl_set>::low[opcode.p]));
-      write(z80, addr + 1, z80.regs().get(TableRp<opcode.hl_set>::high[opcode.p]));
-    }>{};
+constexpr auto ed_instruction<opcode> = Op<"ld ($nnnn), "s + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
+  const auto addr = read_immediate16(z80);
+  write(z80, addr, z80.regs().get(TableRp<opcode.hl_set>::low[opcode.p]));
+  write(z80, addr + 1, z80.regs().get(TableRp<opcode.hl_set>::high[opcode.p]));
+}>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 3 && opcode.q == 1)
 constexpr auto ed_instruction<opcode> =
-    Op<Mnemonic("ld "s + TableRp<opcode.hl_set>::names[opcode.p] + ", ($nnnn)"), [](Z80 &z80) {
+    Op<"ld "s + TableRp<opcode.hl_set>::names[opcode.p] + ", ($nnnn)", [](Z80 &z80) {
       const auto addr = read_immediate16(z80);
       z80.regs().set(TableRp<opcode.hl_set>::low[opcode.p], read(z80, addr));
       z80.regs().set(TableRp<opcode.hl_set>::high[opcode.p], read(z80, addr + 1));
@@ -899,7 +895,7 @@ constexpr auto ed_instruction<opcode> =
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 4)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("neg"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"neg", [](Z80 &z80) {
   const auto [result, flags] = Alu::sub8(0, static_cast<std::uint8_t>(z80.regs().get(RegisterFile::R8::A)), false);
   z80.regs().set(RegisterFile::R8::A, result);
   z80.flags(flags);
@@ -907,7 +903,7 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("neg"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 5 && opcode.y != 1)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("retn"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"retn", [](Z80 &z80) {
   z80.iff1(z80.iff2());
   const auto return_address = pop16(z80);
   z80.regs().pc(return_address);
@@ -915,7 +911,7 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("retn"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 5 && opcode.y == 1)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("reti"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"reti", [](Z80 &z80) {
   const auto return_address = pop16(z80);
   z80.regs().pc(return_address);
 }>{};
@@ -923,26 +919,26 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("reti"), [](Z80 &z80) {
 constexpr std::array<std::uint8_t, 8> im_table{0, 0, 1, 2, 0, 0, 1, 2};
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 6)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("im "s + std::string(1, '0' + im_table[opcode.y])),
-    [](Z80 &z80) { z80.irq_mode(im_table[opcode.y]); }>{};
+constexpr auto ed_instruction<opcode> =
+    Op<"im "s + std::string(1, '0' + im_table[opcode.y]), [](Z80 &z80) { z80.irq_mode(im_table[opcode.y]); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 0)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("ld i, a"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"ld i, a", [](Z80 &z80) {
   z80.pass_time(1);
   z80.regs().i(z80.regs().get(RegisterFile::R8::A));
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 1)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("ld r, a"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"ld r, a", [](Z80 &z80) {
   z80.pass_time(1);
   z80.regs().r(z80.regs().get(RegisterFile::R8::A));
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 2)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("ld a, i"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"ld a, i", [](Z80 &z80) {
   const auto result = z80.regs().i();
   z80.pass_time(1);
   z80.flags(Alu::iff2_flags_for(result, z80.flags(), z80.iff2()));
@@ -951,7 +947,7 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("ld a, i"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 3)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("ld a, r"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"ld a, r", [](Z80 &z80) {
   const auto result = z80.regs().r();
   z80.pass_time(1);
   z80.flags(Alu::iff2_flags_for(result, z80.flags(), z80.iff2()));
@@ -960,7 +956,7 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("ld a, r"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 4)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("rrd"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"rrd", [](Z80 &z80) {
   const auto address = z80.regs().get(RegisterFile::R16::HL);
   const auto ind_hl = read(z80, address);
   const auto prev_a = z80.registers().get(RegisterFile::R8::A);
@@ -973,7 +969,7 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("rrd"), [](Z80 &z80) {
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 5)
-constexpr auto ed_instruction<opcode> = Op<Mnemonic("rld"), [](Z80 &z80) {
+constexpr auto ed_instruction<opcode> = Op<"rld", [](Z80 &z80) {
   const auto address = z80.regs().get(RegisterFile::R16::HL);
   const auto ind_hl = read(z80, address);
   const auto prev_a = z80.registers().get(RegisterFile::R8::A);
@@ -986,7 +982,7 @@ constexpr auto ed_instruction<opcode> = Op<Mnemonic("rld"), [](Z80 &z80) {
 
 template<bool increment, bool repeat>
 struct BlockLoadOp {
-  static constexpr auto mnemonic = Mnemonic("ld"s + (increment ? "i" : "d") + (repeat ? "r" : ""));
+  static constexpr Mnemonic mnemonic{"ld"s + (increment ? "i" : "d") + (repeat ? "r" : "")};
   static void execute(Z80 &z80) {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
@@ -1021,7 +1017,7 @@ constexpr auto ed_instruction<opcode> =
 
 template<bool increment, bool repeat>
 struct BlockCompareOp {
-  static constexpr auto mnemonic = Mnemonic("cp"s + (increment ? "i" : "d") + (repeat ? "r" : ""));
+  static constexpr Mnemonic mnemonic{"cp"s + (increment ? "i" : "d") + (repeat ? "r" : "")};
   static void execute(Z80 &z80) {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
