@@ -1,10 +1,7 @@
-#include <SDL.h>
+#include "sdl_wrapper.hpp"
 
 #include <chrono>
-#include <format>
 #include <iostream>
-#include <memory>
-#include <stdexcept>
 
 #include <lyra/lyra.hpp>
 
@@ -14,24 +11,7 @@
 #include "spectrum/Spectrum.hpp"
 #include "z80/Z80.hpp"
 
-namespace {
-
-struct SdlError final : std::runtime_error {
-  explicit SdlError(const std::string &message) : std::runtime_error(std::format("{}: {}", message, SDL_GetError())) {}
-};
-
-struct SdlInit {
-  SdlInit() {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
-      throw SdlError("SDL_Init failed");
-    }
-  }
-  SdlInit(const SdlInit &) = delete;
-  SdlInit &operator=(const SdlInit &) = delete;
-  ~SdlInit() { SDL_Quit(); }
-};
-
-int Main(const int argc, const char *argv[]) {
+int main(int argc, char *argv[]) try {
   std::filesystem::path rom{"48.rom"};
   std::filesystem::path snapshot;
   bool need_help{};
@@ -45,7 +25,7 @@ int Main(const int argc, const char *argv[]) {
                    | lyra::opt(new_impl)["--new-impl"]("Use new implementation.") //
                    | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
   if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
-    std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
+    std::println(std::cerr, "Error in command line: {}", parse_result.message());
     return 1;
   }
   if (need_help) {
@@ -53,51 +33,32 @@ int Main(const int argc, const char *argv[]) {
     return 0;
   }
 
-  SdlInit sdl_init;
+  auto sdl_state = sdl_init(); // RAII wrapper
 
-  std::unique_ptr<SDL_Window, decltype(SDL_DestroyWindow) *> window(
-      SDL_CreateWindow("Specbolt ZX Spectrum Emulator", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
-          specbolt::Video::Width, specbolt::Video::Height, SDL_WINDOW_SHOWN),
-      SDL_DestroyWindow);
+  auto window = sdl_resource(SDL_CreateWindow("Specbolt ZX Spectrum Emulator", SDL_WINDOWPOS_UNDEFINED,
+      SDL_WINDOWPOS_UNDEFINED, specbolt::Video::Width, specbolt::Video::Height, SDL_WINDOW_SHOWN));
   if (!window) {
-    throw SdlError("SDL_CreateWindow failed");
+    throw sdl_error("SDL_CreateWindow failed");
   }
 
-  std::unique_ptr<SDL_Renderer, decltype(SDL_DestroyRenderer) *> renderer(
-      SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_ACCELERATED), SDL_DestroyRenderer);
+  auto renderer = sdl_resource(SDL_CreateRenderer(window.get(), -1, SDL_RENDERER_ACCELERATED));
   if (!renderer) {
-    throw SdlError("SDL_CreateRenderer failed");
+    throw sdl_error("SDL_CreateRenderer failed");
   }
 
-  const std::unique_ptr<SDL_Texture, decltype(SDL_DestroyTexture) *> texture(
-      SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, specbolt::Video::Width,
-          specbolt::Video::Height),
-      SDL_DestroyTexture);
+  auto texture = sdl_resource(SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+      specbolt::Video::Width, specbolt::Video::Height));
   if (!texture) {
-    throw SdlError("SDL_CreateTexture failed");
+    throw sdl_error("SDL_CreateTexture failed");
   }
 
   // TODO leaks
   using FillFunc = std::function<void(std::span<std::int16_t>)>;
   FillFunc fill_func;
-  SDL_AudioSpec desired_audio_spec{};
-  desired_audio_spec.freq = 16'000;
-  desired_audio_spec.channels = 1;
-  desired_audio_spec.format = AUDIO_S16;
-  desired_audio_spec.samples = 4096;
-  desired_audio_spec.userdata = &fill_func;
-  desired_audio_spec.callback = [](void *vo, Uint8 *stream, const int len) {
-    const auto &ff = *static_cast<FillFunc *>(vo);
-    ff(std::span{reinterpret_cast<std::int16_t *>(stream), static_cast<std::size_t>(len / 2)});
-  };
-  SDL_AudioSpec obtained_audio_spec{};
-  const auto audio_device_id = SDL_OpenAudioDevice(nullptr, 0, &desired_audio_spec, &obtained_audio_spec,
-      SDL_AUDIO_ALLOW_SAMPLES_CHANGE | SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
-  if (audio_device_id == 0) {
-    throw std::runtime_error("Unable to initialise sound: " + std::string(SDL_GetError()));
-  }
 
-  specbolt::Spectrum spectrum(rom, obtained_audio_spec.freq, new_impl);
+  auto audio = sdl_audio{};
+
+  specbolt::Spectrum spectrum(rom, audio.freq(), new_impl);
   const specbolt::Disassembler dis{spectrum.memory()};
 
   if (!snapshot.empty()) {
@@ -107,13 +68,13 @@ int Main(const int argc, const char *argv[]) {
   if (trace_instructions)
     spectrum.trace_next(trace_instructions);
 
-  fill_func = [&](const std::span<std::int16_t> buffer) {
+  audio.callback = [&](const std::span<std::int16_t> buffer) {
     spectrum.audio().fill(spectrum.z80().cycle_count(), buffer);
   };
-  SDL_PauseAudioDevice(audio_device_id, false);
+
+  audio.pause();
 
   bool quit = false;
-
   bool z80_running{true};
   auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
   auto next_frame = std::chrono::high_resolution_clock::now();
@@ -137,10 +98,13 @@ int Main(const int argc, const char *argv[]) {
           const auto time_taken = end_time - start_time;
           const auto cycles_per_second = static_cast<double>(cycles_elapsed) /
                                          std::chrono::duration_cast<std::chrono::duration<double>>(time_taken).count();
+
+          // probably better, but I'm now a mush
+          // audio.queue(spectrum.audio().fill(spectrum.z80().cycle_count(), audio_buffer));
+
           if (end_time > next_print) {
-            std::print(std::cout, "Cycles/sec: {:.2f} | lag {}\n", cycles_per_second, now - next_frame);
-            std::print(
-                std::cout, "Audio over/under: {}/{}\n", spectrum.audio().overruns(), spectrum.audio().underruns());
+            std::println("Cycles/sec: {:.2f} | lag {}", cycles_per_second, now - next_frame);
+            std::println("Audio over/under: {}/{}", spectrum.audio().overruns(), spectrum.audio().underruns());
             next_print = end_time + std::chrono::seconds(1);
           }
         }
@@ -148,7 +112,7 @@ int Main(const int argc, const char *argv[]) {
           std::print(std::cout, "Exception: {}\n", e.what());
           for (const auto &trace: spectrum.z80().history()) {
             trace.dump(std::cout, "  ");
-            std::print(std::cout, "{}\n", dis.disassemble(trace.pc()).to_string());
+            std::println("{}", dis.disassemble(trace.pc()).to_string());
           }
           spectrum.z80().dump();
           z80_running = false;
@@ -168,18 +132,9 @@ int Main(const int argc, const char *argv[]) {
       next_frame += std::chrono::milliseconds(20);
     }
   }
-  SDL_CloseAudioDevice(audio_device_id);
   return 0;
 }
-
-} // namespace
-
-int main(const int argc, const char *argv[]) {
-  try {
-    return Main(argc, argv);
-  }
-  catch (const std::exception &e) {
-    std::cerr << "Fatal exception: " << e.what() << "\n";
-    return 1;
-  }
+catch (const std::exception &e) {
+  std::println(std::cerr, "Fatal exception: {}", e.what());
+  return 1;
 }

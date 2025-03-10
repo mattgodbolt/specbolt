@@ -20,9 +20,7 @@ struct OpcodeTester {
   explicit OpcodeTester() { memory.set_rom_size(0); }
 
   void run(auto... bytes) {
-    for (auto &&[index, val]: std::views::enumerate(std::array{bytes...})) {
-      memory.write(static_cast<std::uint16_t>(z80.pc() + index), static_cast<std::uint8_t>(val));
-    }
+    write_to_memory(memory, z80.pc(), bytes...);
     if (use_new_code)
       decode_and_run(z80);
     else
