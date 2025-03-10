@@ -2,12 +2,13 @@
 
 #include "z80/RegisterFile.hpp"
 #include "z80/Z80.hpp"
+#include "z80/new/Mnemonic.hpp"
+#include "z80/new/Z80Support.hpp"
 
 #include <array>
 #include <cstdint>
 #include <format>
 #include <string>
-#include <string_view>
 #include <utility>
 
 using namespace std::literals;
@@ -57,74 +58,6 @@ struct IndexReg<HlSet::Iy> {
   static constexpr auto high = RegisterFile::R8::IYH;
   static constexpr auto low = RegisterFile::R8::IYL;
 };
-
-struct Mnemonic {
-  std::array<char, 15> storage{};
-  size_t len{};
-  constexpr Mnemonic() = default;
-  template<std::size_t size>
-  // ReSharper disable once CppNonExplicitConvertingConstructor
-  constexpr Mnemonic(const char (&name)[size]) { // NOLINT(*-explicit-constructor)
-    std::copy(name, name + size - 1, storage.begin());
-    len = size - 1;
-  }
-  template<typename String>
-  // ReSharper disable once CppNonExplicitConvertingConstructor
-  constexpr Mnemonic(const String &name) { // NOLINT(*-explicit-constructor)
-    std::ranges::copy(name, storage.begin());
-    len = name.size();
-  }
-  [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), len}; }
-  [[nodiscard]] constexpr std::string str() const { return {storage.data(), len}; }
-};
-
-// TODO put these on the z80 itself and either:
-// - split z80 into two for the in- and out-band
-// - or update the Instruction etc code accordingly. as these model time.
-constexpr std::uint8_t read_immediate(Z80 &z80) {
-  z80.pass_time(3);
-  const auto addr = z80.regs().pc();
-  z80.regs().pc(addr + 1);
-  return z80.read8(addr);
-}
-
-constexpr std::uint16_t read_immediate16(Z80 &z80) {
-  const auto low = read_immediate(z80);
-  const auto high = read_immediate(z80);
-  return static_cast<std::uint16_t>(high << 8 | low);
-}
-
-constexpr void write(Z80 &z80, const std::uint16_t address, const std::uint8_t byte) {
-  z80.pass_time(3);
-  z80.write8(address, byte);
-}
-
-constexpr std::uint8_t read(Z80 &z80, const std::uint16_t address) {
-  z80.pass_time(3);
-  return z80.read8(address);
-}
-
-constexpr std::uint8_t pop8(Z80 &z80) {
-  const auto value = read(z80, z80.regs().sp());
-  z80.regs().sp(z80.regs().sp() + 1);
-  return value;
-}
-
-constexpr std::uint16_t pop16(Z80 &z80) {
-  const auto low = pop8(z80);
-  const auto high = pop8(z80);
-  return static_cast<std::uint16_t>(high << 8 | low);
-}
-
-constexpr void push8(Z80 &z80, const std::uint8_t value) {
-  z80.regs().sp(z80.regs().sp() - 1);
-  write(z80, z80.regs().sp(), value);
-}
-
-constexpr void push16(Z80 &z80, const std::uint16_t value) {
-  push8(z80, static_cast<std::uint8_t>(value >> 8));
-  push8(z80, static_cast<std::uint8_t>(value));
-}
 
 template<HlSet hl_set, bool no_remap_ixiy_8b = false>
 struct TableR {
@@ -1268,6 +1201,5 @@ std::bitset<256> is_indirect_for_testing() {
     result.set(i, table<build_is_indirect>[i]);
   return result;
 }
-
 
 } // namespace specbolt
