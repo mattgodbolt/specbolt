@@ -19,13 +19,6 @@ public:
 
   void set_rom_size(const std::size_t size) { rom_size_ = size; }
 
-  friend void write_to_memory(
-      Memory &memory, std::uint16_t base_address, std::convertible_to<std::uint8_t> auto... bytes) {
-    [&]<std::size_t... Idx>(std::index_sequence<Idx...>) {
-      (memory.write(static_cast<std::uint16_t>(base_address + Idx), static_cast<std::uint8_t>(bytes)), ...);
-    }(std::make_index_sequence<sizeof...(bytes)>());
-  }
-
 private:
   std::size_t rom_size_{0x4000};
   std::array<std::uint8_t, 65536> memory_{};
