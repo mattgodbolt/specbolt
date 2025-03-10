@@ -1,11 +1,45 @@
-#include "Spectrum.hpp"
+module;
 
-#ifndef SPECBOLT_IN_MODULE
+#include <filesystem>
+#include <format>
 #include <iostream>
-#include "Generated.hpp"
-#endif
+#include <print>
+
+export module spectrum:spectrum;
+
+import z80;
+import peripherals;
 
 namespace specbolt {
+
+export class Spectrum {
+public:
+  explicit Spectrum(const std::filesystem::path &rom, int audio_sample_rate, bool new_impl);
+
+  static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
+
+  size_t run_cycles(size_t cycles);
+  size_t run_frame() { return run_cycles(cycles_per_frame); }
+
+  [[nodiscard]] auto &z80() { return z80_; }
+  [[nodiscard]] const auto &z80() const { return z80_; }
+  [[nodiscard]] auto &video() { return video_; }
+  [[nodiscard]] auto &memory() { return memory_; }
+  [[nodiscard]] auto &keyboard() { return keyboard_; }
+  [[nodiscard]] auto &audio() { return audio_; }
+
+  void trace_next(const std::size_t instructions) { trace_next_instructions_ = instructions; }
+
+private:
+  Memory memory_;
+  Video video_;
+  Audio audio_;
+  Keyboard keyboard_;
+  Z80 z80_;
+  bool new_impl_;
+  std::size_t trace_next_instructions_{};
+  std::size_t last_traced_instr_cycle_count_{};
+};
 
 Spectrum::Spectrum(const std::filesystem::path &rom, const int audio_sample_rate, const bool new_impl) :
     video_(memory_), audio_(audio_sample_rate), z80_(memory_), new_impl_(new_impl) {
