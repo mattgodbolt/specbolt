@@ -1069,58 +1069,62 @@ constexpr auto ed_instruction<opcode> = InvalidInstruction{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+consteval Opcode convert_opcode(const std::size_t number, const HlSet hl_set) noexcept {
+  return Opcode{static_cast<std::uint8_t>(number), hl_set};
+}
 
-template<template<auto> typename Transform>
-constexpr auto table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Base}>>::result...};
+template<typename SelectInstruction, typename Transform, HlSet hl_set>
+constexpr auto generic_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
+  return std::array{
+      Transform::template result<SelectInstruction::template value<convert_opcode(OpcodeNum, hl_set)>>...};
 }(std::make_index_sequence<256>());
 
-template<template<auto> typename Transform>
-constexpr auto dd_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Ix}>>::result...};
-}(std::make_index_sequence<256>());
+struct select_base_instruction {
+  template<Opcode opcode>
+  static constexpr auto value = instruction<opcode>;
+};
 
-template<template<auto> typename Transform>
-constexpr auto ed_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{Transform<ed_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Base}>>::result...};
-}(std::make_index_sequence<256>());
+struct select_ed_instruction {
+  template<Opcode opcode>
+  static constexpr auto value = ed_instruction<opcode>;
+};
 
-template<template<auto> typename Transform>
-constexpr auto fd_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{Transform<instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Iy}>>::result...};
-}(std::make_index_sequence<256>());
+struct select_cb_instruction {
+  template<Opcode opcode>
+  static constexpr auto value = cb_instruction<opcode>;
+};
 
-// TODO hana can we generalise this? - Yes!!! https://compiler-explorer.com/z/dboW4ndfj -
-// https://compiler-explorer.com/z/5vE7756hv
-template<template<auto> typename Transform>
-constexpr auto cb_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Base}>>::result...};
-}(std::make_index_sequence<256>());
-
-template<template<auto> typename Transform>
-constexpr auto ddcb_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Ix}>>::result...};
-}(std::make_index_sequence<256>());
-
-template<template<auto> typename Transform>
-constexpr auto fdcb_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{Transform<cb_instruction<Opcode{static_cast<std::uint8_t>(OpcodeNum), HlSet::Iy}>>::result...};
-}(std::make_index_sequence<256>());
-
-template<auto Opcode>
 struct build_description {
+  template<auto Opcode>
   static constexpr auto result = Opcode.mnemonic.view();
 };
 
-template<auto Opcode>
 struct build_evaluate {
-  static void result(Z80 &z80) { Opcode.execute(z80); } // namespace
-}; // namespace specbolt
+  template<auto Opcode>
+  static void result(Z80 &z80) {
+    Opcode.execute(z80);
+  }
+};
 
-template<auto Opcode>
 struct build_is_indirect {
+  template<auto Opcode>
   static constexpr bool result = Opcode.indirect;
 };
+
+template<typename Builder>
+constexpr auto table = generic_table<select_base_instruction, Builder, HlSet::Base>;
+template<typename Builder>
+constexpr auto dd_table = generic_table<select_base_instruction, Builder, HlSet::Ix>;
+template<typename Builder>
+constexpr auto fd_table = generic_table<select_base_instruction, Builder, HlSet::Iy>;
+template<typename Builder>
+constexpr auto cb_table = generic_table<select_cb_instruction, Builder, HlSet::Base>;
+template<typename Builder>
+constexpr auto ddcb_table = generic_table<select_cb_instruction, Builder, HlSet::Ix>;
+template<typename Builder>
+constexpr auto fdcb_table = generic_table<select_cb_instruction, Builder, HlSet::Iy>;
+template<typename Builder>
+constexpr auto ed_table = generic_table<select_ed_instruction, Builder, HlSet::Base>;
 
 void decode_and_run_cb(Z80 &z80) {
   // Fetch the next opcode.
