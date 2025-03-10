@@ -1,4 +1,5 @@
 #pragma once
+
 #include <SDL.h>
 #include <format>
 #include <functional>

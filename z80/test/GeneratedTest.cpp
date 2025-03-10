@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "peripherals/Memory.hpp"
+#include "support.hpp"
 #include "z80/Generated.hpp"
 #include "z80/Z80.hpp"
 
@@ -15,7 +16,7 @@ TEST_CASE("Opcode generation tests") {
   auto dis = [](auto... bytes) {
     Memory memory;
 
-    memory.write_sequence(base_address, bytes...);
+    write_sequence(base_address, memory, bytes...);
 
     const auto [disassembly, length] = disassemble(memory, base_address);
     CHECK(length == sizeof...(bytes));
