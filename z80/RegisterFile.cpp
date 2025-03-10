@@ -1,8 +1,9 @@
 #include "z80/RegisterFile.hpp"
 
-#include "z80/Flags.hpp"
-
+#ifndef SPECBOLT_IN_MODULE
 #include <iostream>
+#include "z80/Flags.hpp"
+#endif
 
 namespace specbolt {
 

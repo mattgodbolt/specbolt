@@ -1,11 +1,15 @@
 #pragma once
 
+#ifndef SPECBOLT_IN_MODULE
 #include <cstdint>
 #include <string>
+#endif
+
+#include "module.hpp"
 
 namespace specbolt {
 
-class Flags {
+SPECBOLT_EXPORT class Flags {
 public:
   constexpr Flags() = default;
   constexpr explicit Flags(const std::uint8_t value) : value_(value) {}

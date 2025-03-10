@@ -1,7 +1,9 @@
 #include "Memory.hpp"
 
+#ifndef SPECBOLT_IN_MODULE
 #include <cstring>
 #include <fstream>
+#endif
 
 namespace specbolt {
 

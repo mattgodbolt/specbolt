@@ -1,16 +1,22 @@
 #pragma once
 
+#ifndef SPECBOLT_IN_MODULE
 #include <array>
 #include <cstdint>
 #include <string>
+#endif
 
-#include "z80/Instruction.hpp"
+#include "module.hpp"
+#include "Instruction.hpp"
+
 
 namespace specbolt {
 
+#ifndef SPECBOLT_IN_MODULE
 class Memory;
+#endif
 
-class Disassembler {
+SPECBOLT_EXPORT class Disassembler {
 public:
   explicit Disassembler(const Memory &memory) : memory_(memory) {}
 

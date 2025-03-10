@@ -1,6 +1,8 @@
 #include "Audio.hpp"
 
+#ifndef SPECBOLT_IN_MODULE
 #include <algorithm>
+#endif
 
 namespace specbolt {
 

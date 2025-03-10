@@ -1,8 +1,10 @@
 #pragma once
 
-#include "z80/Instruction.hpp"
-
+#ifndef SPECBOLT_IN_MODULE
 #include <array>
+#endif
+
+#include "Instruction.hpp"
 
 namespace specbolt {
 

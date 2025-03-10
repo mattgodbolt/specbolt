@@ -1,10 +1,12 @@
 #include "z80/Disassembler.hpp"
 
+
+#ifndef SPECBOLT_IN_MODULE
+#include <format>
 #include "peripherals/Memory.hpp"
 #include "z80/Decoder.hpp"
 #include "z80/Instruction.hpp"
-
-#include <format>
+#endif
 
 namespace specbolt {
 

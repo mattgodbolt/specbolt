@@ -1,10 +1,12 @@
 #include "Snapshot.hpp"
 
+#ifndef SPECBOLT_IN_MODULE
 #include <cstdint>
 #include <cstring>
 #include <format>
 #include <fstream>
 #include <stdexcept>
+#endif
 
 namespace specbolt {
 

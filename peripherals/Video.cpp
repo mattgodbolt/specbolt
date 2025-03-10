@@ -1,6 +1,9 @@
-#include "peripherals/Video.hpp"
+#include "Video.hpp"
+
+#ifndef SPECBOLT_IN_MODULE
 #include <algorithm>
 #include <ranges>
+#endif
 
 namespace specbolt {
 

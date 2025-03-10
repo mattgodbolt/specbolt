@@ -1,15 +1,12 @@
 #include "sdl_wrapper.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <iostream>
 
 #include <lyra/lyra.hpp>
 
-#include "Disassembler.hpp"
-#include "Snapshot.hpp"
-#include "peripherals/Video.hpp"
-#include "spectrum/Spectrum.hpp"
-#include "z80/Z80.hpp"
+import spectrum;
 
 int main(int argc, char *argv[]) try {
   std::filesystem::path rom{"48.rom"};

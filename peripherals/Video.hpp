@@ -1,14 +1,17 @@
 #pragma once
 
-#include "peripherals/Memory.hpp"
-
+#ifndef SPECBOLT_IN_MODULE
 #include <array>
 #include <cstdint>
 #include <span>
+#endif
+
+#include "module.hpp"
+#include "Memory.hpp"
 
 namespace specbolt {
 
-class Video {
+SPECBOLT_EXPORT class Video {
 public:
   static constexpr auto Width = 640 - 64;
   static constexpr auto Height = 480 - 48;

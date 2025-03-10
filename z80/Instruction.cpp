@@ -1,9 +1,10 @@
 #include "z80/Instruction.hpp"
 
+#ifndef SPECBOLT_IN_MODULE
+#include <stdexcept>
 #include "z80/Alu.hpp"
 #include "z80/Z80.hpp"
-
-#include <stdexcept>
+#endif
 
 namespace specbolt {
 

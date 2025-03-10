@@ -1,19 +1,23 @@
 #pragma once
 
-#include "peripherals/Memory.hpp"
-#include "z80/Decoder.hpp"
-#include "z80/RegisterFile.hpp"
-
+#ifndef SPECBOLT_IN_MODULE
 #include <array>
 #include <cstdint>
 #include <functional>
 #include <vector>
+#include "peripherals/Memory.hpp"
+#endif
+
+#include "Decoder.hpp"
+#include "RegisterFile.hpp"
+
+#include "module.hpp"
 
 namespace specbolt {
 
 struct Instruction;
 
-class Z80 {
+SPECBOLT_EXPORT class Z80 {
 public:
   explicit Z80(Memory &memory) : memory_(memory) {}
 

@@ -1,4 +1,4 @@
-#include "peripherals/Keyboard.hpp"
+#include "Keyboard.hpp"
 
 namespace specbolt {
 

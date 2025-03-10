@@ -1,4 +1,13 @@
-cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.14...3.30)
+
+set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_EXPERIMENTAL_CXX_IMPORT_STD "0e5b6991-d74f-4b3d-a41c-cf096e0b2508")
+
+set(CMAKE_CXX_STANDARD_REQUIRED OFF)
+set(CMAKE_CXX_MODULE_STD 1)
+
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
 project(specbolt VERSION 0.1 LANGUAGES CXX)
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -6,7 +15,6 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CPM)
 include(dependency)
 include(pedantic-and-modern)
-include(colors)
 
 option(SPECBOLT_TESTS "Build and run tests" ON)
 option(SPECBOLT_CONSOLE "Build specbolt console" ON)

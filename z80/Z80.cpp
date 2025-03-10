@@ -1,10 +1,12 @@
 #include "z80/Z80.hpp"
 
-#include "z80/Decoder.hpp"
 
+#ifndef SPECBOLT_IN_MODULE
 #include <format>
 #include <iostream>
 #include <stdexcept>
+#include "z80/Decoder.hpp"
+#endif
 
 namespace specbolt {
 

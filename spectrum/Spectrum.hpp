@@ -1,5 +1,7 @@
 #pragma once
 
+
+#ifndef SPECBOLT_IN_MODULE
 #include "peripherals/Audio.hpp"
 #include "peripherals/Keyboard.hpp"
 #include "peripherals/Memory.hpp"
@@ -7,10 +9,13 @@
 #include "z80/Z80.hpp"
 
 #include <filesystem>
+#endif
+
+#include "module.hpp"
 
 namespace specbolt {
 
-class Spectrum {
+SPECBOLT_EXPORT class Spectrum {
 public:
   explicit Spectrum(const std::filesystem::path &rom, int audio_sample_rate, bool new_impl);
 

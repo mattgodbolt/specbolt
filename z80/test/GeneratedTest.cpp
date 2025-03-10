@@ -15,7 +15,7 @@ TEST_CASE("Opcode generation tests") {
   auto dis = [](auto... bytes) {
     Memory memory;
 
-    write_to_memory(memory, base_address, bytes...);
+    memory.write_sequence(base_address, bytes...);
 
     const auto [disassembly, length] = disassemble(memory, base_address);
     CHECK(length == sizeof...(bytes));

@@ -1,6 +1,8 @@
 #include "z80/Flags.hpp"
 
+#ifndef SPECBOLT_IN_MODULE
 #include <format>
+#endif
 
 namespace specbolt {
 

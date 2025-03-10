@@ -1,8 +1,9 @@
-#include "spectrum/Spectrum.hpp"
+#include "Spectrum.hpp"
 
+#ifndef SPECBOLT_IN_MODULE
 #include <iostream>
-
 #include "Generated.hpp"
+#endif
 
 namespace specbolt {
 

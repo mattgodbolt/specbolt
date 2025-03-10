@@ -1,5 +1,8 @@
-#include "z80/Alu.hpp"
+#include "Alu.hpp"
+
+#ifndef SPECBOLT_IN_MODULE
 #include <bit>
+#endif
 
 namespace specbolt {
 

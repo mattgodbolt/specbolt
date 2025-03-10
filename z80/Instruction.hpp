@@ -1,15 +1,19 @@
 #pragma once
 
-#include "z80/Alu.hpp"
-#include "z80/Flags.hpp"
-
+#ifndef SPECBOLT_IN_MODULE
 #include <cstdint>
 #include <string_view>
 #include <variant>
+#endif
+
+#include "module.hpp"
+
+#include "Alu.hpp"
+#include "Flags.hpp"
 
 namespace specbolt {
 
-class Z80;
+SPECBOLT_EXPORT class Z80;
 
 struct Instruction {
   enum class Operand {

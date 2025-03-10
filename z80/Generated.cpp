@@ -1,15 +1,18 @@
 #include "z80/Generated.hpp"
 
-#include "z80/RegisterFile.hpp"
-#include "z80/Z80.hpp"
-#include "z80/new/Mnemonic.hpp"
-#include "z80/new/Z80Support.hpp"
-
+#ifndef SPECBOLT_IN_MODULE
 #include <array>
 #include <cstdint>
 #include <format>
 #include <string>
 #include <utility>
+#include "z80/RegisterFile.hpp"
+#include "z80/Z80.hpp"
+#endif
+
+#include "z80/new/Mnemonic.hpp"
+#include "z80/new/Z80Support.hpp"
+
 
 using namespace std::literals;
 

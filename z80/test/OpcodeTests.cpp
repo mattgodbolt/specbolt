@@ -20,7 +20,7 @@ struct OpcodeTester {
   explicit OpcodeTester() { memory.set_rom_size(0); }
 
   void run(auto... bytes) {
-    write_to_memory(memory, z80.pc(), bytes...);
+    memory.write_sequence(z80.pc(), bytes...);
     if (use_new_code)
       decode_and_run(z80);
     else

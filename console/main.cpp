@@ -1,10 +1,7 @@
-#include "peripherals/Memory.hpp"
-#include "peripherals/Video.hpp"
-#include "spectrum/Spectrum.hpp"
-#include "z80/Disassembler.hpp"
-#include "z80/Z80.hpp"
+module;
 
 #include <csignal>
+#include <filesystem>
 #include <format>
 #include <functional>
 #include <iostream>
@@ -20,6 +17,9 @@
 #include <lyra/lyra.hpp>
 #include <readline/history.h>
 #include <readline/readline.h>
+
+import spectrum;
+
 
 namespace {
 

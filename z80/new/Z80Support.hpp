@@ -1,6 +1,8 @@
 #pragma once
 
+#ifndef SPECBOLT_IN_MODULE
 #include <cstdint>
+#endif
 
 #include "z80/Z80.hpp"
 

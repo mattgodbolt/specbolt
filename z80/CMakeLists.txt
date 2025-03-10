@@ -5,7 +5,7 @@ endif ()
 add_library(z80)
 
 target_link_libraries(z80 PUBLIC peripherals)
-target_link_libraries(z80 PUBLIC opt::pedantic opt::c++26)
+target_link_libraries(z80 PUBLIC opt::pedantic opt::c++26 opt::module)
 
 target_sources(z80 PRIVATE
         Alu.cpp
@@ -30,4 +30,10 @@ target_sources(z80 PUBLIC FILE_SET interface TYPE HEADERS FILES
         Generated.hpp
         new/Mnemonic.hpp
         new/Z80Support.hpp
+)
+
+add_library(z80_module)
+target_link_libraries(z80_module PUBLIC peripherals_module opt::pedantic opt::c++26 opt::module)
+target_sources(z80_module PUBLIC FILE_SET module TYPE CXX_MODULES FILES
+  module.cppm
 )

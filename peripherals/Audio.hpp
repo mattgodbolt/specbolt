@@ -1,12 +1,16 @@
 #pragma once
 
+#ifndef SPECBOLT_IN_MODULE
 #include <cstdint>
 #include <span>
 #include <vector>
+#endif
+
+#include "module.hpp"
 
 namespace specbolt {
 
-class Audio {
+SPECBOLT_EXPORT class Audio {
 public:
   explicit Audio(int sample_rate);
 

@@ -1,8 +1,11 @@
 #pragma once
 
+#ifndef SPECBOLT_IN_MODULE
 #include <cstdint>
+#endif
 
-#include "z80/Flags.hpp"
+#include "Flags.hpp"
+
 
 namespace specbolt {
 
