@@ -1,7 +1,8 @@
 #pragma once
 
-#include "Memory.hpp"
 #include "support.hpp"
+
+import z80;
 
 void write_sequence(
     std::uint16_t base_address, specbolt::Memory &memory, std::convertible_to<std::uint8_t> auto... bytes) {

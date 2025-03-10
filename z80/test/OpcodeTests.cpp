@@ -1,13 +1,13 @@
-
-#include "peripherals/Memory.hpp"
-#include "z80/Generated.hpp"
-#include "z80/Z80.hpp"
-
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <cstdint>
 #include <ranges>
+
+import z80;
+import peripherals;
+
+#include "support.hpp"
 
 namespace specbolt {
 

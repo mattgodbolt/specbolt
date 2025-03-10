@@ -5,11 +5,12 @@
 #endif
 
 #include "Flags.hpp"
+#include "module.hpp"
 
 
 namespace specbolt {
 
-class Alu {
+SPECBOLT_EXPORT class Alu {
 public:
   template<typename ResultType>
   struct ResultT {

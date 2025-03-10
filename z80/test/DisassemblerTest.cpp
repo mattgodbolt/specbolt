@@ -1,9 +1,7 @@
-#include "z80/Disassembler.hpp"
-
-#include "peripherals//Memory.hpp"
-#include "z80/Instruction.hpp"
-
 #include <catch2/catch_test_macros.hpp>
+
+import z80;
+import peripherals;
 
 using specbolt::Disassembler;
 using specbolt::Memory;

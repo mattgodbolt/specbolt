@@ -17,6 +17,14 @@ add_library(opt_c++26 INTERFACE)
 add_library(opt::c++26 ALIAS opt_c++26)
 target_compile_features(opt_c++26 INTERFACE cxx_std_26)
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+  # to allow stop_token and jthread in older version of clang (implemented behind flag since 18)
+  if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 20.0)
+    target_compile_options(opt_c++26 INTERFACE -fexperimental-library)
+  endif()
+endif()
+
+
 add_library(opt_module INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cxx-include/module.hpp) 
 add_library(opt::module ALIAS opt_module)
 target_include_directories(opt_module INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cxx-include)

@@ -1,9 +1,9 @@
-#include "z80/Alu.hpp"
-
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_tostring.hpp>
-
 #include <format>
+
+import z80;
+import peripherals;
 
 template<>
 struct Catch::StringMaker<specbolt::Alu::R8> {

@@ -9,12 +9,12 @@ add_executable(
         FlagsTest.cpp
         GeneratedTest.cpp
         OpcodeTests.cpp)
-target_link_libraries(z80_test z80 Catch2::Catch2WithMain)
+target_link_libraries(z80_test z80_module peripherals_module Catch2::Catch2WithMain)
 
 add_test(NAME "Z80 Unit Tests" COMMAND z80_test)
 
 add_executable(zexdoc_test ZexDocTest.cpp)
-target_link_libraries(zexdoc_test PRIVATE z80 lyra)
+target_link_libraries(zexdoc_test PRIVATE z80_module peripherals_module lyra)
 
 if (NOT (CMAKE_BUILD_TYPE STREQUAL "Debug"))
     add_test(NAME "Z80 Regression Test (old implementation)" COMMAND zexdoc_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

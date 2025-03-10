@@ -1,7 +1,8 @@
-#include "z80/RegisterFile.hpp"
-
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
+
+import z80;
+
 
 using specbolt::RegisterFile;
 

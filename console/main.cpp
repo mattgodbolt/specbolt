@@ -1,5 +1,3 @@
-module;
-
 #include <csignal>
 #include <filesystem>
 #include <format>
@@ -19,7 +17,6 @@ module;
 #include <readline/readline.h>
 
 import spectrum;
-
 
 namespace {
 
