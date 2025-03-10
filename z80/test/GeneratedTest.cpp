@@ -11,12 +11,12 @@
 namespace specbolt {
 
 TEST_CASE("Opcode generation tests") {
-  constexpr auto base_address = 0x8000;
+  constexpr auto base_address = 0x8000u;
   auto dis = [](auto... bytes) {
     Memory memory;
-    for (auto &&[index, val]: std::views::enumerate(std::array{bytes...})) {
-      memory.write(static_cast<std::uint16_t>(base_address + index), static_cast<std::uint8_t>(val));
-    }
+
+    write_to_memory(memory, base_address, bytes...);
+
     const auto [disassembly, length] = disassemble(memory, base_address);
     CHECK(length == sizeof...(bytes));
     return disassembly;

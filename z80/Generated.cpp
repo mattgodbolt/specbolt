@@ -622,7 +622,7 @@ constexpr auto instruction<opcode> = SimpleOp<Mnemonic("CB"), [](Z80 &z80) {
   else if constexpr (opcode.hl_set == HlSet::Iy)
     decode_and_run_fdcb(z80);
   else
-    std::unreachable();
+    static_assert(false, "this shouldn't happen");
 }>{};
 
 template<Opcode opcode>
