@@ -1010,21 +1010,35 @@ struct select_cb_instruction {
   static constexpr auto value = cb_instruction<opcode>;
 };
 
-struct build_description {
-  template<auto Opcode>
-  static constexpr auto result = Opcode.mnemonic.view();
+template<typename T>
+concept OpLike = requires(T t) {
+  { t.mnemonic } -> std::same_as<const Mnemonic &>;
+  { t.execute } -> std::invocable<Z80 &>;
 };
 
-struct build_evaluate {
-  template<auto Opcode>
+template<typename T>
+concept BaseOpLike = OpLike<T> && requires(T t) {
+  { t.indirect } -> std::convertible_to<bool>;
+};
+
+struct build_description {
+  template<auto op>
+    requires OpLike<decltype(op)>
+  static constexpr auto result = op.mnemonic.view();
+};
+
+struct build_execute {
+  template<auto op>
+    requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
-    Opcode.execute(z80);
+    op.execute(z80);
   }
 };
 
 struct build_is_indirect {
-  template<auto Opcode>
-  static constexpr bool result = Opcode.indirect;
+  template<auto op>
+    requires BaseOpLike<decltype(op)>
+  static constexpr bool result = op.indirect;
 };
 
 template<typename Builder>
@@ -1052,7 +1066,7 @@ void decode_and_run_cb(Z80 &z80) {
     z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
   }
   // Dispatch and run.
-  cb_table<build_evaluate>[opcode](z80);
+  cb_table<build_execute>[opcode](z80);
 }
 
 void decode_and_run_ed(Z80 &z80) {
@@ -1061,7 +1075,7 @@ void decode_and_run_ed(Z80 &z80) {
   // TODO does refresh in here...
   z80.pass_time(1);
   // Dispatch and run.
-  ed_table<build_evaluate>[opcode](z80);
+  ed_table<build_execute>[opcode](z80);
 }
 
 void decode_and_run_dd(Z80 &z80) {
@@ -1076,7 +1090,7 @@ void decode_and_run_dd(Z80 &z80) {
     z80.regs().wz(address);
   }
   // Dispatch and run.
-  dd_table<build_evaluate>[opcode](z80);
+  dd_table<build_execute>[opcode](z80);
 }
 
 void decode_and_run_fd(Z80 &z80) {
@@ -1091,7 +1105,7 @@ void decode_and_run_fd(Z80 &z80) {
     z80.regs().wz(address);
   }
   // Dispatch and run.
-  fd_table<build_evaluate>[opcode](z80);
+  fd_table<build_execute>[opcode](z80);
 }
 
 void decode_and_run_ddcb(Z80 &z80) {
@@ -1104,7 +1118,7 @@ void decode_and_run_ddcb(Z80 &z80) {
   // TODO does refresh in here...
   z80.pass_time(1);
   // Dispatch and run.
-  ddcb_table<build_evaluate>[opcode](z80);
+  ddcb_table<build_execute>[opcode](z80);
 }
 
 void decode_and_run_fdcb(Z80 &z80) {
@@ -1117,7 +1131,7 @@ void decode_and_run_fdcb(Z80 &z80) {
   // TODO does refresh in here...
   z80.pass_time(1);
   // Dispatch and run.
-  fdcb_table<build_evaluate>[opcode](z80);
+  fdcb_table<build_execute>[opcode](z80);
 }
 
 // TODO the fdcb and ddcb tables miss out on the duplicated encodings and the `res 0,(ix+d,b)` type instructions.
@@ -1133,7 +1147,7 @@ void decode_and_run(Z80 &z80) {
   if (table<build_is_indirect>[opcode])
     z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
   // Dispatch and run.
-  table<build_evaluate>[opcode](z80);
+  table<build_execute>[opcode](z80);
 }
 
 Disassembled disassemble(const Memory &memory, std::uint16_t address) {
