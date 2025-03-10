@@ -1,4 +1,4 @@
-# specbolt
+# specbolt [![specbolt CI](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml)
 
 Yet another ZX Spectrum Emulator. Part of a project for an upcoming C++ talk.
 
