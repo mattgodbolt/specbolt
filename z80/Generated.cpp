@@ -143,6 +143,24 @@ struct TableR<hl_set, true> {
       RegisterFile::R8::A /* NOT REALLY */, RegisterFile::R8::A};
 };
 
+template<HlSet hl_set>
+struct TableRp {
+  static constexpr std::array names = {"bc", "de", IndexReg<hl_set>::name, "sp"};
+  static constexpr std::array high = {
+      RegisterFile::R8::B, RegisterFile::R8::D, IndexReg<hl_set>::high, RegisterFile::R8::SPH};
+  static constexpr std::array low = {
+      RegisterFile::R8::C, RegisterFile::R8::E, IndexReg<hl_set>::low, RegisterFile::R8::SPL};
+  static constexpr std::array highlow = {
+      RegisterFile::R16::BC, RegisterFile::R16::DE, IndexReg<hl_set>::highlow, RegisterFile::R16::SP};
+};
+
+template<HlSet hl_set>
+struct TableRp2 {
+  static constexpr std::array names = {"bc", "de", IndexReg<hl_set>::name, "af"};
+  static constexpr std::array highlow = {
+      RegisterFile::R16::BC, RegisterFile::R16::DE, IndexReg<hl_set>::highlow, RegisterFile::R16::AF};
+};
+
 constexpr auto is_r_indirect(const std::uint8_t index) { return index == 6; }
 
 template<std::uint8_t index, HlSet hl_set, bool no_remap_ixiy_8b>
@@ -174,24 +192,6 @@ template<std::uint8_t y, HlSet hl_set, bool no_remap_ixiy_8b = false>
 constexpr void set_r(Z80 &z80, const std::uint8_t value) {
   OperandGetSetter<y, hl_set, no_remap_ixiy_8b>::set(z80, value);
 }
-
-template<HlSet hl_set>
-struct TableRp {
-  static constexpr std::array names = {"bc", "de", IndexReg<hl_set>::name, "sp"};
-  static constexpr std::array high = {
-      RegisterFile::R8::B, RegisterFile::R8::D, IndexReg<hl_set>::high, RegisterFile::R8::SPH};
-  static constexpr std::array low = {
-      RegisterFile::R8::C, RegisterFile::R8::E, IndexReg<hl_set>::low, RegisterFile::R8::SPL};
-  static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, IndexReg<hl_set>::highlow, RegisterFile::R16::SP};
-};
-
-template<HlSet hl_set>
-struct TableRp2 {
-  static constexpr std::array names = {"bc", "de", IndexReg<hl_set>::name, "af"};
-  static constexpr std::array highlow = {
-      RegisterFile::R16::BC, RegisterFile::R16::DE, IndexReg<hl_set>::highlow, RegisterFile::R16::AF};
-};
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
 template<std::uint8_t>
