@@ -1,4 +1,4 @@
-#pragma once
+module;
 
 #include <SDL.h>
 #include <format>
@@ -8,13 +8,15 @@
 #include <span>
 #include <stdexcept>
 
+export module sdl_wrapper;
+
 // I know it should be implemented somewhere else, but it doesn't matter much
 
-struct sdl_error final : std::runtime_error {
+export struct sdl_error final : std::runtime_error {
   explicit sdl_error(const std::string &message) : std::runtime_error(std::format("{}: {}", message, SDL_GetError())) {}
 };
 
-struct sdl_init {
+export struct sdl_init {
   sdl_init() {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
       throw sdl_error("SDL_Init failed");
@@ -25,20 +27,20 @@ struct sdl_init {
   ~sdl_init() { SDL_Quit(); }
 };
 
-struct sdl_destructor {
+export struct sdl_destructor {
   void operator()(SDL_Window *ptr) const noexcept { SDL_DestroyWindow(ptr); }
   void operator()(SDL_Renderer *ptr) const noexcept { SDL_DestroyRenderer(ptr); }
   void operator()(SDL_Texture *ptr) const noexcept { SDL_DestroyTexture(ptr); }
 };
 
-struct audio_settings {
+export struct audio_settings {
   int frequency = 16000;
   SDL_AudioFormat format = AUDIO_S16;
   Uint8 channels = 1;
   Uint16 samples = 4096;
 };
 
-struct sdl_audio {
+export struct sdl_audio {
   static void disabled_callback(std::span<std::int16_t>) {
     // do nothing
   }
@@ -98,7 +100,7 @@ struct sdl_audio {
   }
 };
 
-template<typename T>
+export template<typename T>
 constexpr auto sdl_resource(T *value) noexcept {
   return std::unique_ptr<T, sdl_destructor>(value);
 }

@@ -1,5 +1,4 @@
-#include "sdl_wrapper.hpp"
-
+#include <SDL.h>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -7,6 +6,7 @@
 #include <lyra/lyra.hpp>
 
 import spectrum;
+import sdl_wrapper;
 
 int main(int argc, char *argv[]) try {
   std::filesystem::path rom{"48.rom"};
