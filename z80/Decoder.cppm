@@ -2,6 +2,10 @@ module;
 
 #include <array>
 #include <cstdint>
+#include <format>
+#include <optional>
+#include <span>
+#include <string_view>
 
 export module z80:decoder;
 

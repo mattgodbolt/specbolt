@@ -24,7 +24,3 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   endif()
 endif()
 
-
-add_library(opt_module INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cxx-include/module.hpp) 
-add_library(opt::module ALIAS opt_module)
-target_include_directories(opt_module INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/cxx-include)

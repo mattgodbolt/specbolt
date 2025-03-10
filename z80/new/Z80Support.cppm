@@ -1,8 +1,10 @@
 module;
 
+#include <cstdint>
+
 export module z80:support;
 
-import :z80;
+import :cpu;
 
 namespace specbolt {
 

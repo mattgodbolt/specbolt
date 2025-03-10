@@ -2,15 +2,17 @@ module;
 
 #include <cstdint>
 #include <functional>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
-export module z80:z80;
+export module z80:cpu;
 
 import peripherals;
 import :flags;
 import :register_file;
 import :instruction;
+import :decoder;
 
 namespace specbolt {
 

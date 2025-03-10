@@ -1,8 +1,14 @@
 module;
 
+#include <array>
+#include <cstdint>
+#include <format>
+#include <string>
+
 export module z80:disassembler;
 
 import :instruction;
+import :decoder;
 import peripherals;
 
 namespace specbolt {

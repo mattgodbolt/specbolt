@@ -3,13 +3,14 @@ if (SPECBOLT_TESTS)
 endif ()
 
 add_library(z80_module)
-target_link_libraries(z80_module PUBLIC peripherals_module opt::pedantic opt::c++26 opt::module)
+target_link_libraries(z80_module PUBLIC peripherals_module opt::pedantic opt::c++26)
 target_sources(z80_module PUBLIC FILE_SET module TYPE CXX_MODULES FILES
-  module.cppm
+  All.cppm
   Alu.cppm
   Flags.cppm
   Instruction.cppm
-  Z80.cppm
+  InstructionImpl.cppm
+  CPU.cppm
   Decoder.cppm
   Disassembler.cppm
   new/Mnemonic.cppm

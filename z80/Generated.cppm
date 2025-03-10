@@ -9,27 +9,30 @@ module;
 
 export module z80:generated;
 
-import peripheral;
-import :z80;
+import peripherals;
+import :support;
+import :mnemonic;
+import :cpu;
+
+using namespace std::string_literals;
 
 namespace specbolt {
 
 
 using Z80_Op = void(Z80 &);
 
-SPECBOLT_EXPORT void decode_and_run(Z80 &z80);
+export void decode_and_run(Z80 &z80);
 
-SPECBOLT_EXPORT struct Disassembled {
+export struct Disassembled {
   std::string disassembly;
   std::size_t length;
 };
 
-SPECBOLT_EXPORT Disassembled disassemble(const Memory &memory, std::uint16_t address);
+export Disassembled disassemble(const Memory &memory, std::uint16_t address);
 
 // For testing.
-SPECBOLT_EXPORT std::bitset<256> is_indirect_for_testing();
+export std::bitset<256> is_indirect_for_testing();
 
-namespace {
 
 void decode_and_run_cb(Z80 &z80);
 void decode_and_run_dd(Z80 &z80);
@@ -1137,7 +1140,6 @@ void decode_and_run_fdcb(Z80 &z80) {
 // TODO the fdcb and ddcb tables miss out on the duplicated encodings and the `res 0,(ix+d,b)` type instructions.
 //   Hopefully won't matter for now...
 
-} // namespace
 
 void decode_and_run(Z80 &z80) {
   // Fetch the first opcode.
