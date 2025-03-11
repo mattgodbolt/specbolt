@@ -182,6 +182,7 @@ struct Load16ImmOp {
 };
 
 template<Mnemonic mnem, auto op, bool ind = false>
+  requires(std::invocable<decltype(op), Z80 &>)
 struct Op {
   static constexpr auto mnemonic = mnem;
   static constexpr auto execute = op;
