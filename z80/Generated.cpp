@@ -1123,7 +1123,7 @@ void decode_and_run_fd(Z80 &z80) {
   z80.pass_time(1);
   // TODO does refresh in here...
   // Dispatch and run.
-  fd_table<build_execute_ixiy<RegisterFile::R16::IX>>[opcode](z80);
+  fd_table<build_execute_ixiy<RegisterFile::R16::IY>>[opcode](z80);
 }
 
 void decode_and_run_ddcb(Z80 &z80) {
