@@ -138,7 +138,7 @@ int Main(const int argc, const char *argv[]) {
           const auto cycles_per_second = static_cast<double>(cycles_elapsed) /
                                          std::chrono::duration_cast<std::chrono::duration<double>>(time_taken).count();
           if (end_time > next_print) {
-            std::print(std::cout, "Cycles/sec: {:.2f} | lag {}\n", cycles_per_second, now - next_frame);
+            std::print(std::cout, "Virtual: {:.2f}MHz | lag {}\n", cycles_per_second / 1'000'000, now - next_frame);
             std::print(
                 std::cout, "Audio over/under: {}/{}\n", spectrum.audio().overruns(), spectrum.audio().underruns());
             next_print = end_time + std::chrono::seconds(1);
