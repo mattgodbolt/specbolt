@@ -114,7 +114,7 @@ struct OperandGetSetter<6, hl_set, no_remap_ixiy_8b> {
 template<HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter<8, hl_set, no_remap_ixiy_8b> {
   constexpr static uint8_t get(Z80 &z80) { return read_immediate(z80); };
-  constexpr static void set(Z80 &z80, std::uint8_t) = delete;
+  constexpr static void set(Z80 &z80, std::uint8_t) = delete("Cannot set immediate value");
 };
 
 template<std::uint8_t y, HlSet hl_set, bool no_remap_ixiy_8b = false>
@@ -128,7 +128,7 @@ constexpr void set_r(Z80 &z80, const std::uint8_t value) {
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
 template<std::uint8_t>
-bool cc_check(Flags flags) = delete;
+bool cc_check(Flags flags) = delete("invalid condition code");
 template<>
 bool cc_check<0>(const Flags flags) {
   return !flags.zero();
@@ -162,29 +162,22 @@ bool cc_check<7>(const Flags flags) {
   return flags.sign();
 }
 
-struct MissingInstruction {};
-
-struct InvalidInstruction {
-  static constexpr Mnemonic mnemonic{"??"};
-  static constexpr void execute(Z80 &) {}
-};
-
-struct NopType {
+struct Nop {
   static constexpr Mnemonic mnemonic{"nop"};
   static constexpr void execute(Z80 &) {}
   static constexpr bool indirect = false;
 };
 
-template<std::uint8_t P, HlSet hl_set>
+template<std::uint8_t p, HlSet hl_set>
 struct Load16ImmOp {
   using TableRp = TableRp<hl_set>;
-  static constexpr Mnemonic mnemonic{"ld "s + TableRp::names[P] + ", $nnnn"};
+  static constexpr Mnemonic mnemonic{"ld "s + TableRp::names[p] + ", $nnnn"};
   static constexpr bool indirect = false;
 
   static constexpr auto execute(Z80 &z80) {
     // TODO: just go straight to low/high? or is there a visible difference?
-    z80.regs().set(TableRp::low[P], read_immediate(z80));
-    z80.regs().set(TableRp::high[P], read_immediate(z80));
+    z80.regs().set(TableRp::low[p], read_immediate(z80));
+    z80.regs().set(TableRp::high[p], read_immediate(z80));
   }
 };
 
@@ -204,22 +197,36 @@ struct Opcode {
   std::uint8_t q;
   HlSet hl_set;
 
-  explicit constexpr Opcode(const std::uint8_t opcode, const HlSet hl_set) :
-      x(opcode >> 6), y((opcode >> 3) & 0x7), z(opcode & 0x7), p(y >> 1), q(y & 1), hl_set(hl_set) {}
+  explicit constexpr Opcode(const std::size_t opcode, const HlSet hl_set) :
+      x(static_cast<std::uint8_t>(opcode) >> 6), y((static_cast<std::uint8_t>(opcode) >> 3) & 0x7),
+      z(static_cast<std::uint8_t>(opcode) & 0x7), p(y >> 1), q(y & 1), hl_set(hl_set) {
+    if (opcode >= 0x100)
+      throw std::runtime_error("Bad opcode");
+  }
 
   [[nodiscard]] constexpr bool is_alu_op() const { return x == 2 || (x == 3 && z == 6); }
   [[nodiscard]] constexpr int alu_op() const { return is_alu_op() ? y : -1; }
   [[nodiscard]] constexpr std::uint8_t alu_input_selector() const { return x == 2 ? z : 8; }
 };
 
+template<Opcode>
+struct MissingInstruction {
+  MissingInstruction() = delete("Instruction not defined");
+};
+
+struct InvalidInstruction {
+  static constexpr Mnemonic mnemonic{"??"};
+  static constexpr void execute(Z80 &) {}
+};
+
 template<Opcode opcode>
-constexpr auto instruction = MissingInstruction{};
+constexpr auto instruction = MissingInstruction<opcode>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // X = 0
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 0 && opcode.z == 0)
-constexpr auto instruction<opcode> = NopType{};
+constexpr auto instruction<opcode> = Nop{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 1 && opcode.z == 0)
@@ -358,13 +365,16 @@ constexpr auto instruction<opcode> = Op<"dec "s + TableR<opcode.hl_set>::names[o
     is_r_indirect(opcode.y)>{};
 
 template<Opcode opcode>
+struct LoadImmediate8 {
+  static constexpr Mnemonic mnemonic{"ld "s + TableR<opcode.hl_set>::names[opcode.y] + ", $nn"};
+  static constexpr auto execute = [](Z80 &z80) { set_r<opcode.y, opcode.hl_set>(z80, read_immediate(z80)); };
+  static constexpr auto indirect = is_r_indirect(opcode.y);
+  static constexpr auto is_load_immediate = true;
+};
+
+template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 6)
-constexpr auto instruction<opcode> = Op<"ld "s + TableR<opcode.hl_set>::names[opcode.y] + ", $nn",
-    [](Z80 &z80) {
-      const auto value = read_immediate((z80));
-      set_r<opcode.y, opcode.hl_set>(z80, value);
-    },
-    is_r_indirect(opcode.y)>{};
+constexpr auto instruction<opcode> = LoadImmediate8<opcode>{};
 
 template<Mnemonic mnem, auto alu_op>
 struct FastAluOp {
@@ -646,7 +656,7 @@ constexpr auto instruction<opcode> = Op<"rst "s + num_table[opcode.y], [](Z80 &z
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // CB prefixed opcodes
 template<Opcode opcode>
-constexpr auto cb_instruction = MissingInstruction{};
+constexpr auto cb_instruction = MissingInstruction<opcode>{};
 
 template<Mnemonic mnem, Opcode opcode, auto rotate_op>
 struct RotateOp {
@@ -985,14 +995,9 @@ constexpr auto ed_instruction<opcode> = InvalidInstruction{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-consteval Opcode convert_opcode(const std::size_t number, const HlSet hl_set) noexcept {
-  return Opcode{static_cast<std::uint8_t>(number), hl_set};
-}
-
 template<typename SelectInstruction, typename Transform, HlSet hl_set>
-constexpr auto generic_table = []<std::size_t... OpcodeNum>(std::index_sequence<OpcodeNum...>) {
-  return std::array{
-      Transform::template result<SelectInstruction::template value<convert_opcode(OpcodeNum, hl_set)>>...};
+constexpr auto generic_table = []<std::size_t... num>(std::index_sequence<num...>) {
+  return std::array{Transform::template result<SelectInstruction::template value<Opcode{num, hl_set}>>...};
 }(std::make_index_sequence<256>());
 
 struct select_base_instruction {
@@ -1035,6 +1040,34 @@ struct build_execute {
   }
 };
 
+template<RegisterFile::R16 ix_or_iy>
+struct build_execute_ixiy {
+  template<auto op>
+    requires OpLike<decltype(op)>
+  static void result(Z80 &z80) {
+    if constexpr (op.indirect) {
+      const auto address = static_cast<std::uint16_t>(z80.regs().get(ix_or_iy) + read_immediate(z80));
+      // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right.
+      // heinous hack here.
+      static constexpr bool is_immediate = requires { op.is_load_immediate; };
+      z80.pass_time(is_immediate ? 2 : 5);
+      z80.regs().wz(address);
+    }
+    op.execute(z80);
+  }
+};
+
+struct build_execute_hl {
+  template<auto op>
+    requires OpLike<decltype(op)>
+  static void result(Z80 &z80) {
+    if constexpr (op.indirect) {
+      z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
+    }
+    op.execute(z80);
+  }
+};
+
 struct build_is_indirect {
   template<auto op>
     requires BaseOpLike<decltype(op)>
@@ -1062,11 +1095,8 @@ void decode_and_run_cb(Z80 &z80) {
   z80.regs().pc(z80.pc() + 1);
   // TODO does refresh in here...
   z80.pass_time(4); // Decode...
-  if (cb_table<build_is_indirect>[opcode]) { // TODO can de-dupe with HL IX IY? maybe?
-    z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
-  }
   // Dispatch and run.
-  cb_table<build_execute>[opcode](z80);
+  cb_table<build_execute_hl>[opcode](z80);
 }
 
 void decode_and_run_ed(Z80 &z80) {
@@ -1083,14 +1113,8 @@ void decode_and_run_dd(Z80 &z80) {
   const auto opcode = read_immediate(z80);
   // TODO does refresh in here...
   z80.pass_time(1);
-  if (table<build_is_indirect>[opcode]) { // TODO can de-dupe with IX IY
-    const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IX) + read_immediate(z80));
-    // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right
-    z80.pass_time(opcode == 0x36 ? 2 : 5);
-    z80.regs().wz(address);
-  }
   // Dispatch and run.
-  dd_table<build_execute>[opcode](z80);
+  dd_table<build_execute_ixiy<RegisterFile::R16::IX>>[opcode](z80);
 }
 
 void decode_and_run_fd(Z80 &z80) {
@@ -1098,14 +1122,8 @@ void decode_and_run_fd(Z80 &z80) {
   const auto opcode = read_immediate(z80);
   z80.pass_time(1);
   // TODO does refresh in here...
-  if (table<build_is_indirect>[opcode]) { // TODO can de-dupe with IX IY
-    const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IY) + read_immediate(z80));
-    // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right
-    z80.pass_time(opcode == 0x36 ? 2 : 5);
-    z80.regs().wz(address);
-  }
   // Dispatch and run.
-  fd_table<build_execute>[opcode](z80);
+  fd_table<build_execute_ixiy<RegisterFile::R16::IX>>[opcode](z80);
 }
 
 void decode_and_run_ddcb(Z80 &z80) {
@@ -1144,10 +1162,8 @@ void decode_and_run(Z80 &z80) {
   const auto opcode = z80.read8(z80.pc());
   z80.regs().pc(z80.pc() + 1);
   z80.pass_time(4); // Decode...
-  if (table<build_is_indirect>[opcode])
-    z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
   // Dispatch and run.
-  table<build_execute>[opcode](z80);
+  table<build_execute_hl>[opcode](z80);
 }
 
 Disassembled disassemble(const Memory &memory, std::uint16_t address) {
