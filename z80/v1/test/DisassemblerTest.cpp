@@ -1,8 +1,12 @@
-#include "z80/v1/Disassembler.hpp"
-
-#include "z80/v1/Instruction.hpp"
-
 #include <catch2/catch_test_macros.hpp>
+
+#ifdef SPECBOLT_MODULES
+import z80v1;
+#else
+#include "z80/v1/Disassembler.hpp"
+#include "z80/v1/Instruction.hpp"
+#endif
+
 
 #ifdef SPECBOLT_MODULES
 import peripherals;

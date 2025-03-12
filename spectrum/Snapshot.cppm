@@ -12,12 +12,11 @@ module;
 #include <type_traits>
 #include <vector>
 
-#include "z80/common/Flags.hpp"
-#include "z80/common/Z80Base.hpp"
 
 export module spectrum:Snapshot;
 
 import peripherals;
+import z80_common;
 
 #include "spectrum/Snapshot.hpp"
 

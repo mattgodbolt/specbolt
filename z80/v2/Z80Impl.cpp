@@ -1,4 +1,6 @@
+#ifndef SPECBOLT_MODULES
 #include "z80/v2/Z80Impl.hpp"
+#endif
 
 namespace specbolt::v2::impl {
 

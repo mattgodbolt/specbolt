@@ -6,9 +6,6 @@ add_library(z80_v1)
 
 target_link_libraries(z80_v1 PUBLIC z80_common peripherals)
 target_link_libraries(z80_v1 PUBLIC opt::pedantic opt::c++26)
-target_include_directories(z80_v1 PUBLIC include)
-
-
 
 if (SPECBOLT_MODULES)
     target_include_directories(z80_v1 PRIVATE include)
@@ -22,8 +19,11 @@ if (SPECBOLT_MODULES)
             Instruction.cppm
             InstructionImpl.cppm
             Z80.cppm
+            module.cppm
     )
 else ()
+  target_include_directories(z80_v1 PUBLIC include)
+
   target_sources(z80_v1 PRIVATE
           Disassembler.cpp
           Instruction.cpp

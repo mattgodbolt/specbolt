@@ -1,6 +1,3 @@
-#include "z80/v1/Disassembler.hpp"
-#include "z80/v1/Z80.hpp"
-
 #include <csignal>
 #include <format>
 #include <functional>
@@ -21,10 +18,13 @@
 #ifdef SPECBOLT_MODULES
 import peripherals;
 import spectrum;
+import z80v1;
 #else
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
+#include "z80/v1/Disassembler.hpp"
+#include "z80/v1/Z80.hpp"
 #endif
 
 namespace {

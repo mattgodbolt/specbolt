@@ -8,11 +8,10 @@ module;
 #include <span>
 #include <type_traits>
 
-#include "z80/common/Flags.hpp"
-#include "z80/common/RegisterFile.hpp"
 
 export module spectrum:Spectrum;
 
 import peripherals;
+import z80_common;
 
 #include "spectrum/Spectrum.hpp"

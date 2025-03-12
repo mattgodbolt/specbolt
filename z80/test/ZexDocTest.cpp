@@ -1,8 +1,14 @@
 #include <iostream>
 
+#ifdef SPECBOLT_MODULES
+import z80v1;
+import z80v2;
+import z80_common;
+#else
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
+#endif
 
 #include <filesystem>
 #include <format>

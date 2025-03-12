@@ -1,6 +1,11 @@
 #include <iostream>
 
+#ifdef SPECBOLT_MODULES
+import z80v2;
+#else
 #include "z80/v2/Disassembler.hpp"
+#endif
+
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>

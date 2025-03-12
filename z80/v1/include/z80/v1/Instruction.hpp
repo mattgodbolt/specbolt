@@ -11,7 +11,7 @@
 
 namespace specbolt::v1 {
 
-class Z80;
+SPECBOLT_EXPORT class Z80;
 
 struct Instruction {
   enum class Operand {
