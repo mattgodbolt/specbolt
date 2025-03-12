@@ -2,7 +2,11 @@
 
 #include "z80/v2/Z80Impl.hpp"
 
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
 #include "peripherals/Memory.hpp"
+#endif
 
 namespace specbolt::v2 {
 

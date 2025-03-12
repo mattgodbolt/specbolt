@@ -4,11 +4,12 @@ module;
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <span>
 #include <type_traits>
 
-import peripherals:Memory;
-
 export module peripherals:Video;
+
+import :Memory;
 
 #include "peripherals/Video.hpp"
 

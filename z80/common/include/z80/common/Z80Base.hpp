@@ -3,15 +3,18 @@
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 
-#include <array>
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
+#include "peripherals/Memory.hpp"
+#endif
+
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <vector>
 
 namespace specbolt {
-
-class Memory;
 
 // Non-virtual base class for Z80 implementations.
 class Z80Base {

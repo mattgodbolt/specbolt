@@ -1,9 +1,13 @@
 #pragma once
 
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
 #include "peripherals/Audio.hpp"
 #include "peripherals/Keyboard.hpp"
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
+#endif
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 

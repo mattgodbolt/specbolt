@@ -5,7 +5,11 @@
 
 #include <lyra/lyra.hpp>
 
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
 #include "peripherals/Video.hpp"
+#endif
 #include "spectrum/Snapshot.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v1/Disassembler.hpp"
