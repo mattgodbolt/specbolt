@@ -1093,10 +1093,9 @@ constexpr auto ed_table = generic_table<select_ed_instruction, Builder, HlSet::B
 
 void decode_and_run_cb(Z80 &z80) {
   // Fetch the next opcode.
-  const auto opcode = z80.read8(z80.pc());
-  z80.regs().pc(z80.pc() + 1);
+  const auto opcode = z80.read_immediate();
   // TODO does refresh in here...
-  z80.pass_time(4); // Decode...
+  z80.pass_time(1); // Decode...
   // Dispatch and run.
   cb_table<build_execute_hl>[opcode](z80);
 }
@@ -1161,9 +1160,8 @@ void decode_and_run_fdcb(Z80 &z80) {
 
 void decode_and_run(Z80 &z80) {
   // Fetch the first opcode.
-  const auto opcode = z80.read8(z80.pc());
-  z80.regs().pc(z80.pc() + 1);
-  z80.pass_time(4); // Decode...
+  const auto opcode = z80.read_immediate();
+  z80.pass_time(1); // Decode...
   // Dispatch and run.
   table<build_execute_hl>[opcode](z80);
 }

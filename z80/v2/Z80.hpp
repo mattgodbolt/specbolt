@@ -18,11 +18,6 @@ public:
 
   void execute_one();
 
-  void push16(std::uint16_t value);
-  [[nodiscard]] std::uint16_t pop16();
-  void push8(std::uint8_t value);
-  [[nodiscard]] std::uint8_t pop8();
-
   void interrupt();
 
   void branch(std::int8_t offset);

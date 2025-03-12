@@ -31,31 +31,6 @@ void Z80::execute_one() {
 
 void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
 
-void Z80::push16(const std::uint16_t value) {
-  push8(static_cast<std::uint8_t>(value >> 8));
-  push8(static_cast<std::uint8_t>(value));
-}
-
-std::uint16_t Z80::pop16() {
-  const auto low = pop8();
-  const auto high = pop8();
-  return static_cast<std::uint16_t>(high << 8) | low;
-}
-
-void Z80::push8(const std::uint8_t value) {
-  // todo maybe account for time here instead of in the instructions?
-  const auto new_sp = static_cast<std::uint16_t>(regs_.sp() - 1);
-  write8(new_sp, value);
-  regs_.sp(new_sp);
-}
-
-std::uint8_t Z80::pop8() {
-  // todo maybe account for time here instead of in the instructions?
-  const auto old_sp = regs_.sp();
-  regs_.sp(static_cast<std::uint16_t>(old_sp + 1));
-  return read8(old_sp);
-}
-
 std::vector<RegisterFile> Z80::history() const {
   std::vector<RegisterFile> result;
   const auto num_entries = std::min(RegHistory, num_instructions_executed());
@@ -91,7 +66,8 @@ void Z80::interrupt() {
   }
   iff1_ = iff2_ = false;
   pass_time(7);
-  push16(registers().pc());
+  regs().sp(regs().sp() - 2);
+  write16(registers().sp(), registers().pc());
   switch (irq_mode_) {
     case 0:
     case 1: registers().pc(0x38); break;

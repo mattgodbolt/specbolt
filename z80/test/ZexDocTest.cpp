@@ -109,7 +109,9 @@ struct ZexDocTest {
           default: throw std::runtime_error("Unsupported CPM function");
         }
         // Fake out a RET.
-        z80.registers().pc(z80.pop16());
+        const auto sp = z80.registers().sp();
+        z80.registers().pc(memory.read16(sp));
+        z80.registers().sp(sp + 2);
       }
     }
     std::print(std::cout, "\n---\n");
