@@ -6,7 +6,7 @@ module;
 #include <filesystem>
 #include <type_traits>
 
-import module peripherals:Memory;
+import peripherals:Memory;
 
 export module peripherals:Video;
 
