@@ -14,7 +14,7 @@ public:
   void set_output(std::size_t total_cycles, bool beeper_on, bool tape_on);
 
   auto sample_rate() const { return sample_rate_; }
-  void fill(size_t total_cycles, std::span<std::int16_t> span);
+  std::span<std::int16_t> fill(size_t total_cycles, std::span<std::int16_t> span);
 
   [[nodiscard]] auto underruns() const { return underruns_; }
   [[nodiscard]] auto overruns() const { return overruns_; }

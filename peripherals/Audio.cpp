@@ -28,7 +28,7 @@ void Audio::set_output(const std::size_t total_cycles, const bool beeper_on, con
   current_output_ = output;
 }
 
-void Audio::fill(const size_t total_cycles, const std::span<std::int16_t> span) {
+std::span<std::int16_t> Audio::fill(const size_t total_cycles, const std::span<std::int16_t> span) {
   update(total_cycles);
   if (const auto behind = write_pos_ - read_pos_; behind > audio_.size())
     read_pos_ = write_pos_ - audio_.size();
@@ -38,11 +38,15 @@ void Audio::fill(const size_t total_cycles, const std::span<std::int16_t> span) 
     span[i] = audio_[read_pos_ % audio_.size()];
     read_pos_++;
   }
+
+  auto result = span.subspan(to_copy);
+
   if (to_copy < span.size()) {
-    std::ranges::fill(span.subspan(to_copy), current_output_);
+    std::ranges::fill(result, current_output_);
     underruns_ += span.size() - to_copy;
   }
   cycle_count_ = total_cycles;
+  return result;
 }
 
 } // namespace specbolt
