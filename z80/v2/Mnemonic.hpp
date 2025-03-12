@@ -5,7 +5,7 @@
 #include <string>
 #include <string_view>
 
-namespace specbolt::v2 {
+namespace specbolt::v2::impl {
 
 struct Mnemonic {
   std::array<char, 15> storage{};
@@ -27,4 +27,4 @@ struct Mnemonic {
   [[nodiscard]] constexpr std::string str() const { return {storage.data(), len}; }
 };
 
-} // namespace specbolt::v2
+} // namespace specbolt::v2::impl

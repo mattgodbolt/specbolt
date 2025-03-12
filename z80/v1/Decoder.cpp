@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace specbolt::v1 {
+namespace specbolt::v1::impl {
 
 namespace {
 
@@ -590,4 +590,4 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
   return invalid;
 }
 
-} // namespace specbolt::v1
+} // namespace specbolt::v1::impl

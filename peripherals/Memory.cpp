@@ -1,4 +1,4 @@
-#include "Memory.hpp"
+#include "peripherals/Memory.hpp"
 
 #include <cstring>
 #include <fstream>

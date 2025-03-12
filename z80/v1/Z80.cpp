@@ -1,6 +1,6 @@
 #include "z80/v1/Z80.hpp"
 
-#include "Decoder.hpp"
+#include "z80/v1/Decoder.hpp"
 
 #include <iostream>
 #include <stdexcept>
@@ -20,7 +20,7 @@ std::size_t Z80::execute_one() {
   const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
   const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
-  const auto decoded = decode(opcodes);
+  const auto decoded = impl::decode(opcodes);
   pass_time(4);
   regs_.pc(initial_pc + decoded.length); // NOT RIGHT
   try {

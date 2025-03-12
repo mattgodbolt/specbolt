@@ -1,18 +1,15 @@
 #pragma once
 
-#include "Decoder.hpp"
 #include "peripherals/Memory.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/common/Z80Base.hpp"
+#include "z80/v1/Instruction.hpp"
 
 #include <array>
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 namespace specbolt::v1 {
-
-struct Instruction;
 
 class Z80 : public Z80Base {
 public:

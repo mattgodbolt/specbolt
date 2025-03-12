@@ -1,6 +1,7 @@
 add_library(peripherals)
 
 target_link_libraries(peripherals PUBLIC opt::pedantic opt::c++26)
+target_include_directories(peripherals PUBLIC include)
 
 target_sources(peripherals PRIVATE
         Audio.cpp
@@ -10,8 +11,8 @@ target_sources(peripherals PRIVATE
 )
 
 target_sources(peripherals PUBLIC FILE_SET interface TYPE HEADERS FILES
-        Audio.hpp
-        Memory.hpp
-        Video.hpp
-        Keyboard.hpp
+        include/peripherals/Audio.hpp
+        include/peripherals/Memory.hpp
+        include/peripherals/Video.hpp
+        include/peripherals/Keyboard.hpp
 )

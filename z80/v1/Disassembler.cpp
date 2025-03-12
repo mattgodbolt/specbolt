@@ -12,7 +12,7 @@ namespace specbolt::v1 {
 Disassembler::Disassembled Disassembler::disassemble(const std::uint16_t address) const {
   const std::array opcodes{
       memory_.read(address), memory_.read(address + 1), memory_.read(address + 2), memory_.read(address + 3)};
-  return {decode(opcodes), address, opcodes};
+  return {impl::decode(opcodes), address, opcodes};
 }
 
 std::string Disassembler::Disassembled::to_string() const {

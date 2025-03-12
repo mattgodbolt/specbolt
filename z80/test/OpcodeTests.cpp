@@ -1,6 +1,6 @@
+#include "../v2/include/z80/v2/Z80.hpp"
 #include "peripherals/Memory.hpp"
 #include "z80/v1/Z80.hpp"
-#include "z80/v2/Z80.hpp"
 
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
