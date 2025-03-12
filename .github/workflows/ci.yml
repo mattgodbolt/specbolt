@@ -23,8 +23,7 @@ jobs:
       - name: install clang
         run: |
           wget https://apt.llvm.org/llvm.sh
-          sudo bash llvm.sh ${{ matrix.clang_version }}
-          sudo apt install -y clang-tools-${{ matrix.clang_version }}
+          sudo bash llvm.sh ${{ matrix.clang_version }} all
           echo "CC=clang-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
           echo "CXX=clang++-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
       - name: Build
