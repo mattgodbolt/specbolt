@@ -54,6 +54,37 @@ std::uint16_t Z80::read_immediate16() {
   const auto high = read_immediate();
   return static_cast<std::uint16_t>(high << 8 | low);
 }
+void Z80::write(const std::uint16_t address, const std::uint8_t byte) {
+  pass_time(3);
+  memory_.write(address, byte);
+}
+
+std::uint8_t Z80::read(const std::uint16_t address) {
+  pass_time(3);
+  return memory_.read(address);
+}
+
+std::uint8_t Z80::pop8() {
+  const auto value = read(regs_.sp());
+  regs_.sp(regs_.sp() + 1);
+  return value;
+}
+
+std::uint16_t Z80::pop16() {
+  const auto low = pop8();
+  const auto high = pop8();
+  return static_cast<std::uint16_t>(high << 8 | low);
+}
+
+void Z80::push8(const std::uint8_t value) {
+  regs_.sp(regs_.sp() - 1);
+  write(regs_.sp(), value);
+}
+
+void Z80::push16(const std::uint16_t value) {
+  push8(static_cast<std::uint8_t>(value >> 8));
+  push8(static_cast<std::uint8_t>(value));
+}
 
 void Z80::interrupt() {
   if (!iff1_)

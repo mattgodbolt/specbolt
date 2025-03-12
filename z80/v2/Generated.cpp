@@ -4,7 +4,6 @@
 #include "z80/common/RegisterFile.hpp"
 #include "z80/v2/Mnemonic.hpp"
 #include "z80/v2/Z80.hpp"
-#include "z80/v2/Z80Support.hpp"
 
 #include <array>
 #include <cstdint>
@@ -108,8 +107,8 @@ struct OperandGetSetter {
 // Special case for indirect indexed register.
 template<HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter<6, hl_set, no_remap_ixiy_8b> {
-  constexpr static uint8_t get(Z80 &z80) { return read(z80, z80.regs().wz()); }
-  constexpr static void set(Z80 &z80, const std::uint8_t value) { write(z80, z80.regs().wz(), value); }
+  constexpr static uint8_t get(Z80 &z80) { return z80.read(z80.regs().wz()); }
+  constexpr static void set(Z80 &z80, const std::uint8_t value) { z80.write(z80.regs().wz(), value); }
 };
 
 template<HlSet hl_set, bool no_remap_ixiy_8b>
@@ -284,45 +283,45 @@ constexpr auto instruction<opcode> =
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 0)
 constexpr auto instruction<opcode> = Op<"ld (bc), a",
-    [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::BC), z80.regs().get(RegisterFile::R8::A)); }>{};
+    [](Z80 &z80) { z80.write(z80.regs().get(RegisterFile::R16::BC), z80.regs().get(RegisterFile::R8::A)); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 1)
 constexpr auto instruction<opcode> = Op<"ld (de), a",
-    [](Z80 &z80) { write(z80, z80.regs().get(RegisterFile::R16::DE), z80.regs().get(RegisterFile::R8::A)); }>{};
+    [](Z80 &z80) { z80.write(z80.regs().get(RegisterFile::R16::DE), z80.regs().get(RegisterFile::R8::A)); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 2)
 constexpr auto instruction<opcode> = Op<"ld ($nnnn), "s + IndexReg<opcode.hl_set>::name, [](Z80 &z80) {
   const auto address = z80.read_immediate16();
-  write(z80, address, z80.regs().get(IndexReg<opcode.hl_set>::low));
-  write(z80, address + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
+  z80.write(address, z80.regs().get(IndexReg<opcode.hl_set>::low));
+  z80.write(address + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 3)
 constexpr auto instruction<opcode> = Op<"ld ($nnnn), a", [](Z80 &z80) {
   const auto address = z80.read_immediate16();
-  write(z80, address, z80.regs().get(RegisterFile::R8::A));
+  z80.write(address, z80.regs().get(RegisterFile::R8::A));
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 0)
 constexpr auto instruction<opcode> = Op<"ld a, (bc)",
-    [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::BC))); }>{};
+    [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, z80.read(z80.regs().get(RegisterFile::R16::BC))); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 1)
 constexpr auto instruction<opcode> = Op<"ld a, (de)",
-    [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, read(z80, z80.regs().get(RegisterFile::R16::DE))); }>{};
+    [](Z80 &z80) { z80.regs().set(RegisterFile::R8::A, z80.read(z80.regs().get(RegisterFile::R16::DE))); }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 2)
 constexpr auto instruction<opcode> = Op<"ld "s + IndexReg<opcode.hl_set>::name + ", ($nnnn)", [](Z80 &z80) {
   const auto address = z80.read_immediate16();
-  z80.regs().set(IndexReg<opcode.hl_set>::low, read(z80, address));
-  z80.regs().set(IndexReg<opcode.hl_set>::high, read(z80, address + 1));
+  z80.regs().set(IndexReg<opcode.hl_set>::low, z80.read(address));
+  z80.regs().set(IndexReg<opcode.hl_set>::high, z80.read(address + 1));
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 3)
 constexpr auto instruction<opcode> = Op<"ld a, ($nnnn)", [](Z80 &z80) {
   const auto address = z80.read_immediate16();
-  z80.regs().set(RegisterFile::R8::A, read(z80, address));
+  z80.regs().set(RegisterFile::R8::A, z80.read(address));
 }>{};
 
 template<Opcode opcode>
@@ -496,7 +495,7 @@ template<Opcode opcode>
 constexpr auto instruction<opcode> = Op<"ret "s + cc_names[opcode.y], [](Z80 &z80) {
   z80.pass_time(1);
   if (cc_check<opcode.y>(z80.flags())) {
-    const auto return_address = pop16(z80);
+    const auto return_address = z80.pop16();
     z80.regs().pc(return_address);
   }
 }>{};
@@ -504,14 +503,14 @@ constexpr auto instruction<opcode> = Op<"ret "s + cc_names[opcode.y], [](Z80 &z8
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 0)
 constexpr auto instruction<opcode> = Op<"pop "s + TableRp2<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
-  const auto result = pop16(z80);
+  const auto result = z80.pop16();
   z80.regs().set(TableRp2<opcode.hl_set>::highlow[opcode.p], result);
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 1 && opcode.q == 1 && opcode.p == 0)
 constexpr auto instruction<opcode> = Op<"ret", [](Z80 &z80) {
-  const auto return_address = pop16(z80);
+  const auto return_address = z80.pop16();
   z80.regs().pc(return_address);
 }>{};
 
@@ -580,12 +579,12 @@ constexpr auto instruction<opcode> = Op<"in a, ($nn)", [](Z80 &z80) {
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 4)
 constexpr auto instruction<opcode> = Op<"ex (sp), "s + IndexReg<opcode.hl_set>::name, [](Z80 &z80) {
-  const auto sp_old_low = read(z80, z80.regs().sp());
+  const auto sp_old_low = z80.read(z80.regs().sp());
   z80.pass_time(1);
-  const auto sp_old_high = read(z80, z80.regs().sp() + 1);
-  write(z80, z80.regs().sp(), z80.regs().get(IndexReg<opcode.hl_set>::low));
+  const auto sp_old_high = z80.read(z80.regs().sp() + 1);
+  z80.write(z80.regs().sp(), z80.regs().get(IndexReg<opcode.hl_set>::low));
   z80.pass_time(2);
-  write(z80, z80.regs().sp() + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
+  z80.write(z80.regs().sp() + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
   z80.regs().set(IndexReg<opcode.hl_set>::highlow, static_cast<std::uint16_t>(sp_old_low | sp_old_high << 8));
 }>{};
 
@@ -614,7 +613,7 @@ constexpr auto instruction<opcode> = Op<"call "s + cc_names[opcode.y] + ", $nnnn
   const auto jump_address = z80.read_immediate16();
   if (cc_check<opcode.y>(z80.flags())) {
     z80.pass_time(1);
-    push16(z80, z80.pc());
+    z80.push16(z80.pc());
     z80.regs().pc(jump_address);
   }
 }>{};
@@ -623,7 +622,7 @@ template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 0)
 constexpr auto instruction<opcode> = Op<"push "s + TableRp2<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
   z80.pass_time(1);
-  push16(z80, z80.regs().get(TableRp2<opcode.hl_set>::highlow[opcode.p]));
+  z80.push16(z80.regs().get(TableRp2<opcode.hl_set>::highlow[opcode.p]));
 }>{};
 
 template<Opcode opcode>
@@ -631,7 +630,7 @@ template<Opcode opcode>
 constexpr auto instruction<opcode> = Op<"call $nnnn", [](Z80 &z80) {
   const auto jump_address = z80.read_immediate16();
   z80.pass_time(1);
-  push16(z80, z80.pc());
+  z80.push16(z80.pc());
   z80.regs().pc(jump_address);
 }>{};
 
@@ -650,7 +649,7 @@ template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 7)
 constexpr auto instruction<opcode> = Op<"rst "s + num_table[opcode.y], [](Z80 &z80) {
   z80.pass_time(1);
-  push16(z80, z80.pc());
+  z80.push16(z80.pc());
   z80.regs().pc(opcode.y * 8);
 }>{};
 
@@ -810,8 +809,8 @@ template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 3 && opcode.q == 0)
 constexpr auto ed_instruction<opcode> = Op<"ld ($nnnn), "s + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
   const auto addr = z80.read_immediate16();
-  write(z80, addr, z80.regs().get(TableRp<opcode.hl_set>::low[opcode.p]));
-  write(z80, addr + 1, z80.regs().get(TableRp<opcode.hl_set>::high[opcode.p]));
+  z80.write(addr, z80.regs().get(TableRp<opcode.hl_set>::low[opcode.p]));
+  z80.write(addr + 1, z80.regs().get(TableRp<opcode.hl_set>::high[opcode.p]));
 }>{};
 
 template<Opcode opcode>
@@ -819,8 +818,8 @@ template<Opcode opcode>
 constexpr auto ed_instruction<opcode> =
     Op<"ld "s + TableRp<opcode.hl_set>::names[opcode.p] + ", ($nnnn)", [](Z80 &z80) {
       const auto addr = z80.read_immediate16();
-      z80.regs().set(TableRp<opcode.hl_set>::low[opcode.p], read(z80, addr));
-      z80.regs().set(TableRp<opcode.hl_set>::high[opcode.p], read(z80, addr + 1));
+      z80.regs().set(TableRp<opcode.hl_set>::low[opcode.p], z80.read(addr));
+      z80.regs().set(TableRp<opcode.hl_set>::high[opcode.p], z80.read(addr + 1));
     }>{};
 
 template<Opcode opcode>
@@ -835,14 +834,14 @@ template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 5 && opcode.y != 1)
 constexpr auto ed_instruction<opcode> = Op<"retn", [](Z80 &z80) {
   z80.iff1(z80.iff2());
-  const auto return_address = pop16(z80);
+  const auto return_address = z80.pop16();
   z80.regs().pc(return_address);
 }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 5 && opcode.y == 1)
 constexpr auto ed_instruction<opcode> = Op<"reti", [](Z80 &z80) {
-  const auto return_address = pop16(z80);
+  const auto return_address = z80.pop16();
   z80.regs().pc(return_address);
 }>{};
 
@@ -888,12 +887,12 @@ template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 4)
 constexpr auto ed_instruction<opcode> = Op<"rrd", [](Z80 &z80) {
   const auto address = z80.regs().get(RegisterFile::R16::HL);
-  const auto ind_hl = read(z80, address);
+  const auto ind_hl = z80.read(address);
   const auto prev_a = z80.registers().get(RegisterFile::R8::A);
   const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | (ind_hl & 0xf));
   z80.registers().set(RegisterFile::R8::A, new_a);
   z80.pass_time(4);
-  write(z80, address, static_cast<std::uint8_t>(ind_hl >> 4 | ((prev_a & 0xf) << 4)));
+  z80.write(address, static_cast<std::uint8_t>(ind_hl >> 4 | ((prev_a & 0xf) << 4)));
   z80.flags(z80.flags() & Flags::Carry() | Alu::parity_flags_for(new_a));
 }>{};
 
@@ -901,12 +900,12 @@ template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 7 && opcode.y == 5)
 constexpr auto ed_instruction<opcode> = Op<"rld", [](Z80 &z80) {
   const auto address = z80.regs().get(RegisterFile::R16::HL);
-  const auto ind_hl = read(z80, address);
+  const auto ind_hl = z80.read(address);
   const auto prev_a = z80.registers().get(RegisterFile::R8::A);
   const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | ((ind_hl >> 4) & 0xf));
   z80.registers().set(RegisterFile::R8::A, new_a);
   z80.pass_time(4);
-  write(z80, address, static_cast<std::uint8_t>(ind_hl << 4 | (prev_a & 0xf)));
+  z80.write(address, static_cast<std::uint8_t>(ind_hl << 4 | (prev_a & 0xf)));
   z80.flags(z80.flags() & Flags::Carry() | Alu::parity_flags_for(new_a));
 }>{};
 
@@ -917,10 +916,10 @@ struct BlockLoadOp {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
     z80.regs().set(RegisterFile::R16::HL, hl + add);
-    const auto byte = read(z80, hl);
+    const auto byte = z80.read(hl);
     const auto de = z80.regs().get(RegisterFile::R16::DE);
     z80.regs().set(RegisterFile::R16::DE, de + add);
-    write(z80, de, byte);
+    z80.write(de, byte);
     z80.pass_time(2);
     // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
     const auto flag_bits = static_cast<std::uint8_t>(byte + z80.registers().get(RegisterFile::R8::A));
@@ -952,7 +951,7 @@ struct BlockCompareOp {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
     z80.regs().set(RegisterFile::R16::HL, hl + add);
-    const auto byte = read(z80, hl);
+    const auto byte = z80.read(hl);
 
     const auto [result, subtract_flags] = Alu::sub8(z80.registers().get(RegisterFile::R8::A), byte, false);
 

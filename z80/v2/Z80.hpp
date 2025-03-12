@@ -27,6 +27,13 @@ public:
   std::uint8_t read_immediate();
   std::uint16_t read_immediate16();
 
+  void write(std::uint16_t address, std::uint8_t byte);
+  std::uint8_t read(std::uint16_t address);
+  std::uint8_t pop8();
+  std::uint16_t pop16();
+  void push8(std::uint8_t value);
+  void push16(std::uint16_t value);
+
 private:
   static constexpr std::size_t RegHistory = 8z;
   std::array<RegisterFile, RegHistory> reg_history_{};

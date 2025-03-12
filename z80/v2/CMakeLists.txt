@@ -17,5 +17,4 @@ target_sources(z80_v2 PUBLIC FILE_SET interface TYPE HEADERS FILES
         Z80.hpp
         Generated.hpp
         Mnemonic.hpp
-        Z80Support.hpp
 )
