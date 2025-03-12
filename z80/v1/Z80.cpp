@@ -34,13 +34,6 @@ std::size_t Z80::execute_one() {
   return now_tstates_ - initial_time;
 }
 
-Flags Z80::flags() const { return Flags(regs_.get(RegisterFile::R8::F)); }
-void Z80::flags(const Flags flags) { regs_.set(RegisterFile::R8::F, flags.to_u8()); }
-
-std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read(address); }
-std::uint16_t Z80::read16(const std::uint16_t address) const { return memory_.read16(address); }
-
-void Z80::pass_time(const size_t tstates) { now_tstates_ += tstates; }
 void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
 
 std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t index_offset) {
@@ -182,30 +175,6 @@ void Z80::write(const Instruction::Operand operand, const std::int8_t index_offs
   }
 }
 
-void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
-void Z80::write16(const std::uint16_t address, const std::uint16_t value) { memory_.write16(address, value); }
-
-void Z80::halt() {
-  halted_ = true;
-  registers().pc(registers().pc() - 1);
-}
-void Z80::irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
-
-void Z80::out(const std::uint16_t port, const std::uint8_t value) {
-  for (const auto &handler: out_handlers_)
-    handler(port, value);
-}
-
-std::uint8_t Z80::in(const std::uint16_t port) {
-  uint8_t combined_result = 0xff;
-  for (const auto &handler: in_handlers_) {
-    if (const auto result = handler(port); result.has_value())
-      combined_result &= *result;
-  }
-  return combined_result;
-}
-
-void Z80::dump() const { regs_.dump(std::cout, ""); }
 
 void Z80::push16(const std::uint16_t value) {
   push8(static_cast<std::uint8_t>(value >> 8));
@@ -231,10 +200,6 @@ std::uint8_t Z80::pop8() {
   regs_.sp(static_cast<std::uint16_t>(old_sp + 1));
   return read8(old_sp);
 }
-
-void Z80::add_out_handler(OutHandler handler) { out_handlers_.emplace_back(std::move(handler)); }
-
-void Z80::add_in_handler(InHandler handler) { in_handlers_.emplace_back(std::move(handler)); }
 
 std::vector<RegisterFile> Z80::history() const {
   std::vector<RegisterFile> result;
