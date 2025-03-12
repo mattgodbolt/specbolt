@@ -4,9 +4,8 @@ specbolt_dependency(Catch2 "gh:catchorg/Catch2@3.8.0")
 add_executable(
         z80_test
         DisassemblerTest.cpp
-        GeneratedTest.cpp
         OpcodeTests.cpp)
-target_link_libraries(z80_test z80 Catch2::Catch2WithMain)
+target_link_libraries(z80_test z80 z80_v2 Catch2::Catch2WithMain)
 
 add_test(NAME "Z80 Unit Tests" COMMAND z80_test)
 

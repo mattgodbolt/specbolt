@@ -1,9 +1,10 @@
-#include "z80/Generated.hpp"
+#include "z80/v2/Generated.hpp"
 
-#include "common/RegisterFile.hpp"
-#include "z80/Z80.hpp"
-#include "z80/new/Mnemonic.hpp"
-#include "z80/new/Z80Support.hpp"
+#include "z80/common/Alu.hpp"
+#include "z80/common/RegisterFile.hpp"
+#include "z80/v2/Mnemonic.hpp"
+#include "z80/v2/Z80.hpp"
+#include "z80/v2/Z80Support.hpp"
 
 #include <array>
 #include <cstdint>
@@ -13,7 +14,7 @@
 
 using namespace std::literals;
 
-namespace specbolt {
+namespace specbolt::v2 {
 
 namespace {
 
@@ -1233,4 +1234,4 @@ std::bitset<256> is_indirect_for_testing() {
   return result;
 }
 
-} // namespace specbolt
+} // namespace specbolt::v2

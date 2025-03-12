@@ -2,13 +2,11 @@
 
 #include <cstdint>
 
-#include "z80/Z80.hpp"
+#include "z80/v2/Z80.hpp"
 
-namespace specbolt {
+namespace specbolt::v2 {
 
-// TODO put these on the z80 itself and either:
-// - split z80 into two for the in- and out-band
-// - or update the Instruction etc code accordingly. as these model time.
+// TODO put these on the (new) z80 itself.
 constexpr std::uint8_t read_immediate(Z80 &z80) {
   z80.pass_time(3);
   const auto addr = z80.regs().pc();
@@ -54,5 +52,4 @@ constexpr void push16(Z80 &z80, const std::uint16_t value) {
   push8(z80, static_cast<std::uint8_t>(value));
 }
 
-
-} // namespace specbolt
+} // namespace specbolt::v2

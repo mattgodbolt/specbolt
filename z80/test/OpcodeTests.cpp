@@ -1,7 +1,6 @@
-
 #include "peripherals/Memory.hpp"
-#include "z80/Generated.hpp"
 #include "z80/Z80.hpp"
+#include "z80/v2/Z80.hpp"
 
 #include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -11,10 +10,11 @@
 
 namespace specbolt {
 
-template<bool use_new_code>
+template<typename DUT>
 struct OpcodeTester {
   Memory memory;
-  Z80 z80{memory};
+  DUT z80{memory};
+  static constexpr auto use_new_code = std::is_same_v<DUT, v2::Z80>;
   RegisterFile &regs = z80.registers();
 
   explicit OpcodeTester() { memory.set_rom_size(0); }
@@ -23,10 +23,7 @@ struct OpcodeTester {
     for (auto &&[index, val]: std::views::enumerate(std::array{bytes...})) {
       memory.write(static_cast<std::uint16_t>(z80.pc() + index), static_cast<std::uint8_t>(val));
     }
-    if (use_new_code)
-      decode_and_run(z80);
-    else
-      z80.execute_one();
+    z80.execute_one();
   }
 
   void unprefixed() {
@@ -1468,39 +1465,32 @@ struct OpcodeTester {
   }
 };
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]",
-    ((bool use_new_code), use_new_code), false, true) {
-  OpcodeTester<use_new_code>::unprefixed();
+TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+  OpcodeTester<TestType>::unprefixed();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "cb opcode execution tests", "[opcode][generated]",
-    ((bool use_new_code), use_new_code), false, true) {
-  OpcodeTester<use_new_code>::cb_prefix();
+TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+  OpcodeTester<TestType>::cb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcode][generated]",
-    ((bool use_new_code), use_new_code), false, true) {
-  OpcodeTester<use_new_code>::dd_prefix();
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+  OpcodeTester<TestType>::dd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fd opcode execution tests", "[opcode][generated]",
-    ((bool use_new_code), use_new_code), false, true) {
-  OpcodeTester<use_new_code>::fd_prefix();
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fd opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+  OpcodeTester<TestType>::fd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]",
-    ((bool use_new_code), use_new_code), false, true) {
-  OpcodeTester<use_new_code>::ddcb_prefix();
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+  OpcodeTester<TestType>::ddcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]",
-    ((bool use_new_code), use_new_code), false, true) {
-  OpcodeTester<use_new_code>::fdcb_prefix();
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+  OpcodeTester<TestType>::fdcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ed opcode execution tests", "[opcode][generated]",
-    ((bool use_new_code), use_new_code), false, true) {
-  OpcodeTester<use_new_code>::ed_prefix();
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ed opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+  OpcodeTester<TestType>::ed_prefix();
 }
 
 } // namespace specbolt

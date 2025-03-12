@@ -1,14 +1,14 @@
 #include <iostream>
 
 #include "peripherals/Memory.hpp"
-#include "z80/Generated.hpp"
-#include "z80/Z80.hpp"
+#include "z80/v2/Generated.hpp"
+#include "z80/v2/Z80.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <ranges>
 
-namespace specbolt {
+namespace specbolt::v2 {
 
 TEST_CASE("Opcode generation tests") {
   constexpr auto base_address = 0x8000;
