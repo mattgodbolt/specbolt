@@ -1,8 +1,7 @@
 #include <iostream>
 
 #include "peripherals/Memory.hpp"
-#include "z80/v2/Generated.hpp"
-#include "z80/v2/Z80.hpp"
+#include "z80/v2/Disassembler.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
@@ -14,13 +13,12 @@ TEST_CASE("Opcode generation tests") {
   constexpr auto base_address = 0x8000u;
   auto dis = [](auto... bytes) {
     Memory memory;
-
     write_to_memory(memory, base_address, bytes...);
-
     const auto [disassembly, length] = disassemble(memory, base_address);
     CHECK(length == sizeof...(bytes));
     return disassembly;
   };
+
   SECTION("Test base opcode disassembly") {
     CHECK(dis(0x00) == "nop");
     CHECK(dis(0x01, 0x34, 0x12) == "ld bc, 0x1234");
@@ -390,21 +388,4 @@ TEST_CASE("Opcode generation tests") {
   }
 }
 
-TEST_CASE("Check indirect flags") {
-  static constexpr std::bitset<256> expected_but_backwards{
-      // clang-format off
-    // 0000000000000000                0000000000000000
-    //                 0000000000000000                0000000000000000
-      "0000000000000000000000000000000000000000000000000000111000000000"
-      "0000001000000010000000100000001000000010000000101111110100000010"
-      "0000001000000010000000100000001000000010000000100000001000000010"
-      "0000000000000000000000000000000000000000000000000000000000000000"
-      // clang-format-on
-    };
-  for (auto opcode = 0uz; opcode < 256uz; ++opcode) {
-    INFO(std::format("opcode: 0x{:02x}", opcode));
-    CHECK(is_indirect_for_testing()[opcode] == expected_but_backwards[255-opcode]);
-  }
-}
-
-} // namespace specbolt
+} // namespace specbolt::v2

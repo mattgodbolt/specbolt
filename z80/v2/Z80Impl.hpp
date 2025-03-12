@@ -1,4 +1,4 @@
-#include "z80/v2/Generated.hpp"
+#pragma once
 
 #include "z80/common/Alu.hpp"
 #include "z80/common/RegisterFile.hpp"
@@ -13,9 +13,7 @@
 
 using namespace std::literals;
 
-namespace specbolt::v2 {
-
-namespace {
+namespace specbolt::v2::impl {
 
 void decode_and_run_cb(Z80 &z80);
 void decode_and_run_dd(Z80 &z80);
@@ -128,37 +126,37 @@ constexpr void set_r(Z80 &z80, const std::uint8_t value) {
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
 template<std::uint8_t>
-bool cc_check(Flags flags) = delete("invalid condition code");
+inline bool cc_check(Flags flags) = delete("invalid condition code");
 template<>
-bool cc_check<0>(const Flags flags) {
+inline bool cc_check<0>(const Flags flags) {
   return !flags.zero();
 }
 template<>
-bool cc_check<1>(const Flags flags) {
+inline bool cc_check<1>(const Flags flags) {
   return flags.zero();
 }
 template<>
-bool cc_check<2>(const Flags flags) {
+inline bool cc_check<2>(const Flags flags) {
   return !flags.carry();
 }
 template<>
-bool cc_check<3>(const Flags flags) {
+inline bool cc_check<3>(const Flags flags) {
   return flags.carry();
 }
 template<>
-bool cc_check<4>(const Flags flags) {
+inline bool cc_check<4>(const Flags flags) {
   return !flags.parity();
 }
 template<>
-bool cc_check<5>(const Flags flags) {
+inline bool cc_check<5>(const Flags flags) {
   return flags.parity();
 }
 template<>
-bool cc_check<6>(const Flags flags) {
+inline bool cc_check<6>(const Flags flags) {
   return !flags.sign();
 }
 template<>
-bool cc_check<7>(const Flags flags) {
+inline bool cc_check<7>(const Flags flags) {
   return flags.sign();
 }
 
@@ -1069,12 +1067,6 @@ struct build_execute_hl {
   }
 };
 
-struct build_is_indirect {
-  template<auto op>
-    requires BaseOpLike<decltype(op)>
-  static constexpr bool result = op.indirect;
-};
-
 template<typename Builder>
 constexpr auto table = generic_table<select_base_instruction, Builder, HlSet::Base>;
 template<typename Builder>
@@ -1090,145 +1082,5 @@ constexpr auto fdcb_table = generic_table<select_cb_instruction, Builder, HlSet:
 template<typename Builder>
 constexpr auto ed_table = generic_table<select_ed_instruction, Builder, HlSet::Base>;
 
-void decode_and_run_cb(Z80 &z80) {
-  // Fetch the next opcode.
-  const auto opcode = z80.read_immediate();
-  // TODO does refresh in here...
-  z80.pass_time(1); // Decode...
-  // Dispatch and run.
-  cb_table<build_execute_hl>[opcode](z80);
-}
 
-void decode_and_run_ed(Z80 &z80) {
-  // Fetch the next opcode.
-  const auto opcode = z80.read_immediate();
-  // TODO does refresh in here...
-  z80.pass_time(1);
-  // Dispatch and run.
-  ed_table<build_execute>[opcode](z80);
-}
-
-void decode_and_run_dd(Z80 &z80) {
-  // Fetch the next opcode.
-  const auto opcode = z80.read_immediate();
-  // TODO does refresh in here...
-  z80.pass_time(1);
-  // Dispatch and run.
-  dd_table<build_execute_ixiy<RegisterFile::R16::IX>>[opcode](z80);
-}
-
-void decode_and_run_fd(Z80 &z80) {
-  // Fetch the next opcode.
-  const auto opcode = z80.read_immediate();
-  z80.pass_time(1);
-  // TODO does refresh in here...
-  // Dispatch and run.
-  fd_table<build_execute_ixiy<RegisterFile::R16::IY>>[opcode](z80);
-}
-
-void decode_and_run_ddcb(Z80 &z80) {
-  const auto offset = static_cast<std::int8_t>(z80.read_immediate());
-  z80.pass_time(1); // TODO this?
-  const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IX) + offset);
-  z80.regs().wz(address);
-  // Fetch the next opcode.
-  const auto opcode = z80.read_immediate();
-  // TODO does refresh in here...
-  z80.pass_time(1);
-  // Dispatch and run.
-  ddcb_table<build_execute>[opcode](z80);
-}
-
-void decode_and_run_fdcb(Z80 &z80) {
-  const auto offset = static_cast<std::int8_t>(z80.read_immediate());
-  z80.pass_time(1); // TODO this?
-  const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IY) + offset);
-  z80.regs().wz(address);
-  // Fetch the next opcode.
-  const auto opcode = z80.read_immediate();
-  // TODO does refresh in here...
-  z80.pass_time(1);
-  // Dispatch and run.
-  fdcb_table<build_execute>[opcode](z80);
-}
-
-// TODO the fdcb and ddcb tables miss out on the duplicated encodings and the `res 0,(ix+d,b)` type instructions.
-//   Hopefully won't matter for now...
-
-} // namespace
-
-void decode_and_run(Z80 &z80) {
-  // Fetch the first opcode.
-  const auto opcode = z80.read_immediate();
-  z80.pass_time(1); // Decode...
-  // Dispatch and run.
-  table<build_execute_hl>[opcode](z80);
-}
-
-Disassembled disassemble(const Memory &memory, std::uint16_t address) {
-  const auto initial_address = address;
-  auto opcode = memory.read(address++);
-  auto disassembly = std::string(table<build_description>[opcode]);
-  std::optional<std::int8_t> offset{};
-  switch (opcode) {
-    case 0xcb:
-      opcode = memory.read(address++);
-      disassembly = std::string(cb_table<build_description>[opcode]);
-      break;
-    case 0xdd:
-      opcode = memory.read(address++);
-      if (opcode == 0xcb) {
-        offset = static_cast<std::int8_t>(memory.read(address++));
-        opcode = memory.read(address++);
-        disassembly = std::string(ddcb_table<build_description>[opcode]);
-      }
-      else
-        disassembly = std::string(dd_table<build_description>[opcode]);
-      break;
-    case 0xed:
-      opcode = memory.read(address++);
-      disassembly = std::string(ed_table<build_description>[opcode]);
-      break;
-    case 0xfd:
-      opcode = memory.read(address++);
-      if (opcode == 0xcb) {
-        offset = static_cast<std::int8_t>(memory.read(address++));
-        opcode = memory.read(address++);
-        disassembly = std::string(fdcb_table<build_description>[opcode]);
-      }
-      else
-        disassembly = std::string(fd_table<build_description>[opcode]);
-      break;
-    default: break;
-  }
-  if (const auto pos = disassembly.find("$o"); pos != std::string::npos) {
-    if (!offset)
-      offset = static_cast<std::int8_t>(memory.read(address++));
-    disassembly = std::format("{}{}0x{:02x}{}", disassembly.substr(0, pos), *offset < 0 ? "-" : "+", std::abs(*offset),
-        disassembly.substr(pos + 2));
-  }
-  if (const auto pos = disassembly.find("$nnnn"); pos != std::string::npos) {
-    disassembly =
-        std::format("{}0x{:04x}{}", disassembly.substr(0, pos), memory.read16(address), disassembly.substr(pos + 5));
-    address += 2;
-  }
-  if (const auto pos = disassembly.find("$nn"); pos != std::string::npos) {
-    disassembly =
-        std::format("{}0x{:02x}{}", disassembly.substr(0, pos), memory.read(address++), disassembly.substr(pos + 3));
-  }
-  if (const auto pos = disassembly.find("$d"); pos != std::string::npos) {
-    const auto displacement = static_cast<std::int8_t>(memory.read(address++));
-    disassembly = std::format("{}0x{:02x}{}", disassembly.substr(0, pos),
-        static_cast<std::uint16_t>(address + displacement), disassembly.substr(pos + 2));
-  }
-  return {disassembly, static_cast<std::size_t>(address - initial_address)};
-}
-
-std::bitset<256> is_indirect_for_testing() {
-  std::bitset<256> result{};
-  for (std::size_t i = 0; i < 256; ++i)
-    result.set(i, table<build_is_indirect>[i]);
-  return result;
-}
-
-} // namespace specbolt::v2
+} // namespace specbolt::v2::impl

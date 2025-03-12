@@ -1,6 +1,6 @@
 #include "z80/v2/Z80.hpp"
 
-#include "z80/v2/Generated.hpp"
+#include "z80/v2/Z80Impl.hpp"
 
 #include <iostream>
 #include <stdexcept>
@@ -17,15 +17,9 @@ void Z80::execute_one() {
   current_reg_history_index_ = (current_reg_history_index_ + 1) % RegHistory;
 
   regs_.r(regs_.r() + 1);
-  const auto initial_pc = regs_.pc();
-  try {
-    decode_and_run(*this);
-  }
-  catch (...) {
-    // TODO heinous
-    regs_.pc(initial_pc);
-    throw;
-  }
+  const auto opcode = read_immediate();
+  pass_time(1); // Decode...
+  impl::table<impl::build_execute_hl>[opcode](*this);
 }
 
 void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
