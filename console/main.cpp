@@ -1,4 +1,3 @@
-#include "spectrum/Spectrum.hpp"
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
 
@@ -21,9 +20,11 @@
 
 #ifdef SPECBOLT_MODULES
 import peripherals;
+import spectrum;
 #else
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
+#include "spectrum/Spectrum.hpp"
 #endif
 
 namespace {

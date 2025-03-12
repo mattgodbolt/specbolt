@@ -1,17 +1,19 @@
 #include "sdl_wrapper.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <iostream>
 
 #include <lyra/lyra.hpp>
 
 #ifdef SPECBOLT_MODULES
 import peripherals;
+import spectrum;
 #else
 #include "peripherals/Video.hpp"
-#endif
 #include "spectrum/Snapshot.hpp"
 #include "spectrum/Spectrum.hpp"
+#endif
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
