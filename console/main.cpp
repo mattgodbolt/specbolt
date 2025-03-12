@@ -1,5 +1,3 @@
-#include "peripherals/Memory.hpp"
-#include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
@@ -20,6 +18,13 @@
 #include <lyra/lyra.hpp>
 #include <readline/history.h>
 #include <readline/readline.h>
+
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
+#include "peripherals/Memory.hpp"
+#include "peripherals/Video.hpp"
+#endif
 
 namespace {
 

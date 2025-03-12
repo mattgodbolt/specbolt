@@ -1,12 +1,19 @@
 #include <iostream>
 
-#include "../v2/include/z80/v2/Z80.hpp"
-#include "peripherals/Memory.hpp"
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
+#include "z80/v2/Z80.hpp"
 
+#include <filesystem>
 #include <format>
+
 #include <lyra/lyra.hpp>
+
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
+#include "peripherals/Memory.hpp"
+#endif
 
 namespace specbolt {
 
