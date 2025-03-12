@@ -9,4 +9,4 @@ namespace specbolt::v1::impl {
 
 Instruction decode(std::array<std::uint8_t, 4> opcodes);
 
-} // namespace specbolt::v1::impl
+}

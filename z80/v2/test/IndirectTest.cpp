@@ -36,4 +36,4 @@ TEST_CASE("Check indirect flags") {
   }
 }
 
-} // namespace specbolt
+}
