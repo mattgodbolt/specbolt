@@ -242,4 +242,9 @@ void Z80::retn() {
   registers().pc(pop16());
 }
 
+std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read(address); }
+std::uint16_t Z80::read16(const std::uint16_t address) const { return memory_.read16(address); }
+void Z80::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
+void Z80::write16(const std::uint16_t address, const std::uint16_t value) { memory_.write16(address, value); }
+
 } // namespace specbolt::v1

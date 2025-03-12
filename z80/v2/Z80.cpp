@@ -2,7 +2,6 @@
 
 #include "z80/v2/Generated.hpp"
 
-#include <format>
 #include <iostream>
 #include <stdexcept>
 
@@ -45,9 +44,9 @@ std::vector<RegisterFile> Z80::history() const {
 
 std::uint8_t Z80::read_immediate() {
   pass_time(3);
-  const auto addr = regs().pc();
-  regs().pc(addr + 1);
-  return read8(addr);
+  const auto addr = regs_.pc();
+  regs_.pc(addr + 1);
+  return memory_.read(addr);
 }
 
 std::uint16_t Z80::read_immediate16() {
@@ -62,19 +61,19 @@ void Z80::interrupt() {
   // Some dark business with parity flag here ignored.
   if (halted_) {
     halted_ = false;
-    registers().pc(registers().pc() + 1);
+    regs_.pc(regs_.pc() + 1);
   }
   iff1_ = iff2_ = false;
   pass_time(7);
-  regs().sp(regs().sp() - 2);
-  write16(registers().sp(), registers().pc());
+  regs_.sp(regs_.sp() - 2);
+  memory_.write16(regs_.sp(), regs_.pc());
   switch (irq_mode_) {
     case 0:
-    case 1: registers().pc(0x38); break;
+    case 1: regs_.pc(0x38); break;
     case 2: {
       // Assume the bus is at 0xff.
-      const auto addr = static_cast<std::uint16_t>(0xff | (registers().i() << 8));
-      registers().pc(read16(addr));
+      const auto addr = static_cast<std::uint16_t>(0xff | (regs_.i() << 8));
+      regs_.pc(memory_.read16(addr));
       break;
     }
     default: throw std::runtime_error("Inconceivable");

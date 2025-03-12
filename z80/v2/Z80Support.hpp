@@ -8,12 +8,12 @@ namespace specbolt::v2 {
 
 constexpr void write(Z80 &z80, const std::uint16_t address, const std::uint8_t byte) {
   z80.pass_time(3);
-  z80.write8(address, byte);
+  z80.memory().write(address, byte);
 }
 
 constexpr std::uint8_t read(Z80 &z80, const std::uint16_t address) {
   z80.pass_time(3);
-  return z80.read8(address);
+  return z80.memory().read(address);
 }
 
 constexpr std::uint8_t pop8(Z80 &z80) {

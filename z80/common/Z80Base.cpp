@@ -6,11 +6,6 @@
 
 namespace specbolt {
 
-std::uint8_t Z80Base::read8(const std::uint16_t address) const { return memory_.read(address); }
-std::uint16_t Z80Base::read16(const std::uint16_t address) const { return memory_.read16(address); }
-void Z80Base::write8(const std::uint16_t address, const std::uint8_t value) { memory_.write(address, value); }
-void Z80Base::write16(const std::uint16_t address, const std::uint16_t value) { memory_.write16(address, value); }
-
 Flags Z80Base::flags() const { return Flags(regs_.get(RegisterFile::R8::F)); }
 void Z80Base::flags(const Flags flags) { regs_.set(RegisterFile::R8::F, flags.to_u8()); }
 

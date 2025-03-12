@@ -84,7 +84,7 @@ void Snapshot::load(const std::filesystem::path &snapshot, Z80Base &z80) {
 
   // Simulate a retn.
   z80.iff1(z80.iff2());
-  z80.regs().pc(z80.read16(z80.regs().sp()));
+  z80.regs().pc(z80.memory().read16(z80.regs().sp()));
   z80.regs().sp(static_cast<std::uint16_t>(z80.regs().sp() + 2));
 }
 

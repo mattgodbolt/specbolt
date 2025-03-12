@@ -35,11 +35,6 @@ public:
   [[nodiscard]] Flags flags() const;
   void flags(Flags flags);
 
-  [[nodiscard]] std::uint8_t read8(std::uint16_t address) const;
-  [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
-  void write8(std::uint16_t address, std::uint8_t value);
-  void write16(std::uint16_t address, std::uint16_t value);
-
   [[nodiscard]] auto num_instructions_executed() const { return num_instructions_; }
   [[nodiscard]] auto cycle_count() const { return now_tstates_; }
 
