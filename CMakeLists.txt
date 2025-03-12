@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.30)
+
+set(CMAKE_COLOR_DIAGNOSTICS ON)
+
 project(specbolt VERSION 0.1 LANGUAGES CXX)
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -6,7 +9,6 @@ list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CPM)
 include(dependency)
 include(pedantic-and-modern)
-include(colors)
 
 option(SPECBOLT_TESTS "Build and run tests" ON)
 option(SPECBOLT_CONSOLE "Build specbolt console" ON)
