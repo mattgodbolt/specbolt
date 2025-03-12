@@ -1,7 +1,9 @@
+#ifndef SPECBOLT_IN_MODULE
 #include "peripherals/Memory.hpp"
 
 #include <cstring>
 #include <fstream>
+#endif
 
 namespace specbolt {
 

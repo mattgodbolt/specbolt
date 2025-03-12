@@ -1,4 +1,6 @@
+#ifndef SPECBOLT_IN_MODULE
 #include "peripherals/Keyboard.hpp"
+#endif
 
 namespace specbolt {
 

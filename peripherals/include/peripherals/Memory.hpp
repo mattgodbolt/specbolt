@@ -1,13 +1,15 @@
 #pragma once
 
+#ifndef SPECBOLT_IN_MODULE
 #include <array>
 #include <cstdint>
 #include <filesystem>
 #include <type_traits>
+#endif
 
 namespace specbolt {
 
-class Memory {
+SPECBOLT_EXPORT class Memory {
 public:
   [[nodiscard]] std::uint8_t read(std::uint16_t address) const;
   [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
