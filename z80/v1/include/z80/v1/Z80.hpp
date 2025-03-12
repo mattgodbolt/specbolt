@@ -1,17 +1,18 @@
 #pragma once
 
-#include "z80/common/RegisterFile.hpp"
-#include "z80/common/Z80Base.hpp"
-#include "z80/v1/Instruction.hpp"
-
 #include <array>
 #include <cstdint>
 #include <vector>
 
+#include "z80/v1/Instruction.hpp"
+
 #ifdef SPECBOLT_MODULES
 import peripherals;
+import z80_common;
 #else
 #include "peripherals/Memory.hpp"
+#include "z80/common/RegisterFile.hpp"
+#include "z80/common/Z80Base.hpp"
 #endif
 
 namespace specbolt::v1 {

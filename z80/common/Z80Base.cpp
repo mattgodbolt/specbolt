@@ -1,12 +1,9 @@
+#ifndef SPECBOLT_MODULES
 #include "z80/common/Z80Base.hpp"
-
-#ifdef SPECBOLT_MODULES
-import peripherals;
-#else
 #include "peripherals/Memory.hpp"
-#endif
 
 #include <iostream>
+#endif
 
 namespace specbolt {
 

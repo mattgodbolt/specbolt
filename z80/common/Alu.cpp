@@ -1,6 +1,8 @@
+#ifndef SPECBOLT_MODULES
 #include "z80/common/Alu.hpp"
 
 #include <bit>
+#endif
 
 namespace specbolt {
 

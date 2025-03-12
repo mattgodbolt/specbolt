@@ -1,10 +1,13 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include <cstdint>
 #include <string>
+#endif
 
 namespace specbolt {
 
+SPECBOLT_EXPORT
 class Flags {
 public:
   constexpr Flags() = default;

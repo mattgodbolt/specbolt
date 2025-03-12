@@ -1,12 +1,15 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include <array>
 #include <cstdint>
 #include <iosfwd>
 #include <string_view>
+#endif
 
 namespace specbolt {
 
+SPECBOLT_EXPORT
 class RegisterFile {
 public:
   enum class R8 { A, F, B, C, D, E, H, L, A_, F_, B_, C_, D_, E_, H_, L_, SPH, SPL, IXH, IXL, IYH, IYL };

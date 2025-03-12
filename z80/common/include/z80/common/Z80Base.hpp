@@ -1,5 +1,7 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
+#include "peripherals/Memory.hpp"
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 
@@ -7,16 +9,12 @@
 #include <functional>
 #include <optional>
 #include <vector>
-
-#ifdef SPECBOLT_MODULES
-import peripherals;
-#else
-#include "peripherals/Memory.hpp"
 #endif
 
 namespace specbolt {
 
 // Non-virtual base class for Z80 implementations.
+SPECBOLT_EXPORT
 class Z80Base {
 public:
   explicit Z80Base(Memory &memory) : memory_(memory) {}
