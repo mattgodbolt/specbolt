@@ -12,8 +12,11 @@
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
 
+namespace specbolt {
+
 namespace {
-struct SpecboltSdl {
+
+struct SdlApp {
   std::filesystem::path rom{"48.rom"};
   std::filesystem::path snapshot;
   bool need_help{};
@@ -37,15 +40,15 @@ struct SpecboltSdl {
     }
 
     if (new_impl)
-      return run<specbolt::v2::Z80>();
-    return run<specbolt::v1::Z80>();
+      return run<v2::Z80>();
+    return run<v1::Z80>();
   }
   template<typename Z80Impl>
   int run() {
     auto sdl_state = sdl_init(); // RAII wrapper
 
     auto window = sdl_resource(SDL_CreateWindow("Specbolt ZX Spectrum Emulator", SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED, specbolt::Video::Width, specbolt::Video::Height, SDL_WINDOW_SHOWN));
+        SDL_WINDOWPOS_UNDEFINED, Video::Width, Video::Height, SDL_WINDOW_SHOWN));
     if (!window) {
       throw sdl_error("SDL_CreateWindow failed");
     }
@@ -55,8 +58,8 @@ struct SpecboltSdl {
       throw sdl_error("SDL_CreateRenderer failed");
     }
 
-    auto texture = sdl_resource(SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
-        specbolt::Video::Width, specbolt::Video::Height));
+    auto texture = sdl_resource(SDL_CreateTexture(
+        renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, Video::Width, Video::Height));
     if (!texture) {
       throw sdl_error("SDL_CreateTexture failed");
     }
@@ -67,11 +70,11 @@ struct SpecboltSdl {
 
     auto audio = sdl_audio{};
 
-    specbolt::Spectrum<Z80Impl> spectrum(rom, audio.freq());
-    const specbolt::v1::Disassembler dis{spectrum.memory()};
+    Spectrum<Z80Impl> spectrum(rom, audio.freq());
+    const v1::Disassembler dis{spectrum.memory()};
 
     if (!snapshot.empty()) {
-      specbolt::Snapshot::load(snapshot, spectrum.z80());
+      Snapshot::load(snapshot, spectrum.z80());
     }
 
     if (trace_instructions)
@@ -147,11 +150,13 @@ struct SpecboltSdl {
   }
 };
 
+
 } // namespace
+} // namespace specbolt
 
 int main(const int argc, const char *argv[]) {
   try {
-    SpecboltSdl sdl;
+    specbolt::SdlApp sdl;
     return sdl.Main(argc, argv);
   }
   catch (const std::exception &e) {
