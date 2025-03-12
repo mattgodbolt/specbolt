@@ -1,7 +1,7 @@
 #include <iostream>
 
 #ifdef SPECBOLT_MODULES
-import z80v1;
+import z80_v1;
 import z80v2;
 import z80_common;
 #else

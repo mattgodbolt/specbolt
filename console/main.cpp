@@ -18,7 +18,7 @@
 #ifdef SPECBOLT_MODULES
 import peripherals;
 import spectrum;
-import z80v1;
+import z80_v1;
 #else
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"

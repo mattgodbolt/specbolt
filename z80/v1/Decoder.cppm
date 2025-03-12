@@ -7,7 +7,7 @@ module;
 #include <variant>
 #include <vector>
 
-export module z80v1:Decoder;
+export module z80_v1:Decoder;
 
 import z80_common;
 import :Instruction;

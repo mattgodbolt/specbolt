@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #ifdef SPECBOLT_MODULES
-import z80v1;
+import z80_v1;
 #else
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Instruction.hpp"

@@ -1,4 +1,4 @@
-export module z80v1;
+export module z80_v1;
 
 export import :Decoder;
 export import :Disassembler;

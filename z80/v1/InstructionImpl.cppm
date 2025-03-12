@@ -7,7 +7,7 @@ module;
 #include <variant>
 #include <vector>
 
-export module z80v1:InstructionImpl;
+export module z80_v1:InstructionImpl;
 
 import z80_common;
 import peripherals;

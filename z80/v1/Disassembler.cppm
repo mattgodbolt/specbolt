@@ -6,7 +6,7 @@ module;
 #include <optional>
 #include <vector>
 
-export module z80v1:Disassembler;
+export module z80_v1:Disassembler;
 
 import peripherals;
 import z80_common;
