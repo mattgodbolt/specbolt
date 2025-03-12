@@ -1,7 +1,7 @@
 #pragma once
 
-#include "z80/Alu.hpp"
-#include "z80/Flags.hpp"
+#include "common/Alu.hpp"
+#include "common/Flags.hpp"
 
 #include <cstdint>
 #include <string_view>

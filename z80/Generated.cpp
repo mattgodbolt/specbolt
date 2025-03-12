@@ -1,6 +1,6 @@
 #include "z80/Generated.hpp"
 
-#include "z80/RegisterFile.hpp"
+#include "common/RegisterFile.hpp"
 #include "z80/Z80.hpp"
 #include "z80/new/Mnemonic.hpp"
 #include "z80/new/Z80Support.hpp"

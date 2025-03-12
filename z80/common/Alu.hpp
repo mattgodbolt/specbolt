@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "z80/Flags.hpp"
+#include "Flags.hpp"
 
 namespace specbolt {
 

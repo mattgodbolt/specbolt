@@ -1,8 +1,8 @@
 #pragma once
 
+#include "common/RegisterFile.hpp"
 #include "peripherals/Memory.hpp"
 #include "z80/Decoder.hpp"
-#include "z80/RegisterFile.hpp"
 
 #include <array>
 #include <cstdint>

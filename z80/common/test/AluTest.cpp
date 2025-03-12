@@ -1,4 +1,4 @@
-#include "z80/Alu.hpp"
+#include "z80/common/Alu.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_tostring.hpp>

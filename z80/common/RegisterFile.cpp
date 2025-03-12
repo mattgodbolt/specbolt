@@ -1,6 +1,6 @@
-#include "z80/RegisterFile.hpp"
+#include "z80/common/RegisterFile.hpp"
 
-#include "z80/Flags.hpp"
+#include "Flags.hpp"
 
 #include <iostream>
 

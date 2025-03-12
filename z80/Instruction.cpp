@@ -1,6 +1,6 @@
 #include "z80/Instruction.hpp"
 
-#include "z80/Alu.hpp"
+#include "common/Alu.hpp"
 #include "z80/Z80.hpp"
 
 #include <stdexcept>
