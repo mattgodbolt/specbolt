@@ -6,20 +6,6 @@
 
 namespace specbolt::v2 {
 
-// TODO put these on the (new) z80 itself.
-constexpr std::uint8_t read_immediate(Z80 &z80) {
-  z80.pass_time(3);
-  const auto addr = z80.regs().pc();
-  z80.regs().pc(addr + 1);
-  return z80.read8(addr);
-}
-
-constexpr std::uint16_t read_immediate16(Z80 &z80) {
-  const auto low = read_immediate(z80);
-  const auto high = read_immediate(z80);
-  return static_cast<std::uint16_t>(high << 8 | low);
-}
-
 constexpr void write(Z80 &z80, const std::uint16_t address, const std::uint8_t byte) {
   z80.pass_time(3);
   z80.write8(address, byte);

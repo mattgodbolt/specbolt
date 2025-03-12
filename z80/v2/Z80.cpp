@@ -68,6 +68,19 @@ std::vector<RegisterFile> Z80::history() const {
   return result;
 }
 
+std::uint8_t Z80::read_immediate() {
+  pass_time(3);
+  const auto addr = regs().pc();
+  regs().pc(addr + 1);
+  return read8(addr);
+}
+
+std::uint16_t Z80::read_immediate16() {
+  const auto low = read_immediate();
+  const auto high = read_immediate();
+  return static_cast<std::uint16_t>(high << 8 | low);
+}
+
 void Z80::interrupt() {
   if (!iff1_)
     return;

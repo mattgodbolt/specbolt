@@ -29,6 +29,9 @@ public:
 
   [[nodiscard]] std::vector<RegisterFile> history() const;
 
+  std::uint8_t read_immediate();
+  std::uint16_t read_immediate16();
+
 private:
   static constexpr std::size_t RegHistory = 8z;
   std::array<RegisterFile, RegHistory> reg_history_{};

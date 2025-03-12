@@ -114,7 +114,7 @@ struct OperandGetSetter<6, hl_set, no_remap_ixiy_8b> {
 
 template<HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter<8, hl_set, no_remap_ixiy_8b> {
-  constexpr static uint8_t get(Z80 &z80) { return read_immediate(z80); };
+  constexpr static uint8_t get(Z80 &z80) { return z80.read_immediate(); };
   constexpr static void set(Z80 &z80, std::uint8_t) = delete("Cannot set immediate value");
 };
 
@@ -177,8 +177,8 @@ struct Load16ImmOp {
 
   static constexpr auto execute(Z80 &z80) {
     // TODO: just go straight to low/high? or is there a visible difference?
-    z80.regs().set(TableRp::low[p], read_immediate(z80));
-    z80.regs().set(TableRp::high[p], read_immediate(z80));
+    z80.regs().set(TableRp::low[p], z80.read_immediate());
+    z80.regs().set(TableRp::high[p], z80.read_immediate());
   }
 };
 
@@ -239,7 +239,7 @@ template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 2 && opcode.z == 0)
 constexpr auto instruction<opcode> = Op<"djnz $d", [](Z80 &z80) {
   z80.pass_time(1);
-  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  const auto offset = static_cast<std::int8_t>(z80.read_immediate());
   const std::uint8_t new_b = z80.regs().get(RegisterFile::R8::B) - 1;
   z80.regs().set(RegisterFile::R8::B, new_b);
   if (new_b == 0)
@@ -251,7 +251,7 @@ constexpr auto instruction<opcode> = Op<"djnz $d", [](Z80 &z80) {
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.y == 3 && opcode.z == 0)
 constexpr auto instruction<opcode> = Op<"jr $d", [](Z80 &z80) {
-  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  const auto offset = static_cast<std::int8_t>(z80.read_immediate());
   z80.pass_time(5);
   z80.branch(offset);
 }>{};
@@ -259,7 +259,7 @@ constexpr auto instruction<opcode> = Op<"jr $d", [](Z80 &z80) {
 template<Opcode opcode>
   requires(opcode.x == 0 && (opcode.y >= 4 && opcode.y <= 7) && opcode.z == 0)
 constexpr auto instruction<opcode> = Op<"jr "s + cc_names[opcode.y - 4] + " $d", [](Z80 &z80) {
-  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  const auto offset = static_cast<std::int8_t>(z80.read_immediate());
   if (cc_check<opcode.y - 4>(z80.flags())) {
     z80.pass_time(5);
     z80.branch(offset);
@@ -292,14 +292,14 @@ constexpr auto instruction<opcode> = Op<"ld (de), a",
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 2)
 constexpr auto instruction<opcode> = Op<"ld ($nnnn), "s + IndexReg<opcode.hl_set>::name, [](Z80 &z80) {
-  const auto address = read_immediate16(z80);
+  const auto address = z80.read_immediate16();
   write(z80, address, z80.regs().get(IndexReg<opcode.hl_set>::low));
   write(z80, address + 1, z80.regs().get(IndexReg<opcode.hl_set>::high));
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 0 && opcode.p == 3)
 constexpr auto instruction<opcode> = Op<"ld ($nnnn), a", [](Z80 &z80) {
-  const auto address = read_immediate16(z80);
+  const auto address = z80.read_immediate16();
   write(z80, address, z80.regs().get(RegisterFile::R8::A));
 }>{};
 
@@ -314,14 +314,14 @@ constexpr auto instruction<opcode> = Op<"ld a, (de)",
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 2)
 constexpr auto instruction<opcode> = Op<"ld "s + IndexReg<opcode.hl_set>::name + ", ($nnnn)", [](Z80 &z80) {
-  const auto address = read_immediate16(z80);
+  const auto address = z80.read_immediate16();
   z80.regs().set(IndexReg<opcode.hl_set>::low, read(z80, address));
   z80.regs().set(IndexReg<opcode.hl_set>::high, read(z80, address + 1));
 }>{};
 template<Opcode opcode>
   requires(opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 3)
 constexpr auto instruction<opcode> = Op<"ld a, ($nnnn)", [](Z80 &z80) {
-  const auto address = read_immediate16(z80);
+  const auto address = z80.read_immediate16();
   z80.regs().set(RegisterFile::R8::A, read(z80, address));
 }>{};
 
@@ -369,7 +369,7 @@ constexpr auto instruction<opcode> = Op<"dec "s + TableR<opcode.hl_set>::names[o
 template<Opcode opcode>
 struct LoadImmediate8 {
   static constexpr Mnemonic mnemonic{"ld "s + TableR<opcode.hl_set>::names[opcode.y] + ", $nn"};
-  static constexpr auto execute = [](Z80 &z80) { set_r<opcode.y, opcode.hl_set>(z80, read_immediate(z80)); };
+  static constexpr auto execute = [](Z80 &z80) { set_r<opcode.y, opcode.hl_set>(z80, z80.read_immediate()); };
   static constexpr auto indirect = is_r_indirect(opcode.y);
   static constexpr auto is_load_immediate = true;
 };
@@ -534,7 +534,7 @@ constexpr auto instruction<opcode> = Op<"ld sp, "s + IndexReg<opcode.hl_set>::na
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 2)
 constexpr auto instruction<opcode> = Op<"jp "s + cc_names[opcode.y] + ", $nnnn", [](Z80 &z80) {
-  const auto jump_address = read_immediate16((z80));
+  const auto jump_address = z80.read_immediate16();
   if (cc_check<opcode.y>(z80.flags())) {
     z80.regs().pc(jump_address);
   }
@@ -543,7 +543,7 @@ constexpr auto instruction<opcode> = Op<"jp "s + cc_names[opcode.y] + ", $nnnn",
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 0)
 constexpr auto instruction<opcode> = Op<"jp $nnnn", [](Z80 &z80) {
-  const auto jump_address = read_immediate16((z80));
+  const auto jump_address = z80.read_immediate16();
   z80.regs().pc(jump_address);
 }>{};
 
@@ -564,7 +564,7 @@ template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 2)
 constexpr auto instruction<opcode> = Op<"out ($nn), a", [](Z80 &z80) {
   const auto a = z80.regs().get(RegisterFile::R8::A);
-  const auto port = static_cast<std::uint16_t>(read_immediate(z80) | a << 8);
+  const auto port = static_cast<std::uint16_t>(z80.read_immediate() | a << 8);
   z80.pass_time(4); // OUT time (TODO pass time as IO?)
   z80.out(port, a);
 }>{};
@@ -572,7 +572,7 @@ constexpr auto instruction<opcode> = Op<"out ($nn), a", [](Z80 &z80) {
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 3)
 constexpr auto instruction<opcode> = Op<"in a, ($nn)", [](Z80 &z80) {
-  const auto port = static_cast<std::uint16_t>(read_immediate(z80) | z80.regs().get(RegisterFile::R8::A) << 8);
+  const auto port = static_cast<std::uint16_t>(z80.read_immediate() | z80.regs().get(RegisterFile::R8::A) << 8);
   z80.pass_time(4); // IN time (TODO pass time as IO?)
   z80.regs().set(RegisterFile::R8::A, z80.in(port));
 }>{};
@@ -611,7 +611,7 @@ constexpr auto instruction<opcode> = Op<"ei", [](Z80 &z80) {
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 4)
 constexpr auto instruction<opcode> = Op<"call "s + cc_names[opcode.y] + ", $nnnn", [](Z80 &z80) {
-  const auto jump_address = read_immediate16((z80));
+  const auto jump_address = z80.read_immediate16();
   if (cc_check<opcode.y>(z80.flags())) {
     z80.pass_time(1);
     push16(z80, z80.pc());
@@ -629,7 +629,7 @@ constexpr auto instruction<opcode> = Op<"push "s + TableRp2<opcode.hl_set>::name
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 0)
 constexpr auto instruction<opcode> = Op<"call $nnnn", [](Z80 &z80) {
-  const auto jump_address = read_immediate16((z80));
+  const auto jump_address = z80.read_immediate16();
   z80.pass_time(1);
   push16(z80, z80.pc());
   z80.regs().pc(jump_address);
@@ -809,7 +809,7 @@ constexpr auto ed_instruction<opcode> = Op<"adc hl, "s + TableRp<opcode.hl_set>:
 template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 3 && opcode.q == 0)
 constexpr auto ed_instruction<opcode> = Op<"ld ($nnnn), "s + TableRp<opcode.hl_set>::names[opcode.p], [](Z80 &z80) {
-  const auto addr = read_immediate16(z80);
+  const auto addr = z80.read_immediate16();
   write(z80, addr, z80.regs().get(TableRp<opcode.hl_set>::low[opcode.p]));
   write(z80, addr + 1, z80.regs().get(TableRp<opcode.hl_set>::high[opcode.p]));
 }>{};
@@ -818,7 +818,7 @@ template<Opcode opcode>
   requires(opcode.x == 1 && opcode.z == 3 && opcode.q == 1)
 constexpr auto ed_instruction<opcode> =
     Op<"ld "s + TableRp<opcode.hl_set>::names[opcode.p] + ", ($nnnn)", [](Z80 &z80) {
-      const auto addr = read_immediate16(z80);
+      const auto addr = z80.read_immediate16();
       z80.regs().set(TableRp<opcode.hl_set>::low[opcode.p], read(z80, addr));
       z80.regs().set(TableRp<opcode.hl_set>::high[opcode.p], read(z80, addr + 1));
     }>{};
@@ -1048,7 +1048,7 @@ struct build_execute_ixiy {
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
     if constexpr (op.indirect) {
-      const auto address = static_cast<std::uint16_t>(z80.regs().get(ix_or_iy) + read_immediate(z80));
+      const auto address = static_cast<std::uint16_t>(z80.regs().get(ix_or_iy) + z80.read_immediate());
       // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right.
       // heinous hack here.
       static constexpr bool is_immediate = requires { op.is_load_immediate; };
@@ -1103,7 +1103,7 @@ void decode_and_run_cb(Z80 &z80) {
 
 void decode_and_run_ed(Z80 &z80) {
   // Fetch the next opcode.
-  const auto opcode = read_immediate(z80);
+  const auto opcode = z80.read_immediate();
   // TODO does refresh in here...
   z80.pass_time(1);
   // Dispatch and run.
@@ -1112,7 +1112,7 @@ void decode_and_run_ed(Z80 &z80) {
 
 void decode_and_run_dd(Z80 &z80) {
   // Fetch the next opcode.
-  const auto opcode = read_immediate(z80);
+  const auto opcode = z80.read_immediate();
   // TODO does refresh in here...
   z80.pass_time(1);
   // Dispatch and run.
@@ -1121,7 +1121,7 @@ void decode_and_run_dd(Z80 &z80) {
 
 void decode_and_run_fd(Z80 &z80) {
   // Fetch the next opcode.
-  const auto opcode = read_immediate(z80);
+  const auto opcode = z80.read_immediate();
   z80.pass_time(1);
   // TODO does refresh in here...
   // Dispatch and run.
@@ -1129,12 +1129,12 @@ void decode_and_run_fd(Z80 &z80) {
 }
 
 void decode_and_run_ddcb(Z80 &z80) {
-  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  const auto offset = static_cast<std::int8_t>(z80.read_immediate());
   z80.pass_time(1); // TODO this?
   const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IX) + offset);
   z80.regs().wz(address);
   // Fetch the next opcode.
-  const auto opcode = read_immediate(z80);
+  const auto opcode = z80.read_immediate();
   // TODO does refresh in here...
   z80.pass_time(1);
   // Dispatch and run.
@@ -1142,12 +1142,12 @@ void decode_and_run_ddcb(Z80 &z80) {
 }
 
 void decode_and_run_fdcb(Z80 &z80) {
-  const auto offset = static_cast<std::int8_t>(read_immediate(z80));
+  const auto offset = static_cast<std::int8_t>(z80.read_immediate());
   z80.pass_time(1); // TODO this?
   const auto address = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::IY) + offset);
   z80.regs().wz(address);
   // Fetch the next opcode.
-  const auto opcode = read_immediate(z80);
+  const auto opcode = z80.read_immediate();
   // TODO does refresh in here...
   z80.pass_time(1);
   // Dispatch and run.
