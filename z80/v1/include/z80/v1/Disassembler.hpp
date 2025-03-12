@@ -1,15 +1,11 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include <array>
 #include <cstdint>
 #include <string>
-
-#include "z80/v1/Instruction.hpp"
-
-#ifdef SPECBOLT_MODULES
-import peripherals;
-#else
 #include "peripherals/Memory.hpp"
+#include "z80/v1/Instruction.hpp"
 #endif
 
 namespace specbolt::v1 {

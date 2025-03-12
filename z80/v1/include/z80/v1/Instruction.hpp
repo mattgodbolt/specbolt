@@ -1,12 +1,10 @@
 #pragma once
 
+
+#ifndef SPECBOLT_MODULES
 #include <cstdint>
 #include <string_view>
 #include <variant>
-
-#ifdef SPECBOLT_MODULES
-import z80_common;
-#else
 #include "z80/common/Alu.hpp"
 #include "z80/common/Flags.hpp"
 #endif

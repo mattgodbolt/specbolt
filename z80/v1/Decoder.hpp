@@ -1,8 +1,9 @@
 #pragma once
 
-#include "z80/v1/Instruction.hpp"
-
+#ifndef SPECBOLT_MODULES
 #include <array>
+#include "z80/v1/Instruction.hpp"
+#endif
 
 namespace specbolt::v1::impl {
 
