@@ -1,3 +1,4 @@
+#ifndef SPECBOLT_MODULES
 #include "spectrum/Snapshot.hpp"
 #include "peripherals/Memory.hpp"
 #include "z80/common/Flags.hpp"
@@ -9,6 +10,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <vector>
+#endif
 
 namespace specbolt {
 

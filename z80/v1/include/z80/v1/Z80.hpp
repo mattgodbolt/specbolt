@@ -1,17 +1,19 @@
 #pragma once
 
+
+#ifndef SPECBOLT_MODULES
+#include <array>
+#include <cstdint>
+#include <vector>
 #include "peripherals/Memory.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/common/Z80Base.hpp"
 #include "z80/v1/Instruction.hpp"
-
-#include <array>
-#include <cstdint>
-#include <vector>
+#endif
 
 namespace specbolt::v1 {
 
-class Z80 : public Z80Base {
+SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
   explicit Z80(Memory &memory) : Z80Base(memory) {}
 

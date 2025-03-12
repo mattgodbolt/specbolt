@@ -1,19 +1,20 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
+#include "peripherals/Memory.hpp"
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 
-#include <array>
 #include <cstdint>
 #include <functional>
 #include <optional>
 #include <vector>
+#endif
 
 namespace specbolt {
 
-class Memory;
-
 // Non-virtual base class for Z80 implementations.
+SPECBOLT_EXPORT
 class Z80Base {
 public:
   explicit Z80Base(Memory &memory) : memory_(memory) {}

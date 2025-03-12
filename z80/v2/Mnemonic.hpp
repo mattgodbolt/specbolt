@@ -1,9 +1,11 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include <algorithm>
 #include <array>
 #include <string>
 #include <string_view>
+#endif
 
 namespace specbolt::v2::impl {
 

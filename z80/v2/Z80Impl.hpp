@@ -1,5 +1,6 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include "z80/common/Alu.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/v2/Mnemonic.hpp"
@@ -10,6 +11,7 @@
 #include <format>
 #include <string>
 #include <utility>
+#endif
 
 using namespace std::literals;
 
@@ -1067,19 +1069,19 @@ struct build_execute_hl {
   }
 };
 
-template<typename Builder>
+SPECBOLT_EXPORT template<typename Builder>
 constexpr auto table = generic_table<select_base_instruction, Builder, HlSet::Base>;
-template<typename Builder>
+SPECBOLT_EXPORT template<typename Builder>
 constexpr auto dd_table = generic_table<select_base_instruction, Builder, HlSet::Ix>;
-template<typename Builder>
+SPECBOLT_EXPORT template<typename Builder>
 constexpr auto fd_table = generic_table<select_base_instruction, Builder, HlSet::Iy>;
-template<typename Builder>
+SPECBOLT_EXPORT template<typename Builder>
 constexpr auto cb_table = generic_table<select_cb_instruction, Builder, HlSet::Base>;
-template<typename Builder>
+SPECBOLT_EXPORT template<typename Builder>
 constexpr auto ddcb_table = generic_table<select_cb_instruction, Builder, HlSet::Ix>;
-template<typename Builder>
+SPECBOLT_EXPORT template<typename Builder>
 constexpr auto fdcb_table = generic_table<select_cb_instruction, Builder, HlSet::Iy>;
-template<typename Builder>
+SPECBOLT_EXPORT template<typename Builder>
 constexpr auto ed_table = generic_table<select_ed_instruction, Builder, HlSet::Base>;
 
 

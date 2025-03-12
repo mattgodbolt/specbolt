@@ -1,17 +1,22 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include "peripherals/Audio.hpp"
 #include "peripherals/Keyboard.hpp"
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
+
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 
 #include <filesystem>
 #include <iostream>
 
+#endif
+
 namespace specbolt {
 
+SPECBOLT_EXPORT
 template<typename Z80Impl>
 class Spectrum {
 public:

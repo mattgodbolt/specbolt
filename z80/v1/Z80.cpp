@@ -1,9 +1,11 @@
-#include "z80/v1/Z80.hpp"
-
-#include "z80/v1/Decoder.hpp"
-
+#ifndef SPECBOLT_MODULES
 #include <iostream>
 #include <stdexcept>
+#include "z80/v1/Decoder.hpp"
+#endif
+
+#include "z80/v1/Z80.hpp"
+
 
 namespace specbolt::v1 {
 

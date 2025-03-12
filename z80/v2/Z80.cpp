@@ -1,9 +1,10 @@
+#ifndef SPECBOLT_MODULES
 #include "z80/v2/Z80.hpp"
-
 #include "z80/v2/Z80Impl.hpp"
 
 #include <iostream>
 #include <stdexcept>
+#endif
 
 namespace specbolt::v2 {
 

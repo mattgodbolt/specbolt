@@ -1,11 +1,14 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include <cstdint>
 
 #include "Flags.hpp"
+#endif
 
 namespace specbolt {
 
+SPECBOLT_EXPORT
 class Alu {
 public:
   template<typename ResultType>

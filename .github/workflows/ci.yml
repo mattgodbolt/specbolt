@@ -8,6 +8,7 @@ jobs:
       matrix:
         build_type: [ Debug, RelWithDebInfo ]
         clang_version: [ 19 ]
+        modules_enable: [ ON, OFF ]
     steps:
       - uses: actions/checkout@v4
       - name: setup system dependencies
@@ -29,7 +30,7 @@ jobs:
       - name: Build
         run: |
           mkdir build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }}
           cmake --build build
           env CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 

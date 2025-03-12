@@ -1,10 +1,12 @@
 #include "z80/v1/Decoder.hpp"
 
+#ifndef SPECBOLT_MODULES
 #include <array>
 #include <format>
 #include <span>
 #include <stdexcept>
 #include <utility>
+#endif
 
 namespace specbolt::v1::impl {
 

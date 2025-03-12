@@ -1,6 +1,8 @@
+#ifndef SPECBOLT_MODULES
 #include "peripherals/Audio.hpp"
 
 #include <algorithm>
+#endif
 
 namespace specbolt {
 
@@ -28,7 +30,7 @@ void Audio::set_output(const std::size_t total_cycles, const bool beeper_on, con
   current_output_ = output;
 }
 
-std::span<std::int16_t> Audio::fill(const size_t total_cycles, const std::span<std::int16_t> span) {
+std::span<std::int16_t> Audio::fill(const std::size_t total_cycles, const std::span<std::int16_t> span) {
   update(total_cycles);
   if (const auto behind = write_pos_ - read_pos_; behind > audio_.size())
     read_pos_ = write_pos_ - audio_.size();

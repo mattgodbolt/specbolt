@@ -1,15 +1,17 @@
 #pragma once
 
-#include "z80/common/Alu.hpp"
-#include "z80/common/Flags.hpp"
 
+#ifndef SPECBOLT_MODULES
 #include <cstdint>
 #include <string_view>
 #include <variant>
+#include "z80/common/Alu.hpp"
+#include "z80/common/Flags.hpp"
+#endif
 
 namespace specbolt::v1 {
 
-class Z80;
+SPECBOLT_EXPORT class Z80;
 
 struct Instruction {
   enum class Operand {

@@ -1,9 +1,13 @@
-#include "z80/common/Alu.hpp"
-
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/catch_tostring.hpp>
 
 #include <format>
+
+#ifdef SPECBOLT_MODULES
+import z80_common;
+#else
+#include "z80/common/Alu.hpp"
+#endif
 
 template<>
 struct Catch::StringMaker<specbolt::Alu::R8> {
