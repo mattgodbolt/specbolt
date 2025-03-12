@@ -7,6 +7,7 @@ jobs:
     strategy:
       matrix:
         build_type: [ Debug, RelWithDebInfo ]
+        clang_version: [ 19 ]
     steps:
       - uses: actions/checkout@v4
       - name: setup system dependencies
@@ -22,13 +23,14 @@ jobs:
       - name: install clang
         run: |
           wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 19
-          sudo apt install -y clang-tools-19
+          sudo bash llvm.sh ${{ matrix.clang_version }}
+          sudo apt install -y clang-tools-${{ matrix.clang_version }}
+          echo "CC=clang-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
+          echo "CXX=clang++-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
       - name: Build
         run: |
           mkdir build
-          env CC=clang-19 CXX=clang++-19 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           cmake --build build
           env CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 
