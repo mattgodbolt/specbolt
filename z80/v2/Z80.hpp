@@ -24,7 +24,6 @@ public:
   [[nodiscard]] std::uint8_t pop8();
 
   void interrupt();
-  void retn();
 
   void branch(std::int8_t offset);
 
