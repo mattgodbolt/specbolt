@@ -1,5 +1,11 @@
 #pragma once
 
+#include "z80/common/Flags.hpp"
+#include "z80/common/RegisterFile.hpp"
+
+#include <filesystem>
+#include <iostream>
+
 #ifdef SPECBOLT_MODULES
 import peripherals;
 #else
@@ -8,11 +14,6 @@ import peripherals;
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
 #endif
-#include "z80/common/Flags.hpp"
-#include "z80/common/RegisterFile.hpp"
-
-#include <filesystem>
-#include <iostream>
 
 namespace specbolt {
 

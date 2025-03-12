@@ -3,16 +3,16 @@
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 
+#include <cstdint>
+#include <functional>
+#include <optional>
+#include <vector>
+
 #ifdef SPECBOLT_MODULES
 import peripherals;
 #else
 #include "peripherals/Memory.hpp"
 #endif
-
-#include <cstdint>
-#include <functional>
-#include <optional>
-#include <vector>
 
 namespace specbolt {
 

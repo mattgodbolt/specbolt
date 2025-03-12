@@ -6,9 +6,11 @@
 
 #include "z80/v1/Instruction.hpp"
 
-namespace specbolt {
-class Memory;
-}
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
+#include "peripherals/Memory.hpp"
+#endif
 
 namespace specbolt::v1 {
 
