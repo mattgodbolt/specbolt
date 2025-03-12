@@ -1,4 +1,4 @@
-#ifndef SPECBOLT_IN_MODULE
+#ifndef SPECBOLT_MODULES
 #include "peripherals/Memory.hpp"
 
 #include <cstring>

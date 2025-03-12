@@ -1,6 +1,6 @@
 #pragma once
 
-#ifndef SPECBOLT_IN_MODULE
+#ifndef SPECBOLT_MODULES
 #include <array>
 #include <bitset>
 #include <cstdint>

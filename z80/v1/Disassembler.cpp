@@ -1,6 +1,11 @@
 #include "z80/v1/Disassembler.hpp"
 
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
 #include "peripherals/Memory.hpp"
+#endif
+
 #include "z80/v1/Decoder.hpp"
 #include "z80/v1/Instruction.hpp"
 

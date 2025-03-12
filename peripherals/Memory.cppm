@@ -9,9 +9,6 @@ module;
 
 export module peripherals:Memory;
 
-#define SPECBOLT_IN_MODULE
-#define SPECBOLT_EXPORT export
-
 #include "peripherals/Memory.hpp"
 
 #include "Memory.cpp"

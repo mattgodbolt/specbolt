@@ -7,8 +7,6 @@ module;
 
 export module peripherals:Audio;
 
-#define SPECBOLT_IN_MODULE
-
 #include "peripherals/Audio.hpp"
 
 #include "Audio.cpp"

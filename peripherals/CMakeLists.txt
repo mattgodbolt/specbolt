@@ -8,6 +8,7 @@ if (SPECBOLT_MODULES)
             FILE_SET modules
             TYPE CXX_MODULES
             FILES
+            module.cppm
             Audio.cppm
             Keyboard.cppm
             Memory.cppm

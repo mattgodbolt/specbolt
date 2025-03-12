@@ -1,12 +1,10 @@
 #pragma once
 
-#ifndef SPECBOLT_IN_MODULE
+#ifndef SPECBOLT_MODULES
 #include <cstdint>
 #include <span>
 #include <vector>
 #define SPECBOLT_EXPORT
-#else
-#define SPECBOLT_EXPORT export
 #endif
 
 namespace specbolt {

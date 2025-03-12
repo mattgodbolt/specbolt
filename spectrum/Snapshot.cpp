@@ -1,5 +1,9 @@
 #include "spectrum/Snapshot.hpp"
+#ifdef SPECBOLT_MODULES
+import peripherals;
+#else
 #include "peripherals/Memory.hpp"
+#endif
 #include "z80/common/Flags.hpp"
 
 #include <cstdint>
