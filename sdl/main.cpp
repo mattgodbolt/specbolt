@@ -8,11 +8,11 @@
 
 #include <lyra/lyra.hpp>
 
-#include "Disassembler.hpp"
 #include "Snapshot.hpp"
 #include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
-#include "z80/Z80.hpp"
+#include "z80/v1/Disassembler.hpp"
+#include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
 
 namespace {
@@ -57,7 +57,7 @@ struct SpecboltSdl {
 
     if (new_impl)
       return run<specbolt::v2::Z80>();
-    return run<specbolt::Z80>();
+    return run<specbolt::v1::Z80>();
   }
 
   template<typename Z80Impl>
@@ -107,7 +107,7 @@ struct SpecboltSdl {
     }
 
     specbolt::Spectrum<Z80Impl> spectrum(rom, obtained_audio_spec.freq);
-    const specbolt::Disassembler dis{spectrum.memory()};
+    const specbolt::v1::Disassembler dis{spectrum.memory()};
 
     if (!snapshot.empty()) {
       specbolt::Snapshot::load(snapshot, spectrum.z80());

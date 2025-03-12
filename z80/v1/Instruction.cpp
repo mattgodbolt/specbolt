@@ -1,11 +1,11 @@
-#include "z80/Instruction.hpp"
+#include "z80/v1/Instruction.hpp"
 
-#include "common/Alu.hpp"
-#include "z80/Z80.hpp"
+#include "z80/common/Alu.hpp"
+#include "z80/v1/Z80.hpp"
 
 #include <stdexcept>
 
-namespace specbolt {
+namespace specbolt::v1 {
 
 namespace {
 
@@ -357,4 +357,4 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
   throw std::runtime_error("Unsupported opcode");
 }
 
-} // namespace specbolt
+} // namespace specbolt::v1

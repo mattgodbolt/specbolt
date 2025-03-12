@@ -1,12 +1,12 @@
-#include "z80/Disassembler.hpp"
+#include "z80/v1/Disassembler.hpp"
 
-#include "peripherals//Memory.hpp"
-#include "z80/Instruction.hpp"
+#include "peripherals/Memory.hpp"
+#include "z80/v1/Instruction.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
-using specbolt::Disassembler;
 using specbolt::Memory;
+using specbolt::v1::Disassembler;
 
 TEST_CASE("Disassembler tests") {
   Memory memory;

@@ -1,6 +1,6 @@
 add_library(spectrum)
 
-target_link_libraries(spectrum PUBLIC opt::pedantic opt::c++26 peripherals z80)
+target_link_libraries(spectrum PUBLIC opt::pedantic opt::c++26 peripherals)
 
 target_sources(spectrum PRIVATE
         Snapshot.cpp

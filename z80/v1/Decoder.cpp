@@ -1,4 +1,4 @@
-#include "z80/Decoder.hpp"
+#include "z80/v1/Decoder.hpp"
 
 #include <array>
 #include <format>
@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace specbolt {
+namespace specbolt::v1 {
 
 namespace {
 
@@ -590,4 +590,4 @@ Instruction decode(const std::array<std::uint8_t, 4> opcodes) {
   return invalid;
 }
 
-} // namespace specbolt
+} // namespace specbolt::v1

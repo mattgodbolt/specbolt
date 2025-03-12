@@ -1,15 +1,15 @@
 #pragma once
 
-#include "common/RegisterFile.hpp"
+#include "Decoder.hpp"
 #include "peripherals/Memory.hpp"
-#include "z80/Decoder.hpp"
+#include "z80/common/RegisterFile.hpp"
 
 #include <array>
 #include <cstdint>
 #include <functional>
 #include <vector>
 
-namespace specbolt {
+namespace specbolt::v1 {
 
 struct Instruction;
 
@@ -92,4 +92,4 @@ private:
   void execute(const Instruction &instr);
 };
 
-} // namespace specbolt
+} // namespace specbolt::v1

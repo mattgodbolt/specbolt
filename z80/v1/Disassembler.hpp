@@ -4,11 +4,13 @@
 #include <cstdint>
 #include <string>
 
-#include "z80/Instruction.hpp"
+#include "z80/v1/Instruction.hpp"
 
 namespace specbolt {
-
 class Memory;
+}
+
+namespace specbolt::v1 {
 
 class Disassembler {
 public:
@@ -29,4 +31,4 @@ private:
   const Memory &memory_;
 };
 
-} // namespace specbolt
+} // namespace specbolt::v1

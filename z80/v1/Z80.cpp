@@ -1,12 +1,11 @@
-#include "z80/Z80.hpp"
+#include "z80/v1/Z80.hpp"
 
-#include "z80/Decoder.hpp"
+#include "Decoder.hpp"
 
-#include <format>
 #include <iostream>
 #include <stdexcept>
 
-namespace specbolt {
+namespace specbolt::v1 {
 
 std::size_t Z80::execute_one() {
   if (halted_) {
@@ -278,4 +277,4 @@ void Z80::retn() {
   registers().pc(pop16());
 }
 
-} // namespace specbolt
+} // namespace specbolt::v1

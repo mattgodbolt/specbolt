@@ -1,13 +1,13 @@
 #pragma once
 
-#include "common/Alu.hpp"
-#include "common/Flags.hpp"
+#include "z80/common/Alu.hpp"
+#include "z80/common/Flags.hpp"
 
 #include <cstdint>
 #include <string_view>
 #include <variant>
 
-namespace specbolt {
+namespace specbolt::v1 {
 
 class Z80;
 
@@ -149,4 +149,4 @@ struct Instruction {
   [[nodiscard]] bool should_execute(Flags flags) const;
 };
 
-} // namespace specbolt
+} // namespace specbolt::v1

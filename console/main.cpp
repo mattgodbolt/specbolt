@@ -1,8 +1,8 @@
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
-#include "z80/Disassembler.hpp"
-#include "z80/Z80.hpp"
+#include "z80/v1/Disassembler.hpp"
+#include "z80/v1/Z80.hpp"
 
 #include <csignal>
 #include <format>
@@ -36,8 +36,8 @@ int get_number_arg(const std::vector<std::string> &args) {
 }
 
 struct App {
-  specbolt::Spectrum<specbolt::Z80> spectrum{"48.rom", 48'000}; // TODO make configurable
-  const specbolt::Disassembler dis{spectrum.memory()};
+  specbolt::Spectrum<specbolt::v1::Z80> spectrum{"48.rom", 48'000}; // TODO make configurable
+  const specbolt::v1::Disassembler dis{spectrum.memory()};
   std::unordered_set<std::uint16_t> breakpoints = {};
   std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
   std::atomic<bool> interrupted{false};

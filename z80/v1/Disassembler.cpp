@@ -1,12 +1,13 @@
-#include "z80/Disassembler.hpp"
+#include "z80/v1/Disassembler.hpp"
 
 #include "peripherals/Memory.hpp"
-#include "z80/Decoder.hpp"
-#include "z80/Instruction.hpp"
+#include "z80/v1/Decoder.hpp"
+#include "z80/v1/Instruction.hpp"
 
+#include <array>
 #include <format>
 
-namespace specbolt {
+namespace specbolt::v1 {
 
 Disassembler::Disassembled Disassembler::disassemble(const std::uint16_t address) const {
   const std::array opcodes{
@@ -95,4 +96,4 @@ std::string Disassembler::Disassembled::operand_name(
   return "??";
 }
 
-} // namespace specbolt
+} // namespace specbolt::v1

@@ -1,5 +1,5 @@
 #include "peripherals/Memory.hpp"
-#include "z80/Z80.hpp"
+#include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
 
 #include <catch2/catch_template_test_macros.hpp>
@@ -1465,31 +1465,31 @@ struct OpcodeTester {
   }
 };
 
-TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::unprefixed();
 }
 
-TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::cb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::dd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fd opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fd opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::fd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::ddcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::fdcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ed opcode execution tests", "[opcode][generated]", Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ed opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::ed_prefix();
 }
 

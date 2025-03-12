@@ -1,8 +1,8 @@
 #include <iostream>
 
 #include "peripherals/Memory.hpp"
-#include "z80/Disassembler.hpp"
-#include "z80/Z80.hpp"
+#include "z80/v1/Disassembler.hpp"
+#include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
 
 #include <format>
@@ -57,9 +57,9 @@ struct ZexDocTest {
     memory.set_rom_size(0);
     if (skip >= 0)
       memory.write16(0x120, static_cast<std::uint16_t>(memory.read16(0x120) + skip * 2));
-    const Disassembler dis{memory};
+    const v1::Disassembler dis{memory};
 
-    Z80 z80(memory);
+    DUT z80(memory);
     z80.registers().pc(0x100);
     z80.registers().sp(0xf000);
     Vt52Emu output;
@@ -142,7 +142,7 @@ struct ZexDocTest {
     }
     if (new_impl)
       return run_test<v2::Z80>();
-    return run_test<Z80>();
+    return run_test<v1::Z80>();
   }
 };
 
