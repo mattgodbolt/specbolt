@@ -21,7 +21,7 @@ void sdl_audio::disabled_callback(std::span<std::int16_t>) {
   // do nothing
 }
 
-void sdl_audio::audio_callback(void *vo, std::uint8 *stream, const int len) {
+void sdl_audio::audio_callback(void *vo, std::uint8_t *stream, const int len) {
   const auto &self = *static_cast<sdl_audio *>(vo);
   self.callback(std::span{reinterpret_cast<std::int16_t *>(stream), static_cast<std::size_t>(len / 2)});
 }

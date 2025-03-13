@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -30,8 +31,8 @@ struct sdl_destructor {
 struct audio_settings {
   int frequency = 16000;
   SDL_AudioFormat format = AUDIO_S16;
-  std::uint8 channels = 1;
-  std::uint16 samples = 4096;
+  std::uint8_t channels = 1;
+  std::uint16_t samples = 4096;
 };
 
 struct sdl_audio {
@@ -41,7 +42,7 @@ struct sdl_audio {
   SDL_AudioSpec obtained;
   std::function<void(std::span<std::int16_t>)> callback = disabled_callback;
 
-  static void audio_callback(void *vo, std::uint8 *stream, int len);
+  static void audio_callback(void *vo, std::uint8_t *stream, int len);
 
   explicit sdl_audio(audio_settings settings = {});
 
