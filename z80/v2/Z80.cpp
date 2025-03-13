@@ -17,9 +17,7 @@ void Z80::execute_one() {
   reg_history_[current_reg_history_index_] = regs_;
   current_reg_history_index_ = (current_reg_history_index_ + 1) % RegHistory;
 
-  regs_.r(regs_.r() + 1);
-  const auto opcode = read_immediate();
-  pass_time(1); // Decode...
+  const auto opcode = read_opcode();
   impl::table<impl::build_execute_hl>[opcode](*this);
 }
 
@@ -36,6 +34,15 @@ std::vector<RegisterFile> Z80::history() const {
   result.push_back(regs_);
   return result;
 }
+
+std::uint8_t Z80::read_opcode() {
+  const auto opcode = read_immediate();
+  // One cycle refresh.
+  regs_.r((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f));
+  pass_time(1);
+  return opcode;
+}
+
 
 std::uint8_t Z80::read_immediate() {
   pass_time(3);

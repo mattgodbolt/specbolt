@@ -27,6 +27,7 @@ public:
 
   [[nodiscard]] std::vector<RegisterFile> history() const;
 
+  std::uint8_t read_opcode();
   std::uint8_t read_immediate();
   std::uint16_t read_immediate16();
 
