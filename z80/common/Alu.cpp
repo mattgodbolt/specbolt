@@ -30,8 +30,8 @@ Alu::R8 Alu::add8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
 }
 
 Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool carry_in) {
-  const auto result = add8(lhs, ~rhs, !carry_in);
-  return {result.result, (result.flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
+  const auto [result, flags] = add8(lhs, ~rhs, !carry_in);
+  return {result, (flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
 Alu::R8 Alu::inc8(const std::uint8_t lhs, const Flags current_flags) {
