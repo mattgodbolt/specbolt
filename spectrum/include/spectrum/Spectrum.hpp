@@ -45,12 +45,15 @@ public:
   }
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
-  std::size_t run_cycles(const std::size_t cycles) {
+  std::size_t run_cycles(const std::size_t cycles, const bool keep_history) {
     std::size_t total_cycles_elapsed = 0;
+    const bool might_need_tracing = trace_next_instructions_ > 0;
     while (total_cycles_elapsed < cycles) {
-      reg_history_[current_reg_history_index_ % RegHistory] = z80_.regs();
-      ++current_reg_history_index_;
-      if (trace_next_instructions_ && !z80_.halted()) [[unlikely]] {
+      if (keep_history) {
+        reg_history_[current_reg_history_index_ % RegHistory] = z80_.regs();
+        ++current_reg_history_index_;
+      }
+      if (might_need_tracing && trace_next_instructions_ && !z80_.halted()) [[unlikely]] {
         static constexpr auto UndocMask =
             static_cast<std::uint16_t>(0xff00 | ~(Flags::Flag3() | Flags::Flag5()).to_u8());
         const auto time_taken = z80_.cycle_count() - last_traced_instr_cycle_count_;
@@ -69,7 +72,7 @@ public:
     return total_cycles_elapsed;
   }
 
-  std::size_t run_frame() { return run_cycles(cycles_per_frame); }
+  std::size_t run_frame() { return run_cycles(cycles_per_frame, false); }
 
   [[nodiscard]] auto &z80() { return z80_; }
   [[nodiscard]] const auto &z80() const { return z80_; }

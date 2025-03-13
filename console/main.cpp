@@ -150,7 +150,7 @@ struct App {
 
   bool _step() {
     try {
-      spectrum.run_cycles(1);
+      spectrum.run_cycles(1, true);
     }
     catch (const std::exception &e) {
       std::print(std::cout, "Exception: {}\n", e.what());
@@ -163,7 +163,7 @@ struct App {
     try {
       const auto prev_pc = spectrum.z80().pc();
       do {
-        spectrum.run_cycles(1);
+        spectrum.run_cycles(1, true);
       }
       while (spectrum.z80().pc() == prev_pc);
     }
