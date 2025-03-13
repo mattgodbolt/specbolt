@@ -2,9 +2,10 @@
 <project version="4">
   <component name="CMakeSharedSettings">
     <configurations>
-      <configuration PROFILE_NAME="Debug" ENABLED="true" GENERATION_DIR="build/Debug" CONFIG_NAME="Debug" />
-      <configuration PROFILE_NAME="RelWithDebInfo" ENABLED="true" GENERATION_DIR="build/RelWithDebInfo" CONFIG_NAME="RelWithDebInfo" />
+      <configuration PROFILE_NAME="Debug (Modules)" ENABLED="true" GENERATION_DIR="build/Debug" CONFIG_NAME="Debug" GENERATION_OPTIONS="-DSPECBOLT_MODULES=ON" />
+      <configuration PROFILE_NAME="RelWithDebInfo (Modules)" ENABLED="true" GENERATION_DIR="build/RelWithDebInfo" CONFIG_NAME="RelWithDebInfo" GENERATION_OPTIONS="-DSPECBOLT_MODULES=ON" />
       <configuration PROFILE_NAME="Debug (non-modules)" ENABLED="true" GENERATION_DIR="build/DebugNoModules" CONFIG_NAME="Debug" GENERATION_OPTIONS="-DSPECBOLT_MODULES=OFF" />
+      <configuration PROFILE_NAME="RelWithDebInfo (non-modules)" ENABLED="true" GENERATION_DIR="build/RelWithDebInfoNoModules" CONFIG_NAME="RelWithDebInfo" GENERATION_OPTIONS="-DSPECBOLT_MODULES=OFF" />
     </configurations>
   </component>
 </project>
