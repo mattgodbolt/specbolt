@@ -12,12 +12,16 @@ namespace specbolt {
 
 SPECBOLT_EXPORT class Video {
 public:
-  static constexpr auto Width = 640 - 64;
-  static constexpr auto Height = 480 - 48;
+  static constexpr auto XBorder = 32;
+  static constexpr auto YBorder = 24;
+  static constexpr auto ScreenWidth = 256;
+  static constexpr auto ScreenHeight = 192;
+  static constexpr auto Width = XBorder + ScreenWidth + XBorder;
+  static constexpr auto Height = YBorder + ScreenHeight + YBorder;
 
   explicit Video(const Memory &memory);
 
-  void set_border(std::uint8_t border) { border_ = border; }
+  void set_border(const std::uint8_t border) { border_ = border; }
   bool poll(std::size_t num_cycles);
 
   [[nodiscard]] std::span<const std::byte> screen() const;

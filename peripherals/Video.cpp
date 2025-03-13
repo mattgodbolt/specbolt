@@ -30,11 +30,6 @@ constexpr std::array<std::uint32_t, 16> palette{
 
 constexpr auto VSyncLines = 48;
 // constexpr auto HSyncPixels = 64;
-constexpr auto XBorder = 32;
-constexpr auto YBorder = 24;
-constexpr auto ScreenWidth = 256;
-constexpr auto ScreenHeight = 192;
-constexpr auto ScaleFactor = 2;
 constexpr auto CyclesPerScanLine = 224;
 constexpr auto FramesPerFlash = 16;
 
@@ -42,8 +37,6 @@ constexpr auto PixelDataAddress = 0x4000;
 constexpr auto AttributeDataAddress = 0x5800;
 constexpr auto ColumnCount = 32;
 
-static_assert(YBorder + ScreenHeight * ScaleFactor + YBorder == Video::Height);
-static_assert(XBorder + ScreenWidth * ScaleFactor + XBorder == Video::Width);
 
 } // namespace
 
@@ -79,7 +72,7 @@ void Video::render_line(std::size_t line) {
     return;
   }
   line -= YBorder;
-  if (line >= ScreenHeight * ScaleFactor) {
+  if (line >= ScreenHeight) {
     // Bottom border.
     std::ranges::fill(line_span, palette[border_]);
     return;
@@ -87,15 +80,14 @@ void Video::render_line(std::size_t line) {
 
   // Left and right borders.
   std::ranges::fill(line_span.subspan(0, XBorder), palette[border_]);
-  std::ranges::fill(line_span.subspan(XBorder + ScreenWidth * ScaleFactor, XBorder), palette[border_]);
+  std::ranges::fill(line_span.subspan(XBorder + ScreenWidth, XBorder), palette[border_]);
 
-  const auto display_span = line_span.subspan(XBorder, ScreenWidth * ScaleFactor);
-  const auto screen_line = line / ScaleFactor;
-  const auto y76 = (screen_line >> 6) & 0x03;
-  const auto y543 = (screen_line >> 3) & 0x07;
-  const auto y210 = screen_line & 0x07;
+  const auto display_span = line_span.subspan(XBorder, ScreenWidth);
+  const auto y76 = (line >> 6) & 0x03;
+  const auto y543 = (line >> 3) & 0x07;
+  const auto y210 = line & 0x07;
   const auto screen_address = PixelDataAddress + (y76 << 11) + (y543 << 5) + (y210 << 8);
-  const auto char_row = screen_line / 8;
+  const auto char_row = line / 8;
   for (std::size_t x = 0; x < ColumnCount; ++x) {
     const auto pixel_data = memory_.read(static_cast<std::uint16_t>(screen_address + x));
     const auto attributes = memory_.read(static_cast<std::uint16_t>(AttributeDataAddress + char_row * ColumnCount + x));
@@ -105,7 +97,7 @@ void Video::render_line(std::size_t line) {
     for (std::size_t bit = 0; bit < 8; ++bit) {
       const bool pixel_on = pixel_data & (1 << (7 - bit));
       const auto colour = pixel_on == invert ? paper_color : pen_color;
-      std::ranges::fill(display_span.subspan((x * 8u + bit) * ScaleFactor, ScaleFactor), colour);
+      display_span[x * 8u + bit] = colour;
     }
   }
 }

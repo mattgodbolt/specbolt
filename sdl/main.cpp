@@ -33,6 +33,7 @@ struct SdlApp {
   bool new_impl{};
   double video_refresh_rate{50};
   double emulator_speed{1};
+  double zoom{4};
 
   int Main(const int argc, const char *argv[]) {
     const auto cli = lyra::cli() //
@@ -42,6 +43,7 @@ struct SdlApp {
                      | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
                      | lyra::opt(video_refresh_rate, "HZ")["--video-refresh"]("Refresh the video at HZ") //
                      | lyra::opt(emulator_speed, "X")["--emulator-speed"]("Multiplier on emulation speed") //
+                     | lyra::opt(zoom, "X")["--zoom"]("Multiplier on display zoom") //
                      | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::println(std::cerr, "Error in command line: {}", parse_result.message());
@@ -61,7 +63,8 @@ struct SdlApp {
     auto sdl_state = sdl_init(); // RAII wrapper
 
     auto window = sdl_resource(SDL_CreateWindow("Specbolt ZX Spectrum Emulator", SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED, Video::Width, Video::Height, SDL_WINDOW_SHOWN));
+        SDL_WINDOWPOS_UNDEFINED, static_cast<int>(zoom * Video::Width), static_cast<int>(zoom * Video::Height),
+        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE));
     if (!window) {
       throw sdl_error("SDL_CreateWindow failed");
     }

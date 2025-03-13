@@ -47,7 +47,7 @@ public:
     // TODO fix up this mess of cycles elapsed etc
     std::size_t total_cycles_elapsed = 0;
     while (total_cycles_elapsed < cycles) {
-      if (trace_next_instructions_ && !z80_.halted()) {
+      if (trace_next_instructions_ && !z80_.halted()) [[unlikely]] {
         static constexpr auto UndocMask =
             static_cast<std::uint16_t>(0xff00 | ~(Flags::Flag3() | Flags::Flag5()).to_u8());
         const auto time_taken = z80_.cycle_count() - last_traced_instr_cycle_count_;
