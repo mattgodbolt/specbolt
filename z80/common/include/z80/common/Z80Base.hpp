@@ -24,19 +24,17 @@ public:
   [[nodiscard]] bool iff2() const { return iff2_; }
   void iff2(const bool iff2) { iff2_ = iff2; }
   [[nodiscard]] std::uint16_t pc() const { return regs_.pc(); }
-  [[nodiscard]] const auto &registers() const { return regs_; }
-  auto &registers() { return regs_; } // TODO omg remove
+  [[nodiscard]] auto &regs() { return regs_; }
+  [[nodiscard]] auto &regs() const { return regs_; }
   [[nodiscard]] const auto &memory() const { return memory_; }
   auto &memory() { return memory_; }
 
   void irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
   [[nodiscard]] std::uint8_t irq_mode() const { return irq_mode_; };
 
-  [[nodiscard]] auto &regs() { return regs_; } // TODO omg remove
   [[nodiscard]] Flags flags() const;
   void flags(Flags flags);
 
-  [[nodiscard]] auto num_instructions_executed() const { return num_instructions_; }
   [[nodiscard]] auto cycle_count() const { return now_tstates_; }
 
   using OutHandler = std::function<void(std::uint16_t port, std::uint8_t value)>;
@@ -57,7 +55,6 @@ public:
 protected:
   RegisterFile regs_;
   Memory &memory_;
-  std::size_t num_instructions_{};
   std::size_t now_tstates_{};
   bool halted_{};
   bool iff1_{};

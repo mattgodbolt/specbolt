@@ -7,6 +7,7 @@ module;
 #include <iostream>
 #include <span>
 #include <type_traits>
+#include <vector>
 
 
 export module spectrum:Spectrum;

@@ -12,7 +12,7 @@ void Z80Base::flags(const Flags flags) { regs_.set(RegisterFile::R8::F, flags.to
 
 void Z80Base::halt() {
   halted_ = true;
-  registers().pc(registers().pc() - 1);
+  regs().pc(regs().pc() - 1);
 }
 
 void Z80Base::add_out_handler(OutHandler handler) { out_handlers_.emplace_back(std::move(handler)); }

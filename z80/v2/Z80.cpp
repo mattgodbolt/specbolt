@@ -8,32 +8,19 @@
 
 namespace specbolt::v2 {
 
-void Z80::execute_one() {
+std::size_t Z80::execute_one() {
+  const auto before = now_tstates_;
   if (halted_) {
     ++now_tstates_;
-    return;
+    return now_tstates_ - before;
   }
-  ++num_instructions_;
-  reg_history_[current_reg_history_index_] = regs_;
-  current_reg_history_index_ = (current_reg_history_index_ + 1) % RegHistory;
 
   const auto opcode = read_opcode();
   impl::table<impl::build_execute_hl>[opcode](*this);
+  return now_tstates_ - before;
 }
 
 void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
-
-std::vector<RegisterFile> Z80::history() const {
-  std::vector<RegisterFile> result;
-  const auto num_entries = std::min(RegHistory, num_instructions_executed());
-  result.reserve(num_entries + 1);
-  for (auto offset = 0u; offset < num_entries; ++offset) {
-    const auto index = (current_reg_history_index_ + offset) % RegHistory;
-    result.push_back(reg_history_[index]);
-  }
-  result.push_back(regs_);
-  return result;
-}
 
 std::uint8_t Z80::read_opcode() {
   const auto opcode = read_immediate();

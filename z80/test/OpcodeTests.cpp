@@ -27,7 +27,7 @@ struct OpcodeTester {
   Memory memory;
   DUT z80{memory};
   static constexpr auto use_new_code = std::is_same_v<DUT, v2::Z80>;
-  RegisterFile &regs = z80.registers();
+  RegisterFile &regs = z80.regs();
 
   explicit OpcodeTester() { memory.set_rom_size(0); }
 

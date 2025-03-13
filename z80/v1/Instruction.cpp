@@ -126,7 +126,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Jump: {
       const auto taken = should_execute(input.flags);
       if (taken)
-        cpu.registers().pc(input.rhs);
+        cpu.regs().pc(input.rhs);
       if (rhs == Operand::HL || rhs == Operand::IX || rhs == Operand::IY)
         return {0, input.flags, 0};
       return {0, input.flags, static_cast<std::uint8_t>(operation == Operation::Jump ? 6 : taken ? 8 : 3)};
@@ -134,8 +134,8 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::Call: {
       const auto taken = should_execute(input.flags);
       if (taken) {
-        cpu.push16(cpu.registers().pc());
-        cpu.registers().pc(input.rhs);
+        cpu.push16(cpu.regs().pc());
+        cpu.regs().pc(input.rhs);
       }
       // horrid check for rst
       if (rhs >= Operand::Const_0 && rhs <= Operand::Const_52)
@@ -150,7 +150,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         if (const auto was_retirq = std::get_if<WithIrq>(&args); was_retirq && *was_retirq == WithIrq::Retn)
           cpu.retn();
         else // this treats reti and retn the same...
-          cpu.registers().pc(cpu.pop16());
+          cpu.regs().pc(cpu.pop16());
       }
 
       return {0, input.flags, static_cast<std::uint8_t>(was_conditional ? (taken ? 7 : 1) : 6)};
@@ -173,22 +173,22 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
                              : input.flags & Flags::Carry() | Alu::parity_flags_for(result);
       return {result, flags, static_cast<std::uint8_t>(4 + (rhs == Operand::ByteImmediate_A ? 3 : 0))};
     }
-    case Operation::Exx: cpu.registers().exx(); return {0, input.flags, 0};
+    case Operation::Exx: cpu.regs().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
       switch (lhs) {
         // have to return the very thing we just swapped. Could return std::nullopt?
         case Operand::AF: {
-          cpu.registers().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_);
-          return {cpu.registers().get(RegisterFile::R16::AF), input.flags, 0};
+          cpu.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_);
+          return {cpu.regs().get(RegisterFile::R16::AF), input.flags, 0};
         }
         case Operand::DE: {
-          cpu.registers().ex(RegisterFile::R16::DE, RegisterFile::R16::HL);
-          return {cpu.registers().get(RegisterFile::R16::DE), input.flags, 0};
+          cpu.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL);
+          return {cpu.regs().get(RegisterFile::R16::DE), input.flags, 0};
         }
         case Operand::SP_Indirect16: {
-          const auto sp16 = cpu.read16(cpu.registers().sp());
+          const auto sp16 = cpu.read16(cpu.regs().sp());
           const auto rhs_val = cpu.read(rhs, index_offset);
-          cpu.write16(cpu.registers().sp(), rhs_val);
+          cpu.write16(cpu.regs().sp(), rhs_val);
           cpu.write(rhs, index_offset, sp16);
           return {rhs_val, input.flags, 15}; // TODO is this really the right thing to return?
         }
@@ -198,22 +198,22 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::EdOp: {
       const auto [op, increment, repeat] = std::get<EdOpArgs>(args);
       const std::uint16_t add = increment ? 0x0001 : 0xffff;
-      const auto hl = cpu.registers().get(RegisterFile::R16::HL);
-      cpu.registers().set(RegisterFile::R16::HL, hl + add);
-      const auto bc = cpu.registers().get(RegisterFile::R16::BC);
+      const auto hl = cpu.regs().get(RegisterFile::R16::HL);
+      cpu.regs().set(RegisterFile::R16::HL, hl + add);
+      const auto bc = cpu.regs().get(RegisterFile::R16::BC);
       bool should_continue = bc != 1 && repeat;
-      cpu.registers().set(RegisterFile::R16::BC, bc - 1);
+      cpu.regs().set(RegisterFile::R16::BC, bc - 1);
       auto flags = input.flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow());
       if (bc != 1)
         flags = flags | Flags::Overflow();
 
       switch (op) {
         case EdOpArgs::Op::Load: {
-          const auto de = cpu.registers().get(RegisterFile::R16::DE);
-          cpu.registers().set(RegisterFile::R16::DE, de + add);
+          const auto de = cpu.regs().get(RegisterFile::R16::DE);
+          cpu.regs().set(RegisterFile::R16::DE, de + add);
           const auto byte = cpu.memory().read(hl);
           // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
-          const auto flag_bits = static_cast<std::uint8_t>(byte + cpu.registers().get(RegisterFile::R8::A));
+          const auto flag_bits = static_cast<std::uint8_t>(byte + cpu.regs().get(RegisterFile::R8::A));
           flags = flags & ~(Flags::Flag3() | Flags::Flag5()) | //
                   (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | //
                   (flag_bits & 0x02 ? Flags::Flag5() : Flags());
@@ -222,7 +222,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         }
         case EdOpArgs::Op::Compare: {
           const auto byte = cpu.memory().read(hl);
-          const auto subtract_result = Alu::sub8(cpu.registers().get(RegisterFile::R8::A), byte, false);
+          const auto subtract_result = Alu::sub8(cpu.regs().get(RegisterFile::R8::A), byte, false);
           // bits 3 and 5 come from the result, where bit 3 goes to flag 5, and bit 1 to flag 3....and where if HF is
           // set we use res--....
           const auto flag_bits =
@@ -240,7 +240,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
         case EdOpArgs::Op::Out: throw std::runtime_error("out not supported yet TODO");
       }
       if (should_continue) {
-        cpu.registers().pc(cpu.registers().pc() - 2);
+        cpu.regs().pc(cpu.regs().pc() - 2);
         return {0, flags, 13};
       }
       return {0, flags, 8};
@@ -253,11 +253,11 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
           static_cast<std::uint8_t>(4 + rmw_access_time(lhs))};
 
     case Operation::Djnz: {
-      const auto new_b = static_cast<std::uint8_t>(cpu.registers().get(RegisterFile::R8::B) - 1);
-      cpu.registers().set(RegisterFile::R8::B, new_b);
+      const auto new_b = static_cast<std::uint8_t>(cpu.regs().get(RegisterFile::R8::B) - 1);
+      cpu.regs().set(RegisterFile::R8::B, new_b);
       const auto taken = new_b != 0;
       if (taken)
-        cpu.registers().pc(input.rhs);
+        cpu.regs().pc(input.rhs);
       return {0, input.flags, static_cast<std::uint8_t>(taken ? 9 : 4)};
     }
 
@@ -267,7 +267,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
           lhs == Operand::HL_Indirect8 || lhs == Operand::IX_Offset_Indirect8 || lhs == Operand::IY_Offset_Indirect8;
       // For indirect reads, the undefined bits are the top 8 bits of the fetched address (aka "wz" register). Else
       // it's the lhs value.
-      const auto bits_left_on_bus = static_cast<std::uint8_t>(is_indirect ? cpu.registers().wz() >> 8 : input.lhs);
+      const auto bits_left_on_bus = static_cast<std::uint8_t>(is_indirect ? cpu.regs().wz() >> 8 : input.lhs);
       const auto flags = Alu::bit(static_cast<std::uint8_t>(input.lhs), bit, input.flags, bits_left_on_bus);
       return {input.lhs, flags, static_cast<std::uint8_t>(is_indirect ? 8 : 4)};
     }
@@ -300,17 +300,17 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     }
 
     case Operation::Rrd: {
-      const auto prev_a = cpu.registers().get(RegisterFile::R8::A);
+      const auto prev_a = cpu.regs().get(RegisterFile::R8::A);
       const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | (input.lhs & 0xf));
-      cpu.registers().set(RegisterFile::R8::A, new_a);
+      cpu.regs().set(RegisterFile::R8::A, new_a);
       return {static_cast<std::uint16_t>(input.lhs >> 4 | ((prev_a & 0xf) << 4)),
           input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 10};
     }
 
     case Operation::Rld: {
-      const auto prev_a = cpu.registers().get(RegisterFile::R8::A);
+      const auto prev_a = cpu.regs().get(RegisterFile::R8::A);
       const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | ((input.lhs >> 4) & 0xf));
-      cpu.registers().set(RegisterFile::R8::A, new_a);
+      cpu.regs().set(RegisterFile::R8::A, new_a);
       return {static_cast<std::uint16_t>(input.lhs << 4 | (prev_a & 0xf)),
           input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 10};
     }

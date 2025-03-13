@@ -109,7 +109,7 @@ struct App {
       return 0;
     };
     commands["reset"] = [this](const std::vector<std::string> &) {
-      spectrum.z80().registers().pc(0);
+      spectrum.z80().regs().pc(0);
       return 0;
     };
 
@@ -201,7 +201,7 @@ struct App {
   }
 
   void history() const {
-    for (const auto &trace: spectrum.z80().history()) {
+    for (const auto &trace: spectrum.history()) {
       const auto disassembled = dis.disassemble(trace.pc());
       trace.dump(std::cout, "  ");
       std::print(std::cout, "{}\n", disassembled.to_string());
@@ -210,7 +210,7 @@ struct App {
 
   void report() const {
     const auto disassembled = dis.disassemble(spectrum.z80().pc());
-    std::print(std::cout, "{} ({} executed)\n", disassembled.to_string(), spectrum.z80().num_instructions_executed());
+    std::print(std::cout, "{} ({} cycles)\n", disassembled.to_string(), spectrum.z80().cycle_count());
   }
 
   std::vector<std::string> exec_on_startup;

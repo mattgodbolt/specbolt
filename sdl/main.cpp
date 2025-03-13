@@ -145,7 +145,7 @@ struct SdlApp {
           }
           catch (const std::exception &e) {
             std::print(std::cout, "Exception: {}\n", e.what());
-            for (const auto &trace: spectrum.z80().history()) {
+            for (const auto &trace: spectrum.history()) {
               trace.dump(std::cout, "  ");
               std::print(std::cout, "{}\n", dis.disassemble(trace.pc()).to_string());
             }

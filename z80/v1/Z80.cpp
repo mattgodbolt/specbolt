@@ -14,9 +14,6 @@ std::size_t Z80::execute_one() {
     ++now_tstates_;
     return 1;
   }
-  ++num_instructions_;
-  reg_history_[current_reg_history_index_] = regs_;
-  current_reg_history_index_ = (current_reg_history_index_ + 1) % RegHistory;
 
   regs_.r(regs_.r() + 1);
   const auto initial_time = now_tstates_;
@@ -203,36 +200,24 @@ std::uint8_t Z80::pop8() {
   return read8(old_sp);
 }
 
-std::vector<RegisterFile> Z80::history() const {
-  std::vector<RegisterFile> result;
-  const auto num_entries = std::min(RegHistory, num_instructions_executed());
-  result.reserve(num_entries + 1);
-  for (auto offset = 0u; offset < num_entries; ++offset) {
-    const auto index = (current_reg_history_index_ + offset) % RegHistory;
-    result.push_back(reg_history_[index]);
-  }
-  result.push_back(regs_);
-  return result;
-}
-
 void Z80::interrupt() {
   if (!iff1_)
     return;
   // Some dark business with parity flag here ignored.
   if (halted_) {
     halted_ = false;
-    registers().pc(registers().pc() + 1);
+    regs().pc(regs().pc() + 1);
   }
   iff1_ = iff2_ = false;
   pass_time(7);
-  push16(registers().pc());
+  push16(regs().pc());
   switch (irq_mode_) {
     case 0:
-    case 1: registers().pc(0x38); break;
+    case 1: regs().pc(0x38); break;
     case 2: {
       // Assume the bus is at 0xff.
-      const auto addr = static_cast<std::uint16_t>(0xff | (registers().i() << 8));
-      registers().pc(read16(addr));
+      const auto addr = static_cast<std::uint16_t>(0xff | (regs().i() << 8));
+      regs().pc(read16(addr));
       break;
     }
     default: throw std::runtime_error("Inconceivable");
@@ -241,7 +226,7 @@ void Z80::interrupt() {
 
 void Z80::retn() {
   iff1_ = iff2_;
-  registers().pc(pop16());
+  regs().pc(pop16());
 }
 
 std::uint8_t Z80::read8(const std::uint16_t address) const { return memory_.read(address); }

@@ -64,7 +64,7 @@ void Snapshot::load(const std::filesystem::path &snapshot, Z80Base &z80) {
   for (auto i = 0u; i < memory.size(); ++i)
     z80.memory().write(static_cast<std::uint16_t>(16384 + i), memory[i]);
 
-  auto &registers = z80.registers();
+  auto &registers = z80.regs();
   registers.set(RegisterFile::R16::AF, header.af);
   registers.set(RegisterFile::R16::BC, header.bc);
   registers.set(RegisterFile::R16::DE, header.de);

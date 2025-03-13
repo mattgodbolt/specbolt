@@ -73,17 +73,13 @@ struct ZexDocTest {
     const v1::Disassembler dis{memory};
 
     DUT z80(memory);
-    z80.registers().pc(0x100);
-    z80.registers().sp(0xf000);
+    z80.regs().pc(0x100);
+    z80.regs().sp(0xf000);
     Vt52Emu output;
 
     const auto dump_state = [&](auto &to) {
-      for (const auto &trace: z80.history()) {
-        const auto disassembled = dis.disassemble(trace.pc());
-        trace.dump(to, "  ");
-        std::print(to, "{}\n", disassembled.to_string());
-      }
-      std::print(to, "After {} instructions\n", z80.num_instructions_executed());
+      const auto disassembled = dis.disassemble(z80.pc());
+      std::print(to, "{}\n", disassembled.to_string());
       std::print(to, "Output: {}\n", output.output);
     };
 
@@ -93,10 +89,10 @@ struct ZexDocTest {
       if (dump_instructions) {
         if (++instructions_executed < dump_instructions)
           std::print(std::cout, "{:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:04x} {:02x}{:02x}{:02x}{:02x}\n",
-              z80.pc(), z80.registers().get(RegisterFile::R16::AF), z80.registers().get(RegisterFile::R16::BC),
-              z80.registers().get(RegisterFile::R16::DE), z80.registers().get(RegisterFile::R16::HL),
-              z80.registers().ix(), z80.registers().iy(), z80.registers().sp(), memory.read(0x1d42),
-              memory.read(0x1d43), memory.read(0x1d44), memory.read(0x1d45));
+              z80.pc(), z80.regs().get(RegisterFile::R16::AF), z80.regs().get(RegisterFile::R16::BC),
+              z80.regs().get(RegisterFile::R16::DE), z80.regs().get(RegisterFile::R16::HL), z80.regs().ix(),
+              z80.regs().iy(), z80.regs().sp(), memory.read(0x1d42), memory.read(0x1d43), memory.read(0x1d44),
+              memory.read(0x1d45));
         else
           break;
       }
@@ -109,22 +105,22 @@ struct ZexDocTest {
       }
       if (z80.pc() == 5) {
         // Emulate simple CPM console output.
-        switch (z80.registers().get(RegisterFile::R8::C)) {
+        switch (z80.regs().get(RegisterFile::R8::C)) {
           case 2: // putchar()
-            output.on_char(static_cast<char>(z80.registers().get(RegisterFile::R8::E)));
+            output.on_char(static_cast<char>(z80.regs().get(RegisterFile::R8::E)));
             break;
           case 9: {
             // print string
-            auto addr = z80.registers().get(RegisterFile::R16::DE);
+            auto addr = z80.regs().get(RegisterFile::R16::DE);
             for (auto c = static_cast<char>(memory.read(addr)); c != '$'; c = static_cast<char>(memory.read(++addr)))
               output.on_char(c);
           } break;
           default: throw std::runtime_error("Unsupported CPM function");
         }
         // Fake out a RET.
-        const auto sp = z80.registers().sp();
-        z80.registers().pc(memory.read16(sp));
-        z80.registers().sp(sp + 2);
+        const auto sp = z80.regs().sp();
+        z80.regs().pc(memory.read16(sp));
+        z80.regs().sp(sp + 2);
       }
     }
     std::print(std::cout, "\n---\n");

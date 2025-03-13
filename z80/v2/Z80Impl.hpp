@@ -888,9 +888,9 @@ template<Opcode opcode>
 constexpr auto ed_instruction<opcode> = Op<"rrd", [](Z80 &z80) {
   const auto address = z80.regs().get(RegisterFile::R16::HL);
   const auto ind_hl = z80.read(address);
-  const auto prev_a = z80.registers().get(RegisterFile::R8::A);
+  const auto prev_a = z80.regs().get(RegisterFile::R8::A);
   const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | (ind_hl & 0xf));
-  z80.registers().set(RegisterFile::R8::A, new_a);
+  z80.regs().set(RegisterFile::R8::A, new_a);
   z80.pass_time(4);
   z80.write(address, static_cast<std::uint8_t>(ind_hl >> 4 | ((prev_a & 0xf) << 4)));
   z80.flags(z80.flags() & Flags::Carry() | Alu::parity_flags_for(new_a));
@@ -901,9 +901,9 @@ template<Opcode opcode>
 constexpr auto ed_instruction<opcode> = Op<"rld", [](Z80 &z80) {
   const auto address = z80.regs().get(RegisterFile::R16::HL);
   const auto ind_hl = z80.read(address);
-  const auto prev_a = z80.registers().get(RegisterFile::R8::A);
+  const auto prev_a = z80.regs().get(RegisterFile::R8::A);
   const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | ((ind_hl >> 4) & 0xf));
-  z80.registers().set(RegisterFile::R8::A, new_a);
+  z80.regs().set(RegisterFile::R8::A, new_a);
   z80.pass_time(4);
   z80.write(address, static_cast<std::uint8_t>(ind_hl << 4 | (prev_a & 0xf)));
   z80.flags(z80.flags() & Flags::Carry() | Alu::parity_flags_for(new_a));
@@ -922,7 +922,7 @@ struct BlockLoadOp {
     z80.write(de, byte);
     z80.pass_time(2);
     // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
-    const auto flag_bits = static_cast<std::uint8_t>(byte + z80.registers().get(RegisterFile::R8::A));
+    const auto flag_bits = static_cast<std::uint8_t>(byte + z80.regs().get(RegisterFile::R8::A));
 
     const auto new_bc = static_cast<std::uint16_t>(z80.regs().get(RegisterFile::R16::BC) - 1);
     z80.regs().set(RegisterFile::R16::BC, new_bc);
@@ -953,7 +953,7 @@ struct BlockCompareOp {
     z80.regs().set(RegisterFile::R16::HL, hl + add);
     const auto byte = z80.read(hl);
 
-    const auto [result, subtract_flags] = Alu::sub8(z80.registers().get(RegisterFile::R8::A), byte, false);
+    const auto [result, subtract_flags] = Alu::sub8(z80.regs().get(RegisterFile::R8::A), byte, false);
 
     z80.pass_time(5);
     // bits 3 and 5 come from the result, where bit 3 goes to flag 5, and bit 1 to flag 3....and where if HF is
