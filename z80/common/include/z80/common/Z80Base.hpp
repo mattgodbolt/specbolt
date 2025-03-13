@@ -44,7 +44,7 @@ public:
   void out(std::uint16_t port, std::uint8_t value);
   std::uint8_t in(std::uint16_t port);
 
-  using InHandler = std::function<std::optional<uint8_t>(std::uint16_t port)>;
+  using InHandler = std::function<std::optional<std::uint8_t>(std::uint16_t port)>;
   void add_in_handler(InHandler handler);
 
   void dump() const;
@@ -52,7 +52,7 @@ public:
   void halt();
   [[nodiscard]] bool halted() const { return halted_; }
 
-  void pass_time(const size_t tstates) { now_tstates_ += tstates; }
+  void pass_time(const std::size_t tstates) { now_tstates_ += tstates; }
 
 protected:
   RegisterFile regs_;

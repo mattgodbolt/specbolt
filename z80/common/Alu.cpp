@@ -108,7 +108,7 @@ Alu::R8 Alu::daa(const std::uint8_t lhs, const Flags current_flags) {
 }
 
 Alu::R8 Alu::cpl(const std::uint8_t lhs, const Flags current_flags) {
-  const auto result = static_cast<uint8_t>(lhs ^ 0xff);
+  const auto result = static_cast<std::uint8_t>(lhs ^ 0xff);
   const auto preserved_flags = current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity() | Flags::Carry());
   constexpr auto set_flags = Flags::HalfCarry() | Flags::Subtract();
   const auto flags_from_result = Flags(result) & (Flags::Flag3() | Flags::Flag5());

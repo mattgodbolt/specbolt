@@ -41,11 +41,11 @@ std::string Disassembler::Disassembled::operand_name(
     case Instruction::Operand::ByteImmediate: return std::format("0x{:02x}", bytes[instruction.length - 1]);
     case Instruction::Operand::WordImmediate:
       return std::format(
-          "0x{:04x}", static_cast<uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
+          "0x{:04x}", static_cast<std::uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
     case Instruction::Operand::WordImmediateIndirect8:
     case Instruction::Operand::WordImmediateIndirect16:
       return std::format(
-          "(0x{:04x})", static_cast<uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
+          "(0x{:04x})", static_cast<std::uint16_t>(bytes[instruction.length - 1] << 8) | bytes[instruction.length - 2]);
     case Instruction::Operand::A: return "a";
     case Instruction::Operand::B: return "b";
     case Instruction::Operand::C: return "c";

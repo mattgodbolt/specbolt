@@ -97,12 +97,12 @@ std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t in
     case Instruction::Operand::PcOffset:
       return static_cast<std::uint16_t>(regs_.pc() + static_cast<std::int8_t>(read8(regs_.pc() - 1)));
     case Instruction::Operand::IX_Offset_Indirect8: {
-      const auto address = static_cast<uint16_t>(regs_.ix() + index_offset);
+      const auto address = static_cast<std::uint16_t>(regs_.ix() + index_offset);
       regs_.wz(address);
       return read8(address);
     }
     case Instruction::Operand::IY_Offset_Indirect8: {
-      const auto address = static_cast<uint16_t>(regs_.iy() + index_offset);
+      const auto address = static_cast<std::uint16_t>(regs_.iy() + index_offset);
       regs_.wz(address);
       return read8(address);
     }
@@ -138,10 +138,10 @@ void Z80::write(const Instruction::Operand operand, const std::int8_t index_offs
     case Instruction::Operand::HL: regs_.set(RegisterFile::R16::HL, value); break;
     case Instruction::Operand::IX: regs_.set(RegisterFile::R16::IX, value); break;
     case Instruction::Operand::IY: regs_.set(RegisterFile::R16::IY, value); break;
-    case Instruction::Operand::IXH: regs_.set(RegisterFile::R8::IXH, static_cast<uint8_t>(value)); break;
-    case Instruction::Operand::IYH: regs_.set(RegisterFile::R8::IYH, static_cast<uint8_t>(value)); break;
-    case Instruction::Operand::IXL: regs_.set(RegisterFile::R8::IXL, static_cast<uint8_t>(value)); break;
-    case Instruction::Operand::IYL: regs_.set(RegisterFile::R8::IYL, static_cast<uint8_t>(value)); break;
+    case Instruction::Operand::IXH: regs_.set(RegisterFile::R8::IXH, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::IYH: regs_.set(RegisterFile::R8::IYH, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::IXL: regs_.set(RegisterFile::R8::IXL, static_cast<std::uint8_t>(value)); break;
+    case Instruction::Operand::IYL: regs_.set(RegisterFile::R8::IYL, static_cast<std::uint8_t>(value)); break;
     case Instruction::Operand::SP: regs_.sp(value); break;
     case Instruction::Operand::BC_Indirect8:
       write8(regs_.get(RegisterFile::R16::BC), static_cast<std::uint8_t>(value));

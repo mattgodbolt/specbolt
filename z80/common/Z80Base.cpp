@@ -24,7 +24,7 @@ void Z80Base::out(const std::uint16_t port, const std::uint8_t value) {
 }
 
 std::uint8_t Z80Base::in(const std::uint16_t port) {
-  uint8_t combined_result = 0xff;
+  std::uint8_t combined_result = 0xff;
   for (const auto &handler: in_handlers_) {
     if (const auto result = handler(port); result.has_value())
       combined_result &= *result;

@@ -46,16 +46,16 @@ public:
 private:
   class RegPair {
   public:
-    [[nodiscard]] uint8_t high() const;
-    void high(uint8_t high);
-    [[nodiscard]] uint8_t low() const;
-    void low(uint8_t low);
-    [[nodiscard]] uint16_t highlow() const;
-    void highlow(uint16_t highlow);
+    [[nodiscard]] std::uint8_t high() const;
+    void high(std::uint8_t high);
+    [[nodiscard]] std::uint8_t low() const;
+    void low(std::uint8_t low);
+    [[nodiscard]] std::uint16_t highlow() const;
+    void highlow(std::uint16_t highlow);
 
   private:
-    uint8_t low_{0xff};
-    uint8_t high_{0xff};
+    std::uint8_t low_{0xff};
+    std::uint8_t high_{0xff};
   };
   [[nodiscard]] RegPair &reg_for(R8 r8);
   [[nodiscard]] const RegPair &reg_for(R8 r8) const;

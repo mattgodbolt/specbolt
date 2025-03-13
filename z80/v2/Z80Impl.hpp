@@ -98,7 +98,7 @@ constexpr auto is_r_indirect(const std::uint8_t index) { return index == 6; }
 
 template<std::uint8_t index, HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter {
-  constexpr static uint8_t get(Z80 &z80) { return z80.regs().get(TableR<hl_set, no_remap_ixiy_8b>::regs[index]); }
+  constexpr static std::uint8_t get(Z80 &z80) { return z80.regs().get(TableR<hl_set, no_remap_ixiy_8b>::regs[index]); }
   constexpr static void set(Z80 &z80, const std::uint8_t value) {
     z80.regs().set(TableR<hl_set, no_remap_ixiy_8b>::regs[index], value);
   }
@@ -107,18 +107,18 @@ struct OperandGetSetter {
 // Special case for indirect indexed register.
 template<HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter<6, hl_set, no_remap_ixiy_8b> {
-  constexpr static uint8_t get(Z80 &z80) { return z80.read(z80.regs().wz()); }
+  constexpr static std::uint8_t get(Z80 &z80) { return z80.read(z80.regs().wz()); }
   constexpr static void set(Z80 &z80, const std::uint8_t value) { z80.write(z80.regs().wz(), value); }
 };
 
 template<HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter<8, hl_set, no_remap_ixiy_8b> {
-  constexpr static uint8_t get(Z80 &z80) { return z80.read_immediate(); };
+  constexpr static std::uint8_t get(Z80 &z80) { return z80.read_immediate(); };
   constexpr static void set(Z80 &z80, std::uint8_t) = delete("Cannot set immediate value");
 };
 
 template<std::uint8_t y, HlSet hl_set, bool no_remap_ixiy_8b = false>
-constexpr uint8_t get_r(Z80 &z80) {
+constexpr std::uint8_t get_r(Z80 &z80) {
   return OperandGetSetter<y, hl_set, no_remap_ixiy_8b>::get(z80);
 }
 template<std::uint8_t y, HlSet hl_set, bool no_remap_ixiy_8b = false>

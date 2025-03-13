@@ -40,7 +40,7 @@ public:
 private:
   static constexpr std::size_t RegHistory = 8z;
   std::array<RegisterFile, RegHistory> reg_history_{};
-  size_t current_reg_history_index_{};
+  std::size_t current_reg_history_index_{};
 };
 
 } // namespace specbolt::v2

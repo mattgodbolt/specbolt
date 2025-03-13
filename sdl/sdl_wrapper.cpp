@@ -21,7 +21,7 @@ void sdl_audio::disabled_callback(std::span<std::int16_t>) {
   // do nothing
 }
 
-void sdl_audio::audio_callback(void *vo, Uint8 *stream, const int len) {
+void sdl_audio::audio_callback(void *vo, std::uint8 *stream, const int len) {
   const auto &self = *static_cast<sdl_audio *>(vo);
   self.callback(std::span{reinterpret_cast<std::int16_t *>(stream), static_cast<std::size_t>(len / 2)});
 }
@@ -49,7 +49,7 @@ sdl_audio::sdl_audio(const audio_settings settings) {
 void sdl_audio::queue(const std::span<std::int16_t> buffer) noexcept {
   // FIXME ? cc @hanickadot what is to fix?
   if (id.has_value()) {
-    SDL_QueueAudio(*id, buffer.data(), static_cast<uint32_t>(buffer.size()));
+    SDL_QueueAudio(*id, buffer.data(), static_cast<std::uint32_t>(buffer.size()));
   }
 }
 

@@ -27,7 +27,7 @@ namespace {
 
 struct Vt52Emu {
   std::string output;
-  size_t ignore_next{};
+  std::size_t ignore_next{};
   bool seen_esc{};
 
   void on_char(const char c) {
@@ -56,7 +56,7 @@ struct Vt52Emu {
 };
 
 struct ZexDocTest {
-  uint64_t dump_instructions = 0;
+  std::uint64_t dump_instructions = 0;
   int skip = 0;
   bool need_help{};
   bool new_impl{};
@@ -87,7 +87,7 @@ struct ZexDocTest {
       std::print(to, "Output: {}\n", output.output);
     };
 
-    uint64_t instructions_executed = 0;
+    std::uint64_t instructions_executed = 0;
 
     while (z80.pc() != 0) {
       if (dump_instructions) {

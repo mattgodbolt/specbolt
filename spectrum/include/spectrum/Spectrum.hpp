@@ -43,9 +43,9 @@ public:
   }
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
-  size_t run_cycles(const size_t cycles) {
+  std::size_t run_cycles(const std::size_t cycles) {
     // TODO fix up this mess of cycles elapsed etc
-    size_t total_cycles_elapsed = 0;
+    std::size_t total_cycles_elapsed = 0;
     while (total_cycles_elapsed < cycles) {
       if (trace_next_instructions_ && !z80_.halted()) {
         static constexpr auto UndocMask =
@@ -68,7 +68,7 @@ public:
     return total_cycles_elapsed;
   }
 
-  size_t run_frame() { return run_cycles(cycles_per_frame); }
+  std::size_t run_frame() { return run_cycles(cycles_per_frame); }
 
   [[nodiscard]] auto &z80() { return z80_; }
   [[nodiscard]] const auto &z80() const { return z80_; }

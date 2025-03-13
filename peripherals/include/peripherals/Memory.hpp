@@ -13,11 +13,11 @@ SPECBOLT_EXPORT class Memory {
 public:
   [[nodiscard]] std::uint8_t read(std::uint16_t address) const;
   [[nodiscard]] std::uint16_t read16(std::uint16_t address) const;
-  void write(uint16_t address, uint8_t byte);
-  void write16(uint16_t address, uint16_t word);
+  void write(std::uint16_t address, std::uint8_t byte);
+  void write16(std::uint16_t address, std::uint16_t word);
 
-  void raw_write(uint16_t address, uint8_t byte);
-  void load(const std::filesystem::path &filename, uint16_t address, uint16_t size);
+  void raw_write(std::uint16_t address, std::uint8_t byte);
+  void load(const std::filesystem::path &filename, std::uint16_t address, std::uint16_t size);
 
   void set_rom_size(const std::size_t size) { rom_size_ = size; }
 
