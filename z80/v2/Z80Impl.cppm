@@ -6,7 +6,7 @@ module;
 #include <optional>
 #include <vector>
 
-export module z80v2:Z80Impl;
+export module z80_v2:Z80Impl;
 
 import peripherals;
 import z80_common;

@@ -6,7 +6,7 @@
 
 #ifdef SPECBOLT_MODULES
 import z80_v1;
-import z80v2;
+import z80_v2;
 import z80_common;
 #else
 #include "z80/v1/Z80.hpp"

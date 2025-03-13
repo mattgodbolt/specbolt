@@ -1,4 +1,4 @@
-export module z80v2;
+export module z80_v2;
 
 export import :Disassembler;
 export import :Mnemonic;

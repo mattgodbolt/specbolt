@@ -1,7 +1,7 @@
 #include <iostream>
 
 #ifdef SPECBOLT_MODULES
-import z80v2;
+import z80_v2;
 #else
 #include "z80/v2/Disassembler.hpp"
 #endif
