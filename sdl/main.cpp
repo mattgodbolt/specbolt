@@ -31,13 +31,17 @@ struct SdlApp {
   bool need_help{};
   std::size_t trace_instructions{};
   bool new_impl{};
+  double video_refresh_rate{50};
+  double emulator_speed{1};
 
   int Main(const int argc, const char *argv[]) {
     const auto cli = lyra::cli() //
                      | lyra::help(need_help) //
                      | lyra::opt(rom, "ROM")["--rom"]("Where to find the ROM") //
                      | lyra::opt(trace_instructions, "NUM")["--trace"]("Trace the first NUM instructions") //
-                     | lyra::opt(new_impl)["--new-impl"]("Use new implementation.") //
+                     | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
+                     | lyra::opt(video_refresh_rate, "HZ")["--video-refresh"]("Refresh the video at HZ") //
+                     | lyra::opt(emulator_speed, "X")["--emulator-speed"]("Multiplier on emulation speed") //
                      | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::println(std::cerr, "Error in command line: {}", parse_result.message());
@@ -98,7 +102,10 @@ struct SdlApp {
     bool quit = false;
     bool z80_running{true};
     auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
-    auto next_frame = std::chrono::high_resolution_clock::now();
+    auto next_emu_frame = std::chrono::high_resolution_clock::now();
+    auto next_display_frame = std::chrono::high_resolution_clock::now();
+    const auto video_delay = std::chrono::microseconds(static_cast<unsigned long>(1'000'000 / video_refresh_rate));
+    const auto emulator_delay = std::chrono::microseconds(static_cast<unsigned long>(20'000 / emulator_speed));
     while (!quit) {
       SDL_Event sdl_event{};
       while (SDL_PollEvent(&sdl_event) != 0) {
@@ -110,7 +117,8 @@ struct SdlApp {
         }
       }
 
-      if (const auto now = std::chrono::high_resolution_clock::now(); now > next_frame) {
+      const auto now = std::chrono::high_resolution_clock::now();
+      if (now > next_emu_frame) {
         if (z80_running) {
           const auto start_time = std::chrono::high_resolution_clock::now();
           try {
@@ -125,7 +133,8 @@ struct SdlApp {
             // audio.queue(spectrum.audio().fill(spectrum.z80().cycle_count(), audio_buffer));
 
             if (end_time > next_print) {
-              std::print(std::cout, "Virtual: {:.2f}MHz | lag {}\n", cycles_per_second / 1'000'000, now - next_frame);
+              std::print(
+                  std::cout, "Virtual: {:.2f}MHz | lag {}\n", cycles_per_second / 1'000'000, now - next_emu_frame);
               std::print(
                   std::cout, "Audio over/under: {}/{}\n", spectrum.audio().overruns(), spectrum.audio().underruns());
               next_print = end_time + std::chrono::seconds(1);
@@ -141,7 +150,9 @@ struct SdlApp {
             z80_running = false;
           }
         }
-
+        next_emu_frame += emulator_delay;
+      }
+      if (now > next_display_frame) {
         void *pixels;
         int pitch;
         SDL_LockTexture(texture.get(), nullptr, &pixels, &pitch);
@@ -152,7 +163,7 @@ struct SdlApp {
         SDL_RenderClear(renderer.get());
         SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
         SDL_RenderPresent(renderer.get());
-        next_frame += std::chrono::milliseconds(20);
+        next_display_frame += video_delay;
       }
     }
     return 0;

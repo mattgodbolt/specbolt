@@ -36,3 +36,5 @@
 
 # Maybe this too?
 /CMakeUserPresets.json
+
+perf.data*
