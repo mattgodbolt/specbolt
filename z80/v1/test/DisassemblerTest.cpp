@@ -18,7 +18,7 @@ using specbolt::Memory;
 using specbolt::v1::Disassembler;
 
 TEST_CASE("Disassembler tests") {
-  Memory memory;
+  Memory memory{4};
   Disassembler dis(memory);
   SECTION("NOPs") {
     SECTION("at address 0") {

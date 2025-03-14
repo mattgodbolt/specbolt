@@ -6,7 +6,9 @@ module;
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <stdexcept>
 #include <type_traits>
+#include <vector>
 
 export module peripherals:Memory;
 

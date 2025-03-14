@@ -24,12 +24,12 @@ namespace specbolt {
 
 template<typename DUT>
 struct OpcodeTester {
-  Memory memory;
+  Memory memory{4};
   DUT z80{memory};
   static constexpr auto use_new_code = std::is_same_v<DUT, v2::Z80>;
   RegisterFile &regs = z80.regs();
 
-  explicit OpcodeTester() { memory.set_rom_size(0); }
+  explicit OpcodeTester() { memory.set_rom_flags({false, false, false, false}); }
 
   void run(auto... bytes) {
     write_to_memory(memory, z80.pc(), bytes...);

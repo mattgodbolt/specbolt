@@ -63,11 +63,11 @@ struct ZexDocTest {
 
   template<typename DUT>
   int run_test() {
-    Memory memory;
+    Memory memory{4};
     const auto filename = std::filesystem::path("z80/test/zexdoc.com");
     static constexpr auto FileSize = 8704;
-    memory.load(filename, 0x100, FileSize);
-    memory.set_rom_size(0);
+    memory.load(filename, 0, 0x100, FileSize);
+    memory.set_rom_flags({false, false, false, false});
     if (skip >= 0)
       memory.write16(0x120, static_cast<std::uint16_t>(memory.read16(0x120) + skip * 2));
     const v1::Disassembler dis{memory};
