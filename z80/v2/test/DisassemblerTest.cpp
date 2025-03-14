@@ -22,7 +22,7 @@ namespace specbolt::v2 {
 TEST_CASE("Opcode generation tests") {
   constexpr auto base_address = 0x8000u;
   auto dis = [](auto... bytes) {
-    Memory memory;
+    Memory memory{4};
     write_to_memory(memory, base_address, bytes...);
     const auto [disassembly, length] = disassemble(memory, base_address);
     CHECK(length == sizeof...(bytes));

@@ -19,17 +19,21 @@
 namespace specbolt {
 
 SPECBOLT_EXPORT
+enum class Variant { Spectrum48, Spectrum128 };
+
+SPECBOLT_EXPORT
 template<typename Z80Impl>
 class Spectrum {
 public:
-  explicit Spectrum(const std::filesystem::path &rom, const int audio_sample_rate) :
-      video_(memory_), audio_(audio_sample_rate), z80_(memory_) {
+  explicit Spectrum(Variant variant, const std::filesystem::path &rom, const int audio_sample_rate) :
+      memory_(total_pages_for(variant)), video_(memory_), audio_(audio_sample_rate), z80_(memory_) {
     const auto file_size = std::filesystem::file_size(rom);
-    constexpr std::uint16_t SpectrumRomSize = 0x4000;
+    const auto SpectrumRomSize = static_cast<std::uint16_t>(0x4000 * rom_pages_for(variant));
     if (file_size != SpectrumRomSize)
       throw std::runtime_error("Bad size for rom file " + rom.string());
-    memory_.load(rom, 0, SpectrumRomSize);
-    memory_.set_rom_size(SpectrumRomSize);
+    memory_.load(rom, rom_base_page_for(variant), 0, SpectrumRomSize);
+    memory_.set_rom_flags({true, false, false, false});
+    memory_.set_page_table(page_table_for(variant));
     z80_.add_out_handler([this](const std::uint16_t port, const std::uint8_t value) {
       if ((port & 0xff) == 0xfe) {
         video_.set_border(value & 0x07);
@@ -106,6 +110,31 @@ private:
   static constexpr std::size_t RegHistory = 8uz;
   std::array<RegisterFile, RegHistory> reg_history_{};
   std::size_t current_reg_history_index_{};
+
+  static constexpr auto total_pages_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return 3 + rom_pages_for(variant);
+      case Variant::Spectrum128: return 8 + rom_pages_for(variant);
+    }
+  }
+  static constexpr auto rom_pages_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return 1;
+      case Variant::Spectrum128: return 2;
+    }
+  }
+  static constexpr std::uint8_t rom_base_page_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return 0;
+      case Variant::Spectrum128: return 8;
+    }
+  }
+  static constexpr std::array<std::uint8_t, 4> page_table_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return {0, 1, 2, 3};
+      case Variant::Spectrum128: return {8, 5, 2, 0};
+    }
+  }
 };
 
 } // namespace specbolt

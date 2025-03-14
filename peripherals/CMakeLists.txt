@@ -1,3 +1,7 @@
+if (SPECBOLT_TESTS)
+    add_subdirectory(test)
+endif ()
+
 add_library(peripherals)
 
 target_link_libraries(peripherals PUBLIC opt::pedantic opt::c++26)

@@ -42,7 +42,8 @@ int get_number_arg(const std::vector<std::string> &args) {
 }
 
 struct App {
-  specbolt::Spectrum<specbolt::v1::Z80> spectrum{"48.rom", 48'000}; // TODO make configurable
+  specbolt::Spectrum<specbolt::v1::Z80> spectrum{
+      specbolt::Variant::Spectrum48, "48.rom", 48'000}; // TODO make configurable
   const specbolt::v1::Disassembler dis{spectrum.memory()};
   std::unordered_set<std::uint16_t> breakpoints = {};
   std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
