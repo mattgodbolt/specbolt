@@ -10,7 +10,7 @@ namespace specbolt::v2 {
 
 std::size_t Z80::execute_one() {
   const auto before = now_tstates_;
-  if (halted_) {
+  if (halted_) [[unlikely]] {
     ++now_tstates_;
     return now_tstates_ - before;
   }
@@ -43,6 +43,7 @@ std::uint16_t Z80::read_immediate16() {
   const auto high = read_immediate();
   return static_cast<std::uint16_t>(high << 8 | low);
 }
+
 void Z80::write(const std::uint16_t address, const std::uint8_t byte) {
   pass_time(3);
   memory_.write(address, byte);

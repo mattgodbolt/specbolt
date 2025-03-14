@@ -10,7 +10,7 @@
 namespace specbolt::v1 {
 
 std::size_t Z80::execute_one() {
-  if (halted_) {
+  if (halted_) [[unlikely]] {
     ++now_tstates_;
     return 1;
   }
