@@ -74,12 +74,11 @@ public:
 
   std::size_t run_frame() { return run_cycles(cycles_per_frame, false); }
 
-  [[nodiscard]] auto &z80() { return z80_; }
-  [[nodiscard]] const auto &z80() const { return z80_; }
-  [[nodiscard]] auto &video() { return video_; }
-  [[nodiscard]] auto &memory() { return memory_; }
-  [[nodiscard]] auto &keyboard() { return keyboard_; }
-  [[nodiscard]] auto &audio() { return audio_; }
+  [[nodiscard]] auto &z80(this auto &&self) { return self.z80_; }
+  [[nodiscard]] auto &video(this auto &self) { return self.video_; }
+  [[nodiscard]] auto &memory(this auto &self) { return self.memory_; }
+  [[nodiscard]] auto &keyboard(this auto &self) { return self.keyboard_; }
+  [[nodiscard]] auto &audio(this auto &self) { return self.audio_; }
 
   void trace_next(const std::size_t instructions) { trace_next_instructions_ = instructions; }
 
