@@ -128,6 +128,16 @@ std::vector<std::uint8_t> z80_decompress(const std::vector<std::uint8_t> &input)
   return output;
 }
 
+std::vector<std::uint8_t> read_to_end(std::ifstream &input) {
+  std::vector<std::uint8_t> output;
+  const auto pos = input.tellg();
+  input.seekg(0, std::ios::end);
+  output.resize(static_cast<std::size_t>(input.tellg() - pos));
+  input.seekg(pos, std::ios::beg);
+  input.read(reinterpret_cast<char *>(output.data()), static_cast<std::streamsize>(output.size()));
+  return output;
+}
+
 } // namespace
 
 void Snapshot::load_sna(const std::filesystem::path &snapshot, Z80Base &z80) {
@@ -224,16 +234,31 @@ void Snapshot::load_z80(const std::filesystem::path &snapshot, Z80Base &z80) {
 
   if (header.pc_h || header.pc_l) {
     z80.regs().pc(static_cast<std::uint16_t>(header.pc_h << 8 | header.pc_l));
-    if (header.flag1 & (1 << 5))
-      throw std::runtime_error("Compression isn't supported yet");
+    if (header.flag1 & (1 << 5)) {
+      // Compressed...
+      auto compressed = read_to_end(load_stream);
+      if (!load_stream)
+        throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
+      const auto size = compressed.size();
+      if (size < 4 || compressed[size - 4] != 0 || compressed[size - 3] != 0xed || compressed[size - 2] != 0xed ||
+          compressed[size - 1] != 0)
+        throw std::runtime_error(std::format("Unable to read file '{}' (bad trailer)", snapshot.string()));
+      compressed.resize(size - 4);
+      const auto uncompressed = z80_decompress(compressed);
+      if (uncompressed.size() != 48 * 1024)
+        throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
+      for (auto i = 0u; i < uncompressed.size(); ++i)
+        z80.memory().write(static_cast<std::uint16_t>(16384 + i), uncompressed[i]);
+    }
+    else {
+      std::vector<std::uint8_t> memory(RamSnapshotSize);
+      load_stream.read(reinterpret_cast<char *>(memory.data()), RamSnapshotSize);
+      if (!load_stream)
+        throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
 
-    std::vector<std::uint8_t> memory(RamSnapshotSize);
-    load_stream.read(reinterpret_cast<char *>(memory.data()), RamSnapshotSize);
-    if (!load_stream)
-      throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
-
-    for (auto i = 0u; i < memory.size(); ++i)
-      z80.memory().write(static_cast<std::uint16_t>(16384 + i), memory[i]);
+      for (auto i = 0u; i < memory.size(); ++i)
+        z80.memory().write(static_cast<std::uint16_t>(16384 + i), memory[i]);
+    }
   }
   else {
     // Version 2 or 3.
@@ -241,7 +266,7 @@ void Snapshot::load_z80(const std::filesystem::path &snapshot, Z80Base &z80) {
     load_stream.read(reinterpret_cast<char *>(&header_len), sizeof(header_len));
     if (!load_stream)
       throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
-    Variant variant{Variant::Spectrum48}; // TODO return this somehow?
+    auto variant{Variant::Spectrum48}; // TODO return this somehow?
     auto handle_load = [&]<typename HeaderType> {
       HeaderType extended_header{};
       load_stream.read(reinterpret_cast<char *>(&extended_header), sizeof(extended_header));
