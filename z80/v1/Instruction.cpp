@@ -165,7 +165,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
     case Operation::IrqMode: cpu.irq_mode(static_cast<std::uint8_t>(input.rhs)); return {0, input.flags, 0};
     case Operation::Out:
       cpu.out(input.lhs, static_cast<std::uint8_t>(input.rhs));
-      return {0, input.flags, static_cast<std::uint8_t>(4 + (lhs == Operand::ByteImmediate_A ? 3 : 0))};
+      return {input.lhs, input.flags, static_cast<std::uint8_t>(4 + (lhs == Operand::ByteImmediate_A ? 3 : 0))};
     case Operation::In: {
       const auto result = cpu.in(input.rhs);
       const auto flags = std::holds_alternative<NoFlags>(args)

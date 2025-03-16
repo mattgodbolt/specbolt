@@ -26,7 +26,7 @@ namespace specbolt {
 namespace {
 
 struct SdlApp {
-  std::filesystem::path rom{"48.rom"};
+  std::filesystem::path rom;
   std::filesystem::path snapshot;
   bool need_help{};
   std::size_t trace_instructions{};
@@ -34,10 +34,12 @@ struct SdlApp {
   double video_refresh_rate{50};
   double emulator_speed{1};
   double zoom{4};
+  bool spec128{};
 
   int Main(const int argc, const char *argv[]) {
     const auto cli = lyra::cli() //
                      | lyra::help(need_help) //
+                     | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
                      | lyra::opt(rom, "ROM")["--rom"]("Where to find the ROM") //
                      | lyra::opt(trace_instructions, "NUM")["--trace"]("Trace the first NUM instructions") //
                      | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
@@ -52,6 +54,10 @@ struct SdlApp {
     if (need_help) {
       std::cout << cli << '\n';
       return 0;
+    }
+
+    if (rom.empty()) {
+      rom = spec128 ? "128.rom" : "48.rom";
     }
 
     if (new_impl)
@@ -86,7 +92,7 @@ struct SdlApp {
 
     auto audio = sdl_audio{};
 
-    Spectrum<Z80Impl> spectrum(rom, audio.freq());
+    Spectrum<Z80Impl> spectrum(spec128 ? Variant::Spectrum128 : Variant::Spectrum48, rom, audio.freq());
     const v1::Disassembler dis{spectrum.memory()};
 
     if (!snapshot.empty()) {

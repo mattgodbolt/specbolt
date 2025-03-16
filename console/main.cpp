@@ -19,12 +19,14 @@
 import peripherals;
 import spectrum;
 import z80_v1;
+import z80_v2;
 #else
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
+#include "z80/v2/Z80.hpp"
 #endif
 
 namespace {
@@ -41,9 +43,16 @@ int get_number_arg(const std::vector<std::string> &args) {
   return parse_num(args[0]);
 }
 
-struct App {
-  specbolt::Spectrum<specbolt::v1::Z80> spectrum{"48.rom", 48'000}; // TODO make configurable
-  const specbolt::v1::Disassembler dis{spectrum.memory()};
+struct AppBase {
+  virtual ~AppBase() = default;
+  virtual bool interrupt() = 0;
+  virtual int main(const std::vector<std::string> &args) = 0;
+};
+
+template<typename Z80Impl>
+struct App final : AppBase {
+  specbolt::Spectrum<Z80Impl> spectrum;
+  const specbolt::v1::Disassembler dis;
   std::unordered_set<std::uint16_t> breakpoints = {};
   std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
   std::atomic<bool> interrupted{false};
@@ -53,7 +62,9 @@ struct App {
     return the_app;
   }
 
-  App() {
+  explicit App(specbolt::Variant variant) :
+      spectrum(variant, variant == specbolt::Variant::Spectrum128 ? "128.rom" : "48.rom", 48'000),
+      dis(spectrum.memory()) {
     self() = this;
     commands["help"] = [this](const std::vector<std::string> &) {
       std::cout << "Commands:\n";
@@ -89,7 +100,7 @@ struct App {
             address, memory.read(static_cast<std::uint16_t>(address + 0)),
             memory.read(static_cast<std::uint16_t>(address + 1)), memory.read(static_cast<std::uint16_t>(address + 2)),
             memory.read(static_cast<std::uint16_t>(address + 3)), memory.read(static_cast<std::uint16_t>(address + 4)),
-            memory.read(static_cast<std::uint16_t>(address + 4)), memory.read(static_cast<std::uint16_t>(address + 6)),
+            memory.read(static_cast<std::uint16_t>(address + 5)), memory.read(static_cast<std::uint16_t>(address + 6)),
             memory.read(static_cast<std::uint16_t>(address + 7)));
       }
       return 0;
@@ -109,7 +120,7 @@ struct App {
       return 0;
     };
     commands["reset"] = [this](const std::vector<std::string> &) {
-      spectrum.z80().regs().pc(0);
+      spectrum.reset();
       return 0;
     };
 
@@ -119,7 +130,7 @@ struct App {
       return rl_completion_matches(text, [](const char *text, const int state) -> char * {
         if (!self())
           return nullptr;
-        static decltype(commands)::iterator the_iterator;
+        static typename decltype(commands)::iterator the_iterator;
         if (state == 0)
           the_iterator = std::begin(self()->commands);
         while (the_iterator != std::end(self()->commands)) {
@@ -213,21 +224,27 @@ struct App {
     std::print(std::cout, "{} ({} cycles)\n", disassembled.to_string(), spectrum.z80().cycle_count());
   }
 
-  std::vector<std::string> exec_on_startup;
-  int main(int argc, const char **argv) {
-    bool need_help{};
-    const auto cli = lyra::cli() //
-                     | lyra::help(need_help) //
-                     | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup");
-    if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
-      std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
-      return 1;
+  bool execute(const std::string &line) {
+    // Use ranges to split the string line on whitespace, making a vector of strings
+    std::vector<std::string> inputs;
+    {
+      std::istringstream iss(line);
+      std::copy(
+          std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(), std::back_inserter(inputs));
     }
-    if (need_help) {
-      std::cout << cli << '\n';
-      return 0;
+    if (const auto found = commands.find(inputs[0]); found != std::end(commands)) {
+      if (const auto result = found->second(std::vector(std::next(std::begin(inputs)), std::end(inputs)));
+          result != 0) {
+        return false;
+      }
     }
+    else {
+      std::cout << "Unknown command " << inputs[0] << "\n";
+    }
+    return true;
+  }
 
+  int main(const std::vector<std::string> &exec_on_startup) {
     for (const auto &cmd: exec_on_startup)
       execute(cmd);
 
@@ -251,32 +268,36 @@ struct App {
     }
     return 0;
   }
-
-  bool execute(const std::string &line) {
-    // Use ranges to split the string line on whitespace, making a vector of strings
-    std::vector<std::string> inputs;
-    {
-      std::istringstream iss(line);
-      std::copy(
-          std::istream_iterator<std::string>(iss), std::istream_iterator<std::string>(), std::back_inserter(inputs));
-    }
-    if (const auto found = commands.find(inputs[0]); found != std::end(commands)) {
-      if (const auto result = found->second(std::vector(std::next(std::begin(inputs)), std::end(inputs)));
-          result != 0) {
-        return false;
-      }
-    }
-    else {
-      std::cout << "Unknown command " << inputs[0] << "\n";
-    }
-    return true;
-  }
 };
+
 
 } // namespace
 
-int main(const int argc, const char **argv) {
-  App app;
+int main(int argc, const char **argv) try {
+  std::vector<std::string> exec_on_startup;
+  bool spec128{};
+  bool need_help{};
+  bool new_impl{};
+  const auto cli = lyra::cli() | //
+                   lyra::help(need_help) //
+                   | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
+                   | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
+                   | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup");
+  if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
+    std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
+    return 1;
+  }
+  if (need_help) {
+    std::cout << cli << '\n';
+    return 0;
+  }
+
+  const auto variant = spec128 ? specbolt::Variant::Spectrum128 : specbolt::Variant::Spectrum48;
+  std::unique_ptr<AppBase> app;
+  if (new_impl)
+    app = std::make_unique<App<specbolt::v2::Z80>>(variant);
+  else
+    app = std::make_unique<App<specbolt::v1::Z80>>(variant);
 
   sigset_t blocked_signals{};
   // todo check errors etc. extract?
@@ -288,7 +309,7 @@ int main(const int argc, const char **argv) {
     while (!stop_token.stop_requested()) {
       int signum{};
       if (sigwait(&blocked_signals, &signum) != -1) {
-        app.interrupt();
+        app->interrupt();
         continue;
       }
       if (errno != EAGAIN && errno != EINTR) {
@@ -300,11 +321,9 @@ int main(const int argc, const char **argv) {
     ~SelfInterrupt() { kill(0, SIGINT); }
   } self_irq;
 
-  try {
-    return app.main(argc, argv);
-  }
-  catch (const std::exception &e) {
-    std::cerr << "Exception: " << e.what() << "\n";
-    return 1;
-  }
+  return app->main(exec_on_startup);
+}
+catch (const std::exception &e) {
+  std::cerr << "Exception: " << e.what() << "\n";
+  return 1;
 }

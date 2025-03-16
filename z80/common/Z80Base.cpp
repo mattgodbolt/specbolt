@@ -32,6 +32,12 @@ std::uint8_t Z80Base::in(const std::uint16_t port) {
   return combined_result;
 }
 
-void Z80Base::dump() const { regs_.dump(std::cout, ""); }
+void Z80Base::dump() const {
+  regs_.dump(std::cout, "");
+  std::print(std::cout, "ROM flags : {}, {}, {}, {}\n", memory_.rom_flags()[0], memory_.rom_flags()[1],
+      memory_.rom_flags()[2], memory_.rom_flags()[3]);
+  std::print(std::cout, "Page      : {}, {}, {}, {}\n", memory_.page_table()[0], memory_.page_table()[1],
+      memory_.page_table()[2], memory_.page_table()[3]);
+}
 
 } // namespace specbolt

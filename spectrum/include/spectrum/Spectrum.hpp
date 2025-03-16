@@ -12,6 +12,7 @@
 #include <array>
 #include <filesystem>
 #include <iostream>
+#include <print>
 #include <vector>
 
 #endif
@@ -19,29 +20,51 @@
 namespace specbolt {
 
 SPECBOLT_EXPORT
+enum class Variant { Spectrum48, Spectrum128 };
+
+SPECBOLT_EXPORT
 template<typename Z80Impl>
 class Spectrum {
 public:
-  explicit Spectrum(const std::filesystem::path &rom, const int audio_sample_rate) :
-      video_(memory_), audio_(audio_sample_rate), z80_(memory_) {
+  explicit Spectrum(const Variant variant, const std::filesystem::path &rom, const int audio_sample_rate) :
+      memory_(total_pages_for(variant)), video_(memory_), audio_(audio_sample_rate), z80_(memory_), variant_(variant) {
     const auto file_size = std::filesystem::file_size(rom);
-    constexpr std::uint16_t SpectrumRomSize = 0x4000;
+    const auto SpectrumRomSize = static_cast<std::uint16_t>(0x4000 * rom_pages_for(variant));
     if (file_size != SpectrumRomSize)
       throw std::runtime_error("Bad size for rom file " + rom.string());
-    memory_.load(rom, 0, SpectrumRomSize);
-    memory_.set_rom_size(SpectrumRomSize);
+    memory_.load(rom, rom_base_page_for(variant), 0, SpectrumRomSize);
+    memory_.set_rom_flags({true, false, false, false});
+    memory_.set_page_table(page_table_for(variant));
     z80_.add_out_handler([this](const std::uint16_t port, const std::uint8_t value) {
       if ((port & 0xff) == 0xfe) {
         video_.set_border(value & 0x07);
         audio_.set_output(z80_.cycle_count(), value & 0x10, value & 0x8);
       }
     });
+    if (variant == Variant::Spectrum128) {
+      video_.set_page(5);
+      z80_.add_out_handler([this](const std::uint16_t port, const std::uint8_t value) mutable {
+        if (paging_disabled_)
+          return;
+        if (port == 0x7ffd) {
+          memory_.set_page_table({
+              static_cast<std::uint8_t>(value & 0x10 ? 9 : 8),
+              5,
+              2,
+              static_cast<std::uint8_t>(value & 0x07),
+          });
+          paging_disabled_ = value & 0x20;
+          video_.set_page(static_cast<std::uint8_t>(value & 0x08 ? 7 : 5));
+        }
+      });
+    }
     z80_.add_in_handler([this](const std::uint16_t port) { return keyboard_.in(port); });
     // Handler for ULA sound...
     z80_.add_in_handler([](const std::uint16_t port) {
       // TODO something with the EAR bit here...
       return port & 1 ? std::nullopt : std::make_optional<std::uint8_t>(~(1 << 6));
     });
+    reset();
   }
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
@@ -94,6 +117,16 @@ public:
     return result;
   }
 
+  void reset() {
+    z80_.regs().pc(0);
+    if (variant_ == Variant::Spectrum128) {
+      memory_.set_page_table(page_table_for(variant_));
+      memory_.set_rom_flags({true, false, false, false});
+      video_.set_page(5);
+    }
+    paging_disabled_ = false;
+  }
+
 private:
   Memory memory_;
   Video video_;
@@ -102,10 +135,37 @@ private:
   Z80Impl z80_;
   std::size_t trace_next_instructions_{};
   std::size_t last_traced_instr_cycle_count_{};
+  Variant variant_;
 
   static constexpr std::size_t RegHistory = 8uz;
   std::array<RegisterFile, RegHistory> reg_history_{};
   std::size_t current_reg_history_index_{};
+  bool paging_disabled_{};
+
+  static constexpr auto total_pages_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return 3 + rom_pages_for(variant);
+      case Variant::Spectrum128: return 8 + rom_pages_for(variant);
+    }
+  }
+  static constexpr auto rom_pages_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return 1;
+      case Variant::Spectrum128: return 2;
+    }
+  }
+  static constexpr std::uint8_t rom_base_page_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return 0;
+      case Variant::Spectrum128: return 8;
+    }
+  }
+  static constexpr std::array<std::uint8_t, 4> page_table_for(const Variant variant) {
+    switch (variant) {
+      case Variant::Spectrum48: return {0, 1, 2, 3};
+      case Variant::Spectrum128: return {8, 5, 2, 0};
+    }
+  }
 };
 
 } // namespace specbolt

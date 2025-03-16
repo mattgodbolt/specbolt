@@ -5,6 +5,7 @@ module;
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <print>
 #include <span>
 #include <type_traits>
 #include <vector>

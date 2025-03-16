@@ -33,8 +33,7 @@ constexpr auto VSyncLines = 48;
 constexpr auto CyclesPerScanLine = 224;
 constexpr auto FramesPerFlash = 16;
 
-constexpr auto PixelDataAddress = 0x4000;
-constexpr auto AttributeDataAddress = 0x5800;
+constexpr auto AttributeDataOffset = 0x1800;
 constexpr auto ColumnCount = 32;
 
 
@@ -86,11 +85,12 @@ void Video::render_line(std::size_t line) {
   const auto y76 = (line >> 6) & 0x03;
   const auto y543 = (line >> 3) & 0x07;
   const auto y210 = line & 0x07;
-  const auto screen_address = PixelDataAddress + (y76 << 11) + (y543 << 5) + (y210 << 8);
+  const auto screen_offset = (y76 << 11) + (y543 << 5) + (y210 << 8);
   const auto char_row = line / 8;
   for (std::size_t x = 0; x < ColumnCount; ++x) {
-    const auto pixel_data = memory_.read(static_cast<std::uint16_t>(screen_address + x));
-    const auto attributes = memory_.read(static_cast<std::uint16_t>(AttributeDataAddress + char_row * ColumnCount + x));
+    const auto pixel_data = memory_.raw_read(page_, static_cast<std::uint16_t>(screen_offset + x));
+    const auto attributes =
+        memory_.raw_read(page_, static_cast<std::uint16_t>(AttributeDataOffset + char_row * ColumnCount + x));
     const auto pen_color = palette[attributes & 0x07];
     const auto paper_color = palette[attributes >> 3 & 0x07];
     const auto invert = attributes & 0x80 && flash_on_;

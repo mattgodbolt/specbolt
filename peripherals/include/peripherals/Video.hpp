@@ -22,6 +22,7 @@ public:
   explicit Video(const Memory &memory);
 
   void set_border(const std::uint8_t border) { border_ = border; }
+  void set_page(std::uint8_t page) { page_ = page; }
   bool poll(std::size_t num_cycles);
 
   [[nodiscard]] std::span<const std::byte> screen() const;
@@ -30,6 +31,7 @@ private:
   const Memory &memory_;
   std::array<std::uint32_t, Height * Width> screen_{};
   std::uint8_t border_{3};
+  std::uint8_t page_{1};
   std::size_t total_cycles_{};
   std::size_t next_line_cycles_{};
   std::size_t current_line_{};
