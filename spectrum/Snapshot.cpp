@@ -257,11 +257,13 @@ void Snapshot::load_z80(const std::filesystem::path &snapshot, Z80Base &z80) {
       default: throw std::runtime_error(std::format("Unsupported header length: {}", header_len));
     }
 
-    while (!load_stream.eof()) {
+    for (;;) {
       std::uint16_t size{};
       std::uint8_t page{};
       load_stream.read(reinterpret_cast<char *>(&size), sizeof(size));
       load_stream.read(reinterpret_cast<char *>(&page), sizeof(page));
+      if (load_stream.eof())
+        break;
       if (!load_stream)
         throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
       std::vector<std::uint8_t> chunk(size == 0xffff ? 16384 : size);
@@ -276,7 +278,7 @@ void Snapshot::load_z80(const std::filesystem::path &snapshot, Z80Base &z80) {
       // TODO not this, doesn't support 48k mode
       const auto ram_bank = static_cast<std::uint8_t>(page >= 3 ? page - 3 : page + 8);
       for (auto i = 0u; i < chunk.size(); ++i)
-        z80.memory().raw_write(ram_bank, static_cast<std::uint16_t>(i), chunk[i]);
+        z80.memory().raw_write_checked(ram_bank, static_cast<std::uint16_t>(i), chunk[i]);
     }
   }
 }

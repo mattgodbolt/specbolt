@@ -42,6 +42,10 @@ void Memory::raw_write(const std::uint8_t page, const std::uint16_t offset, cons
   address_space_[page * page_size + offset] = byte;
 }
 
+void Memory::raw_write_checked(const std::uint8_t page, const std::uint16_t offset, const std::uint8_t byte) {
+  address_space_.at(page * page_size + offset) = byte;
+}
+
 std::uint8_t Memory::raw_read(const std::uint8_t page, const std::uint16_t offset) const {
   return address_space_[page * page_size + offset];
 }

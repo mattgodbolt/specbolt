@@ -20,6 +20,7 @@ public:
 
   void raw_write(std::uint16_t address, std::uint8_t byte);
   void raw_write(std::uint8_t page, std::uint16_t offset, std::uint8_t byte);
+  void raw_write_checked(std::uint8_t page, std::uint16_t offset, std::uint8_t byte);
   [[nodiscard]] std::uint8_t raw_read(std::uint8_t page, std::uint16_t offset) const;
 
   void load(const std::filesystem::path &filename, std::uint8_t page, std::uint16_t offset, std::uint16_t size);
