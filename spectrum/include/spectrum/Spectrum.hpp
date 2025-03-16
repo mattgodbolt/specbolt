@@ -25,7 +25,7 @@ SPECBOLT_EXPORT
 template<typename Z80Impl>
 class Spectrum {
 public:
-  explicit Spectrum(Variant variant, const std::filesystem::path &rom, const int audio_sample_rate) :
+  explicit Spectrum(const Variant variant, const std::filesystem::path &rom, const int audio_sample_rate) :
       memory_(total_pages_for(variant)), video_(memory_), audio_(audio_sample_rate), z80_(memory_) {
     const auto file_size = std::filesystem::file_size(rom);
     const auto SpectrumRomSize = static_cast<std::uint16_t>(0x4000 * rom_pages_for(variant));
@@ -40,6 +40,23 @@ public:
         audio_.set_output(z80_.cycle_count(), value & 0x10, value & 0x8);
       }
     });
+    if (variant == Variant::Spectrum128) {
+      video_.set_page(5);
+      z80_.add_out_handler([paging_enabled = true, this](const std::uint16_t port, const std::uint8_t value) mutable {
+        if (!paging_enabled)
+          return;
+        if (port == 0x7ffd) {
+          memory_.set_page_table({
+              static_cast<std::uint8_t>(value & 0x10 ? 9 : 8),
+              5,
+              2,
+              static_cast<std::uint8_t>(value & 0x07),
+          });
+          paging_enabled = value & 0x20;
+          video_.set_page(static_cast<std::uint8_t>(value & 0x08 ? 5 : 7));
+        }
+      });
+    }
     z80_.add_in_handler([this](const std::uint16_t port) { return keyboard_.in(port); });
     // Handler for ULA sound...
     z80_.add_in_handler([](const std::uint16_t port) {
