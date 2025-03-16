@@ -26,7 +26,7 @@ template<typename Z80Impl>
 class Spectrum {
 public:
   explicit Spectrum(const Variant variant, const std::filesystem::path &rom, const int audio_sample_rate) :
-      memory_(total_pages_for(variant)), video_(memory_), audio_(audio_sample_rate), z80_(memory_) {
+      memory_(total_pages_for(variant)), video_(memory_), audio_(audio_sample_rate), z80_(memory_), variant_(variant) {
     const auto file_size = std::filesystem::file_size(rom);
     const auto SpectrumRomSize = static_cast<std::uint16_t>(0x4000 * rom_pages_for(variant));
     if (file_size != SpectrumRomSize)
@@ -42,8 +42,8 @@ public:
     });
     if (variant == Variant::Spectrum128) {
       video_.set_page(5);
-      z80_.add_out_handler([paging_enabled = true, this](const std::uint16_t port, const std::uint8_t value) mutable {
-        if (!paging_enabled)
+      z80_.add_out_handler([this](const std::uint16_t port, const std::uint8_t value) mutable {
+        if (paging_disabled_)
           return;
         if (port == 0x7ffd) {
           memory_.set_page_table({
@@ -52,8 +52,8 @@ public:
               2,
               static_cast<std::uint8_t>(value & 0x07),
           });
-          paging_enabled = value & 0x20;
-          video_.set_page(static_cast<std::uint8_t>(value & 0x08 ? 5 : 7));
+          paging_disabled_ = value & 0x20;
+          video_.set_page(static_cast<std::uint8_t>(value & 0x08 ? 7 : 5));
         }
       });
     }
@@ -63,6 +63,7 @@ public:
       // TODO something with the EAR bit here...
       return port & 1 ? std::nullopt : std::make_optional<std::uint8_t>(~(1 << 6));
     });
+    reset();
   }
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
@@ -115,6 +116,16 @@ public:
     return result;
   }
 
+  void reset() {
+    z80_.regs().pc(0);
+    if (variant_ == Variant::Spectrum128) {
+      memory_.set_page_table(page_table_for(variant_));
+      memory_.set_rom_flags({true, false, false, false});
+      video_.set_page(5);
+    }
+    paging_disabled_ = false;
+  }
+
 private:
   Memory memory_;
   Video video_;
@@ -123,10 +134,12 @@ private:
   Z80Impl z80_;
   std::size_t trace_next_instructions_{};
   std::size_t last_traced_instr_cycle_count_{};
+  Variant variant_;
 
   static constexpr std::size_t RegHistory = 8uz;
   std::array<RegisterFile, RegHistory> reg_history_{};
   std::size_t current_reg_history_index_{};
+  bool paging_disabled_{};
 
   static constexpr auto total_pages_for(const Variant variant) {
     switch (variant) {
