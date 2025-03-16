@@ -15,6 +15,7 @@ module;
 
 export module spectrum:Snapshot;
 
+import :Spectrum;
 import peripherals;
 import z80_common;
 
