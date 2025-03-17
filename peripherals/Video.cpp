@@ -28,7 +28,8 @@ constexpr std::array<std::uint32_t, 16> palette{
     0xffffff,
 };
 
-constexpr auto VSyncLines = 48;
+constexpr auto PalTotalLines = 312zu;
+constexpr auto VSyncLines = PalTotalLines - Video::VisibleHeight;
 // constexpr auto HSyncPixels = 64;
 constexpr auto CyclesPerScanLine = 224;
 constexpr auto FramesPerFlash = 16;
@@ -44,7 +45,7 @@ bool Video::poll(const std::size_t num_cycles) {
   total_cycles_ += num_cycles;
   while (total_cycles_ > next_line_cycles_) {
     render_line(current_line_);
-    current_line_ = (current_line_ + 1) % (VisibleHeight + VSyncLines);
+    current_line_ = (current_line_ + 1) % PalTotalLines;
     if (current_line_ == 0) {
       irq = true;
       if (++flash_counter_ == FramesPerFlash) {
