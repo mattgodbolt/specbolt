@@ -1047,7 +1047,8 @@ struct build_execute_ixiy {
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
     if constexpr (op.indirect) {
-      const auto address = static_cast<std::uint16_t>(z80.regs().get(ix_or_iy) + z80.read_immediate());
+      const auto address =
+          static_cast<std::uint16_t>(z80.regs().get(ix_or_iy) + static_cast<std::int8_t>(z80.read_immediate()));
       // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right.
       // heinous hack here.
       static constexpr bool is_immediate = requires { op.is_load_immediate; };

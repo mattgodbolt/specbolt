@@ -1100,6 +1100,14 @@ struct OpcodeTester {
         CHECK(z80.cycle_count() == 19); // TODO fix old code path
       CHECK(memory.read(0x1236) == 0xbe);
     }
+    SECTION("ld b, (ix+d)") {
+      memory.write(0x122f, 0xcc);
+      regs.set(RegisterFile::R16::IX, 0x1234);
+      run(0xdd, 0x46, 0xfb); // ld b, (ix-5),
+      CHECK(z80.pc() == 3);
+      CHECK(z80.cycle_count() == 19);
+      CHECK(regs.get(RegisterFile::R8::B) == 0xcc);
+    }
   }
 
   void fd_prefix() {
