@@ -14,6 +14,7 @@ if (SPECBOLT_MODULES)
             FILES
             module.cppm
             Audio.cppm
+            Blip_Buffer.cppm
             Keyboard.cppm
             Memory.cppm
             Video.cppm

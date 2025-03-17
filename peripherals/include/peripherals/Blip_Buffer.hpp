@@ -6,8 +6,11 @@
 #ifndef BLIP_BUFFER_H
 #define BLIP_BUFFER_H
 
+#ifndef SPECBOLT_MODULES
+#include <cassert>
 #include <cstdint>
 #include <vector>
+#endif
 
 // Time unit at source clock rate
 typedef std::size_t blip_time_t;
@@ -16,6 +19,7 @@ typedef std::size_t blip_time_t;
 typedef std::int16_t blip_sample_t;
 enum { blip_sample_max = 32767 };
 
+SPECBOLT_EXPORT
 class Blip_Buffer {
 public:
   typedef const char *blargg_err_t;
@@ -120,10 +124,6 @@ private:
   friend class Blip_Reader;
 };
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
 // Number of bits in resample ratio fraction. Higher values give a more accurate ratio
 // but reduce maximum buffer size.
 #ifndef BLIP_BUFFER_ACCURACY
@@ -162,13 +162,14 @@ public:
 };
 
 // Quality level. Start with blip_good_quality.
-static constexpr int blip_med_quality = 8;
-static constexpr int blip_good_quality = 12;
-static constexpr int blip_high_quality = 16;
+SPECBOLT_EXPORT constexpr int blip_med_quality = 8;
+SPECBOLT_EXPORT constexpr int blip_good_quality = 12;
+SPECBOLT_EXPORT constexpr int blip_high_quality = 16;
 
 // Range specifies the greatest expected change in amplitude. Calculate it
 // by finding the difference between the maximum and minimum expected
 // amplitudes (max - min).
+SPECBOLT_EXPORT
 template<int quality, int range>
 class Blip_Synth {
 public:
@@ -267,12 +268,10 @@ private:
 // End of public interface
 
 
-#include <assert.h>
-
 // Compatibility with older version
-const long blip_unscaled = 65535;
-const int blip_low_quality = blip_med_quality;
-const int blip_best_quality = blip_high_quality;
+SPECBOLT_EXPORT constexpr long blip_unscaled = 65535;
+SPECBOLT_EXPORT constexpr int blip_low_quality = blip_med_quality;
+SPECBOLT_EXPORT constexpr int blip_best_quality = blip_high_quality;
 
 #define BLIP_FWD(i)                                                                                                    \
   {                                                                                                                    \
@@ -364,7 +363,7 @@ inline int Blip_Reader::begin(Blip_Buffer &blip_buf) {
   return blip_buf.bass_shift;
 }
 
-static constexpr int blip_max_length = 0;
-static constexpr int blip_default_length = 250;
+SPECBOLT_EXPORT constexpr int blip_max_length = 0;
+SPECBOLT_EXPORT constexpr int blip_default_length = 250;
 
 #endif
