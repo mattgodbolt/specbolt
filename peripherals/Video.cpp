@@ -34,8 +34,6 @@ constexpr auto CyclesPerScanLine = 224;
 constexpr auto FramesPerFlash = 16;
 
 constexpr auto AttributeDataOffset = 0x1800;
-constexpr auto ColumnCount = 32;
-
 
 } // namespace
 
@@ -46,7 +44,7 @@ bool Video::poll(const std::size_t num_cycles) {
   total_cycles_ += num_cycles;
   while (total_cycles_ > next_line_cycles_) {
     render_line(current_line_);
-    current_line_ = (current_line_ + 1) % (Height + VSyncLines);
+    current_line_ = (current_line_ + 1) % (VisibleHeight + VSyncLines);
     if (current_line_ == 0) {
       irq = true;
       if (++flash_counter_ == FramesPerFlash) {
@@ -59,51 +57,55 @@ bool Video::poll(const std::size_t num_cycles) {
   return irq;
 }
 
-void Video::render_line(std::size_t line) {
-  if (line < VSyncLines) {
-    return;
-  }
-  line -= VSyncLines;
-  std::span line_span(screen_.data() + line * Width, Width);
-  if (line < YBorder) {
-    // Top border.
-    std::ranges::fill(line_span, palette[border_]);
-    return;
-  }
-  line -= YBorder;
-  if (line >= ScreenHeight) {
-    // Bottom border.
-    std::ranges::fill(line_span, palette[border_]);
-    return;
-  }
+void Video::blit_to(const std::span<std::uint32_t> screen) const {
+  if (screen.size() != VisibleWidth * VisibleHeight)
+    throw std::runtime_error("Bad screen size");
+  for (auto y = 0uz; y < VisibleHeight; ++y) {
+    const auto &[border, columns] = lines_[y];
+    auto line_span = screen.subspan(y * VisibleWidth, VisibleWidth);
+    if (y < YBorder || y >= YBorder + ScreenHeight) {
+      std::ranges::fill(line_span, palette[border]);
+      continue;
+    }
+    // Left and right borders.
+    std::ranges::fill(line_span.subspan(0, XBorder), palette[border]);
+    std::ranges::fill(line_span.subspan(XBorder + ScreenWidth, XBorder), palette[border]);
 
-  // Left and right borders.
-  std::ranges::fill(line_span.subspan(0, XBorder), palette[border_]);
-  std::ranges::fill(line_span.subspan(XBorder + ScreenWidth, XBorder), palette[border_]);
-
-  const auto display_span = line_span.subspan(XBorder, ScreenWidth);
-  const auto y76 = (line >> 6) & 0x03;
-  const auto y543 = (line >> 3) & 0x07;
-  const auto y210 = line & 0x07;
-  const auto screen_offset = (y76 << 11) + (y543 << 5) + (y210 << 8);
-  const auto char_row = line / 8;
-  for (std::size_t x = 0; x < ColumnCount; ++x) {
-    const auto pixel_data = memory_.raw_read(page_, static_cast<std::uint16_t>(screen_offset + x));
-    const auto attributes =
-        memory_.raw_read(page_, static_cast<std::uint16_t>(AttributeDataOffset + char_row * ColumnCount + x));
-    const auto pen_color = palette[attributes & 0x07];
-    const auto paper_color = palette[attributes >> 3 & 0x07];
-    const auto invert = attributes & 0x80 && flash_on_;
-    for (std::size_t bit = 0; bit < 8; ++bit) {
-      const bool pixel_on = pixel_data & (1 << (7 - bit));
-      const auto colour = pixel_on == invert ? paper_color : pen_color;
-      display_span[x * 8u + bit] = colour;
+    const auto display_span = line_span.subspan(XBorder, ScreenWidth);
+    for (std::size_t x = 0; x < ColumnCount; ++x) {
+      const auto pixel_data = columns[x].pixel;
+      const auto attributes = columns[x].attribute;
+      const auto pen_color = palette[attributes & 0x07];
+      const auto paper_color = palette[attributes >> 3 & 0x07];
+      const auto invert = attributes & 0x80 && flash_on_;
+      for (std::size_t bit = 0; bit < 8; ++bit) {
+        const bool pixel_on = pixel_data & (1 << (7 - bit));
+        const auto colour = pixel_on == invert ? paper_color : pen_color;
+        display_span[x * 8u + bit] = colour;
+      }
     }
   }
 }
 
-std::span<const std::byte> Video::screen() const {
-  return {reinterpret_cast<const std::byte *>(screen_.data()), screen_.size() * sizeof(std::uint32_t)};
+void Video::render_line(const std::size_t display_line) {
+  if (display_line < VSyncLines)
+    return;
+  auto &[border, columns] = lines_[display_line - VSyncLines];
+  border = border_;
+  const auto y = display_line - YBorder - VSyncLines;
+  if (y >= ScreenHeight) // also handles y < 0 as unsigned above does that...
+    return;
+
+  const auto y76 = (y >> 6) & 0x03;
+  const auto y543 = (y >> 3) & 0x07;
+  const auto y210 = y & 0x07;
+  const auto screen_offset = (y76 << 11) + (y543 << 5) + (y210 << 8);
+  const auto char_row = y / 8;
+  for (std::size_t x = 0; x < ColumnCount; ++x) {
+    columns[x].pixel = memory_.raw_read(page_, static_cast<std::uint16_t>(screen_offset + x));
+    columns[x].attribute =
+        memory_.raw_read(page_, static_cast<std::uint16_t>(AttributeDataOffset + char_row * ColumnCount + x));
+  }
 }
 
 } // namespace specbolt

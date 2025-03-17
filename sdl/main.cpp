@@ -69,8 +69,8 @@ struct SdlApp {
     auto sdl_state = sdl_init(); // RAII wrapper
 
     auto window = sdl_resource(SDL_CreateWindow("Specbolt ZX Spectrum Emulator", SDL_WINDOWPOS_UNDEFINED,
-        SDL_WINDOWPOS_UNDEFINED, static_cast<int>(zoom * Video::Width), static_cast<int>(zoom * Video::Height),
-        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE));
+        SDL_WINDOWPOS_UNDEFINED, static_cast<int>(zoom * Video::VisibleWidth),
+        static_cast<int>(zoom * Video::VisibleHeight), SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE));
     if (!window) {
       throw sdl_error("SDL_CreateWindow failed");
     }
@@ -80,8 +80,8 @@ struct SdlApp {
       throw sdl_error("SDL_CreateRenderer failed");
     }
 
-    auto texture = sdl_resource(SDL_CreateTexture(
-        renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, Video::Width, Video::Height));
+    auto texture = sdl_resource(SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
+        Video::VisibleWidth, Video::VisibleHeight));
     if (!texture) {
       throw sdl_error("SDL_CreateTexture failed");
     }
@@ -165,8 +165,8 @@ struct SdlApp {
         void *pixels;
         int pitch;
         SDL_LockTexture(texture.get(), nullptr, &pixels, &pitch);
-        const auto &video = spectrum.video();
-        memcpy(pixels, video.screen().data(), video.screen().size_bytes());
+        spectrum.video().blit_to(
+            std::span(static_cast<std::uint32_t *>(pixels), Video::VisibleWidth * Video::VisibleHeight));
         SDL_UnlockTexture(texture.get());
 
         SDL_RenderClear(renderer.get());
