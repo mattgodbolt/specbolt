@@ -23,6 +23,7 @@ import z80_v2;
 #else
 #include "peripherals/Memory.hpp"
 #include "peripherals/Video.hpp"
+#include "spectrum/Snapshot.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
@@ -121,6 +122,15 @@ struct App final : AppBase {
     };
     commands["reset"] = [this](const std::vector<std::string> &) {
       spectrum.reset();
+      return 0;
+    };
+    commands["load"] = [this](const std::vector<std::string> &args) {
+      if (args.size() != 1) {
+        std::print(std::cout, "Syntax: load <snapshot>\n");
+        return 0;
+      }
+      std::print(std::cout, "Loading '{}'\n", args[0]);
+      specbolt::Snapshot::load(args[0], spectrum.z80());
       return 0;
     };
 
@@ -278,11 +288,15 @@ int main(int argc, const char **argv) try {
   bool spec128{};
   bool need_help{};
   bool new_impl{};
+  std::filesystem::path snapshot;
+
   const auto cli = lyra::cli() | //
                    lyra::help(need_help) //
                    | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
                    | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
-                   | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup");
+                   | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup") |
+                   lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
+
   if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
     std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
     return 1;
@@ -321,6 +335,9 @@ int main(int argc, const char **argv) try {
     ~SelfInterrupt() { kill(0, SIGINT); }
   } self_irq;
 
+  if (!snapshot.empty()) {
+    exec_on_startup.insert(exec_on_startup.begin(), "load " + snapshot.string());
+  }
   return app->main(exec_on_startup);
 }
 catch (const std::exception &e) {
