@@ -3,7 +3,7 @@
 #ifndef SPECBOLT_MODULES
 #include <cstdint>
 #include <span>
-#include <vector>
+#include "peripherals/Blip_Buffer.hpp"
 #define SPECBOLT_EXPORT
 #endif
 
@@ -13,24 +13,20 @@ SPECBOLT_EXPORT class Audio {
 public:
   explicit Audio(int sample_rate);
 
-  void update(std::size_t total_cycles);
   void set_output(std::size_t total_cycles, bool beeper_on, bool tape_on);
 
   [[nodiscard]] auto sample_rate() const { return sample_rate_; }
-  std::span<std::int16_t> fill(std::size_t total_cycles, std::span<std::int16_t> span);
+  std::vector<std::int16_t> end_frame(std::size_t total_cycles);
 
-  [[nodiscard]] auto underruns() const { return underruns_; }
   [[nodiscard]] auto overruns() const { return overruns_; }
 
 private:
   int sample_rate_;
-  std::size_t cycle_count_{};
   std::int16_t current_output_{};
-  std::size_t read_pos_{};
-  std::size_t write_pos_{};
-  std::vector<std::int16_t> audio_{};
   std::size_t overruns_{};
-  std::size_t underruns_{};
+  std::size_t last_frame_{};
+  Blip_Buffer blip_buffer_;
+  Blip_Synth<blip_good_quality, 65535> blip_synth_;
 };
 
 } // namespace specbolt

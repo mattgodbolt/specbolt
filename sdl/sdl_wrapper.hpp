@@ -36,28 +36,23 @@ struct audio_settings {
 };
 
 struct sdl_audio {
-  static void disabled_callback(std::span<std::int16_t>);
-
   std::optional<SDL_AudioDeviceID> id;
   SDL_AudioSpec obtained;
-  std::function<void(std::span<std::int16_t>)> callback = disabled_callback;
-
-  static void audio_callback(void *vo, std::uint8_t *stream, int len);
 
   explicit sdl_audio(audio_settings settings = {});
 
   sdl_audio(const sdl_audio &) = delete;
   sdl_audio(sdl_audio &&) = delete;
 
-  int freq() const noexcept { return obtained.freq; }
+  [[nodiscard]] int freq() const noexcept { return obtained.freq; }
 
-  void pause() const noexcept {
+  void pause(const bool paused = true) const noexcept {
     if (id.has_value()) {
-      SDL_PauseAudioDevice(*id, false);
+      SDL_PauseAudioDevice(*id, paused);
     }
   }
 
-  void queue(std::span<std::int16_t> buffer) noexcept;
+  void queue(std::span<const std::int16_t> buffer) noexcept;
 
   ~sdl_audio() noexcept;
 };
