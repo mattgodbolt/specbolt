@@ -6,8 +6,8 @@
 
 namespace specbolt {
 
-Audio::Audio(const int sample_rate) : sample_rate_(sample_rate) {
-  blip_buffer_.clock_rate(3'500'000);
+Audio::Audio(const std::size_t sample_rate, const std::size_t clock_rate) {
+  blip_buffer_.clock_rate(clock_rate);
   blip_buffer_.set_sample_rate(static_cast<std::size_t>(sample_rate), 1000);
   blip_buffer_.bass_freq(200);
   blip_synth_.volume(1.0);
@@ -29,7 +29,7 @@ std::vector<std::int16_t> Audio::end_frame(const std::size_t total_cycles) {
   blip_buffer_.end_frame(total_cycles - last_frame_);
   last_frame_ = total_cycles;
   std::vector<std::int16_t> result;
-  result.resize(3'500'000 / 50);
+  result.resize(blip_buffer_.samples_avail());
   result.resize(blip_buffer_.read_samples(result.data(), result.size(), false));
   return result;
 }

@@ -26,8 +26,11 @@ SPECBOLT_EXPORT
 template<typename Z80Impl>
 class Spectrum {
 public:
-  explicit Spectrum(const Variant variant, const std::filesystem::path &rom, const int audio_sample_rate) :
-      memory_(total_pages_for(variant)), video_(memory_), audio_(audio_sample_rate), z80_(memory_), variant_(variant) {
+  explicit Spectrum(const Variant variant, const std::filesystem::path &rom, const std::size_t audio_sample_rate,
+      const double speed_up = 1.0) :
+      memory_(total_pages_for(variant)), video_(memory_),
+      audio_(audio_sample_rate, static_cast<std::size_t>(50.0 * static_cast<double>(cycles_per_frame) * speed_up)),
+      z80_(memory_), variant_(variant) {
     const auto file_size = std::filesystem::file_size(rom);
     const auto SpectrumRomSize = static_cast<std::uint16_t>(0x4000 * rom_pages_for(variant));
     if (file_size != SpectrumRomSize)

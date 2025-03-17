@@ -86,14 +86,14 @@ struct SdlApp {
       throw sdl_error("SDL_CreateTexture failed");
     }
 
-    const auto freq = 48'000;
-    const auto hz = 50;
-    const auto samples = freq / hz;
+    constexpr auto desired_freq = 44'100;
+    const auto samples = static_cast<std::uint16_t>(desired_freq / video_refresh_rate);
 
-    auto audio = sdl_audio{{.frequency = 44'100, .format = AUDIO_S16SYS, .channels = 1, .samples = samples}};
+    auto audio = sdl_audio{{.frequency = desired_freq, .format = AUDIO_S16SYS, .channels = 1, .samples = samples}};
     audio.pause(false);
 
-    Spectrum<Z80Impl> spectrum(spec128 ? Variant::Spectrum128 : Variant::Spectrum48, rom, audio.freq());
+    Spectrum<Z80Impl> spectrum(spec128 ? Variant::Spectrum128 : Variant::Spectrum48, rom,
+        static_cast<std::size_t>(audio.freq()), emulator_speed);
     const v1::Disassembler dis{spectrum.memory()};
 
     if (!snapshot.empty()) {

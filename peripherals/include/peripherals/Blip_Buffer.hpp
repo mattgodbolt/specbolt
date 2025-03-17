@@ -30,7 +30,7 @@ public:
   blargg_err_t set_sample_rate(unsigned long new_rate, unsigned int msec = 1000 / 4);
 
   // Set number of source time units per second
-  void clock_rate(long);
+  void clock_rate(std::size_t rate);
 
   // End current time frame of specified duration and make its samples available
   // (along with any still-unread samples) for reading with read_samples(). Begins
@@ -52,7 +52,7 @@ public:
   std::size_t length() const;
 
   // Number of source time units per second
-  long clock_rate() const;
+  std::size_t clock_rate() const;
 
   // Set frequency high-pass filter frequency, where higher values reduce bass more
   void bass_freq(int frequency);
@@ -90,7 +90,7 @@ public:
   blip_resampled_time_t resampled_time(const blip_time_t t) const {
     return static_cast<blip_resampled_time_t>(t) * factor_ + offset_;
   }
-  blip_resampled_time_t clock_rate_factor(long clock_rate) const;
+  blip_resampled_time_t clock_rate_factor(std::size_t clock_rate) const;
 
   Blip_Buffer();
 
@@ -118,7 +118,7 @@ private:
   long reader_accum;
   int bass_shift;
   unsigned long sample_rate_;
-  long clock_rate_;
+  std::size_t clock_rate_;
   int bass_freq_;
   std::size_t length_;
   friend class Blip_Reader;
@@ -354,8 +354,8 @@ inline std::size_t Blip_Buffer::length() const { return length_; }
 inline std::size_t Blip_Buffer::samples_avail() const { return (offset_ >> BLIP_BUFFER_ACCURACY); }
 inline std::size_t Blip_Buffer::sample_rate() const { return sample_rate_; }
 inline int Blip_Buffer::output_latency() const { return blip_widest_impulse_ / 2; }
-inline long Blip_Buffer::clock_rate() const { return clock_rate_; }
-inline void Blip_Buffer::clock_rate(const long cps) { factor_ = clock_rate_factor(clock_rate_ = cps); }
+inline std::size_t Blip_Buffer::clock_rate() const { return clock_rate_; }
+inline void Blip_Buffer::clock_rate(const std::size_t cps) { factor_ = clock_rate_factor(clock_rate_ = cps); }
 
 inline int Blip_Reader::begin(Blip_Buffer &blip_buf) {
   buf = blip_buf.buffer_.data();

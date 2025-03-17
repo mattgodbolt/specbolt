@@ -85,7 +85,7 @@ Blip_Buffer::blargg_err_t Blip_Buffer::set_sample_rate(const unsigned long new_r
   return nullptr; // success
 }
 
-blip_resampled_time_t Blip_Buffer::clock_rate_factor(const long clock_rate) const {
+blip_resampled_time_t Blip_Buffer::clock_rate_factor(const std::size_t clock_rate) const {
   const double ratio = static_cast<double>(sample_rate_) / static_cast<double>(clock_rate);
   const long factor = static_cast<long>(floor(ratio * (1L << BLIP_BUFFER_ACCURACY) + 0.5));
   assert(factor > 0 || !sample_rate_); // fails if clock/output ratio is too large
@@ -104,8 +104,8 @@ void Blip_Buffer::bass_freq(const int freq) {
   bass_shift = shift;
 }
 
-void Blip_Buffer::end_frame(const blip_time_t t) {
-  offset_ += t * factor_;
+void Blip_Buffer::end_frame(const blip_time_t time) {
+  offset_ += time * factor_;
   assert(samples_avail() <= buffer_size()); // time outside buffer length
 }
 
@@ -143,7 +143,7 @@ void Blip_Buffer::remove_samples(const unsigned long count) {
 Blip_Synth_::Blip_Synth_(short *p, const int w) : impulses(p), width(w) {
   volume_unit_ = 0.0;
   kernel_unit = 0;
-  buf = 0;
+  buf = nullptr;
   last_amp = 0;
   delta_factor = 0;
 }
