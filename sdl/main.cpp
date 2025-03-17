@@ -91,6 +91,7 @@ struct SdlApp {
     const auto samples = freq / hz;
 
     auto audio = sdl_audio{{.frequency = 44'100, .format = AUDIO_S16SYS, .channels = 1, .samples = samples}};
+    audio.pause(false);
 
     Spectrum<Z80Impl> spectrum(spec128 ? Variant::Spectrum128 : Variant::Spectrum48, rom, audio.freq());
     const v1::Disassembler dis{spectrum.memory()};
@@ -104,8 +105,6 @@ struct SdlApp {
 
     bool quit = false;
     bool z80_running{true};
-    auto audio_running = false;
-    int audio_badger = 0;
     auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
     auto next_emu_frame = std::chrono::high_resolution_clock::now();
     auto next_display_frame = std::chrono::high_resolution_clock::now();
@@ -134,20 +133,11 @@ struct SdlApp {
                 static_cast<double>(cycles_elapsed) /
                 std::chrono::duration_cast<std::chrono::duration<double>>(time_taken).count();
 
-            if (++audio_badger >= 1) {
-              const auto audio_buffer = spectrum.audio().end_frame(spectrum.z80().cycle_count());
-              audio.queue(audio_buffer);
-              if (!audio_running) {
-                audio.pause(false);
-                audio_running = true;
-              }
-              audio_badger = 0;
-            }
+            audio.queue(spectrum.audio().end_frame(spectrum.z80().cycle_count()));
 
             if (end_time > next_print) {
               std::print(
                   std::cout, "Virtual: {:.2f}MHz | lag {}\n", cycles_per_second / 1'000'000, now - next_emu_frame);
-              std::print(std::cout, "Audio over: {}\n", spectrum.audio().overruns());
               next_print = end_time + std::chrono::seconds(1);
             }
           }
