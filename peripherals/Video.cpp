@@ -75,13 +75,13 @@ void Video::blit_to(const std::span<std::uint32_t> screen) const {
     for (std::size_t x = 0; x < ColumnCount; ++x) {
       const auto pixel_data = columns[x].pixel;
       const auto attributes = columns[x].attribute;
-      const auto pen_color = palette[attributes & 0x07];
-      const auto paper_color = palette[attributes >> 3 & 0x07];
       const auto invert = attributes & 0x80 && flash_on_;
+      const auto index_1 = attributes >> 3u & 0x07u;
+      const auto index_2 = attributes & 0x07u;
+      const auto paper_color = invert ? palette[index_1] : palette[index_2];
+      const auto pen_color = invert ? palette[index_2] : palette[index_1];
       for (std::size_t bit = 0; bit < 8; ++bit) {
-        const bool pixel_on = pixel_data & (1 << (7 - bit));
-        const auto colour = pixel_on == invert ? paper_color : pen_color;
-        display_span[x * 8u + bit] = colour;
+        display_span[x * 8u + bit] = pixel_data & 1 << (7 - bit) ? paper_color : pen_color;
       }
     }
   }
