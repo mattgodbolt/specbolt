@@ -47,9 +47,8 @@ sdl_audio::sdl_audio(const audio_settings settings) {
 }
 
 void sdl_audio::queue(const std::span<std::int16_t> buffer) noexcept {
-  // FIXME ? cc @hanickadot what is to fix?
   if (id.has_value()) {
-    SDL_QueueAudio(*id, buffer.data(), static_cast<std::uint32_t>(buffer.size()));
+    SDL_QueueAudio(*id, buffer.data(), static_cast<std::uint32_t>(buffer.size_bytes()));
   }
 }
 
