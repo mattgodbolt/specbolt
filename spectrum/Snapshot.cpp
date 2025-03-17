@@ -112,9 +112,9 @@ static_assert(sizeof(Z80HeaderV31) == 55);
 
 std::vector<std::uint8_t> z80_decompress(const std::vector<std::uint8_t> &input) {
   std::vector<std::uint8_t> output;
-  output.reserve(16 * 1024);
+  output.reserve(48 * 1024);
   for (auto i = 0u; i < input.size(); ++i) {
-    if (const auto b = input[i]; i < input.size() - 4 && b == 0xed && input[i + 1] == 0xed) {
+    if (const auto b = input[i]; i < input.size() - 3 && b == 0xed && input[i + 1] == 0xed) {
       const auto count = input[i + 2];
       const auto value = input[i + 3];
       for (auto j = 0u; j < count; ++j)
@@ -239,14 +239,18 @@ void Snapshot::load_z80(const std::filesystem::path &snapshot, Z80Base &z80) {
       auto compressed = read_to_end(load_stream);
       if (!load_stream)
         throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
-      const auto size = compressed.size();
-      if (size < 4 || compressed[size - 4] != 0 || compressed[size - 3] != 0xed || compressed[size - 2] != 0xed ||
-          compressed[size - 1] != 0)
-        throw std::runtime_error(std::format("Unable to read file '{}' (bad trailer)", snapshot.string()));
-      compressed.resize(size - 4);
+      if (auto find = std::ranges::search(compressed, std::vector<std::uint8_t>{0x00, 0xed, 0xed, 0x00});
+          find.begin() == compressed.end()) {
+        throw std::runtime_error(std::format("Unable to read file '{}' (couldn't find block end)", snapshot.string()));
+      }
+      else {
+        compressed.resize(static_cast<std::size_t>(std::distance(compressed.begin(), find.begin())));
+        // Could potentially leave data after the file which we're going to ignore...
+      }
       const auto uncompressed = z80_decompress(compressed);
       if (uncompressed.size() != 48 * 1024)
-        throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
+        throw std::runtime_error(std::format(
+            "Unable to read file '{}' (decompressed more than RAM: {})", snapshot.string(), uncompressed.size()));
       for (auto i = 0u; i < uncompressed.size(); ++i)
         z80.memory().write(static_cast<std::uint16_t>(16384 + i), uncompressed[i]);
     }
