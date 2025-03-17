@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.30)
+cmake_minimum_required(VERSION 3.14..3.30)
 
 option(SPECBOLT_TESTS "Build and run tests" ON)
 option(SPECBOLT_CONSOLE "Build specbolt console" ON)
@@ -37,6 +38,7 @@ if (SPECBOLT_TESTS)
     enable_testing()
 endif ()
 
+specbolt_dependency(Lyra "gh:bfgroup/Lyra@1.6.1#ee3c076fa6b9d64c9d249a21f5b9b5a8dae92cd8")
 include_directories(${PROJECT_SOURCE_DIR})
 
 if (SPECBOLT_CONSOLE)
