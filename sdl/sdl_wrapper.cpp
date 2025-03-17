@@ -37,7 +37,13 @@ sdl_audio::sdl_audio(const audio_settings settings) {
   }
 }
 
-void sdl_audio::queue(const std::span<const std::int16_t> buffer) noexcept {
+void sdl_audio::pause(const bool paused) const {
+  if (id.has_value()) {
+    SDL_PauseAudioDevice(*id, paused);
+  }
+}
+
+void sdl_audio::queue(const std::span<const std::int16_t> buffer) {
   if (id.has_value()) {
     if (SDL_QueueAudio(*id, buffer.data(), static_cast<std::uint32_t>(buffer.size_bytes())))
       throw sdl_error("Unable to queue audio");

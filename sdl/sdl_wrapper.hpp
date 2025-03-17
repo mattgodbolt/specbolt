@@ -46,13 +46,9 @@ struct sdl_audio {
 
   [[nodiscard]] int freq() const noexcept { return obtained.freq; }
 
-  void pause(const bool paused = true) const noexcept {
-    if (id.has_value()) {
-      SDL_PauseAudioDevice(*id, paused);
-    }
-  }
+  void pause(const bool paused = true) const;
 
-  void queue(std::span<const std::int16_t> buffer) noexcept;
+  void queue(std::span<const std::int16_t> buffer);
 
   ~sdl_audio() noexcept;
 };
