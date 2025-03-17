@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <stdexcept>
 #endif
 
 /* Copyright (C) 2003-2006 Shay Green. This module is free software; you
@@ -58,7 +59,7 @@ void Blip_Buffer::clear(const bool entire_buffer) {
   memset(buffer_.data(), 0, (count + buffer_extra) * sizeof(buf_t_));
 }
 
-Blip_Buffer::blargg_err_t Blip_Buffer::set_sample_rate(const unsigned long new_rate, const unsigned int msec) {
+void Blip_Buffer::set_sample_rate(const unsigned long new_rate, const unsigned int msec) {
   // start with maximum length that resampled time can represent
   std::size_t new_size = (ULONG_MAX >> BLIP_BUFFER_ACCURACY) - buffer_extra - 64zu;
   if (msec != blip_max_length) {
@@ -66,7 +67,7 @@ Blip_Buffer::blargg_err_t Blip_Buffer::set_sample_rate(const unsigned long new_r
     if (s < new_size)
       new_size = s;
     else
-      assert(0); // fails if requested buffer length exceeds limit
+      throw std::runtime_error("requested buffer length exceeds limit");
   }
 
   buffer_.resize(new_size + buffer_extra);
@@ -81,8 +82,6 @@ Blip_Buffer::blargg_err_t Blip_Buffer::set_sample_rate(const unsigned long new_r
   bass_freq(bass_freq_);
 
   clear();
-
-  return nullptr; // success
 }
 
 blip_resampled_time_t Blip_Buffer::clock_rate_factor(const std::size_t clock_rate) const {
@@ -140,7 +139,7 @@ void Blip_Buffer::remove_samples(const unsigned long count) {
 
 // Blip_Synth_
 
-Blip_Synth_::Blip_Synth_(short *p, const int w) : impulses(p), width(w) {
+Blip_Synth_::Blip_Synth_(short *impulses, const int width) : impulses(impulses), width(width) {
   volume_unit_ = 0.0;
   kernel_unit = 0;
   buf = nullptr;
