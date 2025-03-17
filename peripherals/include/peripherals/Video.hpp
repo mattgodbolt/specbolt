@@ -13,7 +13,7 @@ namespace specbolt {
 SPECBOLT_EXPORT class Video {
 public:
   static constexpr auto XBorder = 32;
-  static constexpr auto YBorder = 24;
+  static constexpr auto YBorder = 32;
   static constexpr auto ScreenWidth = 256;
   static constexpr auto ScreenHeight = 192;
   static constexpr auto VisibleWidth = XBorder + ScreenWidth + XBorder;
