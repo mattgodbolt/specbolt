@@ -239,7 +239,7 @@ void Snapshot::load_z80(const std::filesystem::path &snapshot, Z80Base &z80) {
       auto compressed = read_to_end(load_stream);
       if (!load_stream)
         throw std::runtime_error(std::format("Unable to read file '{}'", snapshot.string()));
-      if (auto find = std::ranges::search(compressed, std::vector<std::uint8_t>{0x00, 0xed, 0xed, 0x00});
+      if (auto find = std::ranges::search(compressed, std::array{0x00, 0xed, 0xed, 0x00});
           find.begin() == compressed.end()) {
         throw std::runtime_error(std::format("Unable to read file '{}' (couldn't find block end)", snapshot.string()));
       }
