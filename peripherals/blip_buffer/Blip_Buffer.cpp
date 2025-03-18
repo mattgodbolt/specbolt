@@ -23,7 +23,9 @@ more details. You should have received a copy of the GNU Lesser General
 Public License along with this module; if not, write to the Free Software
 Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA */
 
-constexpr int buffer_extra = blip_widest_impulse_ + 2;
+static constexpr int buffer_extra = blip_widest_impulse_ + 2;
+
+static constexpr int blip_max_length = 0;
 
 Blip_Buffer::Blip_Buffer() {
   factor_ = LONG_MAX;
