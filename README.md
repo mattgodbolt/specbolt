@@ -12,4 +12,4 @@ Yet another ZX Spectrum Emulator. Part of a project for an upcoming C++ talk.
 - Build with cmake in your favourite way.
 
 For wasm:
-- `sudo apt install libc++-20-dev-wasm32`
+- `sudo apt install libc++-20-dev-wasm32 libclang-rt-20-dev-wasm32` and then also get a newer WASI todo

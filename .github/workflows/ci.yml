@@ -36,6 +36,11 @@ jobs:
 
   wasm-build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build_type: [RelWithDebInfo]
+        clang_version: [20]
+        modules_enable: [OFF]
     steps:
       - uses: actions/checkout@v4
       - name: Setup cmake
@@ -48,13 +53,17 @@ jobs:
         run: |
           wget https://apt.llvm.org/llvm.sh
           sudo bash llvm.sh ${{ matrix.clang_version }} all
-          sudo apt install -y libc++-20-dev-${{ matrix.clang_version }}
           echo "CC=clang-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
           echo "CXX=clang++-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
+      - name: install WASI
+        run: |
+          sudo apt install libclang-rt-${{matrix.clang_version}}-dev-wasm32
+          curl -sL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sysroot-25.0.tar.gz | tar zxf -
       - name: Build
         run: |
           mkdir build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSPECBOLT_MODULES=OFF -DSPECBOLT_WASM=ON
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }} \
+            -DSPECBOLT_WASM=ON -DSPECBOLT_WASI_SYSROOT=$PWD/wasi-sysroot-25.0
           cmake --build build
 
   check-pre-commits:

@@ -5,9 +5,12 @@ option(SPECBOLT_CONSOLE "Build specbolt console" ON)
 option(SPECBOLT_PREFER_SYSTEM_DEPS "Prefer using system dependencies" OFF)
 option(SPECBOLT_MODULES "Use C++ Modules" ON)
 option(SPECBOLT_WASM "Compile for WebAssembly" OFF)
+set(SPECBOLT_WASI_SYSROOT "" CACHE STRING "Wasi root")
 
 if (SPECBOLT_WASM)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target wasm32-wasi")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target wasm32-wasi --sysroot=${SPECBOLT_WASI_SYSROOT}")
+    set(SPECBOLT_TESTS OFF)
+    set(SPECBOLT_CONSOLE OFF)
 endif ()
 
 if (SPECBOLT_MODULES)
