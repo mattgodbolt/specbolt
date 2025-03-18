@@ -60,3 +60,7 @@ if (NOT SPECBOLT_WASM)
 endif ()
 add_subdirectory(spectrum)
 add_subdirectory(z80)
+
+if (SPECBOLT_WASM)
+    add_subdirectory(web)
+endif ()

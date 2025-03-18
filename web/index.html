@@ -1,0 +1,28 @@
+<html lang="en">
+<body>
+<script type="module">
+    import {Wasi} from './wasi.js';
+
+    const importObject = {
+        wasi_snapshot_preview1: new Wasi({env: [], stdin: '', args: []})
+        // env: {
+        //     memoryBase: 0,
+        //     tableBase: 0,
+        //     memory: new WebAssembly.Memory({ initial: 256 }),
+        //     table: new WebAssembly.Table({ initial: 0, element: 'anyfunc' })
+        // }
+    };
+    WebAssembly.instantiateStreaming(
+        fetch('../build/Wasm/web/web.wasm'), importObject
+    ).then(result => {
+        console.log(result);
+        console.log(result.instance.exports.test);
+        console.log(result.instance.exports.test());
+        // const add = result.instance.exports.add;
+        // const sub = result.instance.exports.sub;
+        // console.log(add(1, 2));
+        // console.log(sub(2, 1));
+    });
+</script>
+</body>
+</html>
