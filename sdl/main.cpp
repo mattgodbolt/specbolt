@@ -86,13 +86,14 @@ struct SdlApp {
       throw sdl_error("SDL_CreateTexture failed");
     }
 
-    // TODO leaks
-    using FillFunc = std::function<void(std::span<std::int16_t>)>;
-    FillFunc fill_func;
+    constexpr auto desired_freq = 44'100;
+    const auto samples = static_cast<std::uint16_t>(desired_freq / video_refresh_rate);
 
-    auto audio = sdl_audio{};
+    auto audio = sdl_audio{{.frequency = desired_freq, .format = AUDIO_S16SYS, .channels = 1, .samples = samples}};
+    audio.pause(false);
 
-    Spectrum<Z80Impl> spectrum(spec128 ? Variant::Spectrum128 : Variant::Spectrum48, rom, audio.freq());
+    Spectrum<Z80Impl> spectrum(spec128 ? Variant::Spectrum128 : Variant::Spectrum48, rom,
+        static_cast<std::size_t>(audio.freq()), emulator_speed);
     const v1::Disassembler dis{spectrum.memory()};
 
     if (!snapshot.empty()) {
@@ -101,12 +102,6 @@ struct SdlApp {
 
     if (trace_instructions)
       spectrum.trace_next(trace_instructions);
-
-    audio.callback = [&](const std::span<std::int16_t> buffer) {
-      spectrum.audio().fill(spectrum.z80().cycle_count(), buffer);
-    };
-
-    audio.pause();
 
     bool quit = false;
     bool z80_running{true};
@@ -138,14 +133,11 @@ struct SdlApp {
                 static_cast<double>(cycles_elapsed) /
                 std::chrono::duration_cast<std::chrono::duration<double>>(time_taken).count();
 
-            // probably better, but I'm now a mush
-            // audio.queue(spectrum.audio().fill(spectrum.z80().cycle_count(), audio_buffer));
+            audio.queue(spectrum.audio().end_frame(spectrum.z80().cycle_count()));
 
             if (end_time > next_print) {
               std::print(
                   std::cout, "Virtual: {:.2f}MHz | lag {}\n", cycles_per_second / 1'000'000, now - next_emu_frame);
-              std::print(
-                  std::cout, "Audio over/under: {}/{}\n", spectrum.audio().overruns(), spectrum.audio().underruns());
               next_print = end_time + std::chrono::seconds(1);
             }
           }

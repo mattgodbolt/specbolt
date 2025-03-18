@@ -14,6 +14,7 @@ if (SPECBOLT_MODULES)
             FILES
             module.cppm
             Audio.cppm
+            Blip_Buffer.cppm
             Keyboard.cppm
             Memory.cppm
             Video.cppm
@@ -27,6 +28,7 @@ else ()
             Keyboard.cpp
             Memory.cpp
             Video.cpp
+            blip_buffer/Blip_Buffer.cpp
     )
 
     target_sources(peripherals
@@ -38,5 +40,6 @@ else ()
             include/peripherals/Keyboard.hpp
             include/peripherals/Memory.hpp
             include/peripherals/Video.hpp
+            include/peripherals/Blip_Buffer.hpp
     )
 endif ()
