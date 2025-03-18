@@ -33,6 +33,10 @@ export class Wasi {
         this.fd_prestat_dir_name = no_impl;
         this.fd_pwrite = no_impl;
         this.fd_seek = no_impl;
+        this.fd_fdstat_get = no_impl;
+        this.fd_fdstat_set_flags = no_impl;
+        this.path_filestat_get = no_impl;
+        this.path_open = no_impl;
     }
 
     args_sizes_get(argCountPtr, argBufferSizePtr) {
