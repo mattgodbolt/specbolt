@@ -35,7 +35,7 @@ extern "C" [[clang::export_name("create")]] WebSpectrum *create(const int varian
 extern "C" [[clang::export_name("run_frame")]] void run_frame(WebSpectrum &ws) { ws.spectrum.run_frame(); }
 
 extern "C" [[clang::export_name("render_video")]] void *render_video(WebSpectrum &ws) {
-  ws.spectrum.video().blit_to(ws.frame);
+  ws.spectrum.video().blit_to(ws.frame, true);
   return ws.frame.data();
 }
 
