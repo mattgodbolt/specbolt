@@ -2,6 +2,7 @@
 #include "peripherals/Video.hpp"
 
 #include <algorithm>
+#include <format>
 #include <span>
 #endif
 
@@ -10,22 +11,22 @@ namespace specbolt {
 namespace {
 
 constexpr std::array<std::uint32_t, 16> palette{
-    0x000000,
-    0x0000cd,
-    0xcd0000,
-    0xcd00cd,
-    0x00cd00,
-    0x00cdcd,
-    0xcdcd00,
-    0xcdcdcd,
-    0x000000,
-    0x0000ff,
-    0xff0000,
-    0xff00ff,
-    0x00ff00,
-    0x00ffff,
-    0xffff00,
-    0xffffff,
+    0xff000000,
+    0xff0000cd,
+    0xffcd0000,
+    0xffcd00cd,
+    0xff00cd00,
+    0xff00cdcd,
+    0xffcdcd00,
+    0xffcdcdcd,
+    0xff000000,
+    0xff0000ff,
+    0xffff0000,
+    0xffff00ff,
+    0xff00ff00,
+    0xff00ffff,
+    0xffffff00,
+    0xffffffff,
 };
 
 constexpr auto PalTotalLines = 312zu;
@@ -60,7 +61,7 @@ bool Video::poll(const std::size_t num_cycles) {
 
 void Video::blit_to(const std::span<std::uint32_t> screen) const {
   if (screen.size() != VisibleWidth * VisibleHeight)
-    throw std::runtime_error("Bad screen size");
+    throw std::runtime_error(std::format("Bad screen size ({} vs {})", screen.size(), VisibleWidth * VisibleHeight));
   for (auto y = 0uz; y < VisibleHeight; ++y) {
     const auto &[border, columns] = lines_[y];
     auto line_span = screen.subspan(y * VisibleWidth, VisibleWidth);

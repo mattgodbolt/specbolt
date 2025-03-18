@@ -1,28 +1,130 @@
 <html lang="en">
-<body>
-<script type="module">
-    import {Wasi} from './wasi.js';
+<style>
+    body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: black;
+    }
 
-    const importObject = {
-        wasi_snapshot_preview1: new Wasi({env: [], stdin: '', args: []})
-        // env: {
-        //     memoryBase: 0,
-        //     tableBase: 0,
-        //     memory: new WebAssembly.Memory({ initial: 256 }),
-        //     table: new WebAssembly.Table({ initial: 0, element: 'anyfunc' })
-        // }
-    };
-    WebAssembly.instantiateStreaming(
-        fetch('../build/Wasm/web/web.wasm'), importObject
-    ).then(result => {
-        console.log(result);
-        console.log(result.instance.exports.test);
-        console.log(result.instance.exports.test());
-        // const add = result.instance.exports.add;
-        // const sub = result.instance.exports.sub;
-        // console.log(add(1, 2));
-        // console.log(sub(2, 1));
-    });
+    canvas#spectrum {
+        image-rendering: pixelated;
+        object-fit: contain;
+        max-height: 100%;
+        max-width: 100%;
+        flex: 1;
+    }
+</style>
+
+<body>
+
+<canvas id="spectrum"></canvas>
+
+<script type="module">
+    import {
+        WASI,
+        File,
+        OpenFile,
+        ConsoleStdout,
+        PreopenDirectory
+    } from "./node_modules/@bjorn3/browser_wasi_shim/dist/index.js";
+
+    const rom48 = await (await fetch('../48.rom')).arrayBuffer();
+
+    let fds = [
+        new OpenFile(new File([])), // stdin
+        ConsoleStdout.lineBuffered(msg => console.log(`[WASI stdout] ${msg}`)),
+        ConsoleStdout.lineBuffered(msg => console.warn(`[WASI stderr] ${msg}`)),
+        new PreopenDirectory(".", [
+            ["48.rom", new File(rom48)]
+        ]),
+    ];
+    let wasi = new WASI([], [], fds);
+
+    const result = await WebAssembly.instantiateStreaming(
+        fetch('../build/Wasm/web/web.wasm'), {"wasi_snapshot_preview1": wasi.wasiImport}
+    );
+    wasi.start(result.instance);
+
+    class Spectrum {
+        constructor(exports) {
+            this._exports = exports;
+            this._instance = exports.create();
+            this.width = exports.video_width();
+            this.height = exports.video_height();
+        }
+
+        run_frame() {
+            this._exports.run_frame(this._instance);
+        }
+
+        render_video() {
+            const video = this._exports.render_video(this._instance);
+            const data = new Uint8ClampedArray(this._exports.memory.buffer, video, 4 * this.width * this.height);
+            return new ImageData(data, this.width, this.height);
+        }
+
+        key_down(code) {
+            this._exports.key_state(this._instance, code, true);
+        }
+
+        key_up(code) {
+            this._exports.key_state(this._instance, code, false);
+        }
+    }
+
+    const spectrum = new Spectrum(result.instance.exports);
+
+    const $canvas = document.querySelector('canvas');
+    $canvas.setAttribute('width', spectrum.width);
+    $canvas.setAttribute('height', spectrum.height);
+
+
+    let next_update = 0;
+    let running = true;
+
+    function update(ts) {
+        if (ts > next_update) {
+            spectrum.run_frame();
+            const frame = spectrum.render_video();
+            const ctx = $canvas.getContext("2d");
+            ctx.putImageData(frame, 0, 0);
+            next_update = ts + 20;
+        }
+        if (running)
+            requestAnimationFrame(update);
+    }
+
+    requestAnimationFrame(update);
+
+    // fart about to get SDL keycodes from browser keycodes.
+    function keyCode(evt) {
+        const code = evt.which || evt.charCode || evt.keyCode;
+        if (code === 16) {
+            return 0x400000e1; // Shift
+        }
+        if (code === 17) {
+            return 0x400000e0; // control
+        }
+        // Map uppercase to lower.
+        if (code >= 65 && code <= 90) {
+            return code + 32;
+        }
+        return code;
+    }
+
+    document.onkeydown = (e) => {
+        spectrum.key_down(keyCode(e));
+        e.preventDefault();
+    }
+    document.onkeyup = (e) => {
+        spectrum.key_up(keyCode(e));
+        e.preventDefault();
+    }
+
 </script>
 </body>
 </html>

@@ -11,5 +11,9 @@ Yet another ZX Spectrum Emulator. Part of a project for an upcoming C++ talk.
 - for the console app `libreadline-dev` too.
 - Build with cmake in your favourite way.
 
-For wasm:
-- `sudo apt install libc++-20-dev-wasm32 libclang-rt-20-dev-wasm32` and then also get a newer WASI todo
+#### For wasm:
+
+- `sudo apt install libc++-20-dev-wasm32 libclang-rt-20-dev-wasm32`
+- also a newer WASI and point at it with -DSPECBOLT_WASI_SYSROOT
+- run `npm install` in the web directory to get the wasi stuff
+- then serve from the root directory with `npx http-server -p 8080` or similar and visit localhost:8080/web
