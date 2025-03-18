@@ -10,3 +10,6 @@ Yet another ZX Spectrum Emulator. Part of a project for an upcoming C++ talk.
 - LibSDL's development headers and dependencies: `sudo apt-get install libsdl2-dev` on Ubuntu.
 - for the console app `libreadline-dev` too.
 - Build with cmake in your favourite way.
+
+For wasm:
+- `sudo apt install libc++-20-dev-wasm32`

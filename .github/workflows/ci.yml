@@ -34,6 +34,29 @@ jobs:
           cmake --build build
           env CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 
+  wasm-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.30.x'
+      - name: Install ninja-build tool
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: install clang
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          sudo bash llvm.sh ${{ matrix.clang_version }} all
+          sudo apt install -y libc++-20-dev-${{ matrix.clang_version }}
+          echo "CC=clang-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
+          echo "CXX=clang++-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
+      - name: Build
+        run: |
+          mkdir build
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DSPECBOLT_MODULES=OFF -DSPECBOLT_WASM=ON
+          cmake --build build
+
   check-pre-commits:
     runs-on: ubuntu-latest
     steps:
