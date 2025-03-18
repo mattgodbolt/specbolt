@@ -3,6 +3,8 @@
 #include "z80/v2/Z80.hpp"
 
 #include <cstdint>
+#include <format>
+#include <iostream>
 #include <vector>
 
 extern "C" void __cxa_allocate_exception() { /*TODO*/ }
@@ -20,6 +22,7 @@ struct WebSpectrum {
   WebSpectrum(const specbolt::Variant variant, const char *rom, const std::size_t audio_sample_rate) :
       spectrum(variant, rom, audio_sample_rate) {
     frame.resize(specbolt::Video::VisibleHeight * specbolt::Video::VisibleWidth);
+    std::print(std::cout, "WebSpectrum {} / {}Hz\n", std::to_underlying(variant), audio_sample_rate);
   }
 };
 

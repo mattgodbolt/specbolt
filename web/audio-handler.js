@@ -12,7 +12,7 @@ export class AudioHandler {
         this.warningNode = warningNode;
         this.sampleRate = sampleRate;
         toggle(this.warningNode, false);
-        this.audioContext = typeof AudioContext !== "undefined"         ? new AudioContext()
+        this.audioContext = typeof AudioContext !== "undefined"         ? new AudioContext({sampleRate})
                             : typeof webkitAudioContext !== "undefined" ? new webkitAudioContext()
                                                                         : null;
         this._jsAudioNode = null;
@@ -43,8 +43,7 @@ export class AudioHandler {
         await this.audioContext.audioWorklet.addModule(rendererUrl);
         this._audioDestination = this.audioContext.destination;
 
-        this._jsAudioNode = new AudioWorkletNode(this.audioContext, "sound-chip-processor",
-                                                 {processorOptions : {sampleRate : this.sampleRate}});
+        this._jsAudioNode = new AudioWorkletNode(this.audioContext, "sound-chip-processor");
         this._jsAudioNode.connect(this._audioDestination);
     }
 

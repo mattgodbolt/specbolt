@@ -25,7 +25,7 @@ async function initialiseWasm() {
     return result.instance;
 }
 
-const SampleRate = 48000; // TODO hacker
+const SampleRate = 48000;
 
 class Spectrum {
     constructor(exports) {
@@ -92,11 +92,11 @@ async function initialise() {
             const frame = spectrum.render_video();
             const ctx = $canvas.getContext("2d");
             ctx.putImageData(frame, 0, 0);
+            const audio = spectrum.render_audio();
+            audioHandler.postAudio(audio);
 
-            next_update = ts + 20;
+            next_update = next_update + 20;
         }
-        const audio = spectrum.render_audio();
-        audioHandler.postAudio(audio);
         if (running)
             requestAnimationFrame(update);
     }
