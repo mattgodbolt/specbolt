@@ -16,13 +16,14 @@ extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)
 struct WebSpectrum {
   specbolt::Spectrum<specbolt::v2::Z80> spectrum{specbolt::Variant::Spectrum48, "assets/48.rom", 16000};
   std::vector<std::uint32_t> frame;
-  WebSpectrum(const specbolt::Variant variant, const char *rom, const int audio_sample_rate) :
+  WebSpectrum(const specbolt::Variant variant, const char *rom, const std::size_t audio_sample_rate) :
       spectrum(variant, rom, audio_sample_rate) {
     frame.resize(specbolt::Video::VisibleHeight * specbolt::Video::VisibleWidth);
   }
 };
 
-extern "C" [[clang::export_name("create")]] WebSpectrum *create(const int variant, const int audio_sample_rate) {
+extern "C" [[clang::export_name("create")]] WebSpectrum *create(
+    const int variant, const std::size_t audio_sample_rate) {
   printf("Variant = %d\n", variant);
   switch (variant) {
     case 48: return new WebSpectrum(specbolt::Variant::Spectrum48, "assets/48.rom", audio_sample_rate);

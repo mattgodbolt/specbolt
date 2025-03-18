@@ -17,3 +17,11 @@ Yet another ZX Spectrum Emulator. Part of a project for an upcoming C++ talk.
 - also a newer WASI and point at it with -DSPECBOLT_WASI_SYSROOT
 - needs `npm` too
 - then run `npm start` from the `web` directory
+
+
+### Thanks to
+
+Huge thanks to:
+
+- [Hana Dusíková](https://github.com/hanickadot) for all the clever C++ stuff, and help with modules.
+- [blargg (aka Shay Green)](http://www.slack.net/~ant/) for the band-limiting code used in the audio.
