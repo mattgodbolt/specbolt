@@ -17,9 +17,20 @@
         max-width: 100%;
         flex: 1;
     }
+
+    .warning {
+        position: absolute;
+        top:0;
+        left:0;
+        width: 100%;
+        font-size: 40pt;
+        background-color: #ddd;
+        text-align: center;
+    }
 </style>
 <body>
 <canvas id="spectrum"></canvas>
+<div id="warning" class="warning" hidden>Monggeese</div>
 <script type="module" src="main.js"></script>
 </body>
 </html>

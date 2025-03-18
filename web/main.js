@@ -4,6 +4,8 @@ import rom128Url from '../assets/128.rom?url';
 import rom48Url from '../assets/48.rom?url';
 import wasmUrl from '../build/Wasm/web/web.wasm?url'; // TODO relies on calling the build directory "Wasm" in cmake.
 
+import {AudioHandler} from "./audio-handler";
+
 async function initialiseWasm() {
     const rom48 = await (await fetch(rom48Url)).arrayBuffer();
     const rom128 = await (await fetch(rom128Url)).arrayBuffer();
@@ -23,10 +25,12 @@ async function initialiseWasm() {
     return result.instance;
 }
 
+const SampleRate = 48000; // TODO hacker
+
 class Spectrum {
     constructor(exports) {
         this._exports = exports;
-        this._instance = exports.create(48, 44_100);
+        this._instance = exports.create(48, SampleRate);
         this.width = exports.video_width();
         this.height = exports.video_height();
     }
@@ -39,6 +43,12 @@ class Spectrum {
         return new ImageData(data, this.width, this.height);
     }
 
+    render_audio() {
+        const audio = this._exports.render_audio(this._instance);
+        const length = this._exports.last_audio_frame_size(this._instance);
+        return new Int16Array(this._exports.memory.buffer, audio, length);
+    }
+
     key_down(code) { this._exports.key_state(this._instance, code, true); }
 
     key_up(code) { this._exports.key_state(this._instance, code, false); }
@@ -47,11 +57,11 @@ class Spectrum {
 // fart about to get SDL keycodes from browser keycodes.
 function keyCode(evt) {
     const code = evt.which || evt.charCode || evt.keyCode;
-    if (code === 16) {
-        return 0x400000e1; // Shift
+    if (code === 16) {     // shift
+        return 0x400000e1; // Spectrum Shift
     }
-    if (code === 17) {
-        return 0x400000e0; // control
+    if (code === 17 || code === 18 || code === 230) { // control or either alt
+        return 0x400000e0;                            // Spectrum symbolshift (control)
     }
     // Map uppercase to lower.
     if (code >= 65 && code <= 90) {
@@ -70,6 +80,9 @@ async function initialise() {
     $canvas.setAttribute('width', spectrum.width);
     $canvas.setAttribute('height', spectrum.height);
 
+    const $warning = document.querySelector('#warning');
+    const audioHandler = new AudioHandler($warning, SampleRate);
+
     let next_update = 0;
     let running = true;
 
@@ -79,8 +92,11 @@ async function initialise() {
             const frame = spectrum.render_video();
             const ctx = $canvas.getContext("2d");
             ctx.putImageData(frame, 0, 0);
+
             next_update = ts + 20;
         }
+        const audio = spectrum.render_audio();
+        audioHandler.postAudio(audio);
         if (running)
             requestAnimationFrame(update);
     }

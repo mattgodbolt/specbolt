@@ -16,6 +16,7 @@ extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)
 struct WebSpectrum {
   specbolt::Spectrum<specbolt::v2::Z80> spectrum{specbolt::Variant::Spectrum48, "assets/48.rom", 16000};
   std::vector<std::uint32_t> frame;
+  std::vector<std::int16_t> audio;
   WebSpectrum(const specbolt::Variant variant, const char *rom, const std::size_t audio_sample_rate) :
       spectrum(variant, rom, audio_sample_rate) {
     frame.resize(specbolt::Video::VisibleHeight * specbolt::Video::VisibleWidth);
@@ -38,6 +39,15 @@ extern "C" [[clang::export_name("run_frame")]] void run_frame(WebSpectrum &ws) {
 extern "C" [[clang::export_name("render_video")]] void *render_video(WebSpectrum &ws) {
   ws.spectrum.video().blit_to(ws.frame, true);
   return ws.frame.data();
+}
+
+extern "C" [[clang::export_name("render_audio")]] void *render_audio(WebSpectrum &ws) {
+  ws.audio = ws.spectrum.audio().end_frame(ws.spectrum.z80().cycle_count());
+  return ws.audio.data();
+}
+
+extern "C" [[clang::export_name("last_audio_frame_size")]] std::size_t last_audio_frame_size(const WebSpectrum &ws) {
+  return ws.audio.size();
 }
 
 extern "C" [[clang::export_name("video_height")]] std::size_t video_height() { return specbolt::Video::VisibleHeight; }
