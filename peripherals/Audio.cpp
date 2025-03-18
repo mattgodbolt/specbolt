@@ -1,14 +1,12 @@
 #ifndef SPECBOLT_MODULES
 #include "peripherals/Audio.hpp"
-
-#include <algorithm>
 #endif
 
 namespace specbolt {
 
 Audio::Audio(const std::size_t sample_rate, const std::size_t clock_rate) {
   blip_buffer_.clock_rate(clock_rate);
-  blip_buffer_.set_sample_rate(static_cast<std::size_t>(sample_rate), 1000);
+  blip_buffer_.set_sample_rate(sample_rate, 1000);
   blip_buffer_.bass_freq(200);
   blip_synth_.volume(1.0);
   blip_synth_.treble_eq(-37.0);

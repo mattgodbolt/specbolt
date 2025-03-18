@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <span>
 #include "peripherals/Blip_Buffer.hpp"
-#define SPECBOLT_EXPORT
 #endif
 
 namespace specbolt {
