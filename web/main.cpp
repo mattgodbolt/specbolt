@@ -14,12 +14,23 @@ extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)
 }
 
 struct WebSpectrum {
-  specbolt::Spectrum<specbolt::v2::Z80> spectrum{specbolt::Variant::Spectrum48, "48.rom", 16000};
+  specbolt::Spectrum<specbolt::v2::Z80> spectrum{specbolt::Variant::Spectrum48, "assets/48.rom", 16000};
   std::vector<std::uint32_t> frame;
-  WebSpectrum() { frame.resize(specbolt::Video::VisibleHeight * specbolt::Video::VisibleWidth); }
+  WebSpectrum(const specbolt::Variant variant, const char *rom, const int audio_sample_rate) :
+      spectrum(variant, rom, audio_sample_rate) {
+    frame.resize(specbolt::Video::VisibleHeight * specbolt::Video::VisibleWidth);
+  }
 };
 
-extern "C" [[clang::export_name("create")]] WebSpectrum *create() { return new WebSpectrum(); }
+extern "C" [[clang::export_name("create")]] WebSpectrum *create(const int variant, const int audio_sample_rate) {
+  printf("Variant = %d\n", variant);
+  switch (variant) {
+    case 48: return new WebSpectrum(specbolt::Variant::Spectrum48, "assets/48.rom", audio_sample_rate);
+    case 128: return new WebSpectrum(specbolt::Variant::Spectrum128, "assets/128.rom", audio_sample_rate);
+    default: break;
+  }
+  return nullptr;
+}
 
 extern "C" [[clang::export_name("run_frame")]] void run_frame(WebSpectrum &ws) { ws.spectrum.run_frame(); }
 

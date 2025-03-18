@@ -1,16 +1,24 @@
 import {ConsoleStdout, File, OpenFile, PreopenDirectory, WASI} from "@bjorn3/browser_wasi_shim";
 
+import rom128Url from '../assets/128.rom?url';
+import rom48Url from '../assets/48.rom?url';
+import wasmUrl from '../build/Wasm/web/web.wasm?url'; // TODO relies on calling the build directory "Wasm" in cmake.
+
 async function initialiseWasm() {
-    const rom48 = await (await fetch('roms/48.rom')).arrayBuffer();
+    const rom48 = await (await fetch(rom48Url)).arrayBuffer();
+    const rom128 = await (await fetch(rom128Url)).arrayBuffer();
     const wasi = new WASI([], [], [
         new OpenFile(new File([])), // stdin
         ConsoleStdout.lineBuffered(msg => console.log(`[WASI stdout] ${msg}`)),
         ConsoleStdout.lineBuffered(msg => console.warn(`[WASI stderr] ${msg}`)),
-        new PreopenDirectory(".", [ [ "48.rom", new File(rom48) ] ]),
+        new PreopenDirectory("assets",
+                             [
+                                 [ "48.rom", new File(rom48) ],
+                                 [ "128.rom", new File(rom128) ],
+                             ]),
     ]);
 
-    const result =
-        await WebAssembly.instantiateStreaming(fetch('web.wasm'), {"wasi_snapshot_preview1" : wasi.wasiImport});
+    const result = await WebAssembly.instantiateStreaming(fetch(wasmUrl), {"wasi_snapshot_preview1" : wasi.wasiImport});
     wasi.start(result.instance);
     return result.instance;
 }
@@ -18,7 +26,7 @@ async function initialiseWasm() {
 class Spectrum {
     constructor(exports) {
         this._exports = exports;
-        this._instance = exports.create();
+        this._instance = exports.create(48, 44_100);
         this.width = exports.video_width();
         this.height = exports.video_height();
     }
