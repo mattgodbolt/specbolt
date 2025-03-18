@@ -55,4 +55,6 @@ TabWidth: 2
 QualifierAlignment: Left
 ---
 Language: JavaScript
+IndentWidth: 4
+ColumnLimit: 120
 ...
