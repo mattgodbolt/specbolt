@@ -3,7 +3,7 @@
 class SoundChipProcessor extends AudioWorkletProcessor {
     constructor(options) {
         super(options);
-        console.log("Sample rate", sampleRate);
+        console.log("Audio processor: Sample rate", sampleRate);
 
         this._lastSample = 0;
         this.queue = [];

@@ -82,6 +82,7 @@ async function initialise() {
 
     const $warning = document.querySelector('#warning');
     const audioHandler = new AudioHandler($warning, SampleRate);
+    await audioHandler.initialise();
 
     let next_update = 0;
     let running = true;
