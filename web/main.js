@@ -92,8 +92,8 @@ function keyCode(evt) {
     if (code >= 65 && code <= 90) {
         return code + 32;
     }
-    if (code >= 48 && code <= 57) {
-        // Numbers remain
+    if (code >= 48 && code <= 57 || code === 13) {
+        // Numbers and enter remain as-is
         return code;
     }
     // Else not mapped.
