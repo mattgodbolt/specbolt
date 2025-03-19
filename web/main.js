@@ -6,6 +6,10 @@ import rom48Url from '../assets/48.rom?url';
 
 import {AudioHandler} from "./audio-handler";
 
+const $canvas = document.querySelector('canvas');
+const $effectiveMhz = document.querySelector('#effective-mhz');
+const $currentFps = document.querySelector('#current-fps');
+
 async function initialiseWasm() {
     const rom48 = await (await fetch(rom48Url)).arrayBuffer();
     const rom128 = await (await fetch(rom128Url)).arrayBuffer();
@@ -57,7 +61,7 @@ class Spectrum {
         this._free_string(offset);
     }
 
-    run_frame() { this._exports.run_frame(this._instance); }
+    run_frame() { return this._exports.run_frame(this._instance); }
 
     render_video() {
         const video = this._exports.render_video(this._instance);
@@ -100,7 +104,6 @@ function keyCode(evt) {
     return undefined;
 }
 
-const $canvas = document.querySelector('canvas');
 let spectrum;
 
 async function load_snapshot(game_url) {
@@ -123,36 +126,57 @@ async function initialise() {
     let next_update = undefined;
     let running = true;
 
-    let last_update = 0;
+    let effectiveMhz = 3.5;
+    let currentFps = 30;
 
-    function update(ts) {
+    let prevFrameTime = performance.now();
+    let pendingFrame;
+    function drawFrame(ts) {
+        pendingFrame = undefined;
+        currentFps = 1000 / (ts - prevFrameTime);
+        prevFrameTime = ts;
+        const frame = spectrum.render_video();
+        const ctx = $canvas.getContext("2d");
+        ctx.putImageData(frame, 0, 0);
+    }
+
+    function emulate() {
+        const ts = performance.now();
         if (next_update === undefined)
             next_update = ts;
-        const fps = 1000 / (ts - last_update);
-        last_update = ts;
         if (ts > next_update) {
-            // Try and catch up with real time.
-            while (ts > next_update) {
-                spectrum.run_frame();
-                const audio = spectrum.render_audio();
-                audioHandler.postAudio(audio);
-                next_update += 1000 / 50;
+            const numCycles = spectrum.run_frame();
+            const timeTakenMs = performance.now() - ts;
+            effectiveMhz = numCycles / timeTakenMs / 1000;
+            const audio = spectrum.render_audio();
+            audioHandler.postAudio(audio);
+            if (!pendingFrame) {
+                // Schedule drawing the results at next vsync.
+                pendingFrame = requestAnimationFrame(drawFrame);
             }
-            const frame = spectrum.render_video();
-            const ctx = $canvas.getContext("2d");
-            ctx.putImageData(frame, 0, 0);
+            // Schedule the next tick, but don't let us get stupidly behind.
+            const msPerUpdate = 1000 / 50;
+            const maxMsBehind = 1000;
+            next_update = Math.max(ts - maxMsBehind, next_update + msPerUpdate);
         }
         if (running)
-            requestAnimationFrame(update);
+            setTimeout(emulate, 0);
     }
 
     function start() {
         running = true;
         next_update = undefined;
-        requestAnimationFrame(update);
+        setTimeout(emulate, 0);
     }
 
     function stop() { running = false; }
+
+    function updateStats() {
+        $effectiveMhz.innerHTML = `${effectiveMhz.toFixed(2)} MHz`;
+        $currentFps.innerHTML = `${currentFps.toFixed(2)} fps`;
+    }
+    updateStats();
+    setInterval(updateStats, 1000);
 
     start();
 
