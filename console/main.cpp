@@ -65,7 +65,7 @@ struct App final : AppBase {
   }
 
   explicit App(specbolt::Variant variant) :
-      spectrum(variant, variant == specbolt::Variant::Spectrum128 ? "128.rom" : "48.rom", 48'000),
+      spectrum(variant, variant == specbolt::Variant::Spectrum128 ? "assets/128.rom" : "assets/48.rom", 48'000),
       dis(spectrum.memory()) {
     self() = this;
     commands["help"] = [this](const std::vector<std::string> &) {

@@ -57,7 +57,7 @@ struct SdlApp {
     }
 
     if (rom.empty()) {
-      rom = spec128 ? "128.rom" : "48.rom";
+      rom = spec128 ? "assets/128.rom" : "assets/48.rom";
     }
 
     if (new_impl)
