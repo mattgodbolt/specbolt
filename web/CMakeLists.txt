@@ -21,6 +21,7 @@ add_custom_command(
         COMMAND ${NPM_EXECUTABLE} run build
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Building distribution module"
+        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/node_modules
 )
 
 add_custom_target(spectrum.wasm.web.dist ALL DEPENDS dist)
