@@ -19,7 +19,8 @@ export class AudioHandler {
                                                                         : null;
         this._jsAudioNode = null;
         if (this.audioContext && this.audioContext.audioWorklet) {
-            console.log("Audio constructed ok") this.audioContext.onstatechange = () => this.checkStatus();
+            console.log("Audio constructed ok");
+            this.audioContext.onstatechange = () => this.checkStatus();
             this.checkStatus();
         } else if (this.audioContext && !this.audioContext.audioWorklet) {
             this.audioContext = null;
