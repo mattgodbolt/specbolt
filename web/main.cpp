@@ -71,7 +71,6 @@ extern "C" [[clang::export_name("key_state")]] void key_state(
 
 extern "C" [[clang::export_name("load_snapshot")]] void load_snapshot(WebSpectrum &ws, const char *name) {
   std::print(std::cout, "Loading snapshot '{}'\n", name);
-  std::print(std::cerr, "Loading snapshot '{}'\n", name);
   specbolt::Snapshot::load(name, ws.spectrum.z80());
 }
 
