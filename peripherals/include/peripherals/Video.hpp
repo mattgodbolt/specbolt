@@ -26,7 +26,7 @@ public:
   void set_page(const std::uint8_t page) { page_ = page; }
   bool poll(std::size_t num_cycles);
 
-  void blit_to(std::span<std::uint32_t> screen) const;
+  void blit_to(std::span<std::uint32_t> screen, bool swap_rgb = false) const;
 
 private:
   const Memory &memory_;

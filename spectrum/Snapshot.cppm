@@ -7,6 +7,7 @@ module;
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <type_traits>

@@ -4,6 +4,7 @@ module;
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <span>
 #include <type_traits>
 

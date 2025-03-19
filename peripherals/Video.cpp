@@ -2,6 +2,7 @@
 #include "peripherals/Video.hpp"
 
 #include <algorithm>
+#include <format>
 #include <span>
 #endif
 
@@ -9,24 +10,30 @@ namespace specbolt {
 
 namespace {
 
-constexpr std::array<std::uint32_t, 16> palette{
-    0x000000,
-    0x0000cd,
-    0xcd0000,
-    0xcd00cd,
-    0x00cd00,
-    0x00cdcd,
-    0xcdcd00,
-    0xcdcdcd,
-    0x000000,
-    0x0000ff,
-    0xff0000,
-    0xff00ff,
-    0x00ff00,
-    0x00ffff,
-    0xffff00,
-    0xffffff,
+constexpr std::array palette{
+    0xff000000,
+    0xff0000cd,
+    0xffcd0000,
+    0xffcd00cd,
+    0xff00cd00,
+    0xff00cdcd,
+    0xffcdcd00,
+    0xffcdcdcd,
+    0xff000000,
+    0xff0000ff,
+    0xffff0000,
+    0xffff00ff,
+    0xff00ff00,
+    0xff00ffff,
+    0xffffff00,
+    0xffffffff,
 };
+constexpr std::array palette_swapped = [] {
+  std::array<std::uint32_t, 16> result{};
+  for (auto i = 0zu; i < 16zu; ++i)
+    result[i] = (palette[i] & 0xff00ff00u) | (palette[i] & 0xff0000) >> 16 | (palette[i] & 0xff) << 16;
+  return result;
+}();
 
 constexpr auto PalTotalLines = 312zu;
 constexpr auto VSyncLines = PalTotalLines - Video::VisibleHeight;
@@ -58,19 +65,20 @@ bool Video::poll(const std::size_t num_cycles) {
   return irq;
 }
 
-void Video::blit_to(const std::span<std::uint32_t> screen) const {
+void Video::blit_to(const std::span<std::uint32_t> screen, bool swap_rgb) const {
   if (screen.size() != VisibleWidth * VisibleHeight)
-    throw std::runtime_error("Bad screen size");
+    throw std::runtime_error(std::format("Bad screen size ({} vs {})", screen.size(), VisibleWidth * VisibleHeight));
+  const auto &pal = swap_rgb ? palette_swapped : palette;
   for (auto y = 0uz; y < VisibleHeight; ++y) {
     const auto &[border, columns] = lines_[y];
     auto line_span = screen.subspan(y * VisibleWidth, VisibleWidth);
     if (y < YBorder || y >= YBorder + ScreenHeight) {
-      std::ranges::fill(line_span, palette[border]);
+      std::ranges::fill(line_span, pal[border]);
       continue;
     }
     // Left and right borders.
-    std::ranges::fill(line_span.subspan(0, XBorder), palette[border]);
-    std::ranges::fill(line_span.subspan(XBorder + ScreenWidth, XBorder), palette[border]);
+    std::ranges::fill(line_span.subspan(0, XBorder), pal[border]);
+    std::ranges::fill(line_span.subspan(XBorder + ScreenWidth, XBorder), pal[border]);
 
     const auto display_span = line_span.subspan(XBorder, ScreenWidth);
     for (std::size_t x = 0; x < ColumnCount; ++x) {
@@ -79,8 +87,8 @@ void Video::blit_to(const std::span<std::uint32_t> screen) const {
       const auto invert = attributes & 0x80 && flash_on_;
       const auto index_1 = attributes >> 3u & 0x07u;
       const auto index_2 = attributes & 0x07u;
-      const auto paper_color = invert ? palette[index_1] : palette[index_2];
-      const auto pen_color = invert ? palette[index_2] : palette[index_1];
+      const auto paper_color = invert ? pal[index_1] : pal[index_2];
+      const auto pen_color = invert ? pal[index_2] : pal[index_1];
       for (std::size_t bit = 0; bit < 8; ++bit) {
         display_span[x * 8u + bit] = pixel_data & 1 << (7 - bit) ? paper_color : pen_color;
       }
