@@ -22,6 +22,7 @@ add_custom_command(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Building distribution module"
         DEPENDS node_modules
+        ENVIRONMENT "NODE_ENV=production VITE_WASM_BUILD_DIR=${CMAKE_BINARY_DIR}"
 )
 
 add_custom_target(spectrum.wasm.web.dist ALL DEPENDS dist)
