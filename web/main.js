@@ -120,19 +120,27 @@ async function initialise() {
     const audioHandler = new AudioHandler($warning, SampleRate);
     await audioHandler.initialise();
 
-    let next_update = 0;
+    let next_update = undefined;
     let running = true;
 
+    let last_update = 0;
+
     function update(ts) {
+        if (next_update === undefined)
+            next_update = ts;
+        const fps = 1000 / (ts - last_update);
+        last_update = ts;
         if (ts > next_update) {
-            spectrum.run_frame();
+            // Try and catch up with real time.
+            while (ts > next_update) {
+                spectrum.run_frame();
+                const audio = spectrum.render_audio();
+                audioHandler.postAudio(audio);
+                next_update += 1000 / 50;
+            }
             const frame = spectrum.render_video();
             const ctx = $canvas.getContext("2d");
             ctx.putImageData(frame, 0, 0);
-            const audio = spectrum.render_audio();
-            audioHandler.postAudio(audio);
-
-            next_update = next_update + 20;
         }
         if (running)
             requestAnimationFrame(update);
@@ -140,6 +148,7 @@ async function initialise() {
 
     function start() {
         running = true;
+        next_update = undefined;
         requestAnimationFrame(update);
     }
 
