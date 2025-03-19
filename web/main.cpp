@@ -7,7 +7,9 @@
 #include <iostream>
 #include <vector>
 
-extern "C" void __cxa_allocate_exception() { /*TODO*/ }
+#include "spectrum/Snapshot.hpp"
+
+extern "C" void __cxa_allocate_exception() {}
 extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)(void *)) {
   fprintf(stderr, "*** C++ exception (%s) thrown ***\n", tinfo->name());
   // Bit of a hack assumes we only throw sane exceptions...
@@ -64,5 +66,14 @@ extern "C" [[clang::export_name("key_state")]] void key_state(
   else
     kb.key_up(key_code);
 }
+
+extern "C" [[clang::export_name("load_snapshot")]] void load_snapshot(WebSpectrum &ws, const char *name) {
+  std::print(std::cout, "Loading snapshot '{}'\n", name);
+  std::print(std::cerr, "Loading snapshot '{}'\n", name);
+  specbolt::Snapshot::load(name, ws.spectrum.z80());
+}
+
+extern "C" [[clang::export_name("alloc_bytes")]] char *alloc_bytes(const size_t length) { return new char[length]; }
+extern "C" [[clang::export_name("free_bytes")]] void free_bytes(const char *s) { delete[] s; }
 
 int main() { /* placates wasm.start() */ }
