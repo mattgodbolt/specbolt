@@ -131,6 +131,7 @@ async function initialise() {
 
     let prevFrameTime = performance.now();
     let pendingFrame;
+
     function drawFrame(ts) {
         pendingFrame = undefined;
         currentFps = 1000 / (ts - prevFrameTime);
@@ -138,6 +139,8 @@ async function initialise() {
         const frame = spectrum.render_video();
         const ctx = $canvas.getContext("2d");
         ctx.putImageData(frame, 0, 0);
+        if (running)
+            requestAnimationFrame(drawFrame);
     }
 
     function emulate() {
@@ -150,10 +153,6 @@ async function initialise() {
             effectiveMhz = numCycles / timeTakenMs / 1000;
             const audio = spectrum.render_audio();
             audioHandler.postAudio(audio);
-            if (!pendingFrame) {
-                // Schedule drawing the results at next vsync.
-                pendingFrame = requestAnimationFrame(drawFrame);
-            }
             // Schedule the next tick, but don't let us get stupidly behind.
             const msPerUpdate = 1000 / 50;
             const maxMsBehind = 1000;
@@ -167,6 +166,7 @@ async function initialise() {
         running = true;
         next_update = undefined;
         setTimeout(emulate, 0);
+        requestAnimationFrame(drawFrame);
     }
 
     function stop() { running = false; }
@@ -175,6 +175,7 @@ async function initialise() {
         $effectiveMhz.innerHTML = `${effectiveMhz.toFixed(2)} MHz`;
         $currentFps.innerHTML = `${currentFps.toFixed(2)} fps`;
     }
+
     updateStats();
     setInterval(updateStats, 1000);
 
