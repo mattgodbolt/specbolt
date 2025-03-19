@@ -1,8 +1,8 @@
 import {ConsoleStdout, File, OpenFile, PreopenDirectory, WASI} from "@bjorn3/browser_wasi_shim";
+import wasmUrl from '@spectrum.wasm?url';
 
 import rom128Url from '../assets/128.rom?url';
 import rom48Url from '../assets/48.rom?url';
-import wasmUrl from '../build/Wasm/web/web.wasm?url'; // TODO relies on calling the build directory "Wasm" in cmake.
 
 import {AudioHandler} from "./audio-handler";
 

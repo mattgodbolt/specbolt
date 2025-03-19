@@ -38,9 +38,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        build_type: [RelWithDebInfo]
-        clang_version: [20]
-        modules_enable: [OFF]
+        build_type: [ RelWithDebInfo ]
+        clang_version: [ 20 ]
+        modules_enable: [ OFF ]
     steps:
       - uses: actions/checkout@v4
       - name: Setup cmake
@@ -62,9 +62,22 @@ jobs:
       - name: Build
         run: |
           mkdir build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }} \
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }} \
             -DSPECBOLT_WASM=ON -DSPECBOLT_WASI_SYSROOT=$PWD/wasi-sysroot-25.0
           cmake --build build
+          cmake --build build --target install
+      - name: Deploy
+        if: github.ref == 'refs/heads/main'
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --cache-control max-age=30 --metadata-directive REPLACE
+        env:
+          AWS_S3_BUCKET: spectrum.xania.org
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SOURCE_DIR: "install/www"
 
   check-pre-commits:
     runs-on: ubuntu-latest
