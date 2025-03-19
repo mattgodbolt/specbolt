@@ -14,10 +14,10 @@ Yet another ZX Spectrum Emulator. Part of a project for an upcoming C++ talk.
 #### For wasm:
 
 - `sudo apt install libc++-20-dev-wasm32 libclang-rt-20-dev-wasm32`
-- also a newer WASI and point at it with -DSPECBOLT_WASI_SYSROOT
-- needs `npm` too
+- Ensure you have a `node` and `npm` installed.
+- also a newer WASI and point at it with `-DSPECBOLT_WASI_SYSROOT=...` and configure with `-DSPECBOLT_WASI_SDK`
+- edit `web/.env.local` and add `VITE_SPECBOLT_WASI_SYSROOT` to point at your cmaek build root
 - then run `npm start` from the `web` directory
-
 
 ### Thanks to
 

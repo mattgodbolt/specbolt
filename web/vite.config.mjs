@@ -8,8 +8,7 @@ export default function({mode}) {
 
     const build_dir = process.env.VITE_WASM_BUILD_DIR;
     if (!build_dir) {
-        throw new Error(
-            "VITE_WASM_BUILD_DIR environment variable not set. Use vite-dev.sh and supply it, or put it in `.env.local`");
+        throw new Error("VITE_WASM_BUILD_DIR environment variable not set. Set it in `.env.local`");
     }
     if (!fs.lstatSync(build_dir).isDirectory()) {
         throw new Error("VITE_WASM_BUILD_DIR environment variable set to non-existent directory " + build_dir);
