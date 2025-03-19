@@ -34,6 +34,51 @@ jobs:
           cmake --build build
           env CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 
+  wasm-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build_type: [ RelWithDebInfo ]
+        clang_version: [ 20 ]
+        modules_enable: [ OFF ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.30.x'
+      - name: Install ninja-build tool
+        uses: seanmiddleditch/gha-setup-ninja@v5
+      - name: install clang
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          sudo bash llvm.sh ${{ matrix.clang_version }} all
+          echo "CC=clang-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
+          echo "CXX=clang++-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
+      - name: install WASI
+        run: |
+          sudo apt install libclang-rt-${{matrix.clang_version}}-dev-wasm32
+          curl -sL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sysroot-25.0.tar.gz | tar zxf -
+      - name: Build
+        run: |
+          mkdir build
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }} \
+            -DSPECBOLT_WASM=ON -DSPECBOLT_WASI_SYSROOT=$PWD/wasi-sysroot-25.0
+          cmake --build build
+          cmake --build build --target install
+      - name: Deploy
+        if: github.ref == 'refs/heads/main'
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --cache-control max-age=30 --metadata-directive REPLACE
+        env:
+          AWS_S3_BUCKET: spectrum.xania.org
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SOURCE_DIR: "install/www"
+
   check-pre-commits:
     runs-on: ubuntu-latest
     steps:

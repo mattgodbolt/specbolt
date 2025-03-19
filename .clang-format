@@ -53,4 +53,12 @@ SpacesInCStyleCastParentheses: false
 SpacesInParentheses: false
 TabWidth: 2
 QualifierAlignment: Left
+---
+Language: JavaScript
+IndentWidth: 4
+ColumnLimit: 120
+---
+Language: Json
+IndentWidth: 2
+ColumnLimit: 120
 ...

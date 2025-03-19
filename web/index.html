@@ -1,0 +1,59 @@
+<html lang="en">
+<head>
+    <title>Specbolt - ZX Spectrum Emulator</title>
+    <link rel="icon" href="/favicon.png">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: black;
+        }
+
+        canvas#spectrum {
+            image-rendering: pixelated;
+            object-fit: contain;
+            max-height: 100%;
+            max-width: 100%;
+            flex: 1;
+        }
+
+        .warning {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            font-size: 40pt;
+            background-color: #ddd;
+            text-align: center;
+        }
+
+        .footer {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background-color: #aaa;
+            border-radius: 4px;
+            padding: 4px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            width: auto;
+            font-size: small;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+<canvas id="spectrum"></canvas>
+<div id="warning" class="warning" hidden>Warning</div>
+<script type="module" src="main.js"></script>
+<div class="footer">Specbolt Emulator &copy; 2025 <a href="https://xania.org/">Matt Godbolt</a>.<br>
+    Spectrum ROMs are &copy; Sinclair Research.<br>
+    Games are &copy; their respective authors.<br>
+    Project source code is available on <a href="https://github.com/mattgodbolt/specbolt">GitHub</a>.
+</div>
+</body>
+</html>
