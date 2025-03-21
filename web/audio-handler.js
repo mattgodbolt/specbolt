@@ -1,4 +1,4 @@
-import rendererUrl from "./audio-renderer.js?url";
+import rendererUrl from "./fifo-audio.js?url";
 
 function warn(elem, message) {
     if (message) {
@@ -46,7 +46,7 @@ export class AudioHandler {
         await this.audioContext.audioWorklet.addModule(rendererUrl);
         this._audioDestination = this.audioContext.destination;
 
-        this._jsAudioNode = new AudioWorkletNode(this.audioContext, "sound-chip-processor");
+        this._jsAudioNode = new AudioWorkletNode(this.audioContext, "fifo-audio");
         this._jsAudioNode.connect(this._audioDestination);
         console.log("Audio initialised")
     }
@@ -57,17 +57,20 @@ export class AudioHandler {
     }
 
     async tryResume() {
-        console.log("Trying to resume audio")
-        if (this.audioContext) await this.audioContext.resume();
+        if (this.audioContext && this.audioContext.state !== "running") {
+            console.log("Trying to resume audio") await this.audioContext.resume();
+        }
     }
 
     checkStatus() {
         if (!this.audioContext)
             return;
         console.log("Audio status = ", this.audioContext.state);
-        if (this.audioContext.state === "suspended")
+        if (this.audioContext.state === "suspended") {
             warn(this.warningNode, "Your browser has suspended audio. Click here to resume.");
-        if (this.audioContext.state === "running")
+        }
+        if (this.audioContext.state === "running") {
             warn(this.warningNode, false);
+        }
     }
 }

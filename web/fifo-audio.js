@@ -1,6 +1,6 @@
 /*global sampleRate, currentTime */
 
-class SoundChipProcessor extends AudioWorkletProcessor {
+class FifoAudio extends AudioWorkletProcessor {
     constructor(options) {
         super(options);
         console.log("Audio processor: Sample rate", sampleRate);
@@ -69,4 +69,4 @@ class SoundChipProcessor extends AudioWorkletProcessor {
     }
 }
 
-registerProcessor("sound-chip-processor", SoundChipProcessor);
+registerProcessor("fifo-audio", FifoAudio);
