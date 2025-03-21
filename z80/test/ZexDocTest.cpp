@@ -19,6 +19,7 @@ import z80_common;
 import peripherals;
 #else
 #include "peripherals/Memory.hpp"
+#include "z80/common/Scheduler.hpp"
 #endif
 
 namespace specbolt {
@@ -72,7 +73,8 @@ struct ZexDocTest {
       memory.write16(0x120, static_cast<std::uint16_t>(memory.read16(0x120) + skip * 2));
     const v1::Disassembler dis{memory};
 
-    DUT z80(memory);
+    Scheduler scheduler;
+    DUT z80(scheduler, memory);
     z80.regs().pc(0x100);
     z80.regs().sp(0xf000);
     Vt52Emu output;

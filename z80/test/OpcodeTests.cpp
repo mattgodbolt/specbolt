@@ -18,14 +18,16 @@ import z80_common;
 import peripherals;
 #else
 #include "peripherals/Memory.hpp"
+#include "z80/common/Scheduler.hpp"
 #endif
 
 namespace specbolt {
 
 template<typename DUT>
 struct OpcodeTester {
+  Scheduler scheduler;
   Memory memory{4};
-  DUT z80{memory};
+  DUT z80{scheduler, memory};
   static constexpr auto use_new_code = std::is_same_v<DUT, v2::Z80>;
   RegisterFile &regs = z80.regs();
 
