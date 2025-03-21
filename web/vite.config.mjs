@@ -21,6 +21,12 @@ export default function({mode}) {
             sourcemap :
                 true, // Prevent inlining; we don't want any worklets/audio workers to be inlined as that doesn't work.
             assetsInlineLimit : 0,
+            rollupOptions : {
+                input : {
+                    main : path.resolve(__dirname, 'index.html'),
+                    embed : path.resolve(__dirname, 'embed.html'),
+                },
+            }
         },
         resolve : {
             alias : {

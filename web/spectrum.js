@@ -122,11 +122,12 @@ export class Spectrum {
         await this.audioHandler.initialise();
     }
 
+    blitSpectrumFrame() { this.canvas2d.putImageData(this.wasm.render_video(), 0, 0); }
+
     drawFrame(ts) {
         this.currentFps = 1000 / (ts - this.prevFrameTime);
         this.prevFrameTime = ts;
-        const frame = this.wasm.render_video();
-        this.canvas2d.putImageData(frame, 0, 0);
+        this.blitSpectrumFrame();
         if (this.running)
             requestAnimationFrame((ts) => this.drawFrame(ts));
     }
@@ -151,6 +152,8 @@ export class Spectrum {
     }
 
     start() {
+        if (this.running)
+            return;
         this.running = true;
         this.nextUpdate = undefined;
         setTimeout(() => this.emulate(), 0);
@@ -182,9 +185,11 @@ export class Spectrum {
         }
     }
 
-    async load_snapshot(game_url) {
+    async loadSnapshot(game_url) {
         const game_data = await (await fetch(game_url)).arrayBuffer();
         const file_name = game_url.pathname.replace(/.*\//, '');
         this.wasm.load_snapshot(file_name, game_data);
+        this.wasm.run_frame();
+        this.blitSpectrumFrame();
     }
 }

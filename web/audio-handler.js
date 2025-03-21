@@ -58,7 +58,8 @@ export class AudioHandler {
 
     async tryResume() {
         if (this.audioContext && this.audioContext.state !== "running") {
-            console.log("Trying to resume audio") await this.audioContext.resume();
+            console.log("Trying to resume audio");
+            await this.audioContext.resume();
         }
     }
 
