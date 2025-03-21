@@ -9,14 +9,13 @@
 
 namespace specbolt::v1 {
 
-std::size_t Z80::execute_one() {
+void Z80::execute_one() {
   if (halted_) [[unlikely]] {
-    ++now_tstates_;
-    return 1;
+    pass_time(1);
+    return;
   }
 
   regs_.r(regs_.r() + 1);
-  const auto initial_time = now_tstates_;
   const auto initial_pc = regs_.pc();
   const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
   const auto decoded = impl::decode(opcodes);
@@ -30,7 +29,6 @@ std::size_t Z80::execute_one() {
     regs_.pc(initial_pc);
     throw;
   }
-  return now_tstates_ - initial_time;
 }
 
 void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }

@@ -38,7 +38,6 @@ constexpr std::array palette_swapped = [] {
 constexpr auto PalTotalLines = 312zu;
 constexpr auto VSyncLines = PalTotalLines - Video::VisibleHeight;
 // constexpr auto HSyncPixels = 64;
-constexpr auto CyclesPerScanLine = 224;
 constexpr auto FramesPerFlash = 16;
 
 constexpr auto AttributeDataOffset = 0x1800;
@@ -51,18 +50,24 @@ bool Video::poll(const std::size_t num_cycles) {
   bool irq = false;
   total_cycles_ += num_cycles;
   while (total_cycles_ > next_line_cycles_) {
-    render_line(current_line_);
-    current_line_ = (current_line_ + 1) % PalTotalLines;
-    if (current_line_ == 0) {
+    if (next_scan_line())
       irq = true;
-      if (++flash_counter_ == FramesPerFlash) {
-        flash_counter_ = 0;
-        flash_on_ = !flash_on_;
-      }
-    }
     next_line_cycles_ += CyclesPerScanLine;
   }
   return irq;
+}
+
+bool Video::next_scan_line() {
+  render_line(current_line_);
+  current_line_ = (current_line_ + 1) % PalTotalLines;
+  if (current_line_ == 0) {
+    if (++flash_counter_ == FramesPerFlash) {
+      flash_counter_ = 0;
+      flash_on_ = !flash_on_;
+    }
+    return true;
+  }
+  return false;
 }
 
 void Video::blit_to(const std::span<std::uint32_t> screen, bool swap_rgb) const {

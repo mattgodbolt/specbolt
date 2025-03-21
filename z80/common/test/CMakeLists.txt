@@ -4,6 +4,7 @@ add_executable(
         z80_common_test
         AluTest.cpp
         FlagsTest.cpp
+        SchedulerTest.cpp
         RegisterFileTest.cpp)
 target_link_libraries(z80_common_test z80_common Catch2::Catch2WithMain)
 

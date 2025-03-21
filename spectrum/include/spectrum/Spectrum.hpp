@@ -8,6 +8,7 @@
 
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
+#include "z80/common/Scheduler.hpp"
 
 #include <array>
 #include <filesystem>
@@ -30,7 +31,7 @@ public:
       const double speed_up = 1.0) :
       memory_(total_pages_for(variant)), video_(memory_),
       audio_(audio_sample_rate, static_cast<std::size_t>(50.0 * static_cast<double>(cycles_per_frame) * speed_up)),
-      z80_(memory_), variant_(variant) {
+      z80_(scheduler_, memory_), variant_(variant) {
     const auto file_size = std::filesystem::file_size(rom);
     const auto SpectrumRomSize = static_cast<std::uint16_t>(0x4000 * rom_pages_for(variant));
     if (file_size != SpectrumRomSize)
@@ -72,9 +73,10 @@ public:
   static constexpr auto cycles_per_frame = static_cast<std::size_t>(3.5 * 1'000'000 / 50);
 
   std::size_t run_cycles(const std::size_t cycles, const bool keep_history) {
-    std::size_t total_cycles_elapsed = 0;
+    const auto initial_cycles = z80_.cycle_count();
+    const auto end_cycles = initial_cycles + cycles;
     const bool might_need_tracing = trace_next_instructions_ > 0;
-    while (total_cycles_elapsed < cycles) {
+    while (z80_.cycle_count() < end_cycles) {
       if (keep_history) {
         reg_history_[current_reg_history_index_ % RegHistory] = z80_.regs();
         ++current_reg_history_index_;
@@ -90,12 +92,9 @@ public:
             z80_.regs().iy(), z80_.regs().sp());
         --trace_next_instructions_;
       }
-      const auto cycles_elapsed = z80_.execute_one();
-      total_cycles_elapsed += cycles_elapsed;
-      if (video_.poll(cycles_elapsed))
-        z80_.interrupt();
+      z80_.execute_one();
     }
-    return total_cycles_elapsed;
+    return z80_.cycle_count() - initial_cycles;
   }
 
   std::size_t run_frame() { return run_cycles(cycles_per_frame, false); }
@@ -135,10 +134,24 @@ private:
   Video video_;
   Audio audio_;
   Keyboard keyboard_;
+  Scheduler scheduler_;
   Z80Impl z80_;
   std::size_t trace_next_instructions_{};
   std::size_t last_traced_instr_cycle_count_{};
   Variant variant_;
+
+
+  struct VideoTask final : Scheduler::Task {
+    Spectrum &spectrum;
+    explicit VideoTask(Spectrum &spectrum) : spectrum(spectrum) { spectrum.scheduler_.schedule(*this, 0); }
+    void run(std::size_t) override { spectrum.video_line(); }
+  };
+  VideoTask video_task_{*this};
+  void video_line() {
+    if (video_.next_scan_line())
+      z80_.interrupt();
+    scheduler_.schedule(video_task_, Video::CyclesPerScanLine);
+  }
 
   static constexpr std::size_t RegHistory = 8uz;
   std::array<RegisterFile, RegHistory> reg_history_{};

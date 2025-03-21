@@ -15,10 +15,9 @@ namespace specbolt::v1 {
 
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
-  explicit Z80(Memory &memory) : Z80Base(memory) {}
+  explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
 
-  // TODO "Cycles" class?
-  std::size_t execute_one();
+  void execute_one();
 
   void push16(std::uint16_t value);
   [[nodiscard]] std::uint16_t pop16();

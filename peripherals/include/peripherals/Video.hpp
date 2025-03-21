@@ -19,12 +19,14 @@ public:
   static constexpr auto VisibleWidth = XBorder + ScreenWidth + XBorder;
   static constexpr auto VisibleHeight = YBorder + ScreenHeight + YBorder;
   static constexpr auto ColumnCount = ScreenWidth / 8;
+  static constexpr auto CyclesPerScanLine = 224;
 
   explicit Video(const Memory &memory);
 
   void set_border(const std::uint8_t border) { border_ = border; }
   void set_page(const std::uint8_t page) { page_ = page; }
   bool poll(std::size_t num_cycles);
+  bool next_scan_line();
 
   void blit_to(std::span<std::uint32_t> screen, bool swap_rgb = false) const;
 

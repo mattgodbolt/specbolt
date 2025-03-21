@@ -4,6 +4,7 @@
 #include "peripherals/Memory.hpp"
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
+#include "z80/common/Scheduler.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -17,7 +18,7 @@ namespace specbolt {
 SPECBOLT_EXPORT
 class Z80Base {
 public:
-  explicit Z80Base(Memory &memory) : memory_(memory) {}
+  explicit Z80Base(Scheduler &scheduler, Memory &memory) : scheduler_(scheduler), memory_(memory) {}
 
   [[nodiscard]] bool iff1() const { return iff1_; }
   void iff1(const bool iff1) { iff1_ = iff1; }
@@ -33,7 +34,7 @@ public:
   [[nodiscard]] Flags flags() const;
   void flags(Flags flags);
 
-  [[nodiscard]] auto cycle_count() const { return now_tstates_; }
+  [[nodiscard]] auto cycle_count() const { return scheduler_.cycles(); }
 
   using OutHandler = std::function<void(std::uint16_t port, std::uint8_t value)>;
   void add_out_handler(OutHandler handler);
@@ -48,12 +49,12 @@ public:
   void halt();
   [[nodiscard]] bool halted() const { return halted_; }
 
-  void pass_time(const std::size_t tstates) { now_tstates_ += tstates; }
+  void pass_time(const std::size_t tstates) { scheduler_.tick(tstates); }
 
 protected:
   RegisterFile regs_;
+  Scheduler &scheduler_;
   Memory &memory_;
-  std::size_t now_tstates_{};
   bool halted_{};
   bool iff1_{};
   bool iff2_{};

@@ -8,16 +8,14 @@
 
 namespace specbolt::v2 {
 
-std::size_t Z80::execute_one() {
-  const auto before = now_tstates_;
+void Z80::execute_one() {
   if (halted_) [[unlikely]] {
-    ++now_tstates_;
-    return now_tstates_ - before;
+    pass_time(1);
+    return;
   }
 
   const auto opcode = read_opcode();
   impl::table<impl::build_execute_hl>[opcode](*this);
-  return now_tstates_ - before;
 }
 
 void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }

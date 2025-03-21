@@ -16,6 +16,7 @@ if (SPECBOLT_MODULES)
             Alu.cppm
             Flags.cppm
             RegisterFile.cppm
+            Scheduler.cppm
             Z80Base.cppm
     )
 else ()
@@ -37,5 +38,6 @@ else ()
             include/z80/common/Flags.hpp
             include/z80/common/RegisterFile.hpp
             include/z80/common/Z80Base.hpp
+            include/z80/common/Scheduler.hpp
     )
 endif ()
