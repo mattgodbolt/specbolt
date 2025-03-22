@@ -17,6 +17,7 @@ if (SPECBOLT_MODULES)
             Blip_Buffer.cppm
             Keyboard.cppm
             Memory.cppm
+            Tape.cppm
             Video.cppm
     )
 else ()
@@ -27,6 +28,7 @@ else ()
             Audio.cpp
             Keyboard.cpp
             Memory.cpp
+            Tape.cpp
             Video.cpp
             blip_buffer/Blip_Buffer.cpp
     )
@@ -39,6 +41,7 @@ else ()
             include/peripherals/Audio.hpp
             include/peripherals/Keyboard.hpp
             include/peripherals/Memory.hpp
+            include/peripherals/Tape.hpp
             include/peripherals/Video.hpp
             include/peripherals/Blip_Buffer.hpp
     )
