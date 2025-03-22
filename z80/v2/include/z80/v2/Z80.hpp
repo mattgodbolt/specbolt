@@ -19,8 +19,6 @@ public:
 
   void execute_one();
 
-  void interrupt();
-
   void branch(std::int8_t offset);
 
   std::uint8_t read_opcode();
@@ -33,6 +31,9 @@ public:
   std::uint16_t pop16();
   void push8(std::uint8_t value);
   void push16(std::uint16_t value);
+
+private:
+  void handle_interrupt();
 };
 
 } // namespace specbolt::v2

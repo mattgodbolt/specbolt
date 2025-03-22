@@ -30,6 +30,7 @@ public:
 
   void irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
   [[nodiscard]] std::uint8_t irq_mode() const { return irq_mode_; };
+  void interrupt() { irq_pending_ = true; }
 
   [[nodiscard]] Flags flags() const;
   void flags(Flags flags);
@@ -56,6 +57,7 @@ protected:
   Scheduler &scheduler_;
   Memory &memory_;
   bool halted_{};
+  bool irq_pending_{};
   bool iff1_{};
   bool iff2_{};
   std::uint8_t irq_mode_{};

@@ -24,7 +24,6 @@ public:
   void push8(std::uint8_t value);
   [[nodiscard]] std::uint8_t pop8();
 
-  void interrupt();
   void retn();
 
   void branch(std::int8_t offset);
@@ -34,12 +33,12 @@ public:
   void write8(std::uint16_t address, std::uint8_t value);
   void write16(std::uint16_t address, std::uint16_t value);
 
-
   [[nodiscard]] std::uint16_t read(Instruction::Operand operand, std::int8_t index_offset);
   void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
 
 private:
   void execute(const Instruction &instr);
+  void handle_interrupt();
 };
 
 } // namespace specbolt::v1

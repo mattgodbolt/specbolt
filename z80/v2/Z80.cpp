@@ -13,6 +13,9 @@ void Z80::execute_one() {
     pass_time(1);
     return;
   }
+  if (irq_pending_) [[unlikely]] {
+    handle_interrupt();
+  }
 
   const auto opcode = read_opcode();
   impl::table<impl::build_execute_hl>[opcode](*this);
@@ -74,7 +77,8 @@ void Z80::push16(const std::uint16_t value) {
   push8(static_cast<std::uint8_t>(value));
 }
 
-void Z80::interrupt() {
+void Z80::handle_interrupt() {
+  irq_pending_ = false;
   if (!iff1_)
     return;
   // Some dark business with parity flag here ignored.

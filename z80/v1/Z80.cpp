@@ -14,6 +14,9 @@ void Z80::execute_one() {
     pass_time(1);
     return;
   }
+  if (irq_pending_) [[unlikely]] {
+    handle_interrupt();
+  }
 
   regs_.r(regs_.r() + 1);
   const auto initial_pc = regs_.pc();
@@ -198,7 +201,8 @@ std::uint8_t Z80::pop8() {
   return read8(old_sp);
 }
 
-void Z80::interrupt() {
+void Z80::handle_interrupt() {
+  irq_pending_ = false;
   if (!iff1_)
     return;
   // Some dark business with parity flag here ignored.
