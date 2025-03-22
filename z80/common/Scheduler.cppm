@@ -1,6 +1,7 @@
 module;
 
 #include <algorithm>
+#include <coroutine>
 #include <limits>
 #include <vector>
 

@@ -6,31 +6,35 @@
 
 #include "z80/v1/Z80.hpp"
 
+#include "z80/common/include/z80/common/Scheduler.hpp"
+
 
 namespace specbolt::v1 {
 
-void Z80::execute_one() {
-  if (halted_) [[unlikely]] {
-    pass_time(1);
-    return;
-  }
-  if (irq_pending_) [[unlikely]] {
-    handle_interrupt();
-  }
+Task Z80::execute() {
+  for (;;) {
+    if (halted_) [[unlikely]] {
+      co_await CycleCount{1};
+      continue;
+    }
+    if (irq_pending_) [[unlikely]] {
+      handle_interrupt();
+    }
 
-  regs_.r(regs_.r() + 1);
-  const auto initial_pc = regs_.pc();
-  const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
-  const auto decoded = impl::decode(opcodes);
-  pass_time(4);
-  regs_.pc(initial_pc + decoded.length); // NOT RIGHT
-  try {
-    execute(decoded);
-  }
-  catch (...) {
-    // TODO heinous
-    regs_.pc(initial_pc);
-    throw;
+    regs_.r(regs_.r() + 1);
+    const auto initial_pc = regs_.pc();
+    const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
+    const auto decoded = impl::decode(opcodes);
+    co_await CycleCount{4};
+    regs_.pc(initial_pc + decoded.length); // NOT RIGHT
+    try {
+      execute(decoded);
+    }
+    catch (...) {
+      // TODO heinous
+      regs_.pc(initial_pc);
+      throw;
+    }
   }
 }
 
@@ -114,7 +118,7 @@ void Z80::execute(const Instruction &instr) {
       {read(instr.lhs, instr.index_offset), read(instr.rhs, instr.index_offset), Flags(regs_.get(RegisterFile::R8::F))},
       *this);
   regs_.set(RegisterFile::R8::F, flags.to_u8());
-  pass_time(extra_t_states + instr.decode_t_states);
+  co_await {extra_t_states + instr.decode_t_states};
   write(instr.lhs, instr.index_offset, value);
 }
 
@@ -211,7 +215,7 @@ void Z80::handle_interrupt() {
     regs().pc(regs().pc() + 1);
   }
   iff1_ = iff2_ = false;
-  pass_time(7);
+  co_await CycleCount{7};
   push16(regs().pc());
   switch (irq_mode_) {
     case 0:
