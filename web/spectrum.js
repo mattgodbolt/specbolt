@@ -29,9 +29,9 @@ async function initialiseWasm() {
 const SampleRate = 48000;
 
 class WasmSpectrum {
-    constructor(exports, snapshots) {
+    constructor(exports, model, snapshots) {
         this._exports = exports;
-        this._instance = exports.create(48, SampleRate);
+        this._instance = exports.create(model, SampleRate);
         this.width = exports.video_width();
         this.height = exports.video_height();
         this.snapshots = snapshots;
@@ -112,9 +112,9 @@ export class Spectrum {
         this.nextUpdate = undefined;
     }
 
-    async initialise() {
+    async initialise(model) {
         const {instance, snapshots} = await initialiseWasm();
-        this.wasm = new WasmSpectrum(instance.exports, snapshots);
+        this.wasm = new WasmSpectrum(instance.exports, model, snapshots);
         this.canvas.setAttribute('width', this.wasm.width);
         this.canvas.setAttribute('height', this.wasm.height);
 

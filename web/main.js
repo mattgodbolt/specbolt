@@ -7,7 +7,9 @@ const $currentFps = document.querySelector('#current-fps');
 const spectrum = new Spectrum($canvas, document.querySelector('#warning'));
 
 async function initialise() {
-    await spectrum.initialise();
+    const parsedQuery = new URLSearchParams(window.location.search);
+
+    await spectrum.initialise(parsedQuery.get("model") || 48);
 
     function updateStats() {
         if ($effectiveMhz)
@@ -30,7 +32,6 @@ async function initialise() {
 
     document.onkeyup = (e) => { spectrum.onKeyUp(e); }
 
-    const parsedQuery = new URLSearchParams(window.location.search);
     if (parsedQuery.get("load")) {
         const game_url = new URL(parsedQuery.get("load"), window.location);
         await spectrum.loadSnapshot(game_url);
