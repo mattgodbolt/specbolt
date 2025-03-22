@@ -21,8 +21,9 @@ public:
   };
 
   void schedule(Task &task, const std::size_t in_cycles) {
-    const auto insertion_point = std::ranges::lower_bound(tasks_, in_cycles, {}, &ScheduledTask::cycle);
-    tasks_.insert(insertion_point, ScheduledTask{cycles_ + in_cycles, &task});
+    const auto when_to_run = cycles_ + in_cycles;
+    const auto insertion_point = std::ranges::lower_bound(tasks_, when_to_run, {}, &ScheduledTask::cycle);
+    tasks_.insert(insertion_point, ScheduledTask{when_to_run, &task});
   }
 
   void tick(const size_t cycles) {

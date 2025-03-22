@@ -78,4 +78,19 @@ TEST_CASE("Scheduler tests") {
     CHECK(task_1.calls.empty());
     CHECK(rescheduling_task.calls == vc{5, 15, 25});
   }
+  SECTION("Handles scheduling tasks after an initial start") {
+    scheduler.tick(10000);
+    scheduler.schedule(task_1, 50);
+    scheduler.schedule(task_2, 30);
+    scheduler.schedule(task_3, 100);
+    scheduler.tick(100);
+    CHECK(task_1.calls == vc{10050});
+    CHECK(task_2.calls == vc{10030});
+    CHECK(task_3.calls == vc{10100});
+    scheduler.schedule(task_1, 50);
+    scheduler.tick(100);
+    CHECK(task_1.calls == vc{10050, 10150});
+    CHECK(task_2.calls == vc{10030});
+    CHECK(task_3.calls == vc{10100});
+  }
 }
