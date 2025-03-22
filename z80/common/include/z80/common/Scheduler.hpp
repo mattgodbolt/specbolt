@@ -1,5 +1,6 @@
 #pragma once
 
+#include <coroutine>
 #ifndef SPECBOLT_MODULES
 #include <algorithm>
 #include <limits>
@@ -8,6 +9,24 @@
 
 namespace specbolt {
 
+// struct promise;
+//
+// struct coroutine : std::coroutine_handle<promise> {
+//   using promise_type = specbolt::promise;
+// };
+//
+// struct promise {
+//   coroutine get_return_object() { return {coroutine::from_promise(*this)}; }
+//   std::suspend_always initial_suspend() noexcept { return {}; }
+//   std::suspend_always final_suspend() noexcept { return {}; }
+//   void return_void() {}
+//   void unhandled_exception() {}
+// };
+//
+// struct task {
+//   using promise_type = promise;
+// };
+//
 SPECBOLT_EXPORT
 class Scheduler {
 public:
@@ -24,6 +43,8 @@ public:
     const auto insertion_point = std::ranges::lower_bound(tasks_, in_cycles, {}, &ScheduledTask::cycle);
     tasks_.insert(insertion_point, ScheduledTask{cycles_ + in_cycles, &task});
   }
+
+  // std::coroutine_handle<promise> wait_for(const size_t /*cycles*/) { return {}; }
 
   void tick(const size_t cycles) {
     const auto end_cycle = cycles_ + cycles;
