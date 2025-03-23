@@ -106,6 +106,13 @@ public:
   [[nodiscard]] auto &audio(this auto &self) { return self.audio_; }
   [[nodiscard]] auto &tape(this auto &self) { return self.tape_; }
 
+  // TODO do not like, maybe make tape a Task
+  void play() {
+    tape_.play();
+    if (const auto next_transition = tape_.next_transition())
+      scheduler_.schedule(tape_task_, next_transition);
+  }
+
   void trace_next(const std::size_t instructions) { trace_next_instructions_ = instructions; }
 
   [[nodiscard]] std::vector<RegisterFile> history() const {
@@ -157,13 +164,14 @@ private:
   struct TapeTask final : Scheduler::Task {
     Spectrum &spectrum;
     std::size_t last_time_{};
-    explicit TapeTask(Spectrum &spectrum) : spectrum(spectrum) { spectrum.scheduler_.schedule(*this, 0); }
+    explicit TapeTask(Spectrum &spectrum) : spectrum(spectrum) {}
     void run(const std::size_t cycles) override {
       spectrum.tape_.pass_time(cycles - last_time_);
       last_time_ = cycles; // ugh
-      spectrum.scheduler_.schedule(*this, spectrum.tape_.next_transition());
       // TODO not this:
       spectrum.audio_.set_output(cycles, spectrum.tape_.level(), spectrum.tape_.level());
+      if (const auto next_transition = spectrum.tape_.next_transition())
+        spectrum.scheduler_.schedule(*this, next_transition);
     }
   };
   TapeTask tape_task_{*this};

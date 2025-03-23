@@ -28,6 +28,7 @@ namespace {
 struct SdlApp {
   std::filesystem::path rom;
   std::filesystem::path snapshot;
+  std::filesystem::path tape;
   bool need_help{};
   std::size_t trace_instructions{};
   bool new_impl{};
@@ -46,6 +47,7 @@ struct SdlApp {
                      | lyra::opt(video_refresh_rate, "HZ")["--video-refresh"]("Refresh the video at HZ") //
                      | lyra::opt(emulator_speed, "X")["--emulator-speed"]("Multiplier on emulation speed") //
                      | lyra::opt(zoom, "X")["--zoom"]("Multiplier on display zoom") //
+                     | lyra::opt(tape, "TAPE")["--tape"]("Queue up TAPE") //
                      | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::println(std::cerr, "Error in command line: {}", parse_result.message());
@@ -100,6 +102,10 @@ struct SdlApp {
       Snapshot::load(snapshot, spectrum.z80());
     }
 
+    if (!tape.empty()) {
+      spectrum.tape().load(tape);
+    }
+
     if (trace_instructions)
       spectrum.trace_next(trace_instructions);
 
@@ -115,7 +121,12 @@ struct SdlApp {
       while (SDL_PollEvent(&sdl_event) != 0) {
         switch (sdl_event.type) {
           case SDL_QUIT: quit = true; break;
-          case SDL_KEYDOWN: spectrum.keyboard().key_down(sdl_event.key.keysym.sym); break;
+          case SDL_KEYDOWN: {
+            if (sdl_event.key.keysym.sym == SDLK_F1)
+              spectrum.play();
+            spectrum.keyboard().key_down(sdl_event.key.keysym.sym);
+            break;
+          }
           case SDL_KEYUP: spectrum.keyboard().key_up(sdl_event.key.keysym.sym); break;
           default: break;
         }
