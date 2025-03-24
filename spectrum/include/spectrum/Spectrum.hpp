@@ -168,8 +168,7 @@ private:
     void run(const std::size_t cycles) override {
       spectrum.tape_.pass_time(cycles - last_time_);
       last_time_ = cycles; // ugh
-      // TODO not this:
-      spectrum.audio_.set_output(cycles, spectrum.tape_.level(), spectrum.tape_.level());
+      spectrum.audio_.set_tape_input(cycles, spectrum.tape_.level());
       if (const auto next_transition = spectrum.tape_.next_transition())
         spectrum.scheduler_.schedule(*this, next_transition);
     }
