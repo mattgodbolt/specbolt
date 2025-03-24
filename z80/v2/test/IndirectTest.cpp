@@ -16,7 +16,7 @@ namespace specbolt::v2 {
 
 struct build_is_indirect {
   template<auto op>
-  static constexpr bool result = op.indirect;
+  static constexpr bool result = decltype(op)::indirect;
 };
 
 TEST_CASE("Check indirect flags") {

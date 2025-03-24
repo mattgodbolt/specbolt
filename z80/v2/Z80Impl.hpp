@@ -912,7 +912,7 @@ constexpr auto ed_instruction<opcode> = Op<"rld", [](Z80 &z80) {
 template<bool increment, bool repeat>
 struct BlockLoadOp {
   static constexpr Mnemonic mnemonic{"ld"s + (increment ? "i" : "d") + (repeat ? "r" : "")};
-  static void execute(Z80 &z80) {
+  static constexpr void execute(Z80 &z80) {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
     z80.regs().set(RegisterFile::R16::HL, hl + add);
@@ -947,7 +947,7 @@ constexpr auto ed_instruction<opcode> =
 template<bool increment, bool repeat>
 struct BlockCompareOp {
   static constexpr Mnemonic mnemonic{"cp"s + (increment ? "i" : "d") + (repeat ? "r" : "")};
-  static void execute(Z80 &z80) {
+  static constexpr void execute(Z80 &z80) {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
     z80.regs().set(RegisterFile::R16::HL, hl + add);
@@ -1018,26 +1018,26 @@ struct select_cb_instruction {
 
 template<typename T>
 concept OpLike = requires(T t) {
-  { t.mnemonic } -> std::same_as<const Mnemonic &>;
-  { t.execute } -> std::invocable<Z80 &>;
+  { T::mnemonic } -> std::same_as<const Mnemonic &>;
+  { T::execute } -> std::invocable<Z80 &>;
 };
 
 template<typename T>
 concept BaseOpLike = OpLike<T> && requires(T t) {
-  { t.indirect } -> std::convertible_to<bool>;
+  { T::indirect } -> std::convertible_to<bool>;
 };
 
 struct build_description {
   template<auto op>
     requires OpLike<decltype(op)>
-  static constexpr auto result = op.mnemonic.view();
+  static constexpr auto result = decltype(op)::mnemonic.view();
 };
 
 struct build_execute {
   template<auto op>
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
-    op.execute(z80);
+    decltype(op)::execute(z80);
   }
 };
 
@@ -1046,7 +1046,7 @@ struct build_execute_ixiy {
   template<auto op>
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
-    if constexpr (op.indirect) {
+    if constexpr (decltype(op)::indirect) {
       const auto address =
           static_cast<std::uint16_t>(z80.regs().get(ix_or_iy) + static_cast<std::int8_t>(z80.read_immediate()));
       // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right.
@@ -1063,7 +1063,7 @@ struct build_execute_hl {
   template<auto op>
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
-    if constexpr (op.indirect) {
+    if constexpr (decltype(op)::indirect) {
       z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
     }
     op.execute(z80);
