@@ -23,9 +23,13 @@ endif ()
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
-add_link_options("-fuse-ld=lld")
-
 project(specbolt VERSION 0.1 LANGUAGES CXX)
+
+try_compile(CAN_USE_LLD SOURCE_TYPE EXECUTABLE SOURCE_FROM_CONTENT "test.cpp" "int main() { }" LINK_OPTIONS "-fuse-ld=lld")
+
+if (CAN_USE_LLD)
+add_link_options("-fuse-ld=lld")
+endif()
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
