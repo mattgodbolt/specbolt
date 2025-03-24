@@ -1,10 +1,13 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include <filesystem>
 #include <vector>
+#endif
 
 namespace specbolt {
 
+SPECBOLT_EXPORT
 class Tape {
 public:
   void load(const std::filesystem::path &path);

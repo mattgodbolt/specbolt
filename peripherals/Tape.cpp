@@ -1,8 +1,10 @@
+#ifndef SPECBOLT_MODULES
 #include "peripherals/Tape.hpp"
 
 #include <chrono>
 #include <cstring>
 #include <fstream>
+#endif
 
 namespace specbolt {
 
