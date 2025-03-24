@@ -25,7 +25,7 @@ set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 project(specbolt VERSION 0.1 LANGUAGES CXX)
 
-try_compile(CAN_USE_LLD SOURCE_TYPE EXECUTABLE SOURCE_FROM_CONTENT "test.cpp" "int main() { }" LINK_OPTIONS "-fuse-ld=lld")
+try_compile(CAN_USE_LLD SOURCE_FROM_CONTENT "test.cpp" "int main() { }" LINK_OPTIONS "-fuse-ld=lld")
 
 if (CAN_USE_LLD)
 add_link_options("-fuse-ld=lld")
