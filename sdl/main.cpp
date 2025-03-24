@@ -172,7 +172,6 @@ struct SdlApp {
             std::span(static_cast<std::uint32_t *>(pixels), Video::VisibleWidth * Video::VisibleHeight));
         SDL_UnlockTexture(texture.get());
 
-        SDL_RenderClear(renderer.get());
         SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
         SDL_RenderPresent(renderer.get());
         next_display_frame += video_delay;
