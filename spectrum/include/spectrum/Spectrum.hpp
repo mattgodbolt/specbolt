@@ -4,6 +4,7 @@
 #include "peripherals/Audio.hpp"
 #include "peripherals/Keyboard.hpp"
 #include "peripherals/Memory.hpp"
+#include "peripherals/Tape.hpp"
 #include "peripherals/Video.hpp"
 
 #include "z80/common/Flags.hpp"
@@ -15,7 +16,6 @@
 #include <iostream>
 #include <print>
 #include <vector>
-
 #endif
 
 namespace specbolt {
@@ -64,9 +64,9 @@ public:
     }
     z80_.add_in_handler([this](const std::uint16_t port) { return keyboard_.in(port); });
     // Handler for ULA sound...
-    z80_.add_in_handler([](const std::uint16_t port) {
-      // TODO something with the EAR bit here...
-      return port & 1 ? std::nullopt : std::make_optional<std::uint8_t>(~(1 << 6));
+    z80_.add_in_handler([this](const std::uint16_t port) {
+      const auto ear_bit = tape_.level() ? 0x40 : 0x00;
+      return port & 1 ? std::nullopt : std::make_optional<std::uint8_t>(~(1 << 6) | ear_bit);
     });
     reset();
   }
@@ -104,6 +104,14 @@ public:
   [[nodiscard]] auto &memory(this auto &self) { return self.memory_; }
   [[nodiscard]] auto &keyboard(this auto &self) { return self.keyboard_; }
   [[nodiscard]] auto &audio(this auto &self) { return self.audio_; }
+  [[nodiscard]] auto &tape(this auto &self) { return self.tape_; }
+
+  // TODO do not like, maybe make tape a Task
+  void play() {
+    tape_.play();
+    if (const auto next_transition = tape_.next_transition())
+      scheduler_.schedule(tape_task_, next_transition);
+  }
 
   void trace_next(const std::size_t instructions) { trace_next_instructions_ = instructions; }
 
@@ -132,6 +140,7 @@ public:
 private:
   Memory memory_;
   Video video_;
+  Tape tape_;
   Audio audio_;
   Keyboard keyboard_;
   Scheduler scheduler_;
@@ -139,7 +148,6 @@ private:
   std::size_t trace_next_instructions_{};
   std::size_t last_traced_instr_cycle_count_{};
   Variant variant_;
-
 
   struct VideoTask final : Scheduler::Task {
     Spectrum &spectrum;
@@ -152,6 +160,20 @@ private:
       z80_.interrupt();
     scheduler_.schedule(video_task_, Video::CyclesPerScanLine);
   }
+
+  struct TapeTask final : Scheduler::Task {
+    Spectrum &spectrum;
+    std::size_t last_time_{};
+    explicit TapeTask(Spectrum &spectrum) : spectrum(spectrum) {}
+    void run(const std::size_t cycles) override {
+      spectrum.tape_.pass_time(cycles - last_time_);
+      last_time_ = cycles; // ugh
+      spectrum.audio_.set_tape_input(cycles, spectrum.tape_.level());
+      if (const auto next_transition = spectrum.tape_.next_transition())
+        spectrum.scheduler_.schedule(*this, next_transition);
+    }
+  };
+  TapeTask tape_task_{*this};
 
   static constexpr std::size_t RegHistory = 8uz;
   std::array<RegisterFile, RegHistory> reg_history_{};

@@ -18,12 +18,19 @@ public:
     virtual void run(std::size_t cycles) = 0;
     Task(const Task &) = delete;
     Task &operator=(const Task &) = delete;
+
+  private:
+    bool scheduled_{};
+    friend class Scheduler;
   };
 
   void schedule(Task &task, const std::size_t in_cycles) {
+    if (task.scheduled_)
+      return;
     const auto when_to_run = cycles_ + in_cycles;
     const auto insertion_point = std::ranges::lower_bound(tasks_, when_to_run, {}, &ScheduledTask::cycle);
     tasks_.insert(insertion_point, ScheduledTask{when_to_run, &task});
+    task.scheduled_ = true;
   }
 
   void tick(const size_t cycles) {
@@ -33,6 +40,7 @@ public:
         break;
       // Take a _copy_ of the information about the front task.
       if (auto [cycle, task] = tasks_.front(); cycle <= end_cycle) {
+        task->scheduled_ = false;
         tasks_.erase(tasks_.begin()); // Remove immediately.
 
         cycles_ = cycle;
