@@ -95,9 +95,11 @@ initialise().then(() => {});
 
 // JavaScript inside of an iframe embedded within reveal.js
 window.addEventListener('message', (event) => {
-    if (event.data === 'slide:start') {
+    if (event.data === 'specbolt:start') {
+        spectrum.start();
+    } else if (event.data === 'slide:start') {
         // Does nothihng...
-    } else if (event.data === 'slide:stop') {
+    } else if (event.data === 'slide:stop' || event.data === 'specbolt:stop') {
         spectrum.stop();
     }
 });
