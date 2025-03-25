@@ -37,10 +37,8 @@ class Typist {
     type() {
         this.counter++;
         const todo = this.onCycle.get(this.counter);
-        if (todo) {
-            console.log("typing ", String.fromCharCode(todo.code), todo.pressed);
+        if (todo)
             spectrum.setKeyState(todo.code, todo.pressed);
-        }
     }
 }
 
