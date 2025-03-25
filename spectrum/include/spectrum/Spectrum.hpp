@@ -64,9 +64,12 @@ public:
     }
     z80_.add_in_handler([this](const std::uint16_t port) { return keyboard_.in(port); });
     // Handler for ULA sound...
-    z80_.add_in_handler([this](const std::uint16_t port) {
+    z80_.add_in_handler([this](const std::uint16_t port) -> std::optional<std::uint8_t> {
+      if (port & 1)
+        return std::nullopt;
+      play();
       const auto ear_bit = tape_.level() ? 0x40 : 0x00;
-      return port & 1 ? std::nullopt : std::make_optional<std::uint8_t>(~(1 << 6) | ear_bit);
+      return std::make_optional<std::uint8_t>(~(1 << 6) | ear_bit);
     });
     reset();
   }

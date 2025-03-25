@@ -9,7 +9,7 @@ import {AudioHandler} from "./audio-handler";
 async function initialiseWasm() {
     const rom48 = await (await fetch(rom48Url)).arrayBuffer();
     const rom128 = await (await fetch(rom128Url)).arrayBuffer();
-    const snapshots = new Map();
+    const data = new Map();
     const wasi = new WASI([], [], [
         new OpenFile(new File([])), // stdin
         ConsoleStdout.lineBuffered(msg => console.log(`[WASI stdout] ${msg}`)),
@@ -18,23 +18,23 @@ async function initialiseWasm() {
                                  [ "48.rom", new File(rom48) ],
                                  [ "128.rom", new File(rom128) ],
                              ])),
-        new PreopenDirectory("snapshots", snapshots)
+        new PreopenDirectory("data", data)
     ]);
 
     const result = await WebAssembly.instantiateStreaming(fetch(wasmUrl), {"wasi_snapshot_preview1" : wasi.wasiImport});
     wasi.start(result.instance);
-    return {instance : result.instance, snapshots};
+    return {instance : result.instance, data};
 }
 
 const SampleRate = 48000;
 
 class WasmSpectrum {
-    constructor(exports, model, snapshots) {
+    constructor(exports, model, data_map) {
         this._exports = exports;
         this._instance = exports.create(model, SampleRate);
         this.width = exports.video_width();
         this.height = exports.video_height();
-        this.snapshots = snapshots;
+        this.data_map = data_map;
     }
 
     _alloc_string(name) {
@@ -51,9 +51,16 @@ class WasmSpectrum {
     _free_string(offset) { this._exports.free_bytes(offset); }
 
     load_snapshot(name, data) {
-        this.snapshots.set(name, new File(data));
-        const offset = this._alloc_string(`snapshots/${name}`);
+        this.data_map.set(name, new File(data));
+        const offset = this._alloc_string(`data/${name}`);
         this._exports.load_snapshot(this._instance, offset);
+        this._free_string(offset);
+    }
+
+    load_tape(name, data) {
+        this.data_map.set(name, new File(data));
+        const offset = this._alloc_string(`data/${name}`);
+        this._exports.load_tape(this._instance, offset);
         this._free_string(offset);
     }
 
@@ -74,6 +81,9 @@ class WasmSpectrum {
     key_state(code, pressed) { this._exports.key_state(this._instance, code, pressed); }
 }
 
+export const SpectrumShift = 0x400000e1;
+export const SymbolShift = 0x400000e0;
+
 // fart about to get SDL keycodes from browser keycodes.
 function keyCode(evt) {
     // Drop any ctrl keypresses.
@@ -81,12 +91,12 @@ function keyCode(evt) {
         return undefined;
     const code = evt.which || evt.charCode || evt.keyCode;
     // Shift to spectrum shift
-    if (code === 16) {     // shift
-        return 0x400000e1; // Spectrum Shift
+    if (code === 16) { // shift
+        return SpectrumShift;
     }
     // either alt to symbolshift
     if (code === 18 || code === 230) {
-        return 0x400000e0;
+        return SymbolShift;
     }
     // Map uppercase to lower.
     if (code >= 65 && code <= 90) {
@@ -99,6 +109,8 @@ function keyCode(evt) {
     // Else not mapped.
     return undefined;
 }
+
+const emulatedFrameEvent = new Event("emulated-frame");
 
 export class Spectrum {
     constructor(canvas, audioWarningNode) {
@@ -113,8 +125,8 @@ export class Spectrum {
     }
 
     async initialise(model) {
-        const {instance, snapshots} = await initialiseWasm();
-        this.wasm = new WasmSpectrum(instance.exports, model, snapshots);
+        const {instance, data} = await initialiseWasm();
+        this.wasm = new WasmSpectrum(instance.exports, model, data);
         this.canvas.setAttribute('width', this.wasm.width);
         this.canvas.setAttribute('height', this.wasm.height);
 
@@ -132,12 +144,17 @@ export class Spectrum {
             requestAnimationFrame((ts) => this.drawFrame(ts));
     }
 
+    emulateFrame() {
+        this.canvas.dispatchEvent(emulatedFrameEvent);
+        return this.wasm.run_frame();
+    }
+
     emulate() {
         const ts = performance.now();
         if (this.nextUpdate === undefined)
             this.nextUpdate = ts;
         if (ts >= this.nextUpdate) {
-            const numCycles = this.wasm.run_frame();
+            const numCycles = this.emulateFrame();
             const timeTakenMs = performance.now() - ts;
             this.effectiveMhz = numCycles / timeTakenMs / 1000;
             const audio = this.wasm.render_audio();
@@ -162,10 +179,12 @@ export class Spectrum {
 
     stop() { this.running = false; }
 
+    setKeyState(code, pressed) { this.wasm.key_state(code, pressed); }
+
     onKeyDown(evt) {
         const code = keyCode(evt);
         if (code !== undefined) {
-            this.wasm.key_state(keyCode(evt), true);
+            this.setKeyState(code, true);
             evt.preventDefault();
         } else if (evt.key === "F10") {
             if (this.running)
@@ -180,15 +199,24 @@ export class Spectrum {
     onKeyUp(evt) {
         const code = keyCode(evt);
         if (code !== undefined) {
-            this.wasm.key_state(keyCode(evt), false);
+            this.setKeyState(code, false);
             evt.preventDefault();
         }
     }
 
+    static async loadUrl(url) {
+        const filename = url.pathname.replace(/.*\//, '');
+        return {filename, data : await (await fetch(url)).arrayBuffer()};
+    }
+
+    async loadTape(tape_url) {
+        const {filename, data} = await Spectrum.loadUrl(tape_url);
+        this.wasm.load_tape(filename, data);
+    }
+
     async loadSnapshot(game_url) {
-        const game_data = await (await fetch(game_url)).arrayBuffer();
-        const file_name = game_url.pathname.replace(/.*\//, '');
-        this.wasm.load_snapshot(file_name, game_data);
+        const {filename, data} = await Spectrum.loadUrl(game_url);
+        this.wasm.load_snapshot(filename, data);
         this.wasm.run_frame();
         this.blitSpectrumFrame();
     }

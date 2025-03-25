@@ -1,10 +1,48 @@
-import {Spectrum} from "./spectrum";
+import {Spectrum, SpectrumShift, SymbolShift} from "./spectrum";
 
 const $canvas = document.querySelector('canvas');
 const $effectiveMhz = document.querySelector('#effective-mhz');
 const $currentFps = document.querySelector('#current-fps');
 
 const spectrum = new Spectrum($canvas, document.querySelector('#warning'));
+
+class Typist {
+    constructor(text) {
+        this.counter = 0;
+        let index = 0;
+        this.onCycle = new Map();
+        let counter = 10;
+        while (index < text.length) {
+            let code = text.charCodeAt(index++);
+            if (code >= 'A'.charCodeAt(0) && code <= 'Z'.charCodeAt(0)) {
+                this.onCycle.set(counter, {code : SpectrumShift, pressed : true});
+                this.onCycle.set(counter + 7, {code : SpectrumShift, pressed : false});
+                counter += 2;
+                code = code + 32;
+            }
+            if (code === '^'.charCodeAt(0)) {
+                this.onCycle.set(counter, {code : SymbolShift, pressed : true});
+                this.onCycle.set(counter + 5, {code : SymbolShift, pressed : false});
+                counter += 2;
+                continue;
+            }
+            if (code === '$'.charCodeAt(0))
+                code = 13;
+            this.onCycle.set(counter, {code : code, pressed : true});
+            this.onCycle.set(counter + 3, {code : code, pressed : false});
+            counter += 15;
+        }
+    }
+
+    type() {
+        this.counter++;
+        const todo = this.onCycle.get(this.counter);
+        if (todo) {
+            console.log("typing ", String.fromCharCode(todo.code), todo.pressed);
+            spectrum.setKeyState(todo.code, todo.pressed);
+        }
+    }
+}
 
 async function initialise() {
     const parsedQuery = new URLSearchParams(window.location.search);
@@ -29,17 +67,30 @@ async function initialise() {
         }
         spectrum.onKeyDown(e);
     };
-
     document.onkeyup = (e) => { spectrum.onKeyUp(e); }
 
     if (parsedQuery.get("load")) {
         const game_url = new URL(parsedQuery.get("load"), window.location);
         await spectrum.loadSnapshot(game_url);
     }
+    if (parsedQuery.get("tape")) {
+        const game_url = new URL(parsedQuery.get("tape"), window.location);
+        await spectrum.loadTape(game_url);
+    }
+
+    for (let i = 0; i < 80; ++i)
+        spectrum.emulateFrame();
+
     if (!parsedQuery.get("autostart"))
         spectrum.start();
     else
         startOnKeyPress = true;
+
+    if (parsedQuery.get("type")) {
+        const typist = new Typist(parsedQuery.get("type"));
+
+        $canvas.addEventListener('emulated-frame', () => { typist.type(); });
+    }
 }
 
 initialise().then(() => {});
