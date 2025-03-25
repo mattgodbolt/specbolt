@@ -73,6 +73,11 @@ void Tape::play() {
   num_edges_ = block->pilot_edge_count;
 }
 
+void Tape::stop() {
+  state_ = State::Idle;
+  next_transition_ = 0;
+}
+
 void Tape::next() {
   level_ = !level_;
   switch (state_) {

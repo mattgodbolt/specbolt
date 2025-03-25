@@ -18,6 +18,8 @@ public:
   [[nodiscard]] bool level() const { return level_; }
 
   void play();
+  void stop();
+  [[nodiscard]] bool playing() const { return state_ != State::Idle; }
 
 private:
   std::size_t num_edges_{};

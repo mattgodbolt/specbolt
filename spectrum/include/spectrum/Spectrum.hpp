@@ -67,7 +67,7 @@ public:
     z80_.add_in_handler([this](const std::uint16_t port) -> std::optional<std::uint8_t> {
       if (port & 1)
         return std::nullopt;
-      play();
+      maybe_detect_loading();
       const auto ear_bit = tape_.level() ? 0x40 : 0x00;
       return std::make_optional<std::uint8_t>(~(1 << 6) | ear_bit);
     });
@@ -115,6 +115,7 @@ public:
     if (const auto next_transition = tape_.next_transition())
       scheduler_.schedule(tape_task_, next_transition);
   }
+  void stop() { tape_.stop(); }
 
   void trace_next(const std::size_t instructions) { trace_next_instructions_ = instructions; }
 
@@ -177,6 +178,37 @@ private:
     }
   };
   TapeTask tape_task_{*this};
+
+  // TODO something nicer
+  std::size_t last_detect_{};
+  std::uint8_t last_b_read_{};
+  std::size_t reads_in_a_row_{};
+  void maybe_detect_loading() {
+    // With thanks to fuse for this heuristic
+    const auto since_last = z80_.cycle_count() - last_detect_;
+    const auto b_diff = static_cast<std::uint8_t>(z80_.regs().get(RegisterFile::R8::B) - last_b_read_);
+    last_detect_ = z80_.cycle_count();
+    last_b_read_ = z80_.regs().get(RegisterFile::R8::B);
+    if (tape_.playing()) {
+      if (since_last > 1000 || (b_diff != 1 && b_diff != 0 && b_diff != 0xff)) {
+        if (++reads_in_a_row_ >= 2)
+          stop();
+      }
+      else {
+        reads_in_a_row_ = 0;
+      }
+    }
+    else {
+      if (since_last <= 500 && (b_diff == 1 || b_diff == 0xff)) {
+        if (++reads_in_a_row_ >= 10)
+          play();
+      }
+      else {
+        reads_in_a_row_ = 0;
+      }
+    }
+  }
+  // END TODO
 
   static constexpr std::size_t RegHistory = 8uz;
   std::array<RegisterFile, RegHistory> reg_history_{};
