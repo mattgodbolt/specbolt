@@ -1,26 +1,13 @@
-#include <iostream>
-
-#ifdef SPECBOLT_MODULES
-import z80_v1;
-import z80_v2;
-import z80_common;
-#else
-#include "z80/v1/Disassembler.hpp"
-#include "z80/v1/Z80.hpp"
-#include "z80/v2/Z80.hpp"
-#endif
-
 #include <filesystem>
 #include <format>
+#include <iostream>
 
 #include <lyra/lyra.hpp>
 
-#ifdef SPECBOLT_MODULES
+import z80_v1;
+import z80_v2;
+import z80_common;
 import peripherals;
-#else
-#include "peripherals/Memory.hpp"
-#include "z80/common/Scheduler.hpp"
-#endif
 
 namespace specbolt {
 

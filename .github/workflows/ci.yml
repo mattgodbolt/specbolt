@@ -8,7 +8,6 @@ jobs:
       matrix:
         build_type: [ Debug, RelWithDebInfo ]
         clang_version: [ 20 ]
-        modules_enable: [ ON, OFF ]
     steps:
       - uses: actions/checkout@v4
       - name: setup system dependencies
@@ -30,7 +29,7 @@ jobs:
       - name: Build
         run: |
           mkdir build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }}
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           cmake --build build
           env CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 
@@ -40,7 +39,6 @@ jobs:
       matrix:
         build_type: [ RelWithDebInfo ]
         clang_version: [ 20 ]
-        modules_enable: [ OFF ]
     steps:
       - uses: actions/checkout@v4
       - name: Setup cmake
@@ -64,7 +62,7 @@ jobs:
           mkdir build
           cmake -S . -B build -G Ninja \
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }} \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}\
             -DSPECBOLT_WASM=ON -DSPECBOLT_WASI_SYSROOT=$PWD/wasi-sysroot-25.0
           cmake --build build
           cmake --build build --target install

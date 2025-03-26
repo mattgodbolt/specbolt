@@ -4,22 +4,10 @@
 #include <cstdint>
 #include <ranges>
 
-#ifdef SPECBOLT_MODULES
 import z80_v1;
 import z80_v2;
 import z80_common;
-#else
-#include "z80/v1/Z80.hpp"
-#include "z80/v2/Z80.hpp"
-#endif
-
-
-#ifdef SPECBOLT_MODULES
 import peripherals;
-#else
-#include "peripherals/Memory.hpp"
-#include "z80/common/Scheduler.hpp"
-#endif
 
 namespace specbolt {
 
