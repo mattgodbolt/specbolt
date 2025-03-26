@@ -3,11 +3,7 @@
 
 #include <format>
 
-#ifdef SPECBOLT_MODULES
 import z80_common;
-#else
-#include "z80/common/Alu.hpp"
-#endif
 
 template<>
 struct Catch::StringMaker<specbolt::Alu::R8> {

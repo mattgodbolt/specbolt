@@ -1,11 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#ifdef SPECBOLT_MODULES
 import peripherals;
-#else
-#include "peripherals/Memory.hpp"
-#endif
-
 
 namespace specbolt {
 

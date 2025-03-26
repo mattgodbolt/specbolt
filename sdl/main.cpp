@@ -6,20 +6,10 @@
 
 #include <lyra/lyra.hpp>
 
-#ifdef SPECBOLT_MODULES
 import peripherals;
 import spectrum;
 import z80_v1;
 import z80_v2;
-#else
-#include "peripherals/Video.hpp"
-#include "spectrum/Snapshot.hpp"
-#include "spectrum/Spectrum.hpp"
-#include "z80/v1/Disassembler.hpp"
-#include "z80/v1/Z80.hpp"
-#include "z80/v2/Z80.hpp"
-#endif
-
 
 namespace specbolt {
 

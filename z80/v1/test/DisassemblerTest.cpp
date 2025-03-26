@@ -1,18 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#ifdef SPECBOLT_MODULES
 import z80_v1;
-#else
-#include "z80/v1/Disassembler.hpp"
-#include "z80/v1/Instruction.hpp"
-#endif
-
-
-#ifdef SPECBOLT_MODULES
 import peripherals;
-#else
-#include "peripherals/Memory.hpp"
-#endif
 
 using specbolt::Memory;
 using specbolt::v1::Disassembler;

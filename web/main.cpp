@@ -1,13 +1,11 @@
-#include "peripherals/Video.hpp"
-#include "spectrum/Spectrum.hpp"
-#include "z80/v2/Z80.hpp"
-
 #include <cstdint>
 #include <format>
 #include <iostream>
 #include <vector>
 
-#include "spectrum/Snapshot.hpp"
+import spectrum;
+import z80_v2;
+import peripherals;
 
 extern "C" void __cxa_allocate_exception() {}
 extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)(void *)) {

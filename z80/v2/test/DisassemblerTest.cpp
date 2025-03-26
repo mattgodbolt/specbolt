@@ -1,21 +1,11 @@
 #include <iostream>
 
-#ifdef SPECBOLT_MODULES
 import z80_v2;
-#else
-#include "z80/v2/Disassembler.hpp"
-#endif
-
+import peripherals;
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 #include <ranges>
-
-#ifdef SPECBOLT_MODULES
-import peripherals;
-#else
-#include "peripherals/Memory.hpp"
-#endif
 
 namespace specbolt::v2 {
 

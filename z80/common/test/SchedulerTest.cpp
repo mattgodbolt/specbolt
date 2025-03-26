@@ -3,11 +3,7 @@
 
 #include <vector>
 
-#ifdef SPECBOLT_MODULES
 import z80_common;
-#else
-#include "z80/common/Scheduler.hpp"
-#endif
 
 using specbolt::Scheduler;
 
