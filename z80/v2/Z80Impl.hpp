@@ -1070,19 +1070,19 @@ struct build_execute_hl {
   }
 };
 
-SPECBOLT_EXPORT template<typename Builder>
+export template<typename Builder>
 constexpr auto table = generic_table<select_base_instruction, Builder, HlSet::Base>;
-SPECBOLT_EXPORT template<typename Builder>
+export template<typename Builder>
 constexpr auto dd_table = generic_table<select_base_instruction, Builder, HlSet::Ix>;
-SPECBOLT_EXPORT template<typename Builder>
+export template<typename Builder>
 constexpr auto fd_table = generic_table<select_base_instruction, Builder, HlSet::Iy>;
-SPECBOLT_EXPORT template<typename Builder>
+export template<typename Builder>
 constexpr auto cb_table = generic_table<select_cb_instruction, Builder, HlSet::Base>;
-SPECBOLT_EXPORT template<typename Builder>
+export template<typename Builder>
 constexpr auto ddcb_table = generic_table<select_cb_instruction, Builder, HlSet::Ix>;
-SPECBOLT_EXPORT template<typename Builder>
+export template<typename Builder>
 constexpr auto fdcb_table = generic_table<select_cb_instruction, Builder, HlSet::Iy>;
-SPECBOLT_EXPORT template<typename Builder>
+export template<typename Builder>
 constexpr auto ed_table = generic_table<select_ed_instruction, Builder, HlSet::Base>;
 
 

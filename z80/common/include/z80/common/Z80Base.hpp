@@ -15,8 +15,7 @@
 namespace specbolt {
 
 // Non-virtual base class for Z80 implementations.
-SPECBOLT_EXPORT
-class Z80Base {
+export class Z80Base {
 public:
   explicit Z80Base(Scheduler &scheduler, Memory &memory) : scheduler_(scheduler), memory_(memory) {}
 

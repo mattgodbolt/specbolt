@@ -10,7 +10,7 @@
 
 namespace specbolt::v1 {
 
-SPECBOLT_EXPORT class Disassembler {
+export class Disassembler {
 public:
   explicit Disassembler(const Memory &memory) : memory_(memory) {}
 

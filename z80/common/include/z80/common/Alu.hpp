@@ -8,8 +8,7 @@
 
 namespace specbolt {
 
-SPECBOLT_EXPORT
-class Alu {
+export class Alu {
 public:
   template<typename ResultType>
   struct ResultT {

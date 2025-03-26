@@ -13,7 +13,7 @@
 
 namespace specbolt::v1 {
 
-SPECBOLT_EXPORT class Z80 : public Z80Base {
+export class Z80 : public Z80Base {
 public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
 

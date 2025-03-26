@@ -7,8 +7,7 @@
 
 namespace specbolt {
 
-SPECBOLT_EXPORT
-class Flags {
+export class Flags {
 public:
   constexpr Flags() = default;
   constexpr explicit Flags(const std::uint8_t value) : value_(value) {}

@@ -9,8 +9,7 @@
 
 namespace specbolt {
 
-SPECBOLT_EXPORT
-class RegisterFile {
+export class RegisterFile {
 public:
   enum class R8 { A, F, B, C, D, E, H, L, A_, F_, B_, C_, D_, E_, H_, L_, SPH, SPL, IXH, IXL, IYH, IYL };
   enum class R16 { AF, BC, DE, HL, AF_, BC_, DE_, HL_, SP, IX, IY };

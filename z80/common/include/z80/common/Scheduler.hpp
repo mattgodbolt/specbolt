@@ -8,8 +8,7 @@
 
 namespace specbolt {
 
-SPECBOLT_EXPORT
-class Scheduler {
+export class Scheduler {
 public:
   class Task {
   public:

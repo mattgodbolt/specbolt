@@ -20,11 +20,9 @@
 
 namespace specbolt {
 
-SPECBOLT_EXPORT
-enum class Variant { Spectrum48, Spectrum128 };
+export enum class Variant { Spectrum48, Spectrum128 };
 
-SPECBOLT_EXPORT
-template<typename Z80Impl>
+export template<typename Z80Impl>
 class Spectrum {
 public:
   explicit Spectrum(const Variant variant, const std::filesystem::path &rom, const std::size_t audio_sample_rate,

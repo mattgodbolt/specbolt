@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.30)
 option(SPECBOLT_TESTS "Build and run tests" ON)
 option(SPECBOLT_CONSOLE "Build specbolt console" ON)
 option(SPECBOLT_PREFER_SYSTEM_DEPS "Prefer using system dependencies" OFF)
-option(SPECBOLT_MODULES "Use C++ Modules" ON)
 option(SPECBOLT_WASM "Compile for WebAssembly" OFF)
 set(SPECBOLT_WASI_SYSROOT "" CACHE STRING "Wasi root")
 
@@ -13,13 +12,8 @@ if (SPECBOLT_WASM)
     set(SPECBOLT_CONSOLE OFF)
 endif ()
 
-if (SPECBOLT_MODULES)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
-    set(CMAKE_CXX_STANDARD 26)
-    add_compile_definitions(SPECBOLT_MODULES SPECBOLT_EXPORT=export)
-else ()
-    add_compile_definitions(SPECBOLT_EXPORT=)
-endif ()
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
+set(CMAKE_CXX_STANDARD 26)
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
