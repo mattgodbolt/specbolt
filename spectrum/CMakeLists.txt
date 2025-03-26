@@ -9,6 +9,7 @@ if (SPECBOLT_MODULES)
             TYPE CXX_MODULES
             FILES
             module.cppm
+            Assets.cppm
             Snapshot.cppm
             Spectrum.cppm
     )
@@ -17,6 +18,7 @@ else ()
     target_include_directories(spectrum PUBLIC include)
 
     target_sources(spectrum PRIVATE
+            Assets.cpp
             Snapshot.cpp
     )
 
@@ -25,7 +27,11 @@ else ()
             FILE_SET interface
             TYPE HEADERS
             FILES
+            include/spectrum/Assets.hpp
             include/spectrum/Spectrum.hpp
             include/spectrum/Snapshot.hpp
     )
 endif ()
+
+# TODO this won't play well with installation.
+target_compile_definitions(spectrum PRIVATE ASSET_DIR="${CMAKE_SOURCE_DIR}/assets")

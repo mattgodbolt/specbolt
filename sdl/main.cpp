@@ -13,6 +13,7 @@ import z80_v1;
 import z80_v2;
 #else
 #include "peripherals/Video.hpp"
+#include "spectrum/Assets.hpp"
 #include "spectrum/Snapshot.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v1/Disassembler.hpp"
@@ -70,7 +71,7 @@ struct SdlApp {
     }
 
     if (rom.empty()) {
-      rom = spec128 ? "assets/128.rom" : "assets/48.rom";
+      rom = get_asset_dir() / (spec128 ? "128.rom" : "48.rom");
     }
 
     if (new_impl)
