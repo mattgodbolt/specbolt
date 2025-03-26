@@ -25,8 +25,13 @@ public:
   [[nodiscard]] bool iff2() const { return iff2_; }
   void iff2(const bool iff2) { iff2_ = iff2; }
   [[nodiscard]] std::uint16_t pc() const { return regs_.pc(); }
-  [[nodiscard]] auto &regs(this auto &&self) { return self.regs_; }
-  [[nodiscard]] auto &memory(this auto &self) { return self.memory_; }
+
+
+  [[nodiscard]] const auto &regs() const { return regs_; }
+  [[nodiscard]] const auto &memory() const { return memory_; }
+
+  [[nodiscard]] auto &regs() { return regs_; }
+  [[nodiscard]] auto &memory() { return memory_; }
 
   void irq_mode(const std::uint8_t mode) { irq_mode_ = mode; }
   [[nodiscard]] std::uint8_t irq_mode() const { return irq_mode_; };

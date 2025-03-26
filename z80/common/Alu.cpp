@@ -9,10 +9,10 @@ namespace specbolt {
 namespace {
 
 constexpr Flags sz53_8(const std::uint8_t value) {
-  return Flags(value) & (Flags::Sign() | Flags::Flag3() | Flags::Flag5()) | (value == 0 ? Flags::Zero() : Flags());
+  return (Flags(value) & (Flags::Sign() | Flags::Flag3() | Flags::Flag5())) | (value == 0 ? Flags::Zero() : Flags());
 }
 constexpr Flags sz53_parity(const std::uint8_t value) {
-  return Flags(value) & (Flags::Sign() | Flags::Flag3() | Flags::Flag5()) | (value == 0 ? Flags::Zero() : Flags()) |
+  return (Flags(value) & (Flags::Sign() | Flags::Flag3() | Flags::Flag5())) | (value == 0 ? Flags::Zero() : Flags()) |
          (std::popcount(value) % 2 == 0 ? Flags::Parity() : Flags());
 }
 
@@ -21,7 +21,9 @@ constexpr auto mask53 = Flags::Flag5() | Flags::Flag3();
 } // namespace
 
 Alu::R8 Alu::add8(const std::uint8_t lhs, const std::uint8_t rhs, const bool carry_in) {
-  const std::uint16_t intermediate = lhs + rhs + (carry_in ? 1 : 0);
+  const std::uint16_t intermediate =
+      static_cast<std::uint16_t>(static_cast<std::uint16_t>(lhs) + static_cast<std::uint16_t>(rhs)) +
+      static_cast<std::uint16_t>(carry_in);
   const auto carry = intermediate > 0xff ? Flags::Carry() : Flags();
   const auto result = static_cast<std::uint8_t>(intermediate);
   const auto half_carry = (lhs & 0xf) + (rhs & 0xf) + (carry_in ? 1 : 0) > 0xf ? Flags::HalfCarry() : Flags();
@@ -36,14 +38,14 @@ Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
 
 Alu::R8 Alu::inc8(const std::uint8_t lhs, const Flags current_flags) {
   const auto result = static_cast<std::uint8_t>(lhs + 1);
-  const auto flags = sz53_8(result) | Flags(result) & mask53 | Flags(result ^ lhs) & Flags::HalfCarry() |
+  const auto flags = sz53_8(result) | (Flags(result) & mask53) | (Flags(result ^ lhs) & Flags::HalfCarry()) |
                      (result == 0x80 ? Flags::Overflow() : Flags()) | (current_flags & Flags::Carry());
   return {result, flags};
 }
 Alu::R8 Alu::dec8(const std::uint8_t lhs, const Flags current_flags) {
   const auto result = static_cast<std::uint8_t>(lhs - 1);
-  const auto flags = Flags::Subtract() | sz53_8(result) | Flags(result) & mask53 |
-                     (result == 0x7f ? Flags::Overflow() : Flags()) | Flags(result ^ lhs) & Flags::HalfCarry() |
+  const auto flags = Flags::Subtract() | sz53_8(result) | (Flags(result) & mask53) |
+                     (result == 0x7f ? Flags::Overflow() : Flags()) | (Flags(result ^ lhs) & Flags::HalfCarry()) |
                      (current_flags & Flags::Carry());
   return {result, flags};
 }
@@ -51,7 +53,7 @@ Alu::R8 Alu::dec8(const std::uint8_t lhs, const Flags current_flags) {
 Alu::R8 Alu::cmp8(const std::uint8_t lhs, const std::uint8_t rhs) {
   const auto [result, flags] = sub8(lhs, rhs, false);
   // Per http://www.z80.info/z80sflag.htm; F5 and F3 are copied from the operand, not the result
-  return {lhs, flags & ~mask53 | Flags(rhs) & mask53};
+  return {lhs, (flags & ~mask53) | (Flags(rhs) & mask53)};
 }
 
 Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const Flags current_flags) {
@@ -59,8 +61,8 @@ Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const Flag
   const auto carry = intermediate > 0xffff ? Flags::Carry() : Flags();
   const auto result = static_cast<std::uint16_t>(intermediate);
   const auto half_carry = (lhs & 0xfff) + (rhs & 0xfff) > 0xfff ? Flags::HalfCarry() : Flags();
-  const auto flags35 = Flags(result >> 8) & (Flags::Flag5() | Flags::Flag3());
-  return {result, current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity()) | carry | half_carry | flags35};
+  const auto flags35 = Flags(static_cast<std::uint8_t>(result >> 8u)) & (Flags::Flag5() | Flags::Flag3());
+  return {result, (current_flags & (Flags::Sign() | Flags::Zero() | Flags::Parity())) | carry | half_carry | flags35};
 }
 
 Alu::R16 Alu::sub16(const std::uint16_t lhs, const std::uint16_t rhs, const Flags current_flags) {
@@ -73,7 +75,7 @@ Alu::R16 Alu::adc16(const std::uint16_t lhs, const std::uint16_t rhs, const bool
   const auto carry = intermediate > 0xffff ? Flags::Carry() : Flags();
   const auto result = static_cast<std::uint16_t>(intermediate);
   const auto half_carry = (lhs & 0xfff) + (rhs & 0xfff) > 0xfff ? Flags::HalfCarry() : Flags();
-  const auto flags35 = Flags(result >> 8) & (Flags::Flag5() | Flags::Flag3());
+  const auto flags35 = Flags(static_cast<std::uint8_t>(result >> 8u)) & (Flags::Flag5() | Flags::Flag3());
   const auto negative = result & 0x8000 ? Flags::Sign() : Flags();
   const auto zero = result == 0 ? Flags::Zero() : Flags();
   const auto overflow = (lhs ^ result) & (rhs ^ result) & 0x8000 ? Flags::Overflow() : Flags();
