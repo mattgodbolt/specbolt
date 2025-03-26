@@ -1,10 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#ifdef SPECBOLT_MODULES
 import z80_common;
-#else
-#include "z80/common/Flags.hpp"
-#endif
 
 namespace specbolt {
 
