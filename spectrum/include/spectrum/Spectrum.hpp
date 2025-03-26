@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <iostream>
 #include <print>
+#include <utility>
 #include <vector>
 #endif
 
@@ -102,11 +103,17 @@ public:
 
   std::size_t run_frame() { return run_cycles(cycles_per_frame, false); }
 
-  [[nodiscard]] auto &z80(this auto &&self) { return self.z80_; }
-  [[nodiscard]] auto &video(this auto &self) { return self.video_; }
-  [[nodiscard]] auto &memory(this auto &self) { return self.memory_; }
-  [[nodiscard]] auto &keyboard(this auto &self) { return self.keyboard_; }
-  [[nodiscard]] auto &audio(this auto &self) { return self.audio_; }
+  [[nodiscard]] const auto &z80() const { return z80_; }
+  [[nodiscard]] const auto &video() const { return video_; }
+  [[nodiscard]] const auto &memory() const { return memory_; }
+  [[nodiscard]] const auto &keyboard() const { return keyboard_; }
+  [[nodiscard]] const auto &audio() const { return audio_; }
+
+  [[nodiscard]] auto &z80() { return z80_; }
+  [[nodiscard]] auto &video() { return video_; }
+  [[nodiscard]] auto &memory() { return memory_; }
+  [[nodiscard]] auto &keyboard() { return keyboard_; }
+  [[nodiscard]] auto &audio() { return audio_; }
   [[nodiscard]] auto &tape(this auto &self) { return self.tape_; }
 
   // TODO do not like, maybe make tape a Task
@@ -155,7 +162,7 @@ private:
 
   struct VideoTask final : Scheduler::Task {
     Spectrum &spectrum;
-    explicit VideoTask(Spectrum &spectrum) : spectrum(spectrum) { spectrum.scheduler_.schedule(*this, 0); }
+    explicit VideoTask(Spectrum &spectrum_) : spectrum(spectrum_) { spectrum.scheduler_.schedule(*this, 0); }
     void run(std::size_t) override { spectrum.video_line(); }
   };
   VideoTask video_task_{*this};
@@ -219,24 +226,28 @@ private:
     switch (variant) {
       case Variant::Spectrum48: return 3 + rom_pages_for(variant);
       case Variant::Spectrum128: return 8 + rom_pages_for(variant);
+      default: std::unreachable();
     }
   }
   static constexpr auto rom_pages_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return 1;
       case Variant::Spectrum128: return 2;
+      default: std::unreachable();
     }
   }
   static constexpr std::uint8_t rom_base_page_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return 0;
       case Variant::Spectrum128: return 8;
+      default: std::unreachable();
     }
   }
   static constexpr std::array<std::uint8_t, 4> page_table_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return {0, 1, 2, 3};
       case Variant::Spectrum128: return {8, 5, 2, 0};
+      default: std::unreachable();
     }
   }
 };
