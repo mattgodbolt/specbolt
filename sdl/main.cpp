@@ -25,6 +25,17 @@ namespace specbolt {
 
 namespace {
 
+constexpr SDL_Rect calc_rect(const int width, const int height) {
+  static constexpr auto ideal_aspect_ratio =
+      static_cast<double>(Video::VisibleWidth) / static_cast<double>(Video::VisibleHeight);
+  if (static_cast<double>(width) / static_cast<double>(height) > ideal_aspect_ratio) {
+    const auto required_width = static_cast<int>(height * ideal_aspect_ratio);
+    return {(width - required_width) / 2, 0, required_width, height};
+  }
+  const auto required_height = static_cast<int>(width / ideal_aspect_ratio);
+  return {0, (height - required_height) / 2, width, required_height};
+}
+
 struct SdlApp {
   std::filesystem::path rom;
   std::filesystem::path snapshot;
@@ -172,7 +183,11 @@ struct SdlApp {
             std::span(static_cast<std::uint32_t *>(pixels), Video::VisibleWidth * Video::VisibleHeight));
         SDL_UnlockTexture(texture.get());
 
-        SDL_RenderCopy(renderer.get(), texture.get(), nullptr, nullptr);
+        int w{}, h{};
+        SDL_GetWindowSize(window.get(), &w, &h);
+        const auto dest_rect = calc_rect(w, h);
+        SDL_RenderClear(renderer.get());
+        SDL_RenderCopy(renderer.get(), texture.get(), nullptr, &dest_rect);
         SDL_RenderPresent(renderer.get());
         next_display_frame += video_delay;
       }
