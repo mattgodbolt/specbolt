@@ -98,7 +98,7 @@ window.addEventListener('message', (event) => {
     if (event.data === 'specbolt:start') {
         spectrum.start();
     } else if (event.data === 'slide:start') {
-        // Does nothihng...
+        // Does nothing...
     } else if (event.data === 'slide:stop' || event.data === 'specbolt:stop') {
         spectrum.stop();
     }
