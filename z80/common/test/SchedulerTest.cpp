@@ -21,7 +21,7 @@ struct TestTask final : Scheduler::Task {
 };
 
 struct ReschedulingTestTask final : Scheduler::Task {
-  explicit ReschedulingTestTask(Scheduler &scheduler) : scheduler(scheduler) {}
+  explicit ReschedulingTestTask(Scheduler &scheduler_) : scheduler(scheduler_) {}
   Scheduler &scheduler;
   vc calls;
   void run(std::size_t ts) override {

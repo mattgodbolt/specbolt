@@ -219,8 +219,8 @@ public:
   blip_eq_t(double treble_db = 0) : blip_eq_t(treble_db, 0, 44100, 0) {} // NOLINT(*-explicit-constructor)
 
   // See notes.txt
-  blip_eq_t(const double treble, const long rolloff_freq, const long sample_rate, const long cutoff_freq = 0) :
-      treble(treble), rolloff_freq(rolloff_freq), sample_rate(sample_rate), cutoff_freq(cutoff_freq) {}
+  blip_eq_t(const double treble_, const long rolloff_freq_, const long sample_rate_, const long cutoff_freq_ = 0) :
+      treble(treble_), rolloff_freq(rolloff_freq_), sample_rate(sample_rate_), cutoff_freq(cutoff_freq_) {}
 
 private:
   double treble;

@@ -61,8 +61,8 @@ std::uint8_t RegisterFile::RegPair::low() const { return low_; }
 void RegisterFile::RegPair::low(const std::uint8_t low) { low_ = low; }
 std::uint16_t RegisterFile::RegPair::highlow() const { return static_cast<std::uint16_t>(high_ << 8u) | low_; }
 void RegisterFile::RegPair::highlow(const std::uint16_t highlow) {
-  high_ = highlow >> 8 & 0xff;
-  low_ = highlow & 0xff;
+  high_ = static_cast<uint8_t>((highlow >> 8u) & 0xffu);
+  low_ = static_cast<uint8_t>(highlow & 0xffu);
 }
 
 // The relationship between the various register numbers we rely on below is tested here explicit;y.

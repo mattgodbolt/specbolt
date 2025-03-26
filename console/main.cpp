@@ -1,4 +1,5 @@
 #include <csignal>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <functional>
@@ -138,16 +139,16 @@ struct App final : AppBase {
     rl_attempted_completion_function = [](const char *text, const int start, int) -> char ** {
       if (start != 0)
         return nullptr;
-      return rl_completion_matches(text, [](const char *text, const int state) -> char * {
+      return rl_completion_matches(text, [](const char *text_, const int state_) -> char * {
         if (!self())
           return nullptr;
         static typename decltype(commands)::iterator the_iterator;
-        if (state == 0)
+        if (state_ == 0)
           the_iterator = std::begin(self()->commands);
         while (the_iterator != std::end(self()->commands)) {
           auto &command = the_iterator->first;
           ++the_iterator;
-          if (command.contains(text))
+          if (command.contains(text_))
             return strdup(command.c_str());
         }
         return nullptr;

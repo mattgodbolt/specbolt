@@ -14,10 +14,12 @@ if (SPECBOLT_WASM)
 endif ()
 
 if (SPECBOLT_MODULES)
+    set(CMAKE_CXX_SCAN_FOR_MODULES ON)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     set(CMAKE_CXX_STANDARD 26)
     add_compile_definitions(SPECBOLT_MODULES SPECBOLT_EXPORT=export)
 else ()
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
     add_compile_definitions(SPECBOLT_EXPORT=)
 endif ()
 

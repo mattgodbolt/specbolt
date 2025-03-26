@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <iostream>
 #include <print>
+#include <utility>
 #include <vector>
 
 #endif
@@ -143,7 +144,7 @@ private:
 
   struct VideoTask final : Scheduler::Task {
     Spectrum &spectrum;
-    explicit VideoTask(Spectrum &spectrum) : spectrum(spectrum) { spectrum.scheduler_.schedule(*this, 0); }
+    explicit VideoTask(Spectrum &spectrum_) : spectrum(spectrum_) { spectrum.scheduler_.schedule(*this, 0); }
     void run(std::size_t) override { spectrum.video_line(); }
   };
   VideoTask video_task_{*this};
@@ -162,24 +163,28 @@ private:
     switch (variant) {
       case Variant::Spectrum48: return 3 + rom_pages_for(variant);
       case Variant::Spectrum128: return 8 + rom_pages_for(variant);
+      default: std::unreachable();
     }
   }
   static constexpr auto rom_pages_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return 1;
       case Variant::Spectrum128: return 2;
+      default: std::unreachable();
     }
   }
   static constexpr std::uint8_t rom_base_page_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return 0;
       case Variant::Spectrum128: return 8;
+      default: std::unreachable();
     }
   }
   static constexpr std::array<std::uint8_t, 4> page_table_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return {0, 1, 2, 3};
       case Variant::Spectrum128: return {8, 5, 2, 0};
+      default: std::unreachable();
     }
   }
 };
