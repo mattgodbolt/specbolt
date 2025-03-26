@@ -1,10 +1,12 @@
 ### Ideas for C++26
+
 - deducing this throughout
 - coroutines for cycles
 
 ---
 
 ### First implementation
+
 Tried to decode to an "Instruction" parameterising all the registers so I could break into operation, inputs, outputs.
 Obviously this _is_ more like how CPUs actually work, but things like `push` `pop` `exx` `in` `out` tricky as they
 have complex interactions with the outside world.
@@ -40,7 +42,8 @@ maybe a bunch of other stuff too. That is, trying to make the "apply" function w
 was tricky. It _does_ let me hide the "read indirect" part etc, that is I could use the same code to fill in "dest" and
 "source", be it from a register, or RAM, or whatever. But that isn't enough by itself.
 
-`in` and `out` need to poke about with other information, and stuff like `exx` needs to switch all the registers, as does
+`in` and `out` need to poke about with other information, and stuff like `exx` needs to switch all the registers, as
+does
 `ex (sp), af` type things.
 
 Hana's suggestion was to template parameterize each instruction and have each have its own `apply`. I think that's the
@@ -62,6 +65,7 @@ started looking in to that. But really want a more principled way forward.
 
 Plan is to refactor to use micro-ops; then model each instruction as a sequence of those ops. Can fill in a big table
 of them and use it to:
+
 - drive code gen for C++14ish version (?) or at least "my default style"
 - actually constexpr-ify and generate functions for each instruction.
 
@@ -69,6 +73,7 @@ Using a similar approach to https://github.com/floooh/chips/blob/master/codegen/
 in C++. http://www.z80.info/decoding.htm is a good reference, as is the python code from André.
 
 Minimally an instruction takes 4 cycles:
+
 - 1 as part of the "previous" instruction (overlapped)
 - 3 cycles decode/memory access/execute
 
