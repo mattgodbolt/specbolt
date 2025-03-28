@@ -7,10 +7,12 @@
 #ifdef SPECBOLT_MODULES
 import z80_v1;
 import z80_v2;
+import z80_v3;
 import z80_common;
 #else
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
+#include "z80/v3/Z80.hpp"
 #endif
 
 
@@ -1485,10 +1487,12 @@ struct OpcodeTester {
   }
 };
 
-TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD(
+    OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80, v3::Z80) {
   OpcodeTester<TestType>::unprefixed();
 }
 
+// TODO test these
 TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::cb_prefix();
 }
