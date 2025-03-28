@@ -179,6 +179,26 @@ Op match_op(const Opcode opcode) {
         false, true};
   }
 
+  if (opcode.x == 0 && opcode.z == 7) {
+    struct AluOp {
+      std::string name;
+      std::string op;
+    };
+    const std::array<AluOp, 8> alu_ops = {
+        AluOp{"rlca", "Alu::fast_rotate_circular8(get(R8::A), Alu::Direction::Left, flags())"},
+        AluOp{"rrca", "Alu::fast_rotate_circular8(get(R8::A), Alu::Direction::Right, flags())"},
+        AluOp{"rla", "Alu::fast_rotate8(get(R8::A), Alu::Direction::Left, flags())"},
+        AluOp{"rra", "Alu::fast_rotate8(get(R8::A), Alu::Direction::Right, flags())"},
+        AluOp{"daa", "Alu::daa(get(R8::A), flags())"},
+        AluOp{"cpl", "Alu::cpl(get(R8::A), flags())"},
+        AluOp{"scf", "Alu::scf(get(R8::A), flags())"},
+        AluOp{"ccf", "Alu::ccf(get(R8::A), flags())"},
+    };
+    const auto [name, op] = alu_ops[opcode.y];
+    return {
+        name, {std::format("const auto [result, new_flags] = {};", op), "set(R8::A, result);", "flags(new_flags);"}};
+  } // namespace
+
   return {"??", {"throw std::runtime_error(\"moo\");"s}};
 }
 
