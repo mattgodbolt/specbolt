@@ -9,6 +9,7 @@ using namespace std::literals;
 namespace {
 
 struct RegisterSet {
+  const char *prefix;
   const char *index_reg;
   const char *index_reg_low;
   const char *index_reg_high;
@@ -18,7 +19,8 @@ struct RegisterSet {
   std::array<std::string_view, 4> rp2;
   std::array<std::string_view, 9> r;
 };
-constexpr RegisterSet base_set{.index_reg = "hl",
+constexpr RegisterSet base_set{.prefix = "",
+    .index_reg = "hl",
     .index_reg_low = "l",
     .index_reg_high = "h",
     .rp = {"bc", "de", "hl", "sp"},
@@ -32,6 +34,11 @@ std::string upper(const std::string_view input_v) {
   std::transform(input.begin(), input.end(), input.begin(), ::toupper);
   return input;
 }
+
+struct AluOp {
+  std::string name;
+  std::string op;
+};
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
 
@@ -181,10 +188,6 @@ Op match_op(const Opcode opcode) {
         false, true};
   }
 
-  struct AluOp {
-    std::string name;
-    std::string op;
-  };
   if (opcode.x == 0 && opcode.z == 7) {
     const std::array alu_ops = {
         AluOp{"rlca", "Alu::fast_rotate_circular8(get(R8::A), Alu::Direction::Left, flags())"},
@@ -233,7 +236,7 @@ Op match_op(const Opcode opcode) {
                      : is_immediate ? "read_immediate()"
                                     : std::format("get(R8::{})", upper(opcode.reg_set.r[opcode.alu_input_selector()]));
     const auto [name, op] = alu_ops[opcode.y];
-    return {std::format("{}{}", name, opcode.reg_set.r[opcode.alu_input_selector()]),
+    return {std::format("{} {}", name, opcode.reg_set.r[opcode.alu_input_selector()]),
         {
             std::format("const auto rhs = {};", rhs),
             std::format("const auto [result, new_flags] = {};", op),
@@ -268,7 +271,8 @@ Op match_op(const Opcode opcode) {
   if (opcode.x == 3 && opcode.z == 3 && opcode.y == 0)
     return {"jp $nnnn", {"const auto jump_address = read_immediate16();", "regs_.pc(jump_address);"}};
   if (opcode.x == 3 && opcode.z == 3 && opcode.y == 1)
-    return {"CB", {"// TODO"}};
+    return {"CB", {std::format("execute_one_{}cb();", opcode.reg_set.prefix)}};
+
 
   if (opcode.x == 3 && opcode.z == 3 && opcode.y == 2)
     return {"out ($nn), a", {"const auto port = static_cast<std::uint16_t>(read_immediate() | get(R8::A) << 8);",
@@ -322,6 +326,50 @@ Op match_op(const Opcode opcode) {
   throw std::runtime_error("Unsupported opcode");
 }
 
+Op match_op_cb(const Opcode opcode) {
+  std::string access, write;
+  bool is_indirect{};
+  if (opcode.z == 6) {
+    access = "const auto lhs = read(regs_.wz()); pass_time(1);";
+    write = "write(regs_.wz(), result);";
+    is_indirect = true;
+  }
+  else {
+    access = std::format("const auto lhs = get(R8::{});", upper(opcode.reg_set.r[opcode.z]));
+    write = std::format("set(R8::{}, result);", upper(opcode.reg_set.r[opcode.z]));
+  }
+
+  if (opcode.x == 0) {
+    const std::array ops = {
+        AluOp{"rlc", "Alu::rotate_circular8(lhs, Alu::Direction::Left)"},
+        AluOp{"rrc", "Alu::rotate_circular8(lhs, Alu::Direction::Right)"},
+        AluOp{"rl", "Alu::rotate8(lhs, Alu::Direction::Left, flags().carry())"},
+        AluOp{"rr", "Alu::rotate8(lhs, Alu::Direction::Right, flags().carry())"},
+        AluOp{"sla", "Alu::shift_arithmetic8(lhs, Alu::Direction::Left)"},
+        AluOp{"sra", "Alu::shift_arithmetic8(lhs, Alu::Direction::Right)"},
+        AluOp{"sll", "Alu::shift_logical8(lhs, Alu::Direction::Left)"},
+        AluOp{"srl", "Alu::shift_logical8(lhs, Alu::Direction::Right)"},
+    };
+    const auto &[name, op] = ops[opcode.y];
+    return {std::format("{} {}", name, opcode.reg_set.r[opcode.z]),
+        {access, std::format("const auto [result, new_flags] = {};", op), write, "flags(new_flags);"}, is_indirect};
+  }
+  if (opcode.x == 1) {
+    return {std::format("bit {}, {}", opcode.y, opcode.reg_set.r[opcode.z]),
+        {access,
+            std::format(
+                "const auto bus_noise = static_cast<std::uint8_t>({});", is_indirect ? "regs_.wz() >> 8" : "lhs"),
+            std::format("flags(Alu::bit(lhs, {}, flags(), bus_noise));", 1 << opcode.y)},
+        is_indirect};
+  }
+  const auto name = opcode.x == 2 ? "res" : "set";
+  const auto op_erator = opcode.x == 2 ? "&~" : "|";
+  return {std::format("{} {}, {}", name, opcode.y, opcode.reg_set.r[opcode.z]),
+      {access, std::format("const auto result = static_cast<std::uint8_t>(lhs {} {});", op_erator, 1 << opcode.y),
+          write},
+      is_indirect};
+}
+
 } // namespace
 
 int main(int argc, const char *argv[]) {
@@ -351,9 +399,27 @@ void Z80::execute_one_base() {{
     const auto op = match_op(opcode);
     std::print(out, "    case 0x{:02x}: {{ // {}\n", opcode_num, op.name);
 
-    if (op.indirect) {
+    if (op.indirect)
       std::print(out, "      regs_.wz(get(R16::HL));\n");
-    }
+
+    for (const auto &line: op.code)
+      std::print(out, "      {}\n", line);
+    std::print(out, "      break;\n    }}\n", opcode_num);
+  }
+  std::print(out, "  }}\n}}\n");
+
+  std::print(out, R"(
+void Z80::execute_one_cb() {{
+    const auto opcode = read_opcode();
+    switch (opcode) {{
+)");
+  for (std::size_t opcode_num = 0; opcode_num < 256; ++opcode_num) {
+    const auto opcode = Opcode{opcode_num, base_set};
+    const auto op = match_op_cb(opcode);
+    std::print(out, "    case 0x{:02x}: {{ // {}\n", opcode_num, op.name);
+
+    if (op.indirect)
+      std::print(out, "      regs_.wz(get(R16::HL));\n");
 
     for (const auto &line: op.code)
       std::print(out, "      {}\n", line);

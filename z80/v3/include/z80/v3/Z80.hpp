@@ -46,6 +46,7 @@ private:
 
   // Implementation is in the generated code
   void execute_one_base();
+  void execute_one_cb();
 };
 
 } // namespace specbolt::v3

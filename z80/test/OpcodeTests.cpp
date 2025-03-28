@@ -1492,11 +1492,11 @@ TEMPLATE_TEST_CASE_METHOD(
   OpcodeTester<TestType>::unprefixed();
 }
 
-// TODO test these
-TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80, v3::Z80) {
   OpcodeTester<TestType>::cb_prefix();
 }
 
+// TODO test these
 TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
   OpcodeTester<TestType>::dd_prefix();
 }
