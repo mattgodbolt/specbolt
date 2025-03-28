@@ -52,7 +52,7 @@ constexpr RegisterSet iy_set{.prefix = "fd",
 
 std::string upper(const std::string_view input_v) {
   std::string input(input_v);
-  std::transform(input.begin(), input.end(), input.begin(), ::toupper);
+  std::transform(input.begin(), input.end(), input.begin(), [](int c) { return toupper(c); });
   return input;
 }
 
@@ -336,7 +336,7 @@ Op match_op(const Opcode opcode) {
     return {"DD", {"execute_one_dd();"}};
 
   if (opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 2)
-    return {"ED", {"// TODO"}};
+    return {"ED", {"execute_one_ed();"}};
 
   if (opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 3)
     return {"FD", {"execute_one_fd();"}};
@@ -345,6 +345,159 @@ Op match_op(const Opcode opcode) {
     return {std::format("rst 0x{:02x}", opcode.y * 8),
         {"pass_time(1);", "push16(regs_.pc());", std::format("regs_.pc(0x{:02x});", opcode.y * 8)}};
 
+  throw std::runtime_error("Unsupported opcode");
+}
+
+Op match_op_ed(const Opcode opcode) {
+  if (opcode.x == 0 || opcode.x == 3)
+    return {"??", {}};
+  if (opcode.x == 1 && opcode.z == 0) {
+    return {opcode.y == 6 ? "in (c)"s : std::format("in {}, (c)", opcode.reg_set.r[opcode.y]),
+        {"pass_time(4);", // todo IO
+            "const auto result = in(get(R16::BC));", "flags(flags() & Flags::Carry() | Alu::parity_flags_for(result));",
+            std::format("{}set(R8::{}, result);", opcode.y == 6 ? "//" : "", upper(opcode.reg_set.r[opcode.y]))}};
+  }
+  if (opcode.x == 1 && opcode.z == 1)
+    return {std::format("out (c), {}", opcode.y == 6 ? "0x00" : opcode.reg_set.r[opcode.y]),
+        {"pass_time(4);", // todo IO
+            opcode.y == 6 ? "out(get(R16::BC), 0);"s
+                          : std::format("out(get(R16::BC), get(R8::{}));", upper(opcode.reg_set.r[opcode.y]))}};
+
+  if (opcode.x == 1 && opcode.z == 2) {
+    const auto op = opcode.q == 0 ? "sbc" : "adc";
+    return {std::format("{} hl, {}", op, opcode.reg_set.rp[opcode.p]),
+        {std::format("const auto [result, new_flags] = Alu::{}16(get(R16::HL), get(R16::{}), flags().carry());", op,
+             upper(opcode.reg_set.rp[opcode.p])),
+            "set(R16::HL, result);", "flags(new_flags);", "pass_time(7);"}};
+  }
+
+  if (opcode.x == 1 && opcode.z == 3 && opcode.q == 0)
+    return {std::format("ld ($nnnn), {}", opcode.reg_set.rp[opcode.p]),
+        {
+            "const auto addr = read_immediate16();",
+            std::format("write(addr, get(R8::{}));", upper(opcode.reg_set.rp_low[opcode.p])),
+            std::format("write(addr+1, get(R8::{}));", upper(opcode.reg_set.rp_high[opcode.p])),
+        }};
+  if (opcode.x == 1 && opcode.z == 3 && opcode.q == 1)
+    return {std::format("ld {}, ($nnnn)", opcode.reg_set.rp[opcode.p]),
+        {
+            "const auto addr = read_immediate16();",
+            std::format("set(R8::{}, read(addr));", upper(opcode.reg_set.rp_low[opcode.p])),
+            std::format("set(R8::{}, read(addr + 1));", upper(opcode.reg_set.rp_high[opcode.p])),
+        }};
+
+  if (opcode.x == 1 && opcode.z == 4)
+    return {"neg", {"const auto [result, new_flags] = Alu::sub8(0, get(R8::A), false);", "set(R8::A, result);",
+                       "flags(new_flags);"}};
+  if (opcode.x == 1 && opcode.z == 5 && opcode.y != 1)
+    return {"retn", {"iff1_ = iff2_;", "regs_.pc(pop16());"}};
+  if (opcode.x == 1 && opcode.z == 5 && opcode.y == 1)
+    return {"reti", {"regs_.pc(pop16());"}};
+  if (opcode.x == 1 && opcode.z == 6) {
+    constexpr std::array<std::uint8_t, 8> im_table{0, 0, 1, 2, 0, 0, 1, 2};
+    const auto mode = im_table[opcode.y];
+    return {std::format("im{}", mode), {std::format("irq_mode({});", mode)}};
+  }
+  if (opcode.x == 1 && opcode.z == 7) {
+    if (opcode.y == 0)
+      return {"ld i, a", {"pass_time(1);", "regs_.i(get(R8::A));"}};
+    if (opcode.y == 1)
+      return {"ld r, a", {"pass_time(1);", "regs_.r(get(R8::A));"}};
+    if (opcode.y == 2)
+      return {"ld a, i",
+          {"pass_time(1);", "set(R8::A, regs_.i());", "flags(Alu::iff2_flags_for(regs_.i(), flags(), iff2_));"}};
+    if (opcode.y == 3)
+      return {"ld a, r",
+          {"pass_time(1);", "set(R8::A, regs_.r());", "flags(Alu::iff2_flags_for(regs_.r(), flags(), iff2_));"}};
+    if (opcode.y == 4 || opcode.y == 5) {
+      const auto a_expression =
+          opcode.y == 4 ? "(prev_a & 0xf0) | (ind_hl & 0xf)" : "(prev_a & 0xf0) | ((ind_hl >> 4) & 0xf)";
+      const auto ind_hl_expression =
+          opcode.y == 4 ? "ind_hl >> 4 | ((prev_a & 0xf) << 4)" : "ind_hl << 4 | (prev_a & 0xf)";
+      return {opcode.y == 4 ? "rrd" : "rld",
+          {
+              "const auto address = get(R16::HL);",
+              "const auto ind_hl = read(address);",
+              "const auto prev_a = get(R8::A);",
+              std::format("const auto new_a = static_cast<std::uint8_t>({});", a_expression),
+              "set(R8::A, new_a);",
+              "pass_time(4);",
+              std::format("write(address, static_cast<std::uint8_t>({}));", ind_hl_expression),
+              "flags(flags() & Flags::Carry() | Alu::parity_flags_for(new_a));",
+          }};
+    }
+  }
+
+  if (opcode.x == 2 && opcode.z == 0) {
+    const bool increment = !(opcode.y & 1);
+    const bool repeat = opcode.y & 2;
+    const std::string name = "ld"s + (increment ? "i" : "d") + (repeat ? "r" : "");
+
+    std::vector<std::string> ops = {
+        std::format("constexpr std::uint16_t add = {};", increment ? "0x0001" : "0xffff"),
+        "const auto source = get(R16::HL);",
+        "set(R16::HL, source + add);",
+        "const auto byte = read(source);",
+        "const auto dest = get(R16::DE);",
+        "set(R16::DE, dest + add);",
+        "write(dest, byte);",
+        "pass_time(2);",
+        // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
+        "const auto flag_bits = static_cast<std::uint8_t>(byte + get(R8::A));",
+        "const auto new_bc = static_cast<std::uint16_t>(get(R16::BC) - 1);",
+        "set(R16::BC, new_bc);",
+        "const auto preserved_flags = flags() & (Flags::Sign() | Flags::Zero() | Flags::Carry());",
+        "const auto flags_from_bits = ",
+        "    (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | (flag_bits & 0x02 ? Flags::Flag5() : Flags());",
+        "const auto flags_from_bc = new_bc ? Flags::Overflow() : Flags();",
+        "flags(preserved_flags | flags_from_bits | flags_from_bc);",
+    };
+    if (repeat) {
+      ops.emplace_back("if (new_bc) {");
+      ops.emplace_back("  regs_.wz(regs_.pc() - 1);");
+      ops.emplace_back("  regs_.pc(regs_.pc() - 2);");
+      ops.emplace_back("  pass_time(5);");
+      ops.emplace_back("}");
+    }
+    return {name, ops};
+  }
+
+  if (opcode.x == 2 && opcode.z == 1) {
+    const bool increment = !(opcode.y & 1);
+    const bool repeat = opcode.y & 2;
+    const std::string name = "cp"s + (increment ? "i" : "d") + (repeat ? "r" : "");
+
+    std::vector<std::string> ops = {
+        std::format("constexpr std::uint16_t add = {};", increment ? "0x0001" : "0xffff"),
+        "const auto source = get(R16::HL);",
+        "set(R16::HL, source + add);",
+        "const auto byte = read(source);",
+        "const auto [result, subtract_flags] = Alu::sub8(get(R8::A), byte, false);",
+        "pass_time(5);",
+        // bits 3 and 5 come from the result, where bit 3 goes to flag 5, and bit 1 to flag 3....and where if HF is
+        // set we use res--....
+        "const auto flag_bits = subtract_flags.half_carry() ? result - 1 : result;",
+        "const auto new_bc = static_cast<std::uint16_t>(get(R16::BC) - 1);",
+        "set(R16::BC, new_bc);",
+        "constexpr auto from_subtract_mask = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();",
+        "const auto preserved_flags = ",
+        "      flags() & ~(Flags::Flag3() | Flags::Flag5() | from_subtract_mask | Flags::Overflow());",
+        "const auto flags_from_bits = ",
+        "    (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | (flag_bits & 0x02 ? Flags::Flag5() : Flags());",
+        "const auto flags_from_bc = new_bc ? Flags::Overflow() : Flags();",
+        "flags(preserved_flags | flags_from_bits | flags_from_bc | (from_subtract_mask & subtract_flags));",
+    };
+    if (repeat) {
+      ops.emplace_back("if (new_bc && !subtract_flags.zero()) {");
+      ops.emplace_back("  regs_.wz(regs_.pc() - 1);");
+      ops.emplace_back("  regs_.pc(regs_.pc() - 2);");
+      ops.emplace_back("  pass_time(5);");
+      ops.emplace_back("}");
+    }
+    return {name, ops};
+  }
+
+  return {"??", {"throw 123;"}};
   throw std::runtime_error("Unsupported opcode");
 }
 
@@ -457,6 +610,7 @@ using R8 = RegisterFile::R8;
 )");
 
   output_func(out, "execute_one_base", base_set, false, match_op);
+  output_func(out, "execute_one_ed", base_set, false, match_op_ed);
   output_func(out, "execute_one_dd", ix_set, false, match_op);
   output_func(out, "execute_one_fd", iy_set, false, match_op);
   output_func(out, "execute_one_cb", base_set, false, match_op_cb);
