@@ -30,6 +30,11 @@ public:
   [[nodiscard]] const auto &regs() const { return regs_; }
   [[nodiscard]] const auto &memory() const { return memory_; }
 
+  [[nodiscard]] std::uint16_t get(const RegisterFile::R16 r16) const { return regs_.get(r16); }
+  void set(const RegisterFile::R16 r16, const std::uint16_t val) { regs_.set(r16, val); }
+  [[nodiscard]] std::uint8_t get(const RegisterFile::R8 r8) const { return regs_.get(r8); }
+  void set(const RegisterFile::R8 r8, const std::uint8_t val) { regs_.set(r8, val); }
+
   [[nodiscard]] auto &regs() { return regs_; }
   [[nodiscard]] auto &memory() { return memory_; }
 
