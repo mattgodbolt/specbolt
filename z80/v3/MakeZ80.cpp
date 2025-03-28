@@ -19,6 +19,7 @@ struct RegisterSet {
   std::array<std::string_view, 4> rp2;
   std::array<std::string_view, 9> r;
 };
+
 constexpr RegisterSet base_set{.prefix = "",
     .index_reg = "hl",
     .index_reg_low = "l",
@@ -28,6 +29,26 @@ constexpr RegisterSet base_set{.prefix = "",
     .rp_high = {"b", "d", "h", "sph"},
     .rp2 = {"bc", "de", "hl", "af"},
     .r = {"b", "c", "d", "e", "h", "l", "(hl)", "a", "$nn"}};
+
+constexpr RegisterSet ix_set{.prefix = "dd",
+    .index_reg = "ix",
+    .index_reg_low = "ixl",
+    .index_reg_high = "ixh",
+    .rp = {"bc", "de", "ix", "sp"},
+    .rp_low = {"c", "e", "ixl", "spl"},
+    .rp_high = {"b", "d", "ixh", "sph"},
+    .rp2 = {"bc", "de", "ix", "af"},
+    .r = {"b", "c", "d", "e", "ixh", "ixl", "(ix)", "a", "$nn"}};
+
+constexpr RegisterSet iy_set{.prefix = "fd",
+    .index_reg = "iy",
+    .index_reg_low = "iyl",
+    .index_reg_high = "iyh",
+    .rp = {"bc", "de", "iy", "sp"},
+    .rp_low = {"c", "e", "iyl", "spl"},
+    .rp_high = {"b", "d", "iyh", "sph"},
+    .rp2 = {"bc", "de", "iy", "af"},
+    .r = {"b", "c", "d", "e", "iyh", "iyl", "(iy)", "a", "$nn"}};
 
 std::string upper(const std::string_view input_v) {
   std::string input(input_v);
@@ -148,7 +169,7 @@ Op match_op(const Opcode opcode) {
             std::format("set(R8::{}, read(address + 1));", upper(opcode.reg_set.index_reg_high)),
         }};
   if (opcode.x == 0 && opcode.z == 2 && opcode.q == 1 && opcode.p == 3)
-    return {"ld ($nnnn), a", {"set(R8::A, read(read_immediate16()));"}};
+    return {"ld a, ($nnnn)", {"set(R8::A, read(read_immediate16()));"}};
 
   if (opcode.x == 0 && opcode.z == 3 && opcode.q == 0)
     return {std::format("inc {}", opcode.reg_set.rp[opcode.p]),
@@ -178,8 +199,8 @@ Op match_op(const Opcode opcode) {
 
   if (opcode.x == 0 && opcode.z == 6) {
     if (opcode.y == 6) {
-      return {std::format("ld {}, $nn", opcode.reg_set.r[opcode.y]), {"write(get(R16::HL), read_immediate());"}, true,
-          true};
+      return {
+          std::format("ld {}, $nn", opcode.reg_set.r[opcode.y]), {"write(regs_.wz(), read_immediate());"}, true, true};
     }
     return {std::format("ld {}, $nn", opcode.reg_set.r[opcode.y]),
         {
@@ -207,13 +228,14 @@ Op match_op(const Opcode opcode) {
   if (opcode.x == 1) {
     if (opcode.y == 6 && opcode.z == 6)
       return {"halt", {"halt();"}};
-    // TODO handle indirect?
     const auto name = std::format("ld {}, {}", opcode.reg_set.r[opcode.y], opcode.reg_set.r[opcode.z]);
     if (opcode.y == 6) {
-      return {name, {std::format("write(regs_.wz(), get(R8::{}));", upper(opcode.reg_set.r[opcode.z]))}, true};
+      // NB uses base set here
+      return {name, {std::format("write(regs_.wz(), get(R8::{}));", upper(base_set.r[opcode.z]))}, true};
     }
     if (opcode.z == 6) {
-      return {name, {std::format("set(R8::{}, read(regs_.wz()));", upper(opcode.reg_set.r[opcode.y]))}, true};
+      // NB uses base set here
+      return {name, {std::format("set(R8::{}, read(regs_.wz()));", upper(base_set.r[opcode.y]))}, true};
     }
     return {name, {std::format("set(R8::{}, get(R8::{}));", upper(opcode.reg_set.r[opcode.y]),
                       upper(opcode.reg_set.r[opcode.z]))}};
@@ -311,13 +333,13 @@ Op match_op(const Opcode opcode) {
     return {"call $nnnn", {"const auto jump_address = read_immediate16();", "pass_time(1);", "push16(regs_.pc());",
                               "regs_.pc(jump_address);"}};
   if (opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 1)
-    return {"DD", {"// TODO"}};
+    return {"DD", {"execute_one_dd();"}};
 
   if (opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 2)
     return {"ED", {"// TODO"}};
 
   if (opcode.x == 3 && opcode.z == 5 && opcode.q == 1 && opcode.p == 3)
-    return {"FD", {"// TODO"}};
+    return {"FD", {"execute_one_fd();"}};
 
   if (opcode.x == 3 && opcode.z == 7)
     return {std::format("rst 0x{:02x}", opcode.y * 8),
@@ -370,6 +392,50 @@ Op match_op_cb(const Opcode opcode) {
       is_indirect};
 }
 
+template<typename Func>
+void output_func(
+    std::ostream &out, const std::string &name, const RegisterSet &set, bool always_indirect, Func &&match_func) {
+
+  std::print(out, R"(
+void Z80::{}() {{
+)",
+      name);
+  if (always_indirect) {
+    std::print(out,
+        "    regs_.wz(static_cast<std::uint16_t>(get(R16::{}) + static_cast<std::int8_t>(read_immediate())));\n",
+        upper(set.index_reg));
+    std::print(out, "    pass_time(1);\n");
+  }
+  std::print(out, R"(
+    const auto opcode = read_opcode();
+    switch (opcode) {{
+)");
+  for (std::size_t opcode_num = 0; opcode_num < 256; ++opcode_num) {
+    const auto opcode = Opcode{opcode_num, set};
+    const auto op = match_func(opcode);
+    std::print(out, "    case 0x{:02x}: {{ // {}\n", opcode_num, op.name);
+
+    if (op.indirect && !always_indirect) {
+      if (set.index_reg == "hl"s)
+        std::print(out, "      regs_.wz(get(R16::HL));\n");
+      else {
+        // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right.
+        // heinous hack here.
+        std::print(out,
+            "      regs_.wz(static_cast<std::uint16_t>(get(R16::{}) + "
+            "static_cast<std::int8_t>(read_immediate())));\n",
+            upper(set.index_reg));
+        std::print(out, "      pass_time({});\n", op.is_load_immediate ? 2 : 5);
+      }
+    }
+
+    for (const auto &line: op.code)
+      std::print(out, "      {}\n", line);
+    std::print(out, "      break;\n    }}\n", opcode_num);
+  }
+  std::print(out, "  }}\n}}\n");
+}
+
 } // namespace
 
 int main(int argc, const char *argv[]) {
@@ -388,44 +454,14 @@ namespace specbolt::v3 {{
 
 using R16 = RegisterFile::R16;
 using R8 = RegisterFile::R8;
-
-void Z80::execute_one_base() {{
-    const auto opcode = read_opcode();
-    switch (opcode) {{
 )");
 
-  for (std::size_t opcode_num = 0; opcode_num < 256; ++opcode_num) {
-    const auto opcode = Opcode{opcode_num, base_set};
-    const auto op = match_op(opcode);
-    std::print(out, "    case 0x{:02x}: {{ // {}\n", opcode_num, op.name);
-
-    if (op.indirect)
-      std::print(out, "      regs_.wz(get(R16::HL));\n");
-
-    for (const auto &line: op.code)
-      std::print(out, "      {}\n", line);
-    std::print(out, "      break;\n    }}\n", opcode_num);
-  }
-  std::print(out, "  }}\n}}\n");
-
-  std::print(out, R"(
-void Z80::execute_one_cb() {{
-    const auto opcode = read_opcode();
-    switch (opcode) {{
-)");
-  for (std::size_t opcode_num = 0; opcode_num < 256; ++opcode_num) {
-    const auto opcode = Opcode{opcode_num, base_set};
-    const auto op = match_op_cb(opcode);
-    std::print(out, "    case 0x{:02x}: {{ // {}\n", opcode_num, op.name);
-
-    if (op.indirect)
-      std::print(out, "      regs_.wz(get(R16::HL));\n");
-
-    for (const auto &line: op.code)
-      std::print(out, "      {}\n", line);
-    std::print(out, "      break;\n    }}\n", opcode_num);
-  }
-  std::print(out, "  }}\n}}\n");
+  output_func(out, "execute_one_base", base_set, false, match_op);
+  output_func(out, "execute_one_dd", ix_set, false, match_op);
+  output_func(out, "execute_one_fd", iy_set, false, match_op);
+  output_func(out, "execute_one_cb", base_set, false, match_op_cb);
+  output_func(out, "execute_one_ddcb", ix_set, true, match_op_cb);
+  output_func(out, "execute_one_fdcb", iy_set, true, match_op_cb);
 
   std::print(out, R"(
 

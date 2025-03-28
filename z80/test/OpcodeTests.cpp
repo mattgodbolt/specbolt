@@ -30,7 +30,7 @@ struct OpcodeTester {
   Scheduler scheduler;
   Memory memory{4};
   DUT z80{scheduler, memory};
-  static constexpr auto use_new_code = std::is_same_v<DUT, v2::Z80>;
+  static constexpr auto use_new_code = !std::is_same_v<DUT, v1::Z80>;
   RegisterFile &regs = z80.regs();
 
   explicit OpcodeTester() { memory.set_rom_flags({false, false, false, false}); }
@@ -1496,24 +1496,28 @@ TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][g
   OpcodeTester<TestType>::cb_prefix();
 }
 
-// TODO test these
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "dd opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(
+    OpcodeTester, "dd opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80, v3::Z80) {
   OpcodeTester<TestType>::dd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fd opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(
+    OpcodeTester, "fd opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80, v3::Z80) {
   OpcodeTester<TestType>::fd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(
+    OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80, v3::Z80) {
   OpcodeTester<TestType>::ddcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(
+    OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80, v3::Z80) {
   OpcodeTester<TestType>::fdcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(OpcodeTester, "ed opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80) {
+TEMPLATE_TEST_CASE_METHOD_SIG(
+    OpcodeTester, "ed opcode execution tests", "[opcode][generated]", v1::Z80, v2::Z80, v3::Z80) {
   OpcodeTester<TestType>::ed_prefix();
 }
 
