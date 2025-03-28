@@ -495,7 +495,7 @@ constexpr auto instruction<opcode> = AluOp<"cp", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::cmp8(lhs, rhs); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// X = 3 (some alu ops are definewd in X = 1 above)
+// X = 3 (some alu ops are defined in X = 1 above)
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 0)
 constexpr auto instruction<opcode> = Op<"ret "s + cc_names[opcode.y], [](Z80 &z80) {
