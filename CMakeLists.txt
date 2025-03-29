@@ -44,9 +44,9 @@ if (NOT SPECBOLT_WASM)
     find_package(SDL2 REQUIRED)
 endif ()
 
-find_program(CCACHE_FOUND ccache)
-if(CCACHE_FOUND)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
+find_program(CCACHE ccache)
+if(CCACHE)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE}")
 endif()
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
