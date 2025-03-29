@@ -611,21 +611,27 @@ std::string_view impl::{}(std::uint8_t opcode) {{
 
 int main(int argc, const char *argv[]) {
   std::ofstream maybe_out;
+  std::string path_prefix{"."};
   if (argc > 1)
     maybe_out.open(argv[1]);
+  if (argc > 2)
+    path_prefix = argv[2];
   std::ostream &out = argc > 1 ? maybe_out : std::cout;
   std::print(out, R"(// Automatically generated, DO NOT EDIT
 
-#include "DisassembleInternal.hpp"
+#ifndef SPECBOLT_MODULES
+#include "{}/DisassembleInternal.hpp"
 #include "z80/common/Alu.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/v3/Z80.hpp"
+#endif
 
 namespace specbolt::v3 {{
 
 using R16 = RegisterFile::R16;
 using R8 = RegisterFile::R8;
-)");
+)",
+      path_prefix);
 
   output_func(out, "execute_one_base", base_set, false, match_op);
   output_func(out, "execute_one_ed", base_set, false, match_op_ed);

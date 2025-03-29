@@ -13,11 +13,11 @@ target_sources(z80_v3_make PRIVATE
 )
 add_custom_command(
         OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/Z80Generated.cpp
-        COMMAND z80_v3_make ${CMAKE_CURRENT_BINARY_DIR}/Z80Generated.cpp
+        COMMAND z80_v3_make ${CMAKE_CURRENT_BINARY_DIR}/Z80Generated.cpp ${CMAKE_CURRENT_SOURCE_DIR}
         DEPENDS z80_v3_make)
 
 if (SPECBOLT_MODULES)
-    target_include_directories(z80_v3 PRIVATE include)
+    target_include_directories(z80_v3 PRIVATE include ${CMAKE_CURRENT_BINARY_DIR})
     target_sources(z80_v3
             PUBLIC
             FILE_SET modules
@@ -25,9 +25,9 @@ if (SPECBOLT_MODULES)
             FILES
             Disassembler.cppm
             Z80.cppm
-            Z80Impl.cppm
             module.cppm
     )
+    set_property(SOURCE Z80.cppm APPEND PROPERTY OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/Z80Generated.cpp)
 else ()
     target_include_directories(z80_v3 PUBLIC include)
 

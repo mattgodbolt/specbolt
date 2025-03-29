@@ -10,8 +10,8 @@ export module z80_v3:Disassembler;
 
 import peripherals;
 import z80_common;
-import :Z80Impl;
 
-// clang-format off
+#include "DisassembleInternal.hpp"
 #include "z80/v3/Disassembler.hpp"
+
 #include "Disassembler.cpp"

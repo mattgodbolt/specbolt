@@ -10,6 +10,9 @@ export module z80_v3:Z80;
 
 import peripherals;
 import z80_common;
-import :Z80Impl;
+
+#include "DisassembleInternal.hpp"
+#include "z80/v3/Z80.hpp"
 
 #include "Z80.cpp"
+#include "Z80Generated.cpp"

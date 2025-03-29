@@ -1,7 +1,9 @@
 #pragma once
 
+#ifndef SPECBOLT_MODULES
 #include <cstdint>
 #include <string_view>
+#endif
 
 namespace specbolt::v3::impl {
 
