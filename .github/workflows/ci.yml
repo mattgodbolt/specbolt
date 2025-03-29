@@ -32,7 +32,9 @@ jobs:
           mkdir build
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }}
           cmake --build build
-          env CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
+      - name: Test
+        run: |
+          env CTEST_PARALLEL_LEVEL=$(nproc) CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 
   wasm-build:
     runs-on: ubuntu-latest
