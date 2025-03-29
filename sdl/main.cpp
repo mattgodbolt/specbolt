@@ -11,6 +11,7 @@ import peripherals;
 import spectrum;
 import z80_v1;
 import z80_v2;
+import z80_v3;
 #else
 #include "peripherals/Video.hpp"
 #include "spectrum/Assets.hpp"
@@ -19,6 +20,7 @@ import z80_v2;
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
+#include "z80/v3/Z80.hpp"
 #endif
 
 
@@ -43,7 +45,7 @@ struct SdlApp {
   std::filesystem::path tape;
   bool need_help{};
   std::size_t trace_instructions{};
-  bool new_impl{};
+  int impl{1};
   double video_refresh_rate{50};
   double emulator_speed{1};
   double zoom{4};
@@ -55,7 +57,7 @@ struct SdlApp {
                      | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
                      | lyra::opt(rom, "ROM")["--rom"]("Where to find the ROM") //
                      | lyra::opt(trace_instructions, "NUM")["--trace"]("Trace the first NUM instructions") //
-                     | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
+                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.") //
                      | lyra::opt(video_refresh_rate, "HZ")["--video-refresh"]("Refresh the video at HZ") //
                      | lyra::opt(emulator_speed, "X")["--emulator-speed"]("Multiplier on emulation speed") //
                      | lyra::opt(zoom, "X")["--zoom"]("Multiplier on display zoom") //
@@ -74,9 +76,14 @@ struct SdlApp {
       rom = get_asset_dir() / (spec128 ? "128.rom" : "48.rom");
     }
 
-    if (new_impl)
-      return run<v2::Z80>();
-    return run<v1::Z80>();
+    switch (impl) {
+      case 1: return run<v1::Z80>();
+      case 2: return run<v2::Z80>();
+      case 3: return run<v3::Z80>();
+      default: break;
+    }
+    std::print(std::cerr, "Bad implementation {}\n", impl);
+    return 1;
   }
   template<typename Z80Impl>
   int run() {

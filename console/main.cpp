@@ -22,6 +22,7 @@ import peripherals;
 import spectrum;
 import z80_v1;
 import z80_v2;
+import z80_v3;
 #else
 #include "peripherals/Memory.hpp"
 #include "spectrum/Assets.hpp"
@@ -30,6 +31,7 @@ import z80_v2;
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
+#include "z80/v3/Z80.hpp"
 #endif
 
 namespace {
@@ -290,13 +292,13 @@ int main(int argc, const char **argv) try {
   std::vector<std::string> exec_on_startup;
   bool spec128{};
   bool need_help{};
-  bool new_impl{};
+  int impl{1};
   std::filesystem::path snapshot;
 
   const auto cli = lyra::cli() | //
                    lyra::help(need_help) //
                    | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
-                   | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
+                   | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.") //
                    | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup") |
                    lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
 
@@ -311,10 +313,15 @@ int main(int argc, const char **argv) try {
 
   const auto variant = spec128 ? specbolt::Variant::Spectrum128 : specbolt::Variant::Spectrum48;
   std::unique_ptr<AppBase> app;
-  if (new_impl)
-    app = std::make_unique<App<specbolt::v2::Z80>>(variant);
-  else
-    app = std::make_unique<App<specbolt::v1::Z80>>(variant);
+  switch (impl) {
+    case 1: app = std::make_unique<App<specbolt::v1::Z80>>(variant); break;
+    case 2: app = std::make_unique<App<specbolt::v2::Z80>>(variant); break;
+    case 3: app = std::make_unique<App<specbolt::v3::Z80>>(variant); break;
+    default: {
+      std::print(std::cerr, "Bad implementation {}\n", impl);
+      return 1;
+    }
+  }
 
   sigset_t blocked_signals{};
   // todo check errors etc. extract?
