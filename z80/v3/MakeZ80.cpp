@@ -38,7 +38,7 @@ constexpr RegisterSet ix_set{.prefix = "dd",
     .rp_low = {"c", "e", "ixl", "spl"},
     .rp_high = {"b", "d", "ixh", "sph"},
     .rp2 = {"bc", "de", "ix", "af"},
-    .r = {"b", "c", "d", "e", "ixh", "ixl", "(ix)", "a", "$nn"}};
+    .r = {"b", "c", "d", "e", "ixh", "ixl", "(ix$o)", "a", "$nn"}};
 
 constexpr RegisterSet iy_set{.prefix = "fd",
     .index_reg = "iy",
@@ -48,7 +48,7 @@ constexpr RegisterSet iy_set{.prefix = "fd",
     .rp_low = {"c", "e", "iyl", "spl"},
     .rp_high = {"b", "d", "iyh", "sph"},
     .rp2 = {"bc", "de", "iy", "af"},
-    .r = {"b", "c", "d", "e", "iyh", "iyl", "(iy)", "a", "$nn"}};
+    .r = {"b", "c", "d", "e", "iyh", "iyl", "(iy$o)", "a", "$nn"}};
 
 std::string upper(const std::string_view input_v) {
   std::string input(input_v);
@@ -228,17 +228,19 @@ Op match_op(const Opcode opcode) {
   if (opcode.x == 1) {
     if (opcode.y == 6 && opcode.z == 6)
       return {"halt", {"halt();"}};
-    const auto name = std::format("ld {}, {}", opcode.reg_set.r[opcode.y], opcode.reg_set.r[opcode.z]);
     if (opcode.y == 6) {
       // NB uses base set here
-      return {name, {std::format("write(regs_.wz(), get(R8::{}));", upper(base_set.r[opcode.z]))}, true};
+      return {std::format("ld {}, {}", opcode.reg_set.r[opcode.y], base_set.r[opcode.z]),
+          {std::format("write(regs_.wz(), get(R8::{}));", upper(base_set.r[opcode.z]))}, true};
     }
     if (opcode.z == 6) {
       // NB uses base set here
-      return {name, {std::format("set(R8::{}, read(regs_.wz()));", upper(base_set.r[opcode.y]))}, true};
+      return {std::format("ld {}, {}", base_set.r[opcode.y], opcode.reg_set.r[opcode.z]),
+          {std::format("set(R8::{}, read(regs_.wz()));", upper(base_set.r[opcode.y]))}, true};
     }
-    return {name, {std::format("set(R8::{}, get(R8::{}));", upper(opcode.reg_set.r[opcode.y]),
-                      upper(opcode.reg_set.r[opcode.z]))}};
+    return {std::format("ld {}, {}", opcode.reg_set.r[opcode.y], opcode.reg_set.r[opcode.z]),
+        {std::format(
+            "set(R8::{}, get(R8::{}));", upper(opcode.reg_set.r[opcode.y]), upper(opcode.reg_set.r[opcode.z]))}};
   }
 
   if (opcode.alu_op() >= 0) {
@@ -396,7 +398,7 @@ Op match_op_ed(const Opcode opcode) {
   if (opcode.x == 1 && opcode.z == 6) {
     constexpr std::array<std::uint8_t, 8> im_table{0, 0, 1, 2, 0, 0, 1, 2};
     const auto mode = im_table[opcode.y];
-    return {std::format("im{}", mode), {std::format("irq_mode({});", mode)}};
+    return {std::format("im {}", mode), {std::format("irq_mode({});", mode)}};
   }
   if (opcode.x == 1 && opcode.z == 7) {
     if (opcode.y == 0)
@@ -547,7 +549,7 @@ Op match_op_cb(const Opcode opcode) {
 
 template<typename Func>
 void output_func(
-    std::ostream &out, const std::string &name, const RegisterSet &set, bool always_indirect, Func &&match_func) {
+    std::ostream &out, const std::string &name, const RegisterSet &set, const bool always_indirect, Func &&match_func) {
 
   std::print(out, R"(
 void Z80::{}() {{
@@ -589,6 +591,22 @@ void Z80::{}() {{
   std::print(out, "  }}\n}}\n");
 }
 
+template<typename Func>
+void output_disasm(std::ostream &out, const std::string &name, const RegisterSet &set, Func &&match_func) {
+  std::print(out, R"(
+std::string_view impl::{}(std::uint8_t opcode) {{
+    switch (opcode) {{
+)",
+      name);
+
+  for (std::size_t opcode_num = 0; opcode_num < 256; ++opcode_num) {
+    const auto opcode = Opcode{opcode_num, set};
+    const auto op = match_func(opcode);
+    std::print(out, "    case 0x{:02x}: return \"{}\";\n", opcode_num, op.name);
+  }
+  std::print(out, "  }}\n  return \"??\";\n  }}\n");
+}
+
 } // namespace
 
 int main(int argc, const char *argv[]) {
@@ -611,24 +629,19 @@ using R8 = RegisterFile::R8;
 
   output_func(out, "execute_one_base", base_set, false, match_op);
   output_func(out, "execute_one_ed", base_set, false, match_op_ed);
+  output_func(out, "execute_one_cb", base_set, false, match_op_cb);
   output_func(out, "execute_one_dd", ix_set, false, match_op);
   output_func(out, "execute_one_fd", iy_set, false, match_op);
-  output_func(out, "execute_one_cb", base_set, false, match_op_cb);
   output_func(out, "execute_one_ddcb", ix_set, true, match_op_cb);
   output_func(out, "execute_one_fdcb", iy_set, true, match_op_cb);
 
-  std::print(out, R"(
-
-std::string_view impl::disassemble_base(std::uint8_t opcode) {{
-    switch (opcode) {{
-)");
-
-  for (std::size_t opcode_num = 0; opcode_num < 256; ++opcode_num) {
-    const auto opcode = Opcode{opcode_num, base_set};
-    const auto op = match_op(opcode);
-    std::print(out, "    case 0x{:02x}: return \"{}\";\n", opcode_num, op.name);
-  }
-  std::print(out, "  }}\n  return \"??\";\n  }}\n");
+  output_disasm(out, "disassemble_base", base_set, match_op);
+  output_disasm(out, "disassemble_ed", base_set, match_op_ed);
+  output_disasm(out, "disassemble_cb", base_set, match_op_cb);
+  output_disasm(out, "disassemble_dd", ix_set, match_op);
+  output_disasm(out, "disassemble_fd", iy_set, match_op);
+  output_disasm(out, "disassemble_ddcb", ix_set, match_op_cb);
+  output_disasm(out, "disassemble_fdcb", iy_set, match_op_cb);
 
   std::print(out, "\n\n}}\n");
 }
