@@ -46,6 +46,19 @@
             text-align: center;
         }
 
+        .top-menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: #777;
+            border-radius: 4px;
+            padding: 4px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            width: auto;
+            font-size: small;
+        }
+
         .stats {
             position: absolute;
             top: 0;
@@ -65,6 +78,9 @@
 <canvas id="spectrum"></canvas>
 <div id="warning" class="warning" hidden>Warning</div>
 <script type="module" src="main.js"></script>
+<div class="top-menu">
+    <a class="load-game-button">Load game</a>
+</div>
 <div class="stats">
     Effective speed: <span id="effective-mhz"></span><br>
     Current FPS: <span id="current-fps"></span><br>
@@ -73,6 +89,9 @@
     Spectrum ROMs are &copy; Sinclair Research.<br>
     Games are &copy; their respective authors.<br>
     Project source code is available on <a href="https://github.com/mattgodbolt/specbolt">GitHub</a>.
+</div>
+<div class="popup game-finder" hidden>
+    <label>Search:</label><input>
 </div>
 </body>
 </html>
