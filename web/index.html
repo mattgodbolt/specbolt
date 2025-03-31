@@ -72,6 +72,29 @@
             width: auto;
             font-size: small;
         }
+        dialog {
+            background-color: #777;
+            border-radius: 4px;
+            padding: 20px;
+        }
+        .search-results {
+            margin-top: 40px;
+            background-color: #666;
+            max-height: 400px;
+            width: 300px;
+            overflow-y: scroll;
+        }
+        .search-result {
+            background-color:aliceblue;
+            width: 100%;
+            padding-left: 4em;
+            padding-right: 4em;
+            height: 2em;
+        }
+        ::backdrop {
+            background-color: #333;
+            opacity: 0.75;
+        }
     </style>
 </head>
 <body>
@@ -79,7 +102,7 @@
 <div id="warning" class="warning" hidden>Warning</div>
 <script type="module" src="main.js"></script>
 <div class="top-menu">
-    <a class="load-game-button">Load game</a>
+    <button class="load-game-button">Load game</button>
 </div>
 <div class="stats">
     Effective speed: <span id="effective-mhz"></span><br>
@@ -90,8 +113,18 @@
     Games are &copy; their respective authors.<br>
     Project source code is available on <a href="https://github.com/mattgodbolt/specbolt">GitHub</a>.
 </div>
-<div class="popup game-finder" hidden>
-    <label>Search:</label><input>
+<dialog class="game-finder">
+    <h2>Load Game</h2>
+    <form method="dialog">
+        <label>Search:</label><input type="text" class="search-input">
+    </form>
+    <div class="search-results">
+        <template>
+        <div class="search-result">
+            <a href="" class="description">Jet Set Willy</a>
+        </div>
+    </template>
+    </div>
 </div>
 </body>
 </html>
