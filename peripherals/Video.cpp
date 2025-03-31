@@ -90,8 +90,9 @@ void Video::blit_to(const std::span<std::uint32_t> screen, bool swap_rgb) const 
       const auto pixel_data = columns[x].pixel;
       const auto attributes = columns[x].attribute;
       const auto invert = attributes & 0x80 && flash_on_;
-      const auto index_1 = attributes >> 3u & 0x07u;
-      const auto index_2 = attributes & 0x07u;
+      const auto brightness = attributes & 0x40 ? 0x08u : 0x00u;
+      const auto index_1 = (attributes >> 3u & 0x07u) + brightness;
+      const auto index_2 = (attributes & 0x07u) + brightness;
       const auto paper_color = invert ? pal[index_1] : pal[index_2];
       const auto pen_color = invert ? pal[index_2] : pal[index_1];
       for (std::size_t bit = 0; bit < 8; ++bit) {
