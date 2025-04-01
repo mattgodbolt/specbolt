@@ -22,6 +22,8 @@ type IAMetadataResponse = {
     metadata: IAMetadata;
 };
 
+export type IASearchResult = { identifier: string; title: string };
+
 async function findSpectrumZ80Files(itemId: string) {
     const metadataUrl = `${ArchiveOrgCors}/metadata/${itemId}`;
     const response = await fetch(metadataUrl);
@@ -43,7 +45,7 @@ export async function downloadSnapshotUrlFor(itemId: string): Promise<string | u
     return undefined;
 }
 
-async function _searchForSpectrum(query: string): Promise<{ identifier: string; title: string }[]> {
+async function _searchForSpectrum(query: string): Promise<IASearchResult[]> {
     if (query.length <= 1) return [];
     const searchQuery = encodeURI(`title:(${query}) AND collection:(softwarelibrary_zx_spectrum)`);
     const searchUrl = `${ArchiveOrgCors}/advancedsearch.php?q=${searchQuery}&fl[]=identifier,title&output=json`;
