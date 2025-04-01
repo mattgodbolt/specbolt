@@ -33,8 +33,8 @@ const SampleRate = 48000;
 
 class WasmSpectrum {
     private readonly _instance: number;
-    readonly width: any;
-    readonly height: any;
+    readonly width: number;
+    readonly height: number;
     private readonly _exports: any;
     private readonly data_map: Map<string, Inode>;
 
@@ -135,7 +135,7 @@ export class Spectrum {
     effectiveMhz: number;
     prevFrameTime: number;
     running: boolean;
-    nextUpdate: any;
+    nextUpdate: number | undefined;
     private wasm: WasmSpectrum;
     private audioHandler: AudioHandler;
 
