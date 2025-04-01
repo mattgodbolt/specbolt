@@ -134,7 +134,7 @@ async function initialise() {
         startOnKeyPress = true;
 
     if (parsedQuery.get("type")) {
-        const typist = new Typist(parsedQuery.get("type"));
+        const typist = new Typist(spectrum, parsedQuery.get("type"));
 
         $canvas.addEventListener("emulated-frame", () => { typist.type(); });
     }
