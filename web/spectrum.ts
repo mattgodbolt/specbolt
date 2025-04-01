@@ -153,8 +153,8 @@ export class Spectrum {
     async initialise(model: number) {
         const {instance, data} = await initialiseWasm();
         this.wasm = new WasmSpectrum(instance.exports, model, data);
-        this.canvas.setAttribute('width', this.wasm.width);
-        this.canvas.setAttribute('height', this.wasm.height);
+        this.canvas.setAttribute('width', this.wasm.width.toString());
+        this.canvas.setAttribute('height', this.wasm.height.toString());
 
         this.audioHandler = new AudioHandler(this.audioWarningNode, SampleRate);
         await this.audioHandler.initialise();
