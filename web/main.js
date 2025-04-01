@@ -1,5 +1,6 @@
 import _ from "lodash";
 
+import {downloadSnapshotUrlFor, searchForSpectrum} from "./ia-search";
 import {Spectrum, SpectrumShift, SymbolShift} from "./spectrum";
 
 const $canvas = document.querySelector("canvas");
@@ -11,6 +12,7 @@ if ($loadGameButton) {
     $loadGameButton.addEventListener("click", () => { $loadGameDialog.showModal(); });
     const $searchResults = $loadGameDialog.querySelector(".search-results");
     const $template = $loadGameDialog.querySelector("template").content;
+
     function updateSearchResults(results) {
         $searchResults.innerHTML = "";
         if (results.length === 0) {
@@ -22,24 +24,53 @@ if ($loadGameButton) {
             newItem.querySelector(".description").addEventListener("click", async (evt) => {
                 evt.preventDefault();
                 $loadGameDialog.requestClose();
-                const z80FileUrl = new URL(await downloadZ80For(result.identifier));
+                const z80FileUrl = new URL(await downloadSnapshotUrlFor(result.identifier));
                 await spectrum.loadSnapshot(z80FileUrl);
-                // TODO start spectrum?
                 updateUrl({load : z80FileUrl});
             });
             $searchResults.appendChild(newItem);
         }
     }
+
     const $searchButton = $loadGameDialog.querySelector(".search-input");
+
     async function doSearch() {
         $searchResults.innerHTML = "<h5>Loading...</h5>";
         const results = await searchForSpectrum($searchButton.value);
         updateSearchResults(results);
     }
+
     const debouncedSearch = _.debounce(doSearch, 500);
     $searchButton.addEventListener("change", debouncedSearch);
     $searchButton.addEventListener("keyup", debouncedSearch);
 }
+
+let _wasPaused = false;
+
+function pause() {
+    if (spectrum.running) {
+        _wasPaused = true;
+        spectrum.stop();
+    }
+}
+
+function unpause() {
+    if (_wasPaused) {
+        _wasPaused = false;
+        spectrum.start();
+    }
+}
+
+document.querySelectorAll("dialog").forEach((dialog) => {
+    console.log(dialog);
+    dialog.addEventListener("toggle", (event) => {
+        if (event.newState === "open") {
+            pause();
+        } else {
+            unpause()
+        }
+    });
+});
 
 const spectrum = new Spectrum($canvas, document.querySelector("#warning"));
 
@@ -106,13 +137,19 @@ async function initialise() {
 
     let startOnKeyPress = false;
 
-    $canvas.onkeydown = (e) => {
+    document.onkeydown = (e) => {
         if (startOnKeyPress) {
             spectrum.start();
         }
+        if (!spectrum.running)
+            return;
         spectrum.onKeyDown(e);
     };
-    $canvas.onkeyup = (e) => { spectrum.onKeyUp(e); };
+    document.onkeyup = (e) => {
+        if (!spectrum.running)
+            return;
+        spectrum.onKeyUp(e);
+    };
 
     if (parsedQuery.get("load")) {
         const game_url = new URL(parsedQuery.get("load"), window.location);
@@ -150,35 +187,3 @@ window.addEventListener("message", (event) => {
         spectrum.stop();
     }
 });
-
-const ArchiveOrgCors = "https://cors.archive.org";
-async function findSpectrumZ80Files(itemId) {
-    const metadataUrl = `${ArchiveOrgCors}/metadata/${itemId}`;
-    const response = await fetch(metadataUrl);
-    const data = await response.json();
-
-    const z80Files =
-        data.files.filter((file) => file.name.toLowerCase().endsWith(".z80") || file.format?.toLowerCase() === "z80");
-
-    return z80Files;
-}
-
-function getCorsFileDownloadUrl(itemId, fileName) { return `${ArchiveOrgCors}/cors/${itemId}/${fileName}`; }
-async function downloadZ80For(itemId) {
-    const files = await findSpectrumZ80Files(itemId);
-    if (files.length === 1) {
-        return getCorsFileDownloadUrl(itemId, files[0].name);
-    }
-}
-
-async function searchForSpectrum(query) {
-    const searchQuery = encodeURI(`title:(${query}) AND collection:(softwarelibrary_zx_spectrum)`);
-    const searchUrl = `${ArchiveOrgCors}/advancedsearch.php?q=${searchQuery}&fl[moo]=identifier,title&output=json`;
-    const response = await fetch(searchUrl);
-    const data = await response.json();
-    return data.response.docs;
-}
-
-// console.log(await do_the_thing("zx_Scuba_Dive_1983_Durell_Software_a"));
-// const mongoose = await searchForSpectrumEmulator("jet set");
-// console.log(mongoose);
