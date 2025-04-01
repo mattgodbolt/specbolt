@@ -72,25 +72,31 @@
             width: auto;
             font-size: small;
         }
+
         dialog {
             background-color: #777;
             border-radius: 4px;
             padding: 20px;
         }
+
+        .game-finder {
+            width: 30%;
+        }
+
         .search-results {
             margin-top: 40px;
             background-color: #666;
-            max-height: 400px;
-            width: 300px;
             overflow-y: scroll;
+            max-height: 20em;
         }
+
         .search-result {
-            background-color:aliceblue;
-            width: 100%;
+            background-color: aliceblue;
             padding-left: 4em;
             padding-right: 4em;
             height: 2em;
         }
+
         ::backdrop {
             background-color: #333;
             opacity: 0.75;
@@ -116,15 +122,15 @@
 <dialog class="game-finder">
     <h2>Load Game</h2>
     <form method="dialog">
-        <label>Search:</label><input type="text" class="search-input">
+        <label>Search:<input type="text" class="search-input"></label>
     </form>
     <div class="search-results">
         <template>
-        <div class="search-result">
-            <a href="" class="description">Jet Set Willy</a>
-        </div>
-    </template>
+            <div class="search-result">
+                <a href="" class="description">Jet Set Willy</a>
+            </div>
+        </template>
     </div>
-</div>
+</dialog>
 </body>
 </html>
