@@ -18,7 +18,7 @@ namespace specbolt {
 SPECBOLT_EXPORT
 class Z80Base {
 public:
-  explicit Z80Base(Scheduler &scheduler, Memory &memory) : scheduler_(scheduler), memory_(memory) {}
+  explicit Z80Base(Clock &clock, Memory &memory) : clock_(clock), memory_(memory) {}
 
   [[nodiscard]] bool iff1() const { return iff1_; }
   void iff1(const bool iff1) { iff1_ = iff1; }
@@ -45,7 +45,7 @@ public:
   [[nodiscard]] Flags flags() const;
   void flags(Flags flags);
 
-  [[nodiscard]] auto cycle_count() const { return scheduler_.cycles(); }
+  [[nodiscard]] auto cycle_count() const { return clock_.now(); }
 
   using OutHandler = std::function<void(std::uint16_t port, std::uint8_t value)>;
   void add_out_handler(OutHandler handler);
@@ -60,11 +60,9 @@ public:
   void halt();
   [[nodiscard]] bool halted() const { return halted_; }
 
-  void pass_time(const std::size_t tstates) { scheduler_.tick(tstates); }
-
 protected:
   RegisterFile regs_;
-  Scheduler &scheduler_;
+  Clock &clock_;
   Memory &memory_;
   bool halted_{};
   bool irq_pending_{};

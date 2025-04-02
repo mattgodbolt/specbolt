@@ -15,9 +15,9 @@ namespace specbolt::v1 {
 
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
-  explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
+  explicit Z80(Clock &clock, Memory &memory) : Z80Base(clock, memory) {}
 
-  void execute_one();
+  Task<int> execute();
 
   void push16(std::uint16_t value);
   [[nodiscard]] std::uint16_t pop16();
@@ -37,8 +37,8 @@ public:
   void write(Instruction::Operand operand, std::int8_t index_offset, std::uint16_t value);
 
 private:
-  void execute(const Instruction &instr);
-  void handle_interrupt();
+  Task<int> execute(const Instruction &instr);
+  Task<bool> handle_interrupt();
 };
 
 } // namespace specbolt::v1

@@ -15,7 +15,7 @@ namespace specbolt::v2 {
 
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
-  explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
+  explicit Z80(Clock &clock, Memory &memory) : Z80Base(clock, memory) {}
 
   void execute_one();
 
