@@ -100,7 +100,7 @@ TEST_CASE("Scheduler tests") {
 Task cpu(auto & /*clock*/) noexcept {
   while (true) {
     puts("CPU");
-    co_await CycleCount{2};
+    co_await CycleAwait{2};
   }
 }
 
@@ -108,7 +108,7 @@ Task video(auto &clock) noexcept {
   while (true) {
     for (int line = 0; line < 300; ++line) {
       printf("LINE %d\n", line);
-      co_await CycleCount{5};
+      co_await CycleAwait{5};
     }
     clock.pause(); // will pause after drawing one screen
   }
@@ -117,7 +117,7 @@ Task video(auto &clock) noexcept {
 Task print_info_about_tick(auto &clock) noexcept {
   while (true) {
     printf("\ntick: %zu ...\n", clock.counter);
-    co_await CycleCount{1};
+    co_await CycleAwait{1};
   }
 }
 

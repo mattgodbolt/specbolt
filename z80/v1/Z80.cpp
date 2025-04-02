@@ -10,13 +10,13 @@
 
 namespace specbolt::v1 {
 
-Task Z80::execute() {
+Task<int> Z80::execute() {
   for (;;) {
     if (irq_pending_) [[unlikely]] {
-      handle_interrupt();
+      co_await handle_interrupt();
     }
     if (halted_) [[unlikely]] {
-      co_await CycleCount{1};
+      co_await clock_.tick(1);
       continue;
     }
 
@@ -24,10 +24,10 @@ Task Z80::execute() {
     const auto initial_pc = regs_.pc();
     const std::array opcodes{read8(initial_pc), read8(initial_pc + 1), read8(initial_pc + 2), read8(initial_pc + 3)};
     const auto decoded = impl::decode(opcodes);
-    co_await CycleCount{4};
+    co_await clock_.tick(4);
     regs_.pc(initial_pc + decoded.length); // NOT RIGHT
     try {
-      execute(decoded);
+      co_await execute(decoded);
     }
     catch (...) {
       // TODO heinous
@@ -112,13 +112,14 @@ std::uint16_t Z80::read(const Instruction::Operand operand, const std::int8_t in
   throw std::runtime_error("bad operand for read");
 }
 
-void Z80::execute(const Instruction &instr) {
+Task<int> Z80::execute(const Instruction &instr) {
   const auto [value, flags, extra_t_states] = instr.apply(
       {read(instr.lhs, instr.index_offset), read(instr.rhs, instr.index_offset), Flags(regs_.get(RegisterFile::R8::F))},
       *this);
   regs_.set(RegisterFile::R8::F, flags.to_u8());
-  co_await {extra_t_states + instr.decode_t_states};
+  co_await clock_.tick(extra_t_states + instr.decode_t_states);
   write(instr.lhs, instr.index_offset, value);
+  co_return 0; // xxx
 }
 
 void Z80::write(const Instruction::Operand operand, const std::int8_t index_offset, const std::uint16_t value) {
@@ -204,17 +205,17 @@ std::uint8_t Z80::pop8() {
   return read8(old_sp);
 }
 
-void Z80::handle_interrupt() {
+Task<bool> Z80::handle_interrupt() {
   irq_pending_ = false;
   if (!iff1_)
-    return;
+    co_return false;
   // Some dark business with parity flag here ignored.
   if (halted_) {
     halted_ = false;
     regs().pc(regs().pc() + 1);
   }
   iff1_ = iff2_ = false;
-  co_await CycleCount{7};
+  co_await clock_.tick(7);
   push16(regs().pc());
   switch (irq_mode_) {
     case 0:
@@ -227,6 +228,7 @@ void Z80::handle_interrupt() {
     }
     default: throw std::runtime_error("Inconceivable");
   }
+  co_return true;
 }
 
 void Z80::retn() {

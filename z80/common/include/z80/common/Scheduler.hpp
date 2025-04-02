@@ -6,6 +6,7 @@
 #include <limits>
 #include <vector>
 #endif
+#include <c++/14/bits/elements_of.h>
 
 namespace specbolt {
 
@@ -72,11 +73,20 @@ private:
 };
 
 SPECBOLT_EXPORT
-struct CycleCount {
-  std::size_t count;
+class Clock;
+
+SPECBOLT_EXPORT
+struct CycleAwait {
+  Clock &clock;
+  std::size_t ready_at{0};
+
+  constexpr void await_suspend(std::coroutine_handle<>) noexcept;
+  constexpr void await_resume() const noexcept {}
+  [[nodiscard]] constexpr bool await_ready() const noexcept;
 };
 
-struct ScheduledPromiseType;
+SPECBOLT_EXPORT
+struct ScheduledPromiseTypeBase;
 
 SPECBOLT_EXPORT
 class Clock {
@@ -85,25 +95,30 @@ class Clock {
 public:
   void run() {
     while (!paused_)
-      tick();
+      run_tick();
     paused_ = false;
   }
 
-  void tick();
+  CycleAwait tick(const size_t ticks) { return {*this, ticks + now_}; }
 
-  void schedule(const std::coroutine_handle<ScheduledPromiseType> coro) { tasks_[task_count_++] = coro; }
+  void run_tick();
+
+  void schedule(const std::coroutine_handle<> coro, const std::size_t when_to_run) {
+    const auto insertion_point = std::ranges::lower_bound(tasks_, when_to_run, {}, &ScheduledTask::tick_to_resume);
+    tasks_.insert(insertion_point, ScheduledTask{when_to_run, coro});
+  }
 
   void pause() { paused_ = true; }
-
-  constexpr auto begin() const { return tasks_.begin(); }
-  constexpr auto end() const { return tasks_.begin() + task_count_; }
 
   [[nodiscard]] constexpr auto now() const { return now_; }
 
 private:
   std::size_t now_{0};
-  size_t task_count_{0};
-  std::array<std::coroutine_handle<ScheduledPromiseType>, Capacity> tasks_;
+  struct ScheduledTask {
+    std::size_t tick_to_resume;
+    std::coroutine_handle<> handle;
+  };
+  std::vector<ScheduledTask> tasks_;
   bool paused_{false};
 };
 
@@ -116,29 +131,21 @@ struct MaybeSuspend {
 };
 
 SPECBOLT_EXPORT
-struct ScheduledPromiseType {
-  Clock &clock;
+struct ScheduledPromiseTypeBase {
   std::size_t tick_to_resume{0};
 
   [[nodiscard]] constexpr bool ready(const std::size_t current_clock) const noexcept {
     return tick_to_resume == current_clock;
   }
+};
 
-  template<typename... Args>
-  explicit constexpr ScheduledPromiseType(Clock &clock, Args &&...) noexcept : clock{clock} {
-    // this will register this task with clock
-    clock.schedule(std::coroutine_handle<ScheduledPromiseType>::from_promise(*this));
-  }
+SPECBOLT_EXPORT
+template<typename ReturnType>
+struct ScheduledPromiseType : ScheduledPromiseTypeBase {
+  ReturnType result;
 
-  // this will take just simple Tick with number of ticks
-  // and transform it into something we can await on
-  constexpr MaybeSuspend await_transform(const CycleCount t) noexcept {
-    tick_to_resume = clock.now() + t.count;
-    return MaybeSuspend{t.count == 0};
-  }
-
-  constexpr void return_void() noexcept {}
-  constexpr auto initial_suspend() noexcept { return std::suspend_always{}; }
+  constexpr void return_value(ReturnType type) noexcept { result = type; }
+  constexpr auto initial_suspend() noexcept { return std::suspend_never{}; }
   constexpr auto final_suspend() noexcept { return std::suspend_never{}; }
   constexpr void unhandled_exception() noexcept {}
   constexpr auto get_return_object() noexcept {
@@ -148,10 +155,11 @@ struct ScheduledPromiseType {
 
 
 SPECBOLT_EXPORT
+template<typename ReturnType>
 class Task {
 public:
   // ReSharper disable once CppNonExplicitConvertingConstructor
-  Task(const std::coroutine_handle<ScheduledPromiseType> h) noexcept : handle_{h} {}
+  Task(const std::coroutine_handle<ScheduledPromiseType<ReturnType>> h) noexcept : handle_{h} {}
   Task(const Task &) = delete;
   Task(Task &&) = delete;
   constexpr ~Task() noexcept {
@@ -159,23 +167,33 @@ public:
       handle_.destroy();
   }
 
+  using promise_type = ScheduledPromiseType<ReturnType>;
+
+  [[nodiscard]] constexpr bool await_ready() const noexcept { return handle_.done(); }
+  constexpr void await_suspend(std::coroutine_handle<>) noexcept {}
+  constexpr void await_resume() const noexcept {}
+
 private:
-  std::coroutine_handle<ScheduledPromiseType> handle_;
+  std::coroutine_handle<ScheduledPromiseType<ReturnType>> handle_;
 };
 
-inline void Clock::tick() {
-  for (auto &task: *this) {
-    if (task.promise().ready(now_)) {
-      task.resume();
-    }
+inline void Clock::run_tick() {
+  if (tasks_.empty()) {
+    ++now_;
+    return;
   }
-
+  now_ = tasks_.front().tick_to_resume;
+  while (!tasks_.empty() && tasks_.front().tick_to_resume == now_) {
+    auto coro = tasks_.front().handle;
+    tasks_.erase(tasks_.begin());
+    coro.resume();
+  }
   ++now_;
 }
 
-} // namespace specbolt
+constexpr void CycleAwait::await_suspend(std::coroutine_handle<> handle) noexcept {
+  clock.schedule(handle, this->ready_at);
+}
+constexpr bool CycleAwait::await_ready() const noexcept { return ready_at <= clock.now(); }
 
-template<typename... Args>
-struct std::coroutine_traits<specbolt::Task, Args...> {
-  using promise_type = specbolt::ScheduledPromiseType;
-};
+} // namespace specbolt

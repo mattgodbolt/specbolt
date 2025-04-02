@@ -2,6 +2,7 @@ ensure_catch2()
 
 add_executable(
         z80_v1_test
+        OpcodeTests.cpp
         DisassemblerTest.cpp)
 target_link_libraries(z80_v1_test z80_v1 Catch2::Catch2WithMain)
 
