@@ -9,12 +9,12 @@
 namespace specbolt::v2 {
 
 void Z80::execute_one() {
+  if (irq_pending_) [[unlikely]] {
+    handle_interrupt();
+  }
   if (halted_) [[unlikely]] {
     pass_time(1);
     return;
-  }
-  if (irq_pending_) [[unlikely]] {
-    handle_interrupt();
   }
 
   const auto opcode = read_opcode();

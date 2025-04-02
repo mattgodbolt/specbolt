@@ -4,6 +4,7 @@
 #include "peripherals/Audio.hpp"
 #include "peripherals/Keyboard.hpp"
 #include "peripherals/Memory.hpp"
+#include "peripherals/Tape.hpp"
 #include "peripherals/Video.hpp"
 
 #include "z80/common/Flags.hpp"
@@ -14,8 +15,8 @@
 #include <filesystem>
 #include <iostream>
 #include <print>
+#include <utility>
 #include <vector>
-
 #endif
 
 namespace specbolt {
@@ -64,9 +65,12 @@ public:
     }
     z80_.add_in_handler([this](const std::uint16_t port) { return keyboard_.in(port); });
     // Handler for ULA sound...
-    z80_.add_in_handler([](const std::uint16_t port) {
-      // TODO something with the EAR bit here...
-      return port & 1 ? std::nullopt : std::make_optional<std::uint8_t>(~(1 << 6));
+    z80_.add_in_handler([this](const std::uint16_t port) -> std::optional<std::uint8_t> {
+      if (port & 1)
+        return std::nullopt;
+      maybe_detect_loading();
+      const auto ear_bit = tape_.level() ? 0x40 : 0x00;
+      return std::make_optional<std::uint8_t>(~(1 << 6) | ear_bit);
     });
     reset();
   }
@@ -99,11 +103,26 @@ public:
 
   std::size_t run_frame() { return run_cycles(cycles_per_frame, false); }
 
-  [[nodiscard]] auto &z80(this auto &&self) { return self.z80_; }
-  [[nodiscard]] auto &video(this auto &self) { return self.video_; }
-  [[nodiscard]] auto &memory(this auto &self) { return self.memory_; }
-  [[nodiscard]] auto &keyboard(this auto &self) { return self.keyboard_; }
-  [[nodiscard]] auto &audio(this auto &self) { return self.audio_; }
+  [[nodiscard]] const auto &z80() const { return z80_; }
+  [[nodiscard]] const auto &video() const { return video_; }
+  [[nodiscard]] const auto &memory() const { return memory_; }
+  [[nodiscard]] const auto &keyboard() const { return keyboard_; }
+  [[nodiscard]] const auto &audio() const { return audio_; }
+
+  [[nodiscard]] auto &z80() { return z80_; }
+  [[nodiscard]] auto &video() { return video_; }
+  [[nodiscard]] auto &memory() { return memory_; }
+  [[nodiscard]] auto &keyboard() { return keyboard_; }
+  [[nodiscard]] auto &audio() { return audio_; }
+  [[nodiscard]] auto &tape(this auto &self) { return self.tape_; }
+
+  // TODO do not like, maybe make tape a Task
+  void play() {
+    tape_.play();
+    if (const auto next_transition = tape_.next_transition())
+      scheduler_.schedule(tape_task_, next_transition);
+  }
+  void stop() { tape_.stop(); }
 
   void trace_next(const std::size_t instructions) { trace_next_instructions_ = instructions; }
 
@@ -132,6 +151,7 @@ public:
 private:
   Memory memory_;
   Video video_;
+  Tape tape_;
   Audio audio_;
   Keyboard keyboard_;
   Scheduler scheduler_;
@@ -140,10 +160,9 @@ private:
   std::size_t last_traced_instr_cycle_count_{};
   Variant variant_;
 
-
   struct VideoTask final : Scheduler::Task {
     Spectrum &spectrum;
-    explicit VideoTask(Spectrum &spectrum) : spectrum(spectrum) { spectrum.scheduler_.schedule(*this, 0); }
+    explicit VideoTask(Spectrum &spectrum_) : spectrum(spectrum_) { spectrum.scheduler_.schedule(*this, 0); }
     void run(std::size_t) override { spectrum.video_line(); }
   };
   VideoTask video_task_{*this};
@@ -152,6 +171,51 @@ private:
       z80_.interrupt();
     scheduler_.schedule(video_task_, Video::CyclesPerScanLine);
   }
+
+  struct TapeTask final : Scheduler::Task {
+    Spectrum &spectrum;
+    std::size_t last_time_{};
+    explicit TapeTask(Spectrum &spectrum) : spectrum(spectrum) {}
+    void run(const std::size_t cycles) override {
+      spectrum.tape_.pass_time(cycles - last_time_);
+      last_time_ = cycles; // ugh
+      spectrum.audio_.set_tape_input(cycles, spectrum.tape_.level());
+      if (const auto next_transition = spectrum.tape_.next_transition())
+        spectrum.scheduler_.schedule(*this, next_transition);
+    }
+  };
+  TapeTask tape_task_{*this};
+
+  // TODO something nicer
+  std::size_t last_detect_{};
+  std::uint8_t last_b_read_{};
+  std::size_t reads_in_a_row_{};
+  void maybe_detect_loading() {
+    // With thanks to fuse for this heuristic
+    const auto since_last = z80_.cycle_count() - last_detect_;
+    const auto b_diff = static_cast<std::uint8_t>(z80_.regs().get(RegisterFile::R8::B) - last_b_read_);
+    last_detect_ = z80_.cycle_count();
+    last_b_read_ = z80_.regs().get(RegisterFile::R8::B);
+    if (tape_.playing()) {
+      if (since_last > 1000 || (b_diff != 1 && b_diff != 0 && b_diff != 0xff)) {
+        if (++reads_in_a_row_ >= 2)
+          stop();
+      }
+      else {
+        reads_in_a_row_ = 0;
+      }
+    }
+    else {
+      if (since_last <= 500 && (b_diff == 1 || b_diff == 0xff)) {
+        if (++reads_in_a_row_ >= 10)
+          play();
+      }
+      else {
+        reads_in_a_row_ = 0;
+      }
+    }
+  }
+  // END TODO
 
   static constexpr std::size_t RegHistory = 8uz;
   std::array<RegisterFile, RegHistory> reg_history_{};
@@ -162,24 +226,28 @@ private:
     switch (variant) {
       case Variant::Spectrum48: return 3 + rom_pages_for(variant);
       case Variant::Spectrum128: return 8 + rom_pages_for(variant);
+      default: std::unreachable();
     }
   }
   static constexpr auto rom_pages_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return 1;
       case Variant::Spectrum128: return 2;
+      default: std::unreachable();
     }
   }
   static constexpr std::uint8_t rom_base_page_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return 0;
       case Variant::Spectrum128: return 8;
+      default: std::unreachable();
     }
   }
   static constexpr std::array<std::uint8_t, 4> page_table_for(const Variant variant) {
     switch (variant) {
       case Variant::Spectrum48: return {0, 1, 2, 3};
       case Variant::Spectrum128: return {8, 5, 2, 0};
+      default: std::unreachable();
     }
   }
 };

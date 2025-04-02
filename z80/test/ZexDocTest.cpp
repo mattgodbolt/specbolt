@@ -3,11 +3,13 @@
 #ifdef SPECBOLT_MODULES
 import z80_v1;
 import z80_v2;
+import z80_v3;
 import z80_common;
 #else
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
+#include "z80/v3/Z80.hpp"
 #endif
 
 #include <filesystem>
@@ -60,7 +62,7 @@ struct ZexDocTest {
   std::uint64_t dump_instructions = 0;
   int skip = 0;
   bool need_help{};
-  bool new_impl{};
+  int impl{1};
 
   template<typename DUT>
   int run_test() {
@@ -143,7 +145,7 @@ struct ZexDocTest {
                      | lyra::help(need_help) //
                      | lyra::opt(dump_instructions, "NUM")["-d"]["--dump-instructions"](
                            "Dump the first NUM instructions, then exit.") //
-                     | lyra::opt(new_impl)["--new-impl"]("Use new implementation.") //
+                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.") //
                      | lyra::opt(skip, "NUM")["-s"]["--skip"]("Skip the first NUM tests.");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
@@ -153,9 +155,14 @@ struct ZexDocTest {
       std::cout << cli << '\n';
       return 0;
     }
-    if (new_impl)
-      return run_test<v2::Z80>();
-    return run_test<v1::Z80>();
+    switch (impl) {
+      case 1: return run_test<v1::Z80>();
+      case 2: return run_test<v2::Z80>();
+      case 3: return run_test<v3::Z80>();
+      default: break;
+    }
+    std::print(std::cerr, "Bad implementation {}\n", impl);
+    return 1;
   }
 };
 

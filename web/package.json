@@ -6,6 +6,10 @@
   },
   "dependencies": {
     "@bjorn3/browser_wasi_shim": "^0.4.1",
-    "vite": "^6.2.2"
+    "lodash": "^4.17.21",
+    "vite": "^6.2.4"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.16"
   }
 }

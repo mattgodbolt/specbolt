@@ -22,19 +22,18 @@ if (SPECBOLT_MODULES)
             module.cppm
     )
 else ()
-  target_include_directories(z80_v1 PUBLIC include)
+    target_include_directories(z80_v1 PUBLIC include)
 
-  target_sources(z80_v1 PRIVATE
-          Disassembler.cpp
-          Instruction.cpp
-          Decoder.cpp
-          Decoder.hpp
-          Z80.cpp
-  )
-  # you can also have private headers not accessible from outside, later you can use sets to change it nicely to modules
-  target_sources(z80_v1 PUBLIC FILE_SET interface TYPE HEADERS FILES
-          include/z80/v1/Disassembler.hpp
-          include/z80/v1/Instruction.hpp
-          include/z80/v1/Z80.hpp
-  )
+    target_sources(z80_v1 PRIVATE
+            Disassembler.cpp
+            Instruction.cpp
+            Decoder.cpp
+            Decoder.hpp
+            Z80.cpp
+    )
+    target_sources(z80_v1 PUBLIC FILE_SET interface TYPE HEADERS FILES
+            include/z80/v1/Disassembler.hpp
+            include/z80/v1/Instruction.hpp
+            include/z80/v1/Z80.hpp
+    )
 endif ()

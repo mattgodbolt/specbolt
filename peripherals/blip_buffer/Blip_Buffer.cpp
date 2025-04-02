@@ -141,7 +141,7 @@ void Blip_Buffer::remove_samples(const unsigned long count) {
 
 // Blip_Synth_
 
-Blip_Synth_::Blip_Synth_(short *impulses, const int width) : impulses(impulses), width(width) {
+Blip_Synth_::Blip_Synth_(short *impulses_, const int width_) : impulses(impulses_), width(width_) {
   volume_unit_ = 0.0;
   kernel_unit = 0;
   buf = nullptr;

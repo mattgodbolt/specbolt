@@ -170,8 +170,8 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto result = cpu.in(input.rhs);
       const auto flags = std::holds_alternative<NoFlags>(args)
                              ? input.flags
-                             : input.flags & Flags::Carry() | Alu::parity_flags_for(result);
-      return {result, flags, static_cast<std::uint8_t>(4 + (rhs == Operand::ByteImmediate_A ? 3 : 0))};
+                             : (input.flags & Flags::Carry()) | Alu::parity_flags_for(result);
+      return {result, flags, static_cast<std::uint8_t>(4u + (rhs == Operand::ByteImmediate_A ? 3u : 0))};
     }
     case Operation::Exx: cpu.regs().exx(); return {0, input.flags, 0};
     case Operation::Exchange: {
@@ -214,7 +214,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
           const auto byte = cpu.memory().read(hl);
           // bits 3 and 5 come from the weird value of "byte read + A", where bit 3 goes to flag 5, and bit 1 to flag 3.
           const auto flag_bits = static_cast<std::uint8_t>(byte + cpu.regs().get(RegisterFile::R8::A));
-          flags = flags & ~(Flags::Flag3() | Flags::Flag5()) | //
+          flags = (flags & ~(Flags::Flag3() | Flags::Flag5())) | //
                   (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | //
                   (flag_bits & 0x02 ? Flags::Flag5() : Flags());
           cpu.memory().write(de, byte);
@@ -227,11 +227,11 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
           // set we use res--....
           const auto flag_bits =
               subtract_result.flags.half_carry() ? subtract_result.result - 1 : subtract_result.result;
-          flags = flags & ~(Flags::Flag3() | Flags::Flag5()) | //
+          flags = (flags & ~(Flags::Flag3() | Flags::Flag5())) | //
                   (flag_bits & 0x08 ? Flags::Flag3() : Flags()) | //
                   (flag_bits & 0x02 ? Flags::Flag5() : Flags());
           constexpr auto flags_to_copy = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
-          flags = flags & ~flags_to_copy | subtract_result.flags & flags_to_copy;
+          flags = (flags & ~flags_to_copy) | (subtract_result.flags & flags_to_copy);
           if (flags.zero())
             should_continue = false;
           break;
@@ -304,7 +304,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | (input.lhs & 0xf));
       cpu.regs().set(RegisterFile::R8::A, new_a);
       return {static_cast<std::uint16_t>(input.lhs >> 4 | ((prev_a & 0xf) << 4)),
-          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 10};
+          (input.flags & Flags::Carry()) | Alu::parity_flags_for(new_a), 10};
     }
 
     case Operation::Rld: {
@@ -312,7 +312,7 @@ Instruction::Output Instruction::apply(const Input input, Z80 &cpu) const {
       const auto new_a = static_cast<std::uint8_t>((prev_a & 0xf0) | ((input.lhs >> 4) & 0xf));
       cpu.regs().set(RegisterFile::R8::A, new_a);
       return {static_cast<std::uint16_t>(input.lhs << 4 | (prev_a & 0xf)),
-          input.flags & Flags::Carry() | Alu::parity_flags_for(new_a), 10};
+          (input.flags & Flags::Carry()) | Alu::parity_flags_for(new_a), 10};
     }
 
     case Operation::Shift: {

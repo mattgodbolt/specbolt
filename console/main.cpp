@@ -1,4 +1,5 @@
 #include <csignal>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <functional>
@@ -21,14 +22,16 @@ import peripherals;
 import spectrum;
 import z80_v1;
 import z80_v2;
+import z80_v3;
 #else
 #include "peripherals/Memory.hpp"
-#include "peripherals/Video.hpp"
+#include "spectrum/Assets.hpp"
 #include "spectrum/Snapshot.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v1/Disassembler.hpp"
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
+#include "z80/v3/Z80.hpp"
 #endif
 
 namespace {
@@ -65,7 +68,8 @@ struct App final : AppBase {
   }
 
   explicit App(specbolt::Variant variant) :
-      spectrum(variant, variant == specbolt::Variant::Spectrum128 ? "assets/128.rom" : "assets/48.rom", 48'000),
+      spectrum(variant, specbolt::get_asset_dir() / (variant == specbolt::Variant::Spectrum128 ? "128.rom" : "48.rom"),
+          48'000),
       dis(spectrum.memory()) {
     self() = this;
     commands["help"] = [this](const std::vector<std::string> &) {
@@ -138,16 +142,16 @@ struct App final : AppBase {
     rl_attempted_completion_function = [](const char *text, const int start, int) -> char ** {
       if (start != 0)
         return nullptr;
-      return rl_completion_matches(text, [](const char *text, const int state) -> char * {
+      return rl_completion_matches(text, [](const char *text_, const int state_) -> char * {
         if (!self())
           return nullptr;
         static typename decltype(commands)::iterator the_iterator;
-        if (state == 0)
+        if (state_ == 0)
           the_iterator = std::begin(self()->commands);
         while (the_iterator != std::end(self()->commands)) {
           auto &command = the_iterator->first;
           ++the_iterator;
-          if (command.contains(text))
+          if (command.contains(text_))
             return strdup(command.c_str());
         }
         return nullptr;
@@ -288,13 +292,13 @@ int main(int argc, const char **argv) try {
   std::vector<std::string> exec_on_startup;
   bool spec128{};
   bool need_help{};
-  bool new_impl{};
+  int impl{1};
   std::filesystem::path snapshot;
 
   const auto cli = lyra::cli() | //
                    lyra::help(need_help) //
                    | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
-                   | lyra::opt(new_impl)["--new-impl"]("Use new implementation") //
+                   | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.") //
                    | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup") |
                    lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
 
@@ -309,10 +313,15 @@ int main(int argc, const char **argv) try {
 
   const auto variant = spec128 ? specbolt::Variant::Spectrum128 : specbolt::Variant::Spectrum48;
   std::unique_ptr<AppBase> app;
-  if (new_impl)
-    app = std::make_unique<App<specbolt::v2::Z80>>(variant);
-  else
-    app = std::make_unique<App<specbolt::v1::Z80>>(variant);
+  switch (impl) {
+    case 1: app = std::make_unique<App<specbolt::v1::Z80>>(variant); break;
+    case 2: app = std::make_unique<App<specbolt::v2::Z80>>(variant); break;
+    case 3: app = std::make_unique<App<specbolt::v3::Z80>>(variant); break;
+    default: {
+      std::print(std::cerr, "Bad implementation {}\n", impl);
+      return 1;
+    }
+  }
 
   sigset_t blocked_signals{};
   // todo check errors etc. extract?

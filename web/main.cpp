@@ -74,6 +74,11 @@ extern "C" [[clang::export_name("load_snapshot")]] void load_snapshot(WebSpectru
   specbolt::Snapshot::load(name, ws.spectrum.z80());
 }
 
+extern "C" [[clang::export_name("load_tape")]] void load_tape(WebSpectrum &ws, const char *name) {
+  std::print(std::cout, "Loading tape '{}'\n", name);
+  ws.spectrum.tape().load(name);
+}
+
 extern "C" [[clang::export_name("alloc_bytes")]] char *alloc_bytes(const size_t length) { return new char[length]; }
 extern "C" [[clang::export_name("free_bytes")]] void free_bytes(const char *s) { delete[] s; }
 

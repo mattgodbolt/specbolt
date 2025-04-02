@@ -8,17 +8,16 @@
 
 #include "z80/common/include/z80/common/Scheduler.hpp"
 
-
 namespace specbolt::v1 {
 
 Task Z80::execute() {
   for (;;) {
+    if (irq_pending_) [[unlikely]] {
+      handle_interrupt();
+    }
     if (halted_) [[unlikely]] {
       co_await CycleCount{1};
       continue;
-    }
-    if (irq_pending_) [[unlikely]] {
-      handle_interrupt();
     }
 
     regs_.r(regs_.r() + 1);

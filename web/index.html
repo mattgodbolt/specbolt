@@ -46,6 +46,19 @@
             text-align: center;
         }
 
+        .top-menu {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: #777;
+            border-radius: 4px;
+            padding: 4px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            width: auto;
+            font-size: small;
+        }
+
         .stats {
             position: absolute;
             top: 0;
@@ -59,12 +72,44 @@
             width: auto;
             font-size: small;
         }
+
+        dialog {
+            background-color: #777;
+            border-radius: 4px;
+            padding: 20px;
+        }
+
+        .game-finder {
+            width: 30%;
+        }
+
+        .search-results {
+            margin-top: 40px;
+            background-color: #666;
+            overflow-y: scroll;
+            max-height: 20em;
+        }
+
+        .search-result {
+            background-color: aliceblue;
+            padding-left: 4em;
+            padding-right: 4em;
+            height: 2em;
+        }
+
+        ::backdrop {
+            background-color: #333;
+            opacity: 0.75;
+        }
     </style>
 </head>
 <body>
 <canvas id="spectrum"></canvas>
 <div id="warning" class="warning" hidden>Warning</div>
-<script type="module" src="main.js"></script>
+<script type="module" src="main.ts"></script>
+<div class="top-menu">
+    <button class="load-game-button">Load game</button>
+</div>
 <div class="stats">
     Effective speed: <span id="effective-mhz"></span><br>
     Current FPS: <span id="current-fps"></span><br>
@@ -74,5 +119,18 @@
     Games are &copy; their respective authors.<br>
     Project source code is available on <a href="https://github.com/mattgodbolt/specbolt">GitHub</a>.
 </div>
+<dialog class="game-finder">
+    <h2>Load Game</h2>
+    <form method="dialog">
+        <label>Search:<input type="text" class="search-input"></label>
+    </form>
+    <div class="search-results">
+        <template>
+            <div class="search-result">
+                <a href="" class="description">Jet Set Willy</a>
+            </div>
+        </template>
+    </div>
+</dialog>
 </body>
 </html>

@@ -74,9 +74,9 @@ std::optional<std::uint8_t> Keyboard::in(const std::uint16_t address) const {
     return std::nullopt;
 
   std::uint8_t keys = 0xff;
-  const std::uint8_t res = address >> 8;
+  const std::uint8_t res = static_cast<std::uint8_t>(address >> 8u);
   // The low bit in the top address picks the row. In the presence of multiple low bits, the results "and" together.
-  for (std::size_t row = 0; row < 8; ++row)
+  for (std::size_t row = 0; row < 8u; ++row)
     if ((res & (1 << row)) == 0)
       keys &= static_cast<std::uint8_t>(keys_[row].to_ulong() ^ 0xff);
 

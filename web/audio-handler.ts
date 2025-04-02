@@ -1,22 +1,26 @@
+// @ts-ignore
 import rendererUrl from "./fifo-audio.js?url";
 
-function warn(elem, message) {
+function warn(elem: HTMLElement, message?: string) {
     if (message) {
         elem.innerHTML = message;
         elem.removeAttribute("hidden");
     } else {
-        elem.setAttribute("hidden", true);
+        elem.setAttribute("hidden", "");
     }
 }
 
 export class AudioHandler {
-    constructor(warningNode, sampleRate) {
+    private readonly warningNode: HTMLElement;
+    private readonly audioContext: AudioContext | null;
+    private _jsAudioNode: AudioWorkletNode | null;
+    private _audioDestination: AudioDestinationNode;
+
+    constructor(warningNode: HTMLElement, sampleRate: number) {
         this.warningNode = warningNode;
         this.warningNode.addEventListener("mousedown", () => this.tryResume());
 
-        this.audioContext = typeof AudioContext !== "undefined"         ? new AudioContext({sampleRate})
-                            : typeof webkitAudioContext !== "undefined" ? new webkitAudioContext()
-                                                                        : null;
+        this.audioContext = new AudioContext({sampleRate});
         this._jsAudioNode = null;
         if (this.audioContext && this.audioContext.audioWorklet) {
             console.log("Audio constructed ok");
@@ -25,12 +29,12 @@ export class AudioHandler {
         } else if (this.audioContext && !this.audioContext.audioWorklet) {
             this.audioContext = null;
             console.log("Unable to initialise audio: no audio worklet API");
-            const localhost = new URL(window.location);
+            const localhost = new URL(window.location.toString());
             localhost.hostname = "localhost";
             warn(
                 warningNode,
                 `No audio worklet API was found - there will be no audio.
-                    If you are running a local jsbeeb, you must either use a host of
+                    If you are running a local specbolt, you must either use a host of
                     <a href="${localhost}">localhost</a>,
                     or serve the content over <em>https</em>.`,
             );
@@ -51,9 +55,9 @@ export class AudioHandler {
         console.log("Audio initialised")
     }
 
-    postAudio(buffer) {
+    postAudio(buffer: Int16Array) {
         if (this._jsAudioNode)
-            this._jsAudioNode.port.postMessage({time : Date.now(), buffer});
+            this._jsAudioNode.port.postMessage({time: Date.now(), buffer});
     }
 
     async tryResume() {
@@ -71,7 +75,7 @@ export class AudioHandler {
             warn(this.warningNode, "Your browser has suspended audio. Click here to resume.");
         }
         if (this.audioContext.state === "running") {
-            warn(this.warningNode, false);
+            warn(this.warningNode, undefined);
         }
     }
 }

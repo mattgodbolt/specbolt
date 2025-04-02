@@ -14,18 +14,24 @@ if (SPECBOLT_WASM)
 endif ()
 
 if (SPECBOLT_MODULES)
+    set(CMAKE_CXX_SCAN_FOR_MODULES ON)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
     set(CMAKE_CXX_STANDARD 26)
     add_compile_definitions(SPECBOLT_MODULES SPECBOLT_EXPORT=export)
 else ()
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
     add_compile_definitions(SPECBOLT_EXPORT=)
 endif ()
 
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
-add_link_options("-fuse-ld=lld")
-
 project(specbolt VERSION 0.1 LANGUAGES CXX)
+
+try_compile(CAN_USE_LLD SOURCE_FROM_CONTENT "test.cpp" "int main() { }" LINK_OPTIONS "-fuse-ld=lld")
+
+if (CAN_USE_LLD)
+    add_link_options("-fuse-ld=lld")
+endif ()
 
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -37,6 +43,11 @@ include(pedantic-and-modern)
 if (NOT SPECBOLT_WASM)
     find_package(SDL2 REQUIRED)
 endif ()
+
+find_program(CCACHE ccache)
+if(CCACHE)
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE}")
+endif()
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)

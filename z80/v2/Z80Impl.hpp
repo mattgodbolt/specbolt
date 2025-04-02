@@ -111,10 +111,16 @@ struct OperandGetSetter<6, hl_set, no_remap_ixiy_8b> {
   constexpr static void set(Z80 &z80, const std::uint8_t value) { z80.write(z80.regs().wz(), value); }
 };
 
+#if __cpp_deleted_function
+#define SPECBOLT_DELETE_REASON(text) delete (text)
+#else
+#define SPECBOLT_DELETE_REASON(text) delete
+#endif
+
 template<HlSet hl_set, bool no_remap_ixiy_8b>
 struct OperandGetSetter<8, hl_set, no_remap_ixiy_8b> {
   constexpr static std::uint8_t get(Z80 &z80) { return z80.read_immediate(); };
-  constexpr static void set(Z80 &z80, std::uint8_t) = delete("Cannot set immediate value");
+  constexpr static void set(Z80 &z80, std::uint8_t) = SPECBOLT_DELETE_REASON("Cannot set immediate value");
 };
 
 template<std::uint8_t y, HlSet hl_set, bool no_remap_ixiy_8b = false>
@@ -128,7 +134,7 @@ constexpr void set_r(Z80 &z80, const std::uint8_t value) {
 
 constexpr std::array cc_names = {"nz", "z", "nc", "c", "po", "pe", "p", "m"};
 template<std::uint8_t>
-inline bool cc_check(Flags flags) = delete("invalid condition code");
+inline bool cc_check(Flags flags) = SPECBOLT_DELETE_REASON("invalid condition code");
 template<>
 inline bool cc_check<0>(const Flags flags) {
   return !flags.zero();
@@ -170,7 +176,7 @@ struct Nop {
 
 template<std::uint8_t p, HlSet hl_set>
 struct Load16ImmOp {
-  using TableRp = TableRp<hl_set>;
+  using TableRp = impl::TableRp<hl_set>;
   static constexpr Mnemonic mnemonic{"ld "s + TableRp::names[p] + ", $nnnn"};
   static constexpr bool indirect = false;
 
@@ -198,9 +204,9 @@ struct Opcode {
   std::uint8_t q;
   HlSet hl_set;
 
-  explicit constexpr Opcode(const std::size_t opcode, const HlSet hl_set) :
+  explicit constexpr Opcode(const std::size_t opcode, const HlSet hl_set_) :
       x(static_cast<std::uint8_t>(opcode) >> 6), y((static_cast<std::uint8_t>(opcode) >> 3) & 0x7),
-      z(static_cast<std::uint8_t>(opcode) & 0x7), p(y >> 1), q(y & 1), hl_set(hl_set) {
+      z(static_cast<std::uint8_t>(opcode) & 0x7), p(y >> 1), q(y & 1), hl_set(hl_set_) {
     if (opcode >= 0x100)
       throw std::runtime_error("Bad opcode");
   }
@@ -212,7 +218,7 @@ struct Opcode {
 
 template<Opcode>
 struct MissingInstruction {
-  MissingInstruction() = delete("Instruction not defined");
+  MissingInstruction() = SPECBOLT_DELETE_REASON("Instruction not defined");
 };
 
 struct InvalidInstruction {
@@ -489,7 +495,7 @@ constexpr auto instruction<opcode> = AluOp<"cp", opcode,
     [](const std::uint8_t lhs, const std::uint8_t rhs, const Flags) { return Alu::cmp8(lhs, rhs); }>{};
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// X = 3 (some alu ops are definewd in X = 1 above)
+// X = 3 (some alu ops are defined in X = 1 above)
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 0)
 constexpr auto instruction<opcode> = Op<"ret "s + cc_names[opcode.y], [](Z80 &z80) {
@@ -912,7 +918,7 @@ constexpr auto ed_instruction<opcode> = Op<"rld", [](Z80 &z80) {
 template<bool increment, bool repeat>
 struct BlockLoadOp {
   static constexpr Mnemonic mnemonic{"ld"s + (increment ? "i" : "d") + (repeat ? "r" : "")};
-  static void execute(Z80 &z80) {
+  static constexpr void execute(Z80 &z80) {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
     z80.regs().set(RegisterFile::R16::HL, hl + add);
@@ -947,7 +953,7 @@ constexpr auto ed_instruction<opcode> =
 template<bool increment, bool repeat>
 struct BlockCompareOp {
   static constexpr Mnemonic mnemonic{"cp"s + (increment ? "i" : "d") + (repeat ? "r" : "")};
-  static void execute(Z80 &z80) {
+  static constexpr void execute(Z80 &z80) {
     constexpr std::uint16_t add = increment ? 0x0001 : 0xffff;
     const auto hl = z80.regs().get(RegisterFile::R16::HL);
     z80.regs().set(RegisterFile::R16::HL, hl + add);
@@ -997,7 +1003,7 @@ constexpr auto ed_instruction<opcode> = InvalidInstruction{};
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 template<typename SelectInstruction, typename Transform, HlSet hl_set>
-constexpr auto generic_table = []<std::size_t... num>(std::index_sequence<num...>) {
+constexpr auto generic_table = []<std::size_t... num>(std::index_sequence<num...>) consteval {
   return std::array{Transform::template result<SelectInstruction::template value<Opcode{num, hl_set}>>...};
 }(std::make_index_sequence<256>());
 
@@ -1016,28 +1022,30 @@ struct select_cb_instruction {
   static constexpr auto value = cb_instruction<opcode>;
 };
 
+using execute_ptr_t = void (*)(Z80 &);
+
 template<typename T>
-concept OpLike = requires(T t) {
-  { t.mnemonic } -> std::same_as<const Mnemonic &>;
-  { t.execute } -> std::invocable<Z80 &>;
+concept OpLike = requires(T t, Z80 &z80) {
+  { T::mnemonic } -> std::same_as<const Mnemonic &>;
+  { T::execute(z80) };
 };
 
 template<typename T>
 concept BaseOpLike = OpLike<T> && requires(T t) {
-  { t.indirect } -> std::convertible_to<bool>;
+  { T::indirect } -> std::convertible_to<bool>;
 };
 
 struct build_description {
   template<auto op>
     requires OpLike<decltype(op)>
-  static constexpr auto result = op.mnemonic.view();
+  static constexpr auto result = decltype(op)::mnemonic.view();
 };
 
 struct build_execute {
   template<auto op>
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
-    op.execute(z80);
+    decltype(op)::execute(z80);
   }
 };
 
@@ -1046,7 +1054,7 @@ struct build_execute_ixiy {
   template<auto op>
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
-    if constexpr (op.indirect) {
+    if constexpr (decltype(op)::indirect) {
       const auto address =
           static_cast<std::uint16_t>(z80.regs().get(ix_or_iy) + static_cast<std::int8_t>(z80.read_immediate()));
       // TODO we don't model the fetching of immediates correctly here ld (ix+d), nn but this gets the timing right.
@@ -1063,7 +1071,7 @@ struct build_execute_hl {
   template<auto op>
     requires OpLike<decltype(op)>
   static void result(Z80 &z80) {
-    if constexpr (op.indirect) {
+    if constexpr (decltype(op)::indirect) {
       z80.regs().wz(z80.regs().get(RegisterFile::R16::HL));
     }
     op.execute(z80);

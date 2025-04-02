@@ -1,0 +1,113 @@
+#ifndef SPECBOLT_MODULES
+#include "z80/v3/Z80.hpp"
+
+#include <iostream>
+#include <stdexcept>
+#endif
+
+namespace specbolt::v3 {
+
+void Z80::execute_one() {
+  if (irq_pending_) [[unlikely]] {
+    handle_interrupt();
+  }
+  if (halted_) [[unlikely]] {
+    pass_time(1);
+    return;
+  }
+
+  execute_one_base();
+}
+
+void Z80::branch(const std::int8_t offset) { regs_.pc(static_cast<std::uint16_t>(regs_.pc() + offset)); }
+
+std::uint8_t Z80::read_opcode() {
+  const auto opcode = read_immediate();
+  // One cycle refresh.
+  regs_.r((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f));
+  pass_time(1);
+  return opcode;
+}
+
+
+std::uint8_t Z80::read_immediate() {
+  pass_time(3);
+  const auto addr = regs_.pc();
+  regs_.pc(addr + 1);
+  return memory_.read(addr);
+}
+
+std::uint16_t Z80::read_immediate16() {
+  const auto low = read_immediate();
+  const auto high = read_immediate();
+  return static_cast<std::uint16_t>(high << 8 | low);
+}
+
+void Z80::write(const std::uint16_t address, const std::uint8_t byte) {
+  pass_time(3);
+  memory_.write(address, byte);
+}
+
+std::uint8_t Z80::read(const std::uint16_t address) {
+  pass_time(3);
+  return memory_.read(address);
+}
+
+std::uint8_t Z80::pop8() {
+  const auto value = read(regs_.sp());
+  regs_.sp(regs_.sp() + 1);
+  return value;
+}
+
+std::uint16_t Z80::pop16() {
+  const auto low = pop8();
+  const auto high = pop8();
+  return static_cast<std::uint16_t>(high << 8 | low);
+}
+
+void Z80::push8(const std::uint8_t value) {
+  regs_.sp(regs_.sp() - 1);
+  write(regs_.sp(), value);
+}
+
+void Z80::push16(const std::uint16_t value) {
+  push8(static_cast<std::uint8_t>(value >> 8));
+  push8(static_cast<std::uint8_t>(value));
+}
+
+void Z80::handle_interrupt() {
+  irq_pending_ = false;
+  if (!iff1_)
+    return;
+  // Some dark business with parity flag here ignored.
+  if (halted_) {
+    halted_ = false;
+    regs_.pc(regs_.pc() + 1);
+  }
+  iff1_ = iff2_ = false;
+  pass_time(7);
+  regs_.sp(regs_.sp() - 2);
+  memory_.write16(regs_.sp(), regs_.pc());
+  switch (irq_mode_) {
+    case 0:
+    case 1: regs_.pc(0x38); break;
+    case 2: {
+      // Assume the bus is at 0xff.
+      const auto addr = static_cast<std::uint16_t>(0xff | (regs_.i() << 8));
+      regs_.pc(memory_.read16(addr));
+      break;
+    }
+    default: throw std::runtime_error("Inconceivable");
+  }
+}
+
+bool Z80::check_nz() const { return !flags().zero(); }
+bool Z80::check_z() const { return flags().zero(); }
+bool Z80::check_nc() const { return !flags().carry(); }
+bool Z80::check_c() const { return flags().carry(); }
+bool Z80::check_po() const { return !flags().parity(); }
+bool Z80::check_pe() const { return flags().parity(); }
+bool Z80::check_p() const { return !flags().sign(); }
+bool Z80::check_m() const { return flags().sign(); }
+
+} // namespace specbolt::v3
