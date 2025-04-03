@@ -4,6 +4,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <print>
 
 #include <lyra/lyra.hpp>
@@ -136,12 +137,12 @@ struct SdlApp {
     bool quit = false;
     bool z80_running{true};
 
-    // Initialize the heatmap renderer
-    HeatmapRenderer heatmap_renderer;
+    // Only create the heatmap renderer if enabled
+    std::optional<HeatmapRenderer> heatmap_renderer;
     if (enable_heatmap) {
-      heatmap_renderer.connect();
-      heatmap_renderer.toggle_heatmap();
-      std::println("Memory heatmap enabled. Controls: F2-toggle, F3-mode, F4-color scheme, F5/F6-opacity, F7-reset");
+      // Use emplace to construct the object in-place
+      // Constructor will handle connecting and enabling
+      heatmap_renderer.emplace();
     }
 
     auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
@@ -155,8 +156,8 @@ struct SdlApp {
         switch (sdl_event.type) {
           case SDL_QUIT: quit = true; break;
           case SDL_KEYDOWN: {
-            // Pass keyboard events to the heatmap renderer first
-            if (heatmap_renderer.process_key(sdl_event.key.keysym.sym)) {
+            // Pass keyboard events to the heatmap renderer first if it exists
+            if (heatmap_renderer && heatmap_renderer->process_key(sdl_event.key.keysym.sym)) {
               break;
             }
 
@@ -215,9 +216,11 @@ struct SdlApp {
         SDL_RenderClear(renderer.get());
         SDL_RenderCopy(renderer.get(), texture.get(), nullptr, &dest_rect);
 
-        // Update and render the memory heatmap overlay
-        heatmap_renderer.update();
-        heatmap_renderer.render(renderer.get(), dest_rect);
+        // Update and render the memory heatmap overlay if it exists
+        if (heatmap_renderer) {
+          heatmap_renderer->update();
+          heatmap_renderer->render(renderer.get(), dest_rect);
+        }
 
         SDL_RenderPresent(renderer.get());
         next_display_frame += video_delay;

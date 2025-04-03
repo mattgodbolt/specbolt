@@ -12,10 +12,11 @@ namespace specbolt {
 // Class that connects the memory access tracing to the heatmap visualization
 class HeatmapRenderer {
 public:
+  // Constructor now connects to memory tracing automatically
   HeatmapRenderer();
   ~HeatmapRenderer();
 
-  // Setup connections to memory tracing
+  // Setup connections to memory tracing - now called from constructor
   void connect();
   void disconnect();
 

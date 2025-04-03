@@ -5,7 +5,15 @@
 
 namespace specbolt {
 
-HeatmapRenderer::HeatmapRenderer() : last_decay_time_(std::chrono::high_resolution_clock::now()) {}
+HeatmapRenderer::HeatmapRenderer() : last_decay_time_(std::chrono::high_resolution_clock::now()) {
+  // Connect to memory tracing automatically when created
+  connect();
+
+  // Enable heatmap by default when created
+  toggle_heatmap();
+
+  std::println("Memory heatmap enabled. Controls: F2-toggle, F3-mode, F4-color scheme, F5/F6-opacity, F7-reset");
+}
 
 HeatmapRenderer::~HeatmapRenderer() { disconnect(); }
 
