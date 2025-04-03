@@ -1,6 +1,6 @@
-# SpecBolt Integration Patterns
+# specbolt Integration Patterns
 
-This document outlines patterns for extending and integrating with SpecBolt components. Following these patterns ensures consistent architecture and maintainable code.
+This document outlines patterns for extending and integrating with specbolt components. Following these patterns ensures consistent architecture and maintainable code.
 
 ## Table of Contents
 1. [Observer Pattern](#observer-pattern)
@@ -12,7 +12,7 @@ This document outlines patterns for extending and integrating with SpecBolt comp
 
 ## Observer Pattern
 
-The primary integration pattern in SpecBolt is the observer pattern, allowing components to subscribe to events from other components.
+The primary integration pattern in specbolt is the observer pattern, allowing components to subscribe to events from other components.
 
 ### Memory Access Listener
 
@@ -96,7 +96,7 @@ public:
 
 ## Frontend Integration
 
-SpecBolt supports multiple frontends (SDL, Console, Web). To add a new frontend:
+specbolt supports multiple frontends (SDL, Console, Web). To add a new frontend:
 
 ### Frontend Structure
 
@@ -206,7 +206,7 @@ private:
 2. Provide interactive controls for configuration
 3. Use consistent initialization patterns
 4. Support enable/disable functionality
-5. Follow SpecBolt naming conventions
+5. Follow specbolt naming conventions
 
 ## File Format Support
 

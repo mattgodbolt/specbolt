@@ -1,10 +1,10 @@
-# SpecBolt ZX Spectrum Emulator [![specbolt CI](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml)
+# specbolt ZX Spectrum Emulator [![specbolt CI](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml)
 
-A modern C++23 ZX Spectrum emulator with a focus on clean architecture and educational value. SpecBolt demonstrates the power of modern C++ features including modules and std::ranges while emulating the iconic 8-bit computer.
+A modern C++23 ZX Spectrum emulator with a focus on clean architecture and educational value. specbolt demonstrates the power of modern C++ features including modules and std::ranges while emulating the iconic 8-bit computer.
 
 ## Project Overview
 
-SpecBolt is structured into several key components:
+specbolt is structured into several key components:
 
 - **Z80 CPU Emulation** - Multiple implementations showcasing different architectural approaches
 - **Memory and Peripherals** - Clean abstractions for ZX Spectrum hardware components

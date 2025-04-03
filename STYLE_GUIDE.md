@@ -1,6 +1,6 @@
-# SpecBolt C++ Style Guide
+# specbolt C++ Style Guide
 
-This document outlines the C++ coding standards and best practices for the SpecBolt project. Following these guidelines ensures code consistency, readability, and maintainability across the codebase.
+This document outlines the C++ coding standards and best practices for the specbolt project. Following these guidelines ensures code consistency, readability, and maintainability across the codebase.
 
 ## Table of Contents
 

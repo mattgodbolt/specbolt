@@ -1,6 +1,6 @@
-# SpecBolt Project Glossary
+# specbolt Project Glossary
 
-This document defines terminology specific to the ZX Spectrum, emulation, and the SpecBolt project to ensure consistent understanding across the codebase.
+This document defines terminology specific to the ZX Spectrum, emulation, and the specbolt project to ensure consistent understanding across the codebase.
 
 ## ZX Spectrum Hardware
 
@@ -54,7 +54,7 @@ This document defines terminology specific to the ZX Spectrum, emulation, and th
 | .tap | Tape file format that emulates data stored on cassette tapes. |
 | .tzx | Advanced tape file format supporting various loading schemes and copy protections. |
 
-## SpecBolt Architecture
+## specbolt Architecture
 
 | Term | Definition |
 |------|------------|
@@ -66,7 +66,7 @@ This document defines terminology specific to the ZX Spectrum, emulation, and th
 | Snapshot | An image of the machine's memory and CPU state, used for save states. |
 | Peripheral | Hardware components connected to the main system (Keyboard, Video, Audio, etc.). |
 
-## SpecBolt Implementation
+## specbolt Implementation
 
 | Term | Definition |
 |------|------------|

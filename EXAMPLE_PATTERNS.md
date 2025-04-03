@@ -1,6 +1,6 @@
-# SpecBolt Common Code Patterns
+# specbolt Common Code Patterns
 
-This document provides examples of common design patterns and code idioms used in the SpecBolt project. Use these as reference when implementing new features.
+This document provides examples of common design patterns and code idioms used in the specbolt project. Use these as reference when implementing new features.
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@ This document provides examples of common design patterns and code idioms used i
 
 ## Observer Pattern Implementation
 
-The observer pattern is used extensively in SpecBolt to allow components to react to events from other components.
+The observer pattern is used extensively in specbolt to allow components to react to events from other components.
 
 ### Base Pattern
 
@@ -76,7 +76,7 @@ private:
 
 ## Memory Access Tracking
 
-The SpecBolt memory heatmap demonstrates a pattern for tracking memory access:
+The specbolt memory heatmap demonstrates a pattern for tracking memory access:
 
 ```cpp
 // HeatmapMemoryListener.hpp
@@ -104,7 +104,7 @@ memory.set_listener(&listener);
 
 ## Module Support
 
-SpecBolt supports both traditional includes and C++ modules:
+specbolt supports both traditional includes and C++ modules:
 
 ```cpp
 // In .hpp files
@@ -280,4 +280,4 @@ void Component::update() {
 
 ---
 
-These examples should help developers understand and follow the coding patterns established in the SpecBolt project. When in doubt, refer to existing code and follow similar patterns for consistency.
+These examples should help developers understand and follow the coding patterns established in the specbolt project. When in doubt, refer to existing code and follow similar patterns for consistency.
