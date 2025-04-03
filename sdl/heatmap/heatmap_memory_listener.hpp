@@ -5,8 +5,8 @@
 
 namespace specbolt {
 
-// Implements the MemoryListener interface to connect the heatmap to memory access events
-class HeatmapMemoryListener : public MemoryListener {
+// Implements the Memory::Listener interface to connect the heatmap to memory access events
+class HeatmapMemoryListener : public Memory::Listener {
 public:
   explicit HeatmapMemoryListener(MemoryHeatmap &heatmap) : heatmap_(heatmap) {}
   ~HeatmapMemoryListener() override = default;
