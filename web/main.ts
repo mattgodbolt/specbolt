@@ -63,13 +63,22 @@ async function initialise() {
         if (startOnKeyPress) {
             spectrum.start();
         }
-        if (!spectrum.running)
-            return;
+        // this is here so load menu actually accept keypress
+        if (document.activeElement !== document.body) {
+          return true;
+        }
+        if (!spectrum.running) {
+          return true;
+        }
         spectrum.onKeyDown(e);
     };
     document.onkeyup = (e) => {
-        if (!spectrum.running)
-            return;
+        if (document.activeElement !== document.body) {
+          return true;
+        }
+        if (!spectrum.running) {
+          return true;
+        }
         spectrum.onKeyUp(e);
     };
 
