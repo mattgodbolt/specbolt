@@ -10,7 +10,6 @@ import peripherals;
 
 #include <SDL.h>
 #include <chrono>
-#include <memory>
 
 namespace specbolt {
 
@@ -28,7 +27,7 @@ public:
   // Toggle heatmap visibility and modes
   void toggle_heatmap();
   void toggle_mode();
-  void toggle_color_scheme();
+  void toggle_colour_scheme();
 
   // Configure appearance
   void increase_opacity();

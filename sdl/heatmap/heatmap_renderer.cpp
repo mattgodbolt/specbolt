@@ -12,7 +12,7 @@ HeatmapRenderer::HeatmapRenderer(Memory &memory) :
   // Enable heatmap by default when created
   toggle_heatmap();
 
-  std::println("Memory heatmap enabled. Controls: F2-toggle, F3-mode, F4-color scheme, F5/F6-opacity, F7-reset");
+  std::println("Memory heatmap enabled. Controls: F2-toggle, F3-mode, F4-colour scheme, F5/F6-opacity, F7-reset");
 }
 
 HeatmapRenderer::~HeatmapRenderer() { disconnect(); }
@@ -64,23 +64,23 @@ void HeatmapRenderer::toggle_mode() {
   }
 }
 
-void HeatmapRenderer::toggle_color_scheme() {
+void HeatmapRenderer::toggle_colour_scheme() {
   if (!visible_)
     return;
 
-  // Cycle through color schemes
-  switch (heatmap_.color_scheme()) {
-    case MemoryHeatmap::ColorScheme::Heat:
-      heatmap_.set_color_scheme(MemoryHeatmap::ColorScheme::Spectrum);
-      std::println("Heatmap color scheme: Spectrum");
+  // Cycle through colour schemes
+  switch (heatmap_.colour_scheme()) {
+    case MemoryHeatmap::ColourScheme::Heat:
+      heatmap_.set_colour_scheme(MemoryHeatmap::ColourScheme::Spectrum);
+      std::println("Heatmap colour scheme: Spectrum");
       break;
-    case MemoryHeatmap::ColorScheme::Spectrum:
-      heatmap_.set_color_scheme(MemoryHeatmap::ColorScheme::Grayscale);
-      std::println("Heatmap color scheme: Grayscale");
+    case MemoryHeatmap::ColourScheme::Spectrum:
+      heatmap_.set_colour_scheme(MemoryHeatmap::ColourScheme::Grayscale);
+      std::println("Heatmap colour scheme: Grayscale");
       break;
-    case MemoryHeatmap::ColorScheme::Grayscale:
-      heatmap_.set_color_scheme(MemoryHeatmap::ColorScheme::Heat);
-      std::println("Heatmap color scheme: Heat");
+    case MemoryHeatmap::ColourScheme::Grayscale:
+      heatmap_.set_colour_scheme(MemoryHeatmap::ColourScheme::Heat);
+      std::println("Heatmap colour scheme: Heat");
       break;
   }
 }
@@ -88,21 +88,29 @@ void HeatmapRenderer::toggle_color_scheme() {
 void HeatmapRenderer::increase_opacity() {
   if (!visible_)
     return;
-  auto opacity = heatmap_.opacity() + 0.1f;
-  if (opacity > 1.0f)
-    opacity = 1.0f;
-  heatmap_.set_opacity(opacity);
-  std::println("Heatmap opacity: {}", opacity);
+
+  if (float opacity = heatmap_.opacity() + 0.1f; opacity > 1.0f) {
+    heatmap_.set_opacity(1.0f);
+    std::println("Heatmap opacity: {}", 1.0f);
+  }
+  else {
+    heatmap_.set_opacity(opacity);
+    std::println("Heatmap opacity: {}", opacity);
+  }
 }
 
 void HeatmapRenderer::decrease_opacity() {
   if (!visible_)
     return;
-  auto opacity = heatmap_.opacity() - 0.1f;
-  if (opacity < 0.1f)
-    opacity = 0.1f;
-  heatmap_.set_opacity(opacity);
-  std::println("Heatmap opacity: {}", opacity);
+
+  if (float opacity = heatmap_.opacity() - 0.1f; opacity < 0.1f) {
+    heatmap_.set_opacity(0.1f);
+    std::println("Heatmap opacity: {}", 0.1f);
+  }
+  else {
+    heatmap_.set_opacity(opacity);
+    std::println("Heatmap opacity: {}", opacity);
+  }
 }
 
 bool HeatmapRenderer::process_key(SDL_Keycode key) {
@@ -115,8 +123,8 @@ bool HeatmapRenderer::process_key(SDL_Keycode key) {
       toggle_mode();
       return true;
 
-    case SDLK_F4: // Toggle color scheme
-      toggle_color_scheme();
+    case SDLK_F4: // Toggle colour scheme
+      toggle_colour_scheme();
       return true;
 
     case SDLK_F5: // Increase opacity
@@ -149,11 +157,11 @@ void HeatmapRenderer::reset() { heatmap_.reset(); }
 
 void HeatmapRenderer::update() {
   // Apply decay at a reasonable rate
-  auto now = std::chrono::high_resolution_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_decay_time_).count();
+  const auto now = std::chrono::high_resolution_clock::now();
 
   // Decay every 100ms
-  if (elapsed > 100) {
+  if (const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_decay_time_).count();
+      elapsed > 100) {
     heatmap_.decay();
     last_decay_time_ = now;
   }

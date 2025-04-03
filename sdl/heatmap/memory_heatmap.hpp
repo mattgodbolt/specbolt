@@ -2,8 +2,6 @@
 
 #include <array>
 #include <cstdint>
-#include <memory>
-#include <span>
 #include <vector>
 
 #include <SDL.h>
@@ -20,9 +18,9 @@ public:
     Disabled // Don't track anything
   };
 
-  enum class ColorScheme {
+  enum class ColourScheme {
     Heat, // Blue (cold) to Red (hot)
-    Spectrum, // Use ZX Spectrum colors
+    Spectrum, // Use ZX Spectrum colours
     Grayscale // Black to White
   };
 
@@ -37,17 +35,17 @@ public:
   void record_write(std::uint16_t address);
 
   // Visualization mode control
-  void set_mode(Mode mode) { mode_ = mode; }
+  void set_mode(const Mode mode) { mode_ = mode; }
   [[nodiscard]] Mode mode() const { return mode_; }
 
-  void set_color_scheme(ColorScheme scheme) { color_scheme_ = scheme; }
-  [[nodiscard]] ColorScheme color_scheme() const { return color_scheme_; }
+  void set_colour_scheme(const ColourScheme scheme) { colour_scheme_ = scheme; }
+  [[nodiscard]] ColourScheme colour_scheme() const { return colour_scheme_; }
 
   // Configure heatmap appearance
-  void set_opacity(float opacity) { opacity_ = opacity; }
+  void set_opacity(const float opacity) { opacity_ = opacity; }
   [[nodiscard]] float opacity() const { return opacity_; }
 
-  void set_decay_rate(float rate) { decay_rate_ = rate; }
+  void set_decay_rate(const float rate) { decay_rate_ = rate; }
   [[nodiscard]] float decay_rate() const { return decay_rate_; }
 
   // Apply decay to all counters, called periodically
@@ -69,7 +67,7 @@ private:
 
   // Current mode and settings
   Mode mode_ = Mode::ReadWrite;
-  ColorScheme color_scheme_ = ColorScheme::Heat;
+  ColourScheme colour_scheme_ = ColourScheme::Heat;
   float opacity_ = 0.7f;
   float decay_rate_ = 0.95f;
 
@@ -83,7 +81,7 @@ private:
 
   // Helper methods for visualization
   void update_texture(SDL_Renderer *renderer);
-  [[nodiscard]] std::uint32_t get_color_for_value(float value) const;
+  [[nodiscard]] std::uint32_t get_colour_for_value(float value) const;
 };
 
 } // namespace specbolt
