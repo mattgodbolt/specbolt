@@ -2,7 +2,11 @@
 
 #include "heatmap_memory_listener.hpp"
 #include "memory_heatmap.hpp"
+#ifndef SPECBOLT_MODULES
 #include "peripherals/Memory.hpp"
+#else
+import peripherals;
+#endif
 
 #include <SDL.h>
 #include <chrono>

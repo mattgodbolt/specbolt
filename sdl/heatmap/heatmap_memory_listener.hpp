@@ -1,7 +1,11 @@
 #pragma once
 
 #include "memory_heatmap.hpp"
+#ifndef SPECBOLT_MODULES
 #include "peripherals/Memory.hpp"
+#else
+import peripherals;
+#endif
 
 namespace specbolt {
 
