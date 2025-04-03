@@ -165,6 +165,7 @@ specbolt/
 
 ## Recommended Tools
 
+- CLion (preferred IDE with built-in CMake integration)
 - VS Code with C++ extensions
 - clangd for code navigation
 - cmake-tools for build integration
