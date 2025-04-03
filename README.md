@@ -25,17 +25,17 @@ specbolt is structured into several key components:
 ### Building
 
 ```bash
-# Configure with modules support (default)
-cmake -B build/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+# Configure with modules support
+cmake -B build/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPECBOLT_MODULES=ON
 
-# Configure without modules
-cmake -B build/DebugNoModules -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPECBOLT_USE_MODULES=OFF
+# Configure without modules (recommended for most development)
+cmake -B build/DebugNoModules -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPECBOLT_MODULES=OFF
 
-# Build
-cmake --build build/Debug
+# Build (no modules version)
+cmake --build build/DebugNoModules
 
-# Run
-./build/Debug/sdl/specbolt_sdl
+# Run (no modules version)
+./build/DebugNoModules/sdl/specbolt_sdl
 ```
 
 ### Web/WASM Build
