@@ -8,6 +8,12 @@
 
 #endif
 
+// These functions are declared in global scope
+extern "C" {
+void notify_memory_read(std::uint16_t addr);
+void notify_memory_write(std::uint16_t addr);
+}
+
 namespace specbolt {
 
 Memory::Memory(const int num_pages) {
@@ -17,16 +23,23 @@ Memory::Memory(const int num_pages) {
   address_space_.resize(static_cast<std::size_t>(num_pages) * page_size);
 }
 
-std::uint8_t Memory::read(const std::uint16_t address) const { return address_space_[offset_for(address)]; }
+std::uint8_t Memory::read(const std::uint16_t addr) const {
+  // Notify the memory tracer about this read
+  notify_memory_read(addr);
+  return address_space_[offset_for(addr)];
+}
 
 std::uint16_t Memory::read16(const std::uint16_t address) const {
   return static_cast<std::uint16_t>(read(address + 1) << 8 | read(address));
 }
 
-void Memory::write(const std::uint16_t address, const std::uint8_t byte) {
-  if (rom_[address / page_size])
+void Memory::write(const std::uint16_t addr, const std::uint8_t byte) {
+  // Notify the memory tracer about this write attempt
+  notify_memory_write(addr);
+
+  if (rom_[addr / page_size])
     return;
-  raw_write(address, byte);
+  raw_write(addr, byte);
 }
 
 void Memory::write16(const std::uint16_t address, const std::uint16_t word) {
