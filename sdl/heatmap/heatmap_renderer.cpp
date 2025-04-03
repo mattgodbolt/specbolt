@@ -1,6 +1,9 @@
 #include "heatmap_renderer.hpp"
 
+#include <chrono>
 #include <print>
+
+using namespace std::chrono_literals;
 
 namespace specbolt {
 
@@ -160,8 +163,7 @@ void HeatmapRenderer::update() {
   const auto now = std::chrono::high_resolution_clock::now();
 
   // Decay every 100ms
-  if (const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_decay_time_).count();
-      elapsed > 100) {
+  if (now - last_decay_time_ > 100ms) {
     heatmap_.decay();
     last_decay_time_ = now;
   }
