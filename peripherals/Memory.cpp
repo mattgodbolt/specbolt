@@ -8,12 +8,6 @@
 
 #endif
 
-// These functions are declared in global scope
-extern "C" {
-void notify_memory_read(std::uint16_t addr);
-void notify_memory_write(std::uint16_t addr);
-}
-
 namespace specbolt {
 
 Memory::Memory(const int num_pages) {
@@ -24,8 +18,10 @@ Memory::Memory(const int num_pages) {
 }
 
 std::uint8_t Memory::read(const std::uint16_t addr) const {
-  // Notify the memory tracer about this read
-  notify_memory_read(addr);
+  // Notify the memory listener about this read if one is registered
+  if (listener_) {
+    listener_->on_memory_read(addr);
+  }
   return address_space_[offset_for(addr)];
 }
 
@@ -34,8 +30,10 @@ std::uint16_t Memory::read16(const std::uint16_t address) const {
 }
 
 void Memory::write(const std::uint16_t addr, const std::uint8_t byte) {
-  // Notify the memory tracer about this write attempt
-  notify_memory_write(addr);
+  // Notify the memory listener about this write if one is registered
+  if (listener_) {
+    listener_->on_memory_write(addr);
+  }
 
   if (rom_[addr / page_size])
     return;

@@ -4,11 +4,25 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <memory>
 #include <type_traits>
 #include <vector>
 #endif
 
 namespace specbolt {
+
+// Interface for memory access listeners
+class SPECBOLT_EXPORT MemoryListener {
+public:
+  virtual ~MemoryListener() = default;
+
+  // Called when memory is read
+  virtual void on_memory_read(std::uint16_t address) = 0;
+
+  // Called when memory is written
+  virtual void on_memory_write(std::uint16_t address) = 0;
+};
 
 SPECBOLT_EXPORT class Memory {
 public:
@@ -30,6 +44,11 @@ public:
   void set_rom_flags(const std::array<bool, 4> rom) { rom_ = rom; }
   [[nodiscard]] const auto &rom_flags() const { return rom_; }
 
+  // Set a memory access listener (or nullptr to disable)
+  // Note: Memory does not own the listener - caller must ensure the listener outlives the Memory
+  void set_listener(MemoryListener *listener) { listener_ = listener; }
+  [[nodiscard]] bool has_listener() const { return listener_ != nullptr; }
+
   friend void write_to_memory(
       Memory &memory, std::uint16_t base_address, std::convertible_to<std::uint8_t> auto... bytes) {
     [&]<std::size_t... Idx>(std::index_sequence<Idx...>) {
@@ -42,6 +61,7 @@ private:
   std::array<bool, 4> rom_{true, false, false, false};
   std::array<std::uint8_t, 4> page_table_{0, 1, 2, 3};
   std::vector<std::uint8_t> address_space_{};
+  MemoryListener *listener_{nullptr}; // Optional memory access listener (not owned)
 
   [[nodiscard]] constexpr auto offset_for(const std::uint16_t address) const {
     return page_table_[address / page_size] * page_size + address % page_size;

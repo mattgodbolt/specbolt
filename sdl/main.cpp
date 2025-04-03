@@ -142,7 +142,7 @@ struct SdlApp {
     if (enable_heatmap) {
       // Use emplace to construct the object in-place
       // Constructor will handle connecting and enabling
-      heatmap_renderer.emplace();
+      heatmap_renderer.emplace(spectrum.memory());
     }
 
     auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);

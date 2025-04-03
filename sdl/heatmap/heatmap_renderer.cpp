@@ -1,13 +1,13 @@
 #include "heatmap_renderer.hpp"
 
-#include <functional>
 #include <print>
 
 namespace specbolt {
 
-HeatmapRenderer::HeatmapRenderer() : last_decay_time_(std::chrono::high_resolution_clock::now()) {
+HeatmapRenderer::HeatmapRenderer(Memory &memory) :
+    memory_listener_(heatmap_), last_decay_time_(std::chrono::high_resolution_clock::now()) {
   // Connect to memory tracing automatically when created
-  connect();
+  connect(memory);
 
   // Enable heatmap by default when created
   toggle_heatmap();
@@ -17,18 +17,15 @@ HeatmapRenderer::HeatmapRenderer() : last_decay_time_(std::chrono::high_resoluti
 
 HeatmapRenderer::~HeatmapRenderer() { disconnect(); }
 
-void HeatmapRenderer::connect() {
-  // Connect callbacks to memory access events
-  set_memory_read_callback([this](std::uint16_t address) { on_memory_read(address); });
-
-  set_memory_write_callback([this](std::uint16_t address) { on_memory_write(address); });
+void HeatmapRenderer::connect(Memory &memory) {
+  // Connect our listener to the memory
+  memory.set_listener(&memory_listener_);
 }
 
-void HeatmapRenderer::disconnect() { clear_memory_callbacks(); }
-
-void HeatmapRenderer::on_memory_read(std::uint16_t address) { heatmap_.record_read(address); }
-
-void HeatmapRenderer::on_memory_write(std::uint16_t address) { heatmap_.record_write(address); }
+void HeatmapRenderer::disconnect() {
+  // Nothing to do - the Memory object is responsible for ignoring the listener
+  // once it's gone, and our memory_listener_ is owned by this class
+}
 
 void HeatmapRenderer::toggle_heatmap() {
   visible_ = !visible_;
