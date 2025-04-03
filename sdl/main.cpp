@@ -1,8 +1,11 @@
+#include "heatmap/heatmap_renderer.hpp"
 #include "sdl_wrapper.hpp"
 
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <optional>
+#include <print>
 
 #include <lyra/lyra.hpp>
 
@@ -50,6 +53,7 @@ struct SdlApp {
   double emulator_speed{1};
   double zoom{4};
   bool spec128{};
+  bool enable_heatmap{false};
 
   int Main(const int argc, const char *argv[]) {
     const auto cli = lyra::cli() //
@@ -62,12 +66,14 @@ struct SdlApp {
                      | lyra::opt(emulator_speed, "X")["--emulator-speed"]("Multiplier on emulation speed") //
                      | lyra::opt(zoom, "X")["--zoom"]("Multiplier on display zoom") //
                      | lyra::opt(tape, "TAPE")["--tape"]("Queue up TAPE") //
+                     | lyra::opt(enable_heatmap)["--heatmap"]("Enable memory access heatmap") //
                      | lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::println(std::cerr, "Error in command line: {}", parse_result.message());
       return 1;
     }
     if (need_help) {
+      // Use cout directly for cli since it has a custom output operator
       std::cout << cli << '\n';
       return 0;
     }
@@ -130,6 +136,15 @@ struct SdlApp {
 
     bool quit = false;
     bool z80_running{true};
+
+    // Only create the heatmap renderer if enabled
+    std::optional<HeatmapRenderer> heatmap_renderer;
+    if (enable_heatmap) {
+      // Use emplace to construct the object in-place
+      // Constructor will handle connecting and enabling
+      heatmap_renderer.emplace(spectrum.memory());
+    }
+
     auto next_print = std::chrono::high_resolution_clock::now() + std::chrono::seconds(1);
     auto next_emu_frame = std::chrono::high_resolution_clock::now();
     auto next_display_frame = std::chrono::high_resolution_clock::now();
@@ -141,6 +156,11 @@ struct SdlApp {
         switch (sdl_event.type) {
           case SDL_QUIT: quit = true; break;
           case SDL_KEYDOWN: {
+            // Pass keyboard events to the heatmap renderer first if it exists
+            if (heatmap_renderer && heatmap_renderer->process_key(sdl_event.key.keysym.sym)) {
+              break;
+            }
+
             if (sdl_event.key.keysym.sym == SDLK_F1)
               spectrum.play();
             spectrum.keyboard().key_down(sdl_event.key.keysym.sym);
@@ -166,16 +186,15 @@ struct SdlApp {
             audio.queue(spectrum.audio().end_frame(spectrum.z80().cycle_count()));
 
             if (end_time > next_print) {
-              std::print(
-                  std::cout, "Virtual: {:.2f}MHz | lag {}\n", cycles_per_second / 1'000'000, now - next_emu_frame);
+              std::println("Virtual: {:.2f}MHz | lag {}", cycles_per_second / 1'000'000, now - next_emu_frame);
               next_print = end_time + std::chrono::seconds(1);
             }
           }
           catch (const std::exception &e) {
-            std::print(std::cout, "Exception: {}\n", e.what());
+            std::println("Exception: {}", e.what());
             for (const auto &trace: spectrum.history()) {
-              trace.dump(std::cout, "  ");
-              std::print(std::cout, "{}\n", dis.disassemble(trace.pc()).to_string());
+              trace.dump(std::cout, "  "); // Keep this as it's a custom method
+              std::cout << dis.disassemble(trace.pc()).to_string() << '\n';
             }
             spectrum.z80().dump();
             z80_running = false;
@@ -196,6 +215,13 @@ struct SdlApp {
         const auto dest_rect = calc_rect(w, h);
         SDL_RenderClear(renderer.get());
         SDL_RenderCopy(renderer.get(), texture.get(), nullptr, &dest_rect);
+
+        // Update and render the memory heatmap overlay if it exists
+        if (heatmap_renderer) {
+          heatmap_renderer->update();
+          heatmap_renderer->render(renderer.get(), dest_rect);
+        }
+
         SDL_RenderPresent(renderer.get());
         next_display_frame += video_delay;
       }

@@ -17,13 +17,24 @@ Memory::Memory(const int num_pages) {
   address_space_.resize(static_cast<std::size_t>(num_pages) * page_size);
 }
 
-std::uint8_t Memory::read(const std::uint16_t address) const { return address_space_[offset_for(address)]; }
+std::uint8_t Memory::read(const std::uint16_t address) const {
+  // Notify the memory listener about this read if one is registered
+  if (listener_) {
+    listener_->on_memory_read(address);
+  }
+  return address_space_[offset_for(address)];
+}
 
 std::uint16_t Memory::read16(const std::uint16_t address) const {
   return static_cast<std::uint16_t>(read(address + 1) << 8 | read(address));
 }
 
 void Memory::write(const std::uint16_t address, const std::uint8_t byte) {
+  // Notify the memory listener about this write if one is registered
+  if (listener_) {
+    listener_->on_memory_write(address);
+  }
+
   if (rom_[address / page_size])
     return;
   raw_write(address, byte);
