@@ -5,6 +5,11 @@
 
 using namespace std::chrono_literals;
 
+namespace {
+// Configuration constants
+constexpr auto DECAY_INTERVAL = 100ms; // How often to apply decay to the heatmap
+} // namespace
+
 namespace specbolt {
 
 HeatmapRenderer::HeatmapRenderer(Memory &memory) :
@@ -159,11 +164,11 @@ void HeatmapRenderer::render(SDL_Renderer *renderer, const SDL_Rect &dest_rect) 
 void HeatmapRenderer::reset() { heatmap_.reset(); }
 
 void HeatmapRenderer::update() {
-  // Apply decay at a reasonable rate
+  // Check if it's time to apply decay based on elapsed time
   const auto now = std::chrono::high_resolution_clock::now();
 
-  // Decay every 100ms
-  if (now - last_decay_time_ > 100ms) {
+  // Apply decay at regular intervals
+  if (now - last_decay_time_ > DECAY_INTERVAL) {
     heatmap_.decay();
     last_decay_time_ = now;
   }
