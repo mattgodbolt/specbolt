@@ -45,6 +45,56 @@ void Memory::write16(const std::uint16_t address, const std::uint16_t word) {
   write(address + 1, static_cast<std::uint8_t>(word >> 8));
 }
 
+std::size_t Memory::get_contention_cycles(std::uint16_t address) const {
+  if (!contention_handler_) {
+    return 0;
+  }
+  return contention_handler_->get_memory_contention_cycles(address);
+}
+
+std::uint8_t Memory::read_with_contention(const std::uint16_t address) const {
+  // Calculate memory contention cycles for this address
+  // In ZX Spectrum, only addresses 0x4000-0x7FFF are contended
+  // Just call get_contention_cycles but don't store the result
+  // The CPU will query this directly when needed
+  (void)get_contention_cycles(address);
+
+  // Standard memory read
+  return read(address);
+}
+
+std::uint16_t Memory::read16_with_contention(const std::uint16_t address) const {
+  // For a 16-bit read, we need to count contention for both bytes
+  // Just call get_contention_cycles but don't store the result
+  (void)get_contention_cycles(address);
+  (void)get_contention_cycles(address + 1);
+
+  // Standard 16-bit read
+  return static_cast<std::uint16_t>(read(address + 1) << 8 | read(address));
+}
+
+std::size_t Memory::write_with_contention(const std::uint16_t address, const std::uint8_t byte) {
+  // Calculate memory contention cycles for this address
+  const auto contention_cycles = get_contention_cycles(address);
+
+  // Standard memory write
+  write(address, byte);
+
+  return contention_cycles;
+}
+
+std::size_t Memory::write16_with_contention(const std::uint16_t address, const std::uint16_t word) {
+  // For a 16-bit write, we need to count contention for both bytes
+  const auto low_contention = get_contention_cycles(address);
+  const auto high_contention = get_contention_cycles(address + 1);
+
+  // Standard 16-bit write
+  write(address, static_cast<std::uint8_t>(word));
+  write(address + 1, static_cast<std::uint8_t>(word >> 8));
+
+  return low_contention + high_contention;
+}
+
 void Memory::raw_write(const std::uint16_t address, const std::uint8_t byte) {
   address_space_[offset_for(address)] = byte;
 }
