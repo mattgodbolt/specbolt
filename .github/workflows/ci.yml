@@ -50,7 +50,7 @@ jobs:
           sudo xcode-select -s "/Applications/${LATEST_XCODE_AVAILABLE}/Contents/Developer"
       - name: Install latest compilers, cmake, and dependencies
         run: |
-          brew install llvm lld cmake sdl2
+          brew install -q --formula llvm lld cmake sdl2
       - name: Print Clang version
         run: echo $(brew --prefix llvm)/bin/clang++ --version
       - name: Check out repository code
