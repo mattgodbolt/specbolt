@@ -36,6 +36,33 @@ jobs:
         run: |
           env CTEST_PARALLEL_LEVEL=$(nproc) CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
 
+  mac-build-and-test:
+    runs-on: macos-15
+    strategy:
+      matrix:
+        build_type: [ Debug, RelWithDebInfo ]
+        modules_enable: [ ON, OFF ]
+    steps:
+      - name: Select latest XCode
+        run: |
+          LATEST_XCODE_AVAILABLE=$(ls -1 /Applications | grep -E "Xcode_[0-9]+.[0-9]+.[0-9]+" | sort -n | tail -n1)
+          echo ${LATEST_XCODE_AVAILABLE}
+          sudo xcode-select -s "/Applications/${LATEST_XCODE_AVAILABLE}/Contents/Developer"
+      - name: Install latest compilers, cmake, and dependencies
+        run: |
+          brew install llvm lld cmake sdl2
+      - name: Print Clang version
+        run: echo $(brew --prefix llvm)/bin/clang++ --version
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" -DCMAKE_SYSROOT="$(xcrun --show-sdk-path)" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }}
+          cmake --build build
+      - name: Test
+        run: |
+          env CTEST_PARALLEL_LEVEL=$(sysctl -n hw.ncpu) CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
+
   wasm-build:
     runs-on: ubuntu-latest
     strategy:
