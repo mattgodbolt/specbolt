@@ -3,6 +3,7 @@
 #include "DisassembleInternal.hpp"
 #include "peripherals/Memory.hpp"
 
+#include <format>
 #include <string>
 #include <string_view>
 #endif
