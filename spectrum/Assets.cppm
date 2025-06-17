@@ -1,6 +1,6 @@
 module;
 
-#include <filesystem>
+import std;
 
 export module spectrum:Assets;
 

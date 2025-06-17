@@ -1,10 +1,6 @@
 module;
 
-#include <cstdint>
-#include <functional>
-#include <iostream>
-#include <optional>
-#include <vector>
+import std;
 
 export module z80_v2:Disassembler;
 

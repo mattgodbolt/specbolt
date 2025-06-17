@@ -70,7 +70,7 @@ bool Video::next_scan_line() {
   return false;
 }
 
-void Video::blit_to(const std::span<std::uint32_t> screen, bool swap_rgb) const {
+void Video::blit_to(const std::span<std::uint32_t> screen, const bool swap_rgb) const {
   if (screen.size() != VisibleWidth * VisibleHeight)
     throw std::runtime_error(std::format("Bad screen size ({} vs {})", screen.size(), VisibleWidth * VisibleHeight));
   const auto &pal = swap_rgb ? palette_swapped : palette;

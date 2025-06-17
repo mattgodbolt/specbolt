@@ -1,9 +1,6 @@
 module;
 
-#include <array>
-#include <bitset>
-#include <cstdint>
-#include <optional>
+import std;
 
 export module peripherals:Keyboard;
 

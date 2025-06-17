@@ -1,12 +1,6 @@
 module;
 
-#include <algorithm>
-#include <array>
-#include <cstdint>
-#include <filesystem>
-#include <format>
-#include <span>
-#include <type_traits>
+import std;
 
 export module peripherals:Video;
 

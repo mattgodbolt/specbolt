@@ -33,7 +33,7 @@ public:
     task.scheduled_ = true;
   }
 
-  void tick(const size_t cycles) {
+  void tick(const std::size_t cycles) {
     const auto end_cycle = cycles_ + cycles;
     while (cycles_ < end_cycle) {
       if (tasks_.empty())
@@ -54,7 +54,7 @@ public:
   }
 
   [[nodiscard]] std::size_t headroom() const {
-    return tasks_.empty() ? std::numeric_limits<size_t>::max() : tasks_.front().cycle - cycles_;
+    return tasks_.empty() ? std::numeric_limits<std::size_t>::max() : tasks_.front().cycle - cycles_;
   }
 
   [[nodiscard]] auto cycles() const { return cycles_; }

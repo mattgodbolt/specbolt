@@ -1,10 +1,6 @@
 module;
 
-#include <array>
-#include <cstdint>
-#include <iostream>
-#include <string_view>
-
+import std;
 export module z80_common:RegisterFile;
 
 import :Flags;

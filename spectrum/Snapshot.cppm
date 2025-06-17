@@ -1,18 +1,8 @@
 module;
 
-#include <algorithm>
-#include <array>
-#include <cstdint>
-#include <cstring>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <ranges>
-#include <span>
-#include <stdexcept>
-#include <type_traits>
-#include <vector>
-
+import std;
+#include <cerrno>
+#include <cstddef>
 
 export module spectrum:Snapshot;
 

@@ -1,10 +1,7 @@
 module;
 
-#include <chrono>
-#include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <vector>
+import std;
+#include <cerrno>
 
 export module peripherals:Tape;
 

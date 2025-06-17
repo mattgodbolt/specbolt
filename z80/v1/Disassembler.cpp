@@ -73,7 +73,8 @@ std::string Disassembler::Disassembled::operand_name(
     case Instruction::Operand::SP: return "sp";
     case Instruction::Operand::SP_Indirect16: return "(sp)";
     case Instruction::Operand::PcOffset:
-      return std::format("0x{:04x}", address + instruction.length + static_cast<int8_t>(bytes[instruction.length - 1]));
+      return std::format(
+          "0x{:04x}", address + instruction.length + static_cast<std::int8_t>(bytes[instruction.length - 1]));
     case Instruction::Operand::IX_Offset_Indirect8:
     case Instruction::Operand::IY_Offset_Indirect8: {
       return std::format("({}{}0x{:02x})", operand == Instruction::Operand::IX_Offset_Indirect8 ? "ix" : "iy",

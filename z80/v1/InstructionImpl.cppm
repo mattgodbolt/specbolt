@@ -1,11 +1,6 @@
 module;
 
-#include <cstdint>
-#include <functional>
-#include <iostream>
-#include <optional>
-#include <variant>
-#include <vector>
+import std;
 
 export module z80_v1:InstructionImpl;
 

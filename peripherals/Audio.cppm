@@ -1,9 +1,6 @@
 module;
 
-#include <algorithm>
-#include <cstdint>
-#include <span>
-#include <vector>
+import std;
 
 export module peripherals:Audio;
 

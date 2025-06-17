@@ -1,8 +1,6 @@
 module;
 
-#include <algorithm>
-#include <limits>
-#include <vector>
+import std;
 
 export module z80_common:Scheduler;
 
