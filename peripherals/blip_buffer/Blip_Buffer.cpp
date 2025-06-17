@@ -28,7 +28,7 @@ static constexpr int buffer_extra = blip_widest_impulse_ + 2;
 static constexpr int blip_max_length = 0;
 
 Blip_Buffer::Blip_Buffer() {
-  factor_ = LONG_MAX;
+  factor_ = std::numeric_limits<long>::max();
   offset_ = 0;
   sample_rate_ = 0;
   reader_accum = 0;
@@ -40,12 +40,12 @@ Blip_Buffer::Blip_Buffer() {
 // assumptions code makes about implementation-defined features
 #ifndef NDEBUG
   // right shift of negative value preserves sign
-  constexpr int i = INT_MIN;
-  assert((i >> 1) == INT_MIN / 2);
+  constexpr int i = std::numeric_limits<int>::min();
+  assert((i >> 1) == std::numeric_limits<int>::min() / 2);
 
   // casting to smaller signed type truncates bits and extends sign
-  constexpr long l = (SHRT_MAX + 1) * 5;
-  assert(static_cast<short>(l) == SHRT_MIN);
+  constexpr long l = (std::numeric_limits<short>::max() + 1) * 5;
+  assert(static_cast<short>(l) == std::numeric_limits<short>::min());
 #endif
 }
 std::size_t Blip_Buffer::buffer_size() const {
@@ -58,12 +58,12 @@ void Blip_Buffer::clear(const bool entire_buffer) {
   offset_ = 0;
   reader_accum = 0;
   const auto count = (entire_buffer ? buffer_size() : samples_avail());
-  memset(buffer_.data(), 0, (count + buffer_extra) * sizeof(buf_t_));
+  std::memset(buffer_.data(), 0, (count + buffer_extra) * sizeof(buf_t_));
 }
 
 void Blip_Buffer::set_sample_rate(const unsigned long new_rate, const unsigned int msec) {
   // start with maximum length that resampled time can represent
-  std::size_t new_size = (ULONG_MAX >> BLIP_BUFFER_ACCURACY) - buffer_extra - 64zu;
+  std::size_t new_size = (std::numeric_limits<unsigned long>::max() >> BLIP_BUFFER_ACCURACY) - buffer_extra - 64zu;
   if (msec != blip_max_length) {
     const std::size_t s = (new_rate * (msec + 1zu) + 999zu) / 1000zu;
     if (s < new_size)
@@ -88,7 +88,7 @@ void Blip_Buffer::set_sample_rate(const unsigned long new_rate, const unsigned i
 
 blip_resampled_time_t Blip_Buffer::clock_rate_factor(const std::size_t clock_rate) const {
   const double ratio = static_cast<double>(sample_rate_) / static_cast<double>(clock_rate);
-  const long factor = static_cast<long>(floor(ratio * (1L << BLIP_BUFFER_ACCURACY) + 0.5));
+  const long factor = static_cast<long>(std::floor(ratio * (1L << BLIP_BUFFER_ACCURACY) + 0.5));
   assert(factor > 0 || !sample_rate_); // fails if clock/output ratio is too large
   return static_cast<blip_resampled_time_t>(factor);
 }
@@ -134,8 +134,8 @@ void Blip_Buffer::remove_samples(const unsigned long count) {
 
     // copy remaining samples to beginning and clear old samples
     const auto remain = samples_avail() + buffer_extra;
-    memmove(buffer_.data(), buffer_.data() + count, remain * sizeof(buf_t_));
-    memset(buffer_.data() + remain, 0, count * sizeof(buf_t_));
+    std::memmove(buffer_.data(), buffer_.data() + count, remain * sizeof(buf_t_));
+    std::memset(buffer_.data() + remain, 0, count * sizeof(buf_t_));
   }
 }
 
@@ -161,15 +161,15 @@ static void gen_sinc(float *out, const int count, const double oversample, doubl
     treble = 5.0;
 
   constexpr double maxh = 4096.0;
-  const double rolloff = pow(10.0, 1.0 / (maxh * 20.0) * treble / (1.0 - cutoff));
-  const double pow_a_n = pow(rolloff, maxh - maxh * cutoff);
+  const double rolloff = std::pow(10.0, 1.0 / (maxh * 20.0) * treble / (1.0 - cutoff));
+  const double pow_a_n = std::pow(rolloff, maxh - maxh * cutoff);
   const double to_angle = pi / 2 / maxh / oversample;
   for (int i = 0; i < count; i++) {
     const double angle = ((i - count) * 2 + 1) * to_angle;
-    double c = rolloff * cos((maxh - 1.0) * angle) - cos(maxh * angle);
-    const double cos_nc_angle = cos(maxh * cutoff * angle);
-    const double cos_nc1_angle = cos((maxh * cutoff - 1.0) * angle);
-    const double cos_angle = cos(angle);
+    double c = rolloff * std::cos((maxh - 1.0) * angle) - std::cos(maxh * angle);
+    const double cos_nc_angle = std::cos(maxh * cutoff * angle);
+    const double cos_nc1_angle = std::cos((maxh * cutoff - 1.0) * angle);
+    const double cos_angle = std::cos(angle);
 
     c = c * pow_a_n - rolloff * cos_nc1_angle + cos_nc_angle;
     const double d = 1.0 + rolloff * (rolloff - cos_angle - cos_angle);
@@ -194,7 +194,7 @@ void blip_eq_t::generate(float *out, const int count) const {
   // apply (half of) hamming window
   const double to_fraction = pi / (count - 1);
   for (int i = count; i--;)
-    out[i] *= static_cast<float>(0.54 - 0.46 * cos(i * to_fraction));
+    out[i] *= static_cast<float>(0.54 - 0.46 * std::cos(i * to_fraction));
 }
 
 void Blip_Synth_::adjust_impulse() {
@@ -250,7 +250,7 @@ void Blip_Synth_::treble_eq(const blip_eq_t &eq) {
   double next = 0.0;
   const int impulses_size = this->impulses_size();
   for (i = 0; i < impulses_size; i++) {
-    impulses[i] = static_cast<short>(floor((next - sum) * rescale + 0.5));
+    impulses[i] = static_cast<short>(std::floor((next - sum) * rescale + 0.5));
     sum += fimpulse[i];
     next += fimpulse[i + blip_res];
   }
@@ -295,7 +295,7 @@ void Blip_Synth_::volume_unit(const double new_unit) {
         adjust_impulse();
       }
     }
-    delta_factor = static_cast<int>(floor(factor + 0.5));
+    delta_factor = static_cast<int>(std::floor(factor + 0.5));
     // printf( "delta_factor: %d, kernel_unit: %d\n", delta_factor, kernel_unit );
   }
 }
