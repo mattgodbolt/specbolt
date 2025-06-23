@@ -1,7 +1,6 @@
 module;
 
-#include <bit>
-#include <cstdint>
+import std;
 
 export module z80_common:Alu;
 
