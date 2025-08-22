@@ -31,6 +31,7 @@ void Audio::update(const std::size_t total_cycles) {
       (beeper_on_ ? beeper_on_volume : 0) + (tape_output_ ^ tape_input_ ? tape_on_volume : 0));
   if (output == current_output_)
     return;
+
   blip_synth_.update(total_cycles - last_frame_, output);
   current_output_ = output;
 }

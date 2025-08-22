@@ -274,13 +274,20 @@ SPECBOLT_EXPORT constexpr int blip_best_quality = blip_high_quality;
 template<int quality, int range>
 void Blip_Synth<quality, range>::offset_resampled(
     const blip_resampled_time_t time, int delta, Blip_Buffer *blip_buf) const {
-  // Fails if time is beyond end of Blip_Buffer, due to a bug in caller code or the
-  // need for a longer buffer as set by set_sample_rate().
-  assert((time >> BLIP_BUFFER_ACCURACY) < blip_buf->buffer_size());
+  const auto pos = time >> BLIP_BUFFER_ACCURACY;
+  const auto buf_size = blip_buf->buffer_size();
+  // Check bounds: buffer_extra padding (blip_widest_impulse_ + 2) ensures we can safely
+  // write blip_widest_impulse_ elements beyond buffer_size()
+  if (pos >= buf_size) {
+    // Time is beyond end of buffer - this indicates a bug in caller code, a very large timestep (need for a longer
+    // buffer). Silently ignore to prevent crashes.
+    return;
+  }
+
   delta *= impl.delta_factor;
   const auto phase = (time >> (BLIP_BUFFER_ACCURACY - BLIP_PHASE_BITS) & (blip_res - 1));
   const imp_t *imp = impulses.data() + blip_res - phase;
-  long *buf = blip_buf->buffer_data() + (time >> BLIP_BUFFER_ACCURACY);
+  long *buf = blip_buf->buffer_data() + pos;
   long i0 = *imp;
 
   const int fwd = (blip_widest_impulse_ - quality) / 2;

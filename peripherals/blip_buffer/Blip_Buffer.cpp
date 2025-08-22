@@ -107,7 +107,11 @@ void Blip_Buffer::bass_freq(const int freq) {
 
 void Blip_Buffer::end_frame(const blip_time_t time) {
   offset_ += time * factor_;
-  assert(samples_avail() <= buffer_size()); // time outside buffer length
+
+  // This should never happen if offset_resampled() bounds checking is working correctly
+  if (samples_avail() > buffer_size()) {
+    throw std::runtime_error("Blip_Buffer: time outside buffer length - indicates bug in caller code");
+  }
 }
 
 void Blip_Buffer::remove_silence(const unsigned long count) {
