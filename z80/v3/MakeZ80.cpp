@@ -72,9 +72,9 @@ struct Opcode {
   std::uint8_t q;
   const RegisterSet &reg_set;
 
-  explicit constexpr Opcode(const std::size_t opcode, const RegisterSet &reg_set) :
+  explicit constexpr Opcode(const std::size_t opcode, const RegisterSet &reg_set_) :
       x(static_cast<std::uint8_t>(opcode) >> 6), y((static_cast<std::uint8_t>(opcode) >> 3) & 0x7),
-      z(static_cast<std::uint8_t>(opcode) & 0x7), p(y >> 1), q(y & 1), reg_set(reg_set) {
+      z(static_cast<std::uint8_t>(opcode) & 0x7), p(y >> 1), q(y & 1), reg_set(reg_set_) {
     if (opcode >= 0x100)
       throw std::runtime_error("Bad opcode");
   }
@@ -356,7 +356,8 @@ Op match_op_ed(const Opcode opcode) {
   if (opcode.x == 1 && opcode.z == 0) {
     return {opcode.y == 6 ? "in (c)"s : std::format("in {}, (c)", opcode.reg_set.r[opcode.y]),
         {"pass_time(4);", // todo IO
-            "const auto result = in(get(R16::BC));", "flags(flags() & Flags::Carry() | Alu::parity_flags_for(result));",
+            "const auto result = in(get(R16::BC));",
+            "flags((flags() & Flags::Carry()) | Alu::parity_flags_for(result));",
             std::format("{}set(R8::{}, result);", opcode.y == 6 ? "//" : "", upper(opcode.reg_set.r[opcode.y]))}};
   }
   if (opcode.x == 1 && opcode.z == 1)
@@ -425,7 +426,7 @@ Op match_op_ed(const Opcode opcode) {
               "set(R8::A, new_a);",
               "pass_time(4);",
               std::format("write(address, static_cast<std::uint8_t>({}));", ind_hl_expression),
-              "flags(flags() & Flags::Carry() | Alu::parity_flags_for(new_a));",
+              "flags((flags() & Flags::Carry()) | Alu::parity_flags_for(new_a));",
           }};
     }
   }
