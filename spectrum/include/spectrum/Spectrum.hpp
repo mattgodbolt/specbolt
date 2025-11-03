@@ -175,7 +175,7 @@ private:
   struct TapeTask final : Scheduler::Task {
     Spectrum &spectrum;
     std::size_t last_time_{};
-    explicit TapeTask(Spectrum &spectrum) : spectrum(spectrum) {}
+    explicit TapeTask(Spectrum &spectrum_) : spectrum(spectrum_) {}
     void run(const std::size_t cycles) override {
       spectrum.tape_.pass_time(cycles - last_time_);
       last_time_ = cycles; // ugh
