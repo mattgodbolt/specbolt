@@ -32,7 +32,7 @@ Alu::R8 Alu::add8(const std::uint8_t lhs, const std::uint8_t rhs, const bool car
 }
 
 Alu::R8 Alu::sub8(const std::uint8_t lhs, const std::uint8_t rhs, const bool carry_in) {
-  const auto [result, flags] = add8(lhs, ~rhs, !carry_in);
+  const auto [result, flags] = add8(lhs, static_cast<std::uint8_t>(~rhs), !carry_in);
   return {result, (flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
@@ -66,7 +66,7 @@ Alu::R16 Alu::add16(const std::uint16_t lhs, const std::uint16_t rhs, const Flag
 }
 
 Alu::R16 Alu::sub16(const std::uint16_t lhs, const std::uint16_t rhs, const Flags current_flags) {
-  const auto [result, flags] = add16(lhs, ~rhs, current_flags);
+  const auto [result, flags] = add16(lhs, static_cast<std::uint16_t>(~rhs), current_flags);
   return {result, (flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
@@ -83,7 +83,7 @@ Alu::R16 Alu::adc16(const std::uint16_t lhs, const std::uint16_t rhs, const bool
 }
 
 Alu::R16 Alu::sbc16(const std::uint16_t lhs, const std::uint16_t rhs, const bool carry_in) {
-  const auto [result, flags] = adc16(lhs, ~rhs, !carry_in);
+  const auto [result, flags] = adc16(lhs, static_cast<std::uint16_t>(~rhs), !carry_in);
   return {result, (flags | Flags::Subtract()) ^ Flags::Carry() ^ Flags::HalfCarry()};
 }
 
