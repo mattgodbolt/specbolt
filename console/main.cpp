@@ -54,12 +54,26 @@ struct AppBase {
   virtual int main(const std::vector<std::string> &args) = 0;
 };
 
+// this is temporary fix for homebrew's clang interacting with older macos' libc++
+struct hana_string_hash {
+  constexpr size_t operator()(std::string_view input) const noexcept {
+    return static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') |
+           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 8 |
+           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 16 |
+           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 24 |
+           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 32 |
+           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 40 |
+           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 48 |
+           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 56;
+  }
+};
+
 template<typename Z80Impl>
 struct App final : AppBase {
   specbolt::Spectrum<Z80Impl> spectrum;
   const specbolt::v1::Disassembler dis;
   std::unordered_set<std::uint16_t> breakpoints = {};
-  std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>> commands = {};
+  std::unordered_map<std::string, std::function<int(const std::vector<std::string> &)>, hana_string_hash> commands = {};
   std::atomic<bool> interrupted{false};
 
   static App *&self() {
