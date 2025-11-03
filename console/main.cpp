@@ -56,15 +56,15 @@ struct AppBase {
 
 // this is temporary fix for homebrew's clang interacting with older macos' libc++
 struct hana_string_hash {
-  constexpr size_t operator()(std::string_view input) const noexcept {
-    return static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') |
-           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 8 |
-           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 16 |
-           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 24 |
-           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 32 |
-           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 40 |
-           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 48 |
-           static_cast<size_t>(input.size() >= 1 ? input[0] : '\0') << 56;
+  constexpr std::size_t operator()(std::string_view input) const noexcept {
+    return static_cast<std::size_t>(input.size() >= 1 ? input[0] : '\0') |
+           static_cast<std::size_t>(input.size() >= 2 ? input[1] : '\0') << 8 |
+           static_cast<std::size_t>(input.size() >= 3 ? input[2] : '\0') << 16 |
+           static_cast<std::size_t>(input.size() >= 4 ? input[3] : '\0') << 24 |
+           static_cast<std::size_t>(input.size() >= 5 ? input[4] : '\0') << 32 |
+           static_cast<std::size_t>(input.size() >= 6 ? input[5] : '\0') << 40 |
+           static_cast<std::size_t>(input.size() >= 7 ? input[6] : '\0') << 48 |
+           static_cast<std::size_t>(input.size() >= 8 ? input[7] : '\0') << 56;
   }
 };
 
