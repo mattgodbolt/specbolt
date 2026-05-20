@@ -1,6 +1,6 @@
 # specbolt ZX Spectrum Emulator [![specbolt CI](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml)
 
-A modern C++23 ZX Spectrum emulator with a focus on clean architecture and educational value. specbolt demonstrates the power of modern C++ features including modules and std::ranges while emulating the iconic 8-bit computer.
+A modern C++26 ZX Spectrum emulator with a focus on clean architecture and educational value. specbolt demonstrates the power of modern C++ features including modules and std::ranges while emulating the iconic 8-bit computer.
 
 ## Project Overview
 
@@ -15,9 +15,9 @@ specbolt is structured into several key components:
 
 ### Prerequisites
 
-- **Compiler:** Clang 20+ (required for C++23 modules support)
+- **Compiler:** Clang 20+ (required for C++26 modules support)
   - On Ubuntu: `wget https://apt.llvm.org/llvm.sh; sudo bash llvm.sh 20 all`
-- **Build System:** CMake 3.26+ and Ninja
+- **Build System:** CMake 3.30+ and Ninja
 - **Libraries:**
   - SDL2: `sudo apt-get install libsdl2-dev` (Ubuntu)
   - Readline: `sudo apt-get install libreadline-dev` (for console app)
@@ -45,7 +45,7 @@ cmake --build build/DebugNoModules
 sudo apt install libc++-20-dev-wasm32 libclang-rt-20-dev-wasm32
 
 # Configure with WASI support
-cmake -B build/Wasm -G Ninja -DSPECBOLT_WASI_SDK=ON -DSPECBOLT_WASI_SYSROOT=/path/to/wasi
+cmake -B build/Wasm -G Ninja -DSPECBOLT_WASM=ON -DSPECBOLT_WASI_SYSROOT=/path/to/wasi
 
 # Setup web environment
 cd web
@@ -59,8 +59,6 @@ npm start
 ## Project Documentation
 
 - [Style Guide](STYLE_GUIDE.md) - Comprehensive coding standards for the project
-- [Integration Patterns](INTEGRATION.md) - How to extend and integrate with existing components
-- [Example Patterns](EXAMPLE_PATTERNS.md) - Common code patterns with concrete examples
 - [Project Glossary](GLOSSARY.md) - Definitions of ZX Spectrum and emulator terminology
 - [CLAUDE.md](CLAUDE.md) - Instructions for Claude AI when working with the codebase
 

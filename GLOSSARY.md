@@ -19,15 +19,15 @@ This document defines terminology specific to the ZX Spectrum, emulation, and th
 
 | Term | Definition |
 |------|------------|
-| Attribute | A byte controlling the foreground and background colors of an 8x8 pixel cell. |
+| Attribute | A byte controlling the foreground and background colours of an 8x8 pixel cell. |
 | Character Cell | An 8x8 pixel area with the same attribute settings. |
-| Display File | The area of memory (0x4000-0x5AFF) that holds the screen data. |
-| Attribute File | The area of memory (0x5800-0x5AFF) that holds the color attributes for the screen. |
-| Border | The color area surrounding the main screen display. |
-| BRIGHT | A flag in the attribute byte that increases the intensity of colors. |
-| FLASH | A flag in the attribute byte that alternates foreground and background colors. |
-| INK | Foreground color (the color of pixels set to 1). |
-| PAPER | Background color (the color of pixels set to 0). |
+| Display File | The area of memory (0x4000-0x57FF) that holds the screen pixel data. |
+| Attribute File | The area of memory (0x5800-0x5AFF) that holds the colour attributes for the screen. |
+| Border | The colour area surrounding the main screen display. |
+| BRIGHT | A flag in the attribute byte that increases the intensity of colours. |
+| FLASH | A flag in the attribute byte that alternates foreground and background colours. |
+| INK | Foreground colour (the colour of pixels set to 1). |
+| PAPER | Background colour (the colour of pixels set to 0). |
 
 ### Audio
 
@@ -60,7 +60,7 @@ This document defines terminology specific to the ZX Spectrum, emulation, and th
 |------|------------|
 | Listener | Design pattern used for components that need to observe and react to events. |
 | Memory::Listener | Interface for components that need to track memory access patterns. |
-| Heatmap | Visualization that shows memory access patterns with color coding. |
+| Heatmap | Visualisation that shows memory access patterns with colour coding. |
 | Frontend | The user interface implementation (SDL, Console, Web). |
 | Disassembler | Component that converts machine code bytes back to assembly language. |
 | Snapshot | An image of the machine's memory and CPU state, used for save states. |

@@ -166,7 +166,7 @@ import peripherals;
 - Use PascalCase for enum members:
   ```cpp
   enum class Mode {
-    ReadOnly,   // Not ReadOnly or READ_ONLY
+    ReadOnly,   // Not READ_ONLY or read_only
     WriteOnly,
     ReadWrite,
     Disabled
