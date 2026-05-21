@@ -16,6 +16,8 @@ if (SPECBOLT_TESTS)
     add_subdirectory(test)
 endif ()
 
+add_subdirectory(bench)
+
 add_library(z80_v4)
 target_link_libraries(z80_v4 PUBLIC z80_common peripherals)
 target_link_libraries(z80_v4 PUBLIC opt::pedantic opt::c++26)

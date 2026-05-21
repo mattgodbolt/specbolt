@@ -12,6 +12,10 @@ import z80_common;
 #include "z80/v3/Z80.hpp"
 #endif
 
+#ifdef SPECBOLT_V4
+#include "z80/v4/Z80.hpp"
+#endif
+
 #include <filesystem>
 #include <format>
 
@@ -159,6 +163,9 @@ struct ZexDocTest {
       case 1: return run_test<v1::Z80>();
       case 2: return run_test<v2::Z80>();
       case 3: return run_test<v3::Z80>();
+#ifdef SPECBOLT_V4
+      case 4: return run_test<v4::Z80>();
+#endif
       default: break;
     }
     std::print(std::cerr, "Bad implementation {}\n", impl);
