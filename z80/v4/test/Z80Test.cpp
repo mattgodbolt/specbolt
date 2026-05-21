@@ -55,4 +55,57 @@ TEST_CASE("v4 dispatch: jp $nnnn") {
   CHECK(h.cpu.regs().pc() == 0x1234);
 }
 
+// All 63 `ld r, r'` opcodes come from one emit_ld_rr() shape. Spot-check a
+// few representatives (reg→reg, reg→(hl), (hl)→reg) and make sure HALT
+// (0x76, which lives in the same opcode range) is still HALT.
+
+TEST_CASE("v4 LdRR: ld b, c (0x41)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R8::C, 0x42);
+  h.load(0x8000, {0x41});
+  h.cpu.execute_one();
+  CHECK(h.cpu.regs().get(RegisterFile::R8::B) == 0x42);
+}
+
+TEST_CASE("v4 LdRR: ld h, a (0x67)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R8::A, 0xab);
+  h.load(0x8000, {0x67});
+  h.cpu.execute_one();
+  CHECK(h.cpu.regs().get(RegisterFile::R8::H) == 0xab);
+}
+
+TEST_CASE("v4 LdRR: ld a, l (0x7d)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R8::L, 0x5a);
+  h.load(0x8000, {0x7d});
+  h.cpu.execute_one();
+  CHECK(h.cpu.regs().get(RegisterFile::R8::A) == 0x5a);
+}
+
+TEST_CASE("v4 LdRR: ld b, (hl) (0x46)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R16::HL, 0x9000);
+  h.memory.write(0x9000, 0xcc);
+  h.load(0x8000, {0x46});
+  h.cpu.execute_one();
+  CHECK(h.cpu.regs().get(RegisterFile::R8::B) == 0xcc);
+}
+
+TEST_CASE("v4 LdRR: ld (hl), a (0x77)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R16::HL, 0x9100);
+  h.cpu.regs().set(RegisterFile::R8::A, 0xee);
+  h.load(0x8000, {0x77});
+  h.cpu.execute_one();
+  CHECK(h.memory.read(0x9100) == 0xee);
+}
+
+TEST_CASE("v4 LdRR: 0x76 is still HALT, not ld (hl), (hl)") {
+  Harness h;
+  h.load(0x8000, {0x76});
+  h.cpu.execute_one();
+  CHECK(h.cpu.halted());
+}
+
 } // namespace specbolt::v4

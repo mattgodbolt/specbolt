@@ -1,3 +1,61 @@
+### v4: reflection-driven dispatch (2026-05)
+
+A fourth Z80 implementation built around Barry Revzin's clang fork, intended as
+keynote material. Lives under `z80/v4/`, gated by `SPECBOLT_V4=ON`. CI doesn't
+exercise it (apt-clang-20 doesn't accept `-freflection-latest`).
+
+**The reframing.** Instead of writing per-instruction code (v1's switch),
+per-instruction templates (v2's `requires`-constrained specialisations), or
+per-instruction generated text (v3's `MakeZ80.cpp`), v4 treats the instruction
+set as **data**: a `constexpr` array of `{opcode, mnemonic, body}` records
+where `body` is a `std::meta::token_sequence`. A class-scope `consteval {}`
+block walks the array, builds a `list_builder` of switch arms, and
+`queue_injection`s a `dispatch_base()` member.
+
+**Why a token_sequence, not a lambda.** The obvious alternative —
+`InsnDef{0, "nop", [](Z80&){ ... }}` — collides with the type system:
+
+- `std::function<void(Z80&)>` makes the field type uniform (one `std::array`),
+  but every call goes through type-erased indirection. No inlining.
+- `template<class F> struct InsnDef` keeps inlining but each entry is its own
+  type, so they don't fit in a `std::array`. v2 effectively pays this cost.
+- `void (*)(Z80&)` is uniform and direct-call, but turns every opcode into an
+  indirect call. v2's `execute_ptr_t` table does this; LTO can sometimes see
+  through it but the compiler has been *asked* to defeat the obvious.
+
+A `token_sequence` is a value of *syntax*, not a callable. At injection time
+the body tokens splice literally into the synthesised switch arm — the
+compiler sees a plain switch with inline bodies and produces an ordinary jump
+table. There's nothing for LTO to undo.
+
+**The real win: parameterised shapes.** A single `LdRR::expand()` covers all
+63 `ld r, r'` opcodes from one nested loop over (dest, src) — splicing the
+right `R8::B`/`R8::C`/... identifier into each body via
+`\(std::meta::id(...))`. The DD/FD-prefix variants reuse the same generator
+with an `IX`/`IY` register-set parameter. v2 needs `template<HlSet>` plus three
+`IndexReg` specialisations for the same effect; v3 emits the cross-product as
+strings in `MakeZ80.cpp`. Shapes worth tackling:
+
+- `LdRR` (63 opcodes from `ld r, r'`)
+- `AluA` (8 ops × 8 sources = 64 from `add/adc/sub/sbc/and/xor/or/cp a, r`)
+- CB rotates/shifts (8 × 8 = 64)
+- CB `bit`/`res`/`set` (3 × 8 × 8 = 192 — one shape, three axes)
+- DD/FD as a parameterisation on the above
+
+**Things to remember for fairness when comparing to v2/v3.** C++26 brings
+several things constexpr that previously weren't. If `std::format` becomes
+`consteval`-callable, v2's `Op<"mnemonic", lambda>` can build mnemonics from
+parameters too; if not, both v4 and v2 have to fall back to hand-rolled
+string concat or `std::meta::static_array_of` tricks. Keep the comparison
+honest — same C++26 baseline for all four versions.
+
+**Bonus for slides.** `std::meta::report_tokens("label", ts)` makes the
+compiler print the synthesised token sequence back as a diagnostic at the
+point of injection. Useful for "look — here's the table, here's the switch
+the compiler built from it" shots.
+
+---
+
 ### Ideas for C++26
 
 - deducing this throughout

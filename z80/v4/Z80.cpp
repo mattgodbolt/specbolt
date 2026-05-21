@@ -27,4 +27,14 @@ std::uint16_t Z80::read_immediate16() {
   return static_cast<std::uint16_t>(hi << 8 | lo);
 }
 
+std::uint8_t Z80::read(const std::uint16_t address) {
+  pass_time(3);
+  return memory_.read(address);
+}
+
+void Z80::write(const std::uint16_t address, const std::uint8_t byte) {
+  pass_time(3);
+  memory_.write(address, byte);
+}
+
 } // namespace specbolt::v4
