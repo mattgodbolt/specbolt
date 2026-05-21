@@ -23,29 +23,14 @@ public:
   void write(std::uint16_t address, std::uint8_t byte);
 
   // ----------------------------------------------------------------------
-  // Reflection-driven dispatch: build the `dispatch_base(uint8_t)` switch by
-  // (a) emitting one arm per `InsnDef` in `base_instructions` and
-  // (b) letting each shape generator emit its expanded arms (e.g. emit_ld_rr
-  // emits 63 arms for `ld r, r'` from one nested loop).
+  // Three dispatchers, one generator. Same shape (ld r, r'), three
+  // RegSets, three completely synthesised switch tables. The simple
+  // per-opcode arms (nop, halt, ei, di, jp $nnnn) only land in the base
+  // dispatcher.
   consteval {
-    std::meta::list_builder cases;
-
-    // Individual opcodes from the declarative table.
-    for (auto const &i : base_instructions) {
-      cases += ^^{ case \(i.opcode): \(i.body) break; };
-    }
-
-    // Parameterised shapes.
-    emit_ld_rr(cases);
-
-    std::meta::queue_injection(^^{
-      void dispatch_base(std::uint8_t opcode) {
-        switch (opcode) {
-          \(cases)
-          default: break; // TODO: unimplemented opcode
-        }
-      }
-    });
+    inject_dispatcher("dispatch_base", hl_regs, BaseOpcodes::Include);
+    inject_dispatcher("dispatch_dd",   ix_regs, BaseOpcodes::Skip);
+    inject_dispatcher("dispatch_fd",   iy_regs, BaseOpcodes::Skip);
   }
 };
 

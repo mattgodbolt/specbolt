@@ -108,4 +108,40 @@ TEST_CASE("v4 LdRR: 0x76 is still HALT, not ld (hl), (hl)") {
   CHECK(h.cpu.halted());
 }
 
+// DD/FD prefixed forms share the LdRR generator but with ix_regs/iy_regs.
+
+TEST_CASE("v4 LdRR: ld ixh, b (DD 60)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R8::B, 0xab);
+  h.load(0x8000, {0xdd, 0x60});
+  h.cpu.execute_one();
+  CHECK(h.cpu.regs().get(RegisterFile::R8::IXH) == 0xab);
+}
+
+TEST_CASE("v4 LdRR: ld b, (ix+d) (DD 46 d)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R16::IX, 0x9000);
+  h.memory.write(0x9005, 0x5a); // value at IX+5
+  h.load(0x8000, {0xdd, 0x46, 0x05});
+  h.cpu.execute_one();
+  CHECK(h.cpu.regs().get(RegisterFile::R8::B) == 0x5a);
+}
+
+TEST_CASE("v4 LdRR: ld (iy+d), c (FD 71 d) with negative displacement") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R16::IY, 0x9100);
+  h.cpu.regs().set(RegisterFile::R8::C, 0xee);
+  h.load(0x8000, {0xfd, 0x71, 0xff}); // d = -1
+  h.cpu.execute_one();
+  CHECK(h.memory.read(0x90ff) == 0xee);
+}
+
+TEST_CASE("v4 LdRR: under DD, h/l are remapped (ld ixl, ixh = DD 6c)") {
+  Harness h;
+  h.cpu.regs().set(RegisterFile::R8::IXH, 0x12);
+  h.load(0x8000, {0xdd, 0x6c});
+  h.cpu.execute_one();
+  CHECK(h.cpu.regs().get(RegisterFile::R8::IXL) == 0x12);
+}
+
 } // namespace specbolt::v4

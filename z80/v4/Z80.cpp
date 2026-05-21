@@ -2,6 +2,11 @@
 
 namespace specbolt::v4 {
 
+namespace {
+constexpr std::uint8_t kPrefixDD = 0xdd;
+constexpr std::uint8_t kPrefixFD = 0xfd;
+} // namespace
+
 void Z80::execute_one() {
   if (halted_) [[unlikely]] {
     pass_time(1);
@@ -11,6 +16,16 @@ void Z80::execute_one() {
   regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
   const auto opcode = read_immediate();
   pass_time(1); // last cycle of M1.
+
+  if (opcode == kPrefixDD || opcode == kPrefixFD) [[unlikely]] {
+    // Second M1 cycle for the prefixed opcode.
+    regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
+    const auto inner = read_immediate();
+    pass_time(1);
+    if (opcode == kPrefixDD) dispatch_dd(inner);
+    else dispatch_fd(inner);
+    return;
+  }
   dispatch_base(opcode);
 }
 
