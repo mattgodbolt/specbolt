@@ -28,13 +28,19 @@ public:
   void push16(std::uint16_t value);
 
   // ----------------------------------------------------------------------
-  // Three base dispatchers + three CB dispatchers, all from the same
-  // shape generators with different RegSets.
+  // All the dispatchers, generated from one shape library:
+  //   base/dd/fd   share the same shape set, three RegSets
+  //   cb           operand at regs_.wz()
+  //   ddcb/fdcb    operand always at regs_.wz(), with the undocumented
+  //                "side store" to r[z] for non-bit ops (same shape for both)
+  //   ed           one-offs + block ops
   consteval {
     inject_dispatcher("dispatch_base", hl_regs, BaseOpcodes::Include);
     inject_dispatcher("dispatch_dd",   ix_regs, BaseOpcodes::Skip);
     inject_dispatcher("dispatch_fd",   iy_regs, BaseOpcodes::Skip);
-    inject_cb_dispatcher("dispatch_cb", hl_regs);
+    inject_cb_dispatcher("dispatch_cb");
+    inject_idxcb_dispatcher("dispatch_idxcb");
+    inject_ed_dispatcher("dispatch_ed");
   }
 };
 

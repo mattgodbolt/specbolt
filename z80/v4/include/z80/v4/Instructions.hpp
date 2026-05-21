@@ -51,13 +51,7 @@ inline constexpr auto base_instructions = std::array{
     InsnDef{0x12, "ld (de), a", ^^{
       write(regs().get(RegisterFile::R16::DE), regs().get(RegisterFile::R8::A));
     }},
-    InsnDef{0x22, "ld ($nnnn), hl", ^^{
-      const auto addr = read_immediate16();
-      write(addr,
-            regs().get(RegisterFile::R8::L));
-      write(static_cast<std::uint16_t>(addr + 1),
-            regs().get(RegisterFile::R8::H));
-    }},
+    // 0x22 / 0x2a — handled by emit_index_ops shape (so DD/FD pick up IX/IY versions).
     InsnDef{0x32, "ld ($nnnn), a", ^^{
       write(read_immediate16(), regs().get(RegisterFile::R8::A));
     }},
@@ -66,11 +60,6 @@ inline constexpr auto base_instructions = std::array{
     }},
     InsnDef{0x1a, "ld a, (de)", ^^{
       regs().set(RegisterFile::R8::A, read(regs().get(RegisterFile::R16::DE)));
-    }},
-    InsnDef{0x2a, "ld hl, ($nnnn)", ^^{
-      const auto addr = read_immediate16();
-      regs().set(RegisterFile::R8::L, read(addr));
-      regs().set(RegisterFile::R8::H, read(static_cast<std::uint16_t>(addr + 1)));
     }},
     InsnDef{0x3a, "ld a, ($nnnn)", ^^{
       regs().set(RegisterFile::R8::A, read(read_immediate16()));
@@ -135,25 +124,11 @@ inline constexpr auto base_instructions = std::array{
       regs().pc(target);
     }},
     InsnDef{0xd9, "exx", ^^{ regs().exx(); }},
-    InsnDef{0xe3, "ex (sp), hl", ^^{
-      const auto sp = regs().sp();
-      const auto lo = read(sp);
-      pass_time(1);
-      const auto hi = read(static_cast<std::uint16_t>(sp + 1));
-      write(sp, regs().get(RegisterFile::R8::L));
-      pass_time(2);
-      write(static_cast<std::uint16_t>(sp + 1), regs().get(RegisterFile::R8::H));
-      regs().set(RegisterFile::R16::HL, static_cast<std::uint16_t>(lo | (hi << 8)));
-    }},
-    InsnDef{0xe9, "jp (hl)", ^^{ regs().pc(regs().get(RegisterFile::R16::HL)); }},
+    // 0xe3 / 0xe9 / 0xf9 — handled by emit_index_ops shape.
     InsnDef{0xeb, "ex de, hl", ^^{
       regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL);
     }},
     InsnDef{0xf3, "di", ^^{ iff1(false); iff2(false); }},
-    InsnDef{0xf9, "ld sp, hl", ^^{
-      pass_time(2);
-      regs().sp(regs().get(RegisterFile::R16::HL));
-    }},
     InsnDef{0xfb, "ei", ^^{ iff1(true);  iff2(true); }},
 };
 

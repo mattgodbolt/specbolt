@@ -5,6 +5,7 @@ namespace specbolt::v4 {
 namespace {
 constexpr std::uint8_t kPrefixCB = 0xcb;
 constexpr std::uint8_t kPrefixDD = 0xdd;
+constexpr std::uint8_t kPrefixED = 0xed;
 constexpr std::uint8_t kPrefixFD = 0xfd;
 } // namespace
 
@@ -23,7 +24,15 @@ void Z80::execute_one() {
       regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
       const auto inner = read_immediate();
       pass_time(1);
+      regs_.wz(regs_.get(RegisterFile::R16::HL));
       dispatch_cb(inner);
+      break;
+    }
+    case kPrefixED: {
+      regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
+      const auto inner = read_immediate();
+      pass_time(1);
+      dispatch_ed(inner);
       break;
     }
     case kPrefixDD:
@@ -31,8 +40,20 @@ void Z80::execute_one() {
       regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
       const auto inner = read_immediate();
       pass_time(1);
-      if (opcode == kPrefixDD) dispatch_dd(inner);
-      else dispatch_fd(inner);
+      if (inner == kPrefixCB) {
+        // DD CB d xx / FD CB d xx — displacement before opcode.
+        const auto disp = static_cast<std::int8_t>(read_immediate());
+        const auto index = (opcode == kPrefixDD) ? regs_.get(RegisterFile::R16::IX)
+                                                  : regs_.get(RegisterFile::R16::IY);
+        regs_.wz(static_cast<std::uint16_t>(index + disp));
+        pass_time(2);
+        const auto inner2 = read_immediate();
+        dispatch_idxcb(inner2);
+      } else if (opcode == kPrefixDD) {
+        dispatch_dd(inner);
+      } else {
+        dispatch_fd(inner);
+      }
       break;
     }
     default:
