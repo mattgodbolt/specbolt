@@ -9,6 +9,14 @@ else ()
 
     if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang")
         target_compile_definitions(opt_pedantic INTERFACE "_LIBCPP_ENABLE_NODISCARD")
+        # Catch2's TEST_CASE/SECTION rely on __COUNTER__. Recent clang (≥21 on
+        # homebrew) treats this as a C2y extension warning even in C++ mode,
+        # which -Werror turns into a build failure.
+        include(CheckCXXCompilerFlag)
+        check_cxx_compiler_flag(-Wc2y-extensions HAVE_WC2Y_EXTENSIONS)
+        if (HAVE_WC2Y_EXTENSIONS)
+            target_compile_options(opt_pedantic INTERFACE "-Wno-c2y-extensions")
+        endif ()
     endif ()
 endif ()
 

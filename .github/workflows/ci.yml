@@ -9,7 +9,7 @@ jobs:
         preset: [ debug, debug-modules, release, release-modules ]
         clang_version: [ 20 ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: setup system dependencies
         run: |
           sudo apt update -y
@@ -19,7 +19,7 @@ jobs:
         with:
           cmake-version: '3.30.x'
       - name: Install ninja-build tool
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
       - name: install clang
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -50,7 +50,7 @@ jobs:
       - name: Print Clang version
         run: echo $(brew --prefix llvm)/bin/clang++ --version
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       - name: Configure
         run: |
           cmake --preset ${{ matrix.preset }} \
@@ -69,13 +69,13 @@ jobs:
       matrix:
         clang_version: [ 20 ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '3.30.x'
       - name: Install ninja-build tool
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
       - name: install clang
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -97,7 +97,7 @@ jobs:
           cmake --install build/wasm
       - name: Deploy
         if: github.ref == 'refs/heads/main'
-        uses: jakejarvis/s3-sync-action@master
+        uses: jakejarvis/s3-sync-action@v0.5.1
         with:
           args: --cache-control max-age=30 --metadata-directive REPLACE
         env:
@@ -109,5 +109,5 @@ jobs:
   check-pre-commits:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pre-commit/action@v3.0.1
