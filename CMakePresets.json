@@ -1,86 +1,121 @@
 {
-    "version": 6,
-    "cmakeMinimumRequired": {
-        "major": 3,
-        "minor": 30,
-        "patch": 0
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 30,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "_base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}"
     },
-    "configurePresets": [
-        {
-            "name": "_base",
-            "hidden": true,
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/${presetName}"
-        },
-        {
-            "name": "debug",
-            "inherits": "_base",
-            "displayName": "Debug, no modules",
-            "description": "Fastest dev build. Works with clang or gcc.",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "SPECBOLT_MODULES": "OFF"
-            }
-        },
-        {
-            "name": "debug-modules",
-            "inherits": "_base",
-            "displayName": "Debug with C++ modules",
-            "description": "Requires clang-20+ and libc++.",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "SPECBOLT_MODULES": "ON"
-            }
-        },
-        {
-            "name": "release",
-            "inherits": "_base",
-            "displayName": "RelWithDebInfo, no modules",
-            "description": "Optimised build with debug info. Runs the zexdoc regression tests.",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "SPECBOLT_MODULES": "OFF"
-            }
-        },
-        {
-            "name": "release-modules",
-            "inherits": "_base",
-            "displayName": "RelWithDebInfo with C++ modules",
-            "description": "Requires clang-20+ and libc++.",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "SPECBOLT_MODULES": "ON"
-            }
-        },
-        {
-            "name": "wasm",
-            "inherits": "_base",
-            "displayName": "WebAssembly (RelWithDebInfo, no modules)",
-            "description": "WASI build. Pass -DSPECBOLT_WASI_SYSROOT=/path/to/sysroot.",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "SPECBOLT_MODULES": "OFF",
-                "SPECBOLT_WASM": "ON"
-            }
-        }
-    ],
-    "buildPresets": [
-        { "name": "debug", "configurePreset": "debug" },
-        { "name": "debug-modules", "configurePreset": "debug-modules" },
-        { "name": "release", "configurePreset": "release" },
-        { "name": "release-modules", "configurePreset": "release-modules" },
-        { "name": "wasm", "configurePreset": "wasm" }
-    ],
-    "testPresets": [
-        {
-            "name": "_test-base",
-            "hidden": true,
-            "output": { "outputOnFailure": true },
-            "execution": { "noTestsAction": "error" }
-        },
-        { "name": "debug", "configurePreset": "debug", "inherits": "_test-base" },
-        { "name": "debug-modules", "configurePreset": "debug-modules", "inherits": "_test-base" },
-        { "name": "release", "configurePreset": "release", "inherits": "_test-base" },
-        { "name": "release-modules", "configurePreset": "release-modules", "inherits": "_test-base" }
-    ]
+    {
+      "name": "debug",
+      "inherits": "_base",
+      "displayName": "Debug, no modules",
+      "description": "Fastest dev build. Works with clang or gcc.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SPECBOLT_MODULES": "OFF"
+      }
+    },
+    {
+      "name": "debug-modules",
+      "inherits": "_base",
+      "displayName": "Debug with C++ modules",
+      "description": "Requires clang-20+ and libc++.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SPECBOLT_MODULES": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "inherits": "_base",
+      "displayName": "RelWithDebInfo, no modules",
+      "description": "Optimised build with debug info. Runs the zexdoc regression tests.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SPECBOLT_MODULES": "OFF"
+      }
+    },
+    {
+      "name": "release-modules",
+      "inherits": "_base",
+      "displayName": "RelWithDebInfo with C++ modules",
+      "description": "Requires clang-20+ and libc++.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SPECBOLT_MODULES": "ON"
+      }
+    },
+    {
+      "name": "wasm",
+      "inherits": "_base",
+      "displayName": "WebAssembly (RelWithDebInfo, no modules)",
+      "description": "WASI build. Pass -DSPECBOLT_WASI_SYSROOT=/path/to/sysroot.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SPECBOLT_MODULES": "OFF",
+        "SPECBOLT_WASM": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "debug-modules",
+      "configurePreset": "debug-modules"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "release-modules",
+      "configurePreset": "release-modules"
+    },
+    {
+      "name": "wasm",
+      "configurePreset": "wasm"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "_test-base",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "inherits": "_test-base"
+    },
+    {
+      "name": "debug-modules",
+      "configurePreset": "debug-modules",
+      "inherits": "_test-base"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "inherits": "_test-base"
+    },
+    {
+      "name": "release-modules",
+      "configurePreset": "release-modules",
+      "inherits": "_test-base"
+    }
+  ]
 }
