@@ -24,19 +24,21 @@ specbolt is structured into several key components:
 
 ### Building
 
+The simplest path is via CMake presets (see `CMakePresets.json` for the list):
+
 ```bash
-# Configure with modules support
-cmake -B build/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPECBOLT_MODULES=ON
+# Configure, build, test
+cmake --preset debug              # Debug, no modules — works with clang or gcc
+cmake --build --preset debug
+ctest --preset debug
 
-# Configure without modules (recommended for most development)
-cmake -B build/DebugNoModules -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPECBOLT_MODULES=OFF
-
-# Build (no modules version)
-cmake --build build/DebugNoModules
-
-# Run (no modules version)
-./build/DebugNoModules/sdl/specbolt_sdl
+# Run
+./build/debug/sdl/specbolt_sdl
 ```
+
+Other useful presets: `debug-modules` (needs clang + libc++), `release` (RelWithDebInfo, runs the zexdoc regression tests), and `release-modules`.
+
+To pin a specific compiler, set `CC`/`CXX` or create a local `CMakeUserPresets.json` (gitignored) that inherits a public preset and overrides `CMAKE_CXX_COMPILER`.
 
 ### Web/WASM Build
 
