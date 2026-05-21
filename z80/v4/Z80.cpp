@@ -3,6 +3,7 @@
 namespace specbolt::v4 {
 
 namespace {
+constexpr std::uint8_t kPrefixCB = 0xcb;
 constexpr std::uint8_t kPrefixDD = 0xdd;
 constexpr std::uint8_t kPrefixFD = 0xfd;
 } // namespace
@@ -17,16 +18,27 @@ void Z80::execute_one() {
   const auto opcode = read_immediate();
   pass_time(1); // last cycle of M1.
 
-  if (opcode == kPrefixDD || opcode == kPrefixFD) [[unlikely]] {
-    // Second M1 cycle for the prefixed opcode.
-    regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
-    const auto inner = read_immediate();
-    pass_time(1);
-    if (opcode == kPrefixDD) dispatch_dd(inner);
-    else dispatch_fd(inner);
-    return;
+  switch (opcode) {
+    case kPrefixCB: {
+      regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
+      const auto inner = read_immediate();
+      pass_time(1);
+      dispatch_cb(inner);
+      break;
+    }
+    case kPrefixDD:
+    case kPrefixFD: {
+      regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f)));
+      const auto inner = read_immediate();
+      pass_time(1);
+      if (opcode == kPrefixDD) dispatch_dd(inner);
+      else dispatch_fd(inner);
+      break;
+    }
+    default:
+      dispatch_base(opcode);
+      break;
   }
-  dispatch_base(opcode);
 }
 
 std::uint8_t Z80::read_immediate() {
@@ -50,6 +62,28 @@ std::uint8_t Z80::read(const std::uint16_t address) {
 void Z80::write(const std::uint16_t address, const std::uint8_t byte) {
   pass_time(3);
   memory_.write(address, byte);
+}
+
+std::uint8_t Z80::pop8() {
+  const auto value = read(regs_.sp());
+  regs_.sp(static_cast<std::uint16_t>(regs_.sp() + 1));
+  return value;
+}
+
+std::uint16_t Z80::pop16() {
+  const auto lo = pop8();
+  const auto hi = pop8();
+  return static_cast<std::uint16_t>(hi << 8 | lo);
+}
+
+void Z80::push8(const std::uint8_t value) {
+  regs_.sp(static_cast<std::uint16_t>(regs_.sp() - 1));
+  write(regs_.sp(), value);
+}
+
+void Z80::push16(const std::uint16_t value) {
+  push8(static_cast<std::uint8_t>(value >> 8));
+  push8(static_cast<std::uint8_t>(value));
 }
 
 } // namespace specbolt::v4

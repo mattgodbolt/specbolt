@@ -54,6 +54,33 @@ compiler print the synthesised token sequence back as a diagnostic at the
 point of injection. Useful for "look — here's the table, here's the switch
 the compiler built from it" shots.
 
+**Keynote arc (likely shape).** Lead with "how can I use reflection to make
+my Z80 emulator better" — the introspection slides (stock P2996,
+mainstream C++26):
+
+- `enumerators_of(^^R8)` derives `r8_ids` from the enum instead of
+  hand-writing the parallel `{"B","C","D","E","H","L","","A"}` array.
+  Every place a name parallels an enum is a place reflection eats
+  redundancy.
+- `nonstatic_data_members_of(^^SnapshotHeader)` auto-generates the SNA
+  loader's 18-line "for each field, set the matching register" block.
+  Smaller demo, very clean P2996.
+- `members_of(^^Z80)` for a compile-time "what does this CPU support"
+  query — useful for the debugger / disassembler.
+- Compile-time *coverage* invariant via reflection: walk the synthesised
+  case list and assert exhaustive opcode coverage at consteval time.
+
+Then the surprise pivot to **"but what if we could code-generate"** —
+Barry's fork, token injection, the v4 dispatcher. Same data, but now the
+compiler emits the switch arms from the table rather than walking a
+pre-shaped structure. The story is "reflection lets you ask questions
+about your code; injection lets you answer them with more code."
+
+**Honest framing point.** As of writing, v4 uses zero introspection — it's
+all injection. Every `r8_ids = {"B", "C", ...}` array is hand-written.
+Replacing those with `enumerators_of` is the natural first step *and* the
+right slide to start with. Save token injection for the encore.
+
 ---
 
 ### Ideas for C++26

@@ -22,15 +22,19 @@ public:
   std::uint8_t read(std::uint16_t address);
   void write(std::uint16_t address, std::uint8_t byte);
 
+  std::uint8_t pop8();
+  std::uint16_t pop16();
+  void push8(std::uint8_t value);
+  void push16(std::uint16_t value);
+
   // ----------------------------------------------------------------------
-  // Three dispatchers, one generator. Same shape (ld r, r'), three
-  // RegSets, three completely synthesised switch tables. The simple
-  // per-opcode arms (nop, halt, ei, di, jp $nnnn) only land in the base
-  // dispatcher.
+  // Three base dispatchers + three CB dispatchers, all from the same
+  // shape generators with different RegSets.
   consteval {
     inject_dispatcher("dispatch_base", hl_regs, BaseOpcodes::Include);
     inject_dispatcher("dispatch_dd",   ix_regs, BaseOpcodes::Skip);
     inject_dispatcher("dispatch_fd",   iy_regs, BaseOpcodes::Skip);
+    inject_cb_dispatcher("dispatch_cb", hl_regs);
   }
 };
 
