@@ -5,6 +5,7 @@ option(SPECBOLT_CONSOLE "Build specbolt console" ON)
 option(SPECBOLT_PREFER_SYSTEM_DEPS "Prefer using system dependencies" OFF)
 option(SPECBOLT_MODULES "Use C++ Modules" ON)
 option(SPECBOLT_WASM "Compile for WebAssembly" OFF)
+option(SPECBOLT_V4 "Build the experimental v4 Z80 (requires Barry Revzin's clang fork with -freflection-latest)" OFF)
 set(SPECBOLT_WASI_SYSROOT "" CACHE STRING "Wasi root")
 
 if (SPECBOLT_WASM)
@@ -84,6 +85,10 @@ if (NOT SPECBOLT_WASM)
 endif ()
 add_subdirectory(spectrum)
 add_subdirectory(z80)
+
+if (SPECBOLT_V4)
+    add_subdirectory(z80/v4)
+endif ()
 
 if (SPECBOLT_WASM)
     add_subdirectory(web)

@@ -1,0 +1,6 @@
+# v4 uses Barry Revzin's clang fork with token-injection syntax (^^{ ... },
+# consteval { ... }, \(...) splicing) that stock clang-format doesn't
+# understand. Disable formatting in this directory until clang-format
+# learns the new syntax.
+DisableFormat: true
+SortIncludes: Never
