@@ -2,24 +2,21 @@
 
 Requires **clang-20+** (for C++26 modules + libc++), CMake 3.30+, Ninja, SDL2, readline.
 
-Default (modules + libc++):
+Presets live in `CMakePresets.json`. The common ones:
 
 ```sh
-CC=clang-20 CXX=clang++-20 cmake -B build/Debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build/Debug
+cmake --preset debug           # Debug, no modules — works with clang or gcc
+cmake --preset debug-modules   # Debug with C++ modules (needs clang + libc++)
+cmake --preset release         # RelWithDebInfo, no modules (runs zexdoc tests)
+cmake --build --preset debug
+ctest --preset debug
 ```
 
-Modules off (also works with gcc-15):
-
-```sh
-cmake -B build/DebugNoModules -G Ninja -DCMAKE_BUILD_TYPE=Debug -DSPECBOLT_MODULES=OFF
-cmake --build build/DebugNoModules
-```
-
-Run: `./build/Debug/sdl/specbolt_sdl`
-Tests: `ctest --test-dir build/Debug`
+Pick the compiler with `CC=… CXX=…` or by setting `CMAKE_CXX_COMPILER` in a local `CMakeUserPresets.json` (gitignored) that `inherits` from one of the public presets.
 
 The `zexdoc` regression tests are intentionally skipped in `Debug` (too slow); they run in `RelWithDebInfo`.
+
+Run: `./build/debug/sdl/specbolt_sdl`
 
 ## Lint/Format
 

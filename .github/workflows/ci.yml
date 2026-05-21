@@ -6,11 +6,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        build_type: [ Debug, RelWithDebInfo ]
+        preset: [ debug, debug-modules, release, release-modules ]
         clang_version: [ 20 ]
-        modules_enable: [ ON, OFF ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: setup system dependencies
         run: |
           sudo apt update -y
@@ -20,28 +19,25 @@ jobs:
         with:
           cmake-version: '3.30.x'
       - name: Install ninja-build tool
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
       - name: install clang
         run: |
           wget https://apt.llvm.org/llvm.sh
           sudo bash llvm.sh ${{ matrix.clang_version }} all
           echo "CC=clang-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
           echo "CXX=clang++-${{ matrix.clang_version }}" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
       - name: Build
-        run: |
-          mkdir build
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }}
-          cmake --build build
+        run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
-        run: |
-          env CTEST_PARALLEL_LEVEL=$(nproc) CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
+        run: env CTEST_PARALLEL_LEVEL=$(nproc) ctest --preset ${{ matrix.preset }}
 
   mac-build-and-test:
     runs-on: macos-15
     strategy:
       matrix:
-        build_type: [ Debug, RelWithDebInfo ]
-        modules_enable: [ ON, OFF ]
+        preset: [ debug, debug-modules, release, release-modules ]
     steps:
       - name: Select latest XCode
         run: |
@@ -54,30 +50,32 @@ jobs:
       - name: Print Clang version
         run: echo $(brew --prefix llvm)/bin/clang++ --version
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+      - name: Configure
+        run: |
+          cmake --preset ${{ matrix.preset }} \
+            -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" \
+            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" \
+            -DCMAKE_SYSROOT="$(xcrun --show-sdk-path)" \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
       - name: Build
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++" -DCMAKE_SYSROOT="$(xcrun --show-sdk-path)" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }}
-          cmake --build build
+        run: cmake --build --preset ${{ matrix.preset }}
       - name: Test
-        run: |
-          env CTEST_PARALLEL_LEVEL=$(sysctl -n hw.ncpu) CTEST_OUTPUT_ON_FAILURE=1 cmake --build build --target test
+        run: env CTEST_PARALLEL_LEVEL=$(sysctl -n hw.ncpu) ctest --preset ${{ matrix.preset }}
 
   wasm-build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        build_type: [ RelWithDebInfo ]
         clang_version: [ 20 ]
-        modules_enable: [ OFF ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Setup cmake
         uses: jwlawson/actions-setup-cmake@v2
         with:
           cmake-version: '3.30.x'
       - name: Install ninja-build tool
-        uses: seanmiddleditch/gha-setup-ninja@v5
+        uses: seanmiddleditch/gha-setup-ninja@v6
       - name: install clang
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -88,18 +86,18 @@ jobs:
         run: |
           sudo apt install libclang-rt-${{matrix.clang_version}}-dev-wasm32
           curl -sL https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-25/wasi-sysroot-25.0.tar.gz | tar zxf -
+      - name: Configure
+        run: |
+          cmake --preset wasm \
+            -DCMAKE_INSTALL_PREFIX=$PWD/install \
+            -DSPECBOLT_WASI_SYSROOT=$PWD/wasi-sysroot-25.0
       - name: Build
         run: |
-          mkdir build
-          cmake -S . -B build -G Ninja \
-            -DCMAKE_INSTALL_PREFIX=$PWD/install \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DSPECBOLT_MODULES=${{ matrix.modules_enable }} \
-            -DSPECBOLT_WASM=ON -DSPECBOLT_WASI_SYSROOT=$PWD/wasi-sysroot-25.0
-          cmake --build build
-          cmake --build build --target install
+          cmake --build --preset wasm
+          cmake --install build/wasm
       - name: Deploy
         if: github.ref == 'refs/heads/main'
-        uses: jakejarvis/s3-sync-action@master
+        uses: jakejarvis/s3-sync-action@v0.5.1
         with:
           args: --cache-control max-age=30 --metadata-directive REPLACE
         env:
@@ -111,5 +109,5 @@ jobs:
   check-pre-commits:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: pre-commit/action@v3.0.1

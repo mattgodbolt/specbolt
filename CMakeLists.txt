@@ -33,6 +33,21 @@ if (CAN_USE_LLD)
     add_link_options("-fuse-ld=lld")
 endif ()
 
+# Some clang installs (notably compiler-explorer-style ones) ship libc++ but
+# don't set an rpath, so binaries built against them fail to find libc++.so.1
+# at runtime. If the compiler can resolve libc++.so to an absolute path, embed
+# that directory as an rpath. Harmless on toolchains that don't need it.
+if (NOT SPECBOLT_WASM)
+    execute_process(COMMAND ${CMAKE_CXX_COMPILER} -print-file-name=libc++.so
+            OUTPUT_VARIABLE SPECBOLT_LIBCXX_SO
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    if (IS_ABSOLUTE "${SPECBOLT_LIBCXX_SO}" AND EXISTS "${SPECBOLT_LIBCXX_SO}")
+        get_filename_component(SPECBOLT_LIBCXX_DIR "${SPECBOLT_LIBCXX_SO}" DIRECTORY)
+        add_link_options("-Wl,-rpath,${SPECBOLT_LIBCXX_DIR}")
+    endif ()
+endif ()
+
 list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 include(CPM)
