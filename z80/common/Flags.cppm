@@ -1,8 +1,6 @@
 module;
 
-#include <cstdint>
-#include <format>
-#include <string>
+import std;
 
 export module z80_common:Flags;
 
