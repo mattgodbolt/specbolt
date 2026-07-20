@@ -1,0 +1,8 @@
+add_executable(z80_bench Bench.cpp)
+target_link_libraries(z80_bench PRIVATE z80_v1 z80_v2 z80_v3 peripherals z80_common opt::pedantic opt::c++26)
+if (SPECBOLT_V4)
+    target_link_libraries(z80_bench PRIVATE z80_v4)
+    target_compile_definitions(z80_bench PRIVATE SPECBOLT_V4)
+endif ()
+target_compile_options(z80_bench PRIVATE -stdlib=libc++)
+target_link_options(z80_bench PRIVATE -stdlib=libc++)
