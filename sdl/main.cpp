@@ -61,7 +61,7 @@ struct SdlApp {
                      | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
                      | lyra::opt(rom, "ROM")["--rom"]("Where to find the ROM") //
                      | lyra::opt(trace_instructions, "NUM")["--trace"]("Trace the first NUM instructions") //
-                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.") //
+                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.").choices(1, 2, 3) //
                      | lyra::opt(video_refresh_rate, "HZ")["--video-refresh"]("Refresh the video at HZ") //
                      | lyra::opt(emulator_speed, "X")["--emulator-speed"]("Multiplier on emulation speed") //
                      | lyra::opt(zoom, "X")["--zoom"]("Multiplier on display zoom") //

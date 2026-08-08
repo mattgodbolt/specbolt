@@ -312,7 +312,7 @@ int main(int argc, const char **argv) try {
   const auto cli = lyra::cli() | //
                    lyra::help(need_help) //
                    | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
-                   | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.") //
+                   | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.").choices(1, 2, 3) //
                    | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup") |
                    lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
 

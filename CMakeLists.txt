@@ -71,7 +71,7 @@ if (SPECBOLT_TESTS)
     enable_testing()
 endif ()
 
-specbolt_dependency(Lyra "gh:bfgroup/Lyra@1.6.1#ee3c076fa6b9d64c9d249a21f5b9b5a8dae92cd8")
+specbolt_dependency(Lyra "gh:bfgroup/Lyra@1.8.0#4186a07f52392aaac31726c64c574d3496cdc13a")
 include_directories(${PROJECT_SOURCE_DIR})
 
 if (SPECBOLT_CONSOLE)

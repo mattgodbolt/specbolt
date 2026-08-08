@@ -145,7 +145,7 @@ struct ZexDocTest {
                      | lyra::help(need_help) //
                      | lyra::opt(dump_instructions, "NUM")["-d"]["--dump-instructions"](
                            "Dump the first NUM instructions, then exit.") //
-                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.") //
+                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.").choices(1, 2, 3) //
                      | lyra::opt(skip, "NUM")["-s"]["--skip"]("Skip the first NUM tests.");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
