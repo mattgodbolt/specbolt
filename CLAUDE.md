@@ -23,15 +23,12 @@ Run: `./build/debug/sdl/specbolt_sdl`
 
 Reflection (P2996) needs **gcc 16+**; no clang release implements it yet, and the WASI build is on clang, so anything reflective must be optional. `cmake/reflection.cmake` probes for it and exposes:
 
-- `opt::reflection` — link against it to get `-freflection` and the `SPECBOLT_REFLECTION` define. Guard reflective code on that macro, or exclude the target in CMake with `if (SPECBOLT_HAS_REFLECTION)`.
+- `SPECBOLT_HAS_REFLECTION` — true when the compiler can do it. Exclude reflective targets with `if (SPECBOLT_HAS_REFLECTION)`, and guard reflective code on the `SPECBOLT_REFLECTION` macro.
 - `SPECBOLT_REFLECTION` cache variable — `AUTO` (default, use if available), `ON` (require it; configure fails otherwise), `OFF`.
 
-No distro packages gcc 16, so grab a compiler-explorer build — the same thing CI uses:
+`-freflection` rides on `opt::c++26` so it reaches every specbolt target uniformly. It's a dialect switch: gcc can't merge a module built without it into a TU built with it (importing one fails with conflicting declarations for types reachable both textually and through the module), and it needs `-std=c++26`, so applying it globally breaks third-party targets built at the default standard.
 
-```sh
-mkdir -p ~/opt && curl -fsSL https://s3.amazonaws.com/compiler-explorer/opt/gcc-16.2.0.tar.xz | tar Jxf - -C ~/opt
-CC=~/opt/gcc-16.2.0/bin/gcc CXX=~/opt/gcc-16.2.0/bin/g++ cmake --preset debug-reflection
-```
+See [README.md](README.md) for getting a gcc 16 toolchain.
 
 Reflection works inside module interface units on gcc 16 — including `template for` in a module purview, and exported templates that reflect on their own parameters and get instantiated in importing TUs. The reflection presets still set `SPECBOLT_MODULES=OFF` to keep the reflection and modules axes separable; flip it in a `CMakeUserPresets.json` to build both together.
 

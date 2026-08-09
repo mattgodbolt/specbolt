@@ -40,6 +40,18 @@ Other useful presets: `debug-modules` (needs clang + libc++), `release` (RelWith
 
 To pin a specific compiler, set `CC`/`CXX` or create a local `CMakeUserPresets.json` (gitignored) that inherits a public preset and overrides `CMAKE_CXX_COMPILER`.
 
+### C++26 reflection
+
+Reflection (P2996) needs **gcc 16+**; no clang release implements it yet. Detection is automatic, so any other compiler simply builds without the reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
+
+No distro packages gcc 16, so grab a [Compiler Explorer](https://compiler-explorer.com/) build — the same one CI uses:
+
+```bash
+mkdir -p ~/opt
+curl -fsSL https://s3.amazonaws.com/compiler-explorer/opt/gcc-16.2.0.tar.xz | tar Jxf - -C ~/opt
+CC=~/opt/gcc-16.2.0/bin/gcc CXX=~/opt/gcc-16.2.0/bin/g++ cmake --preset debug-reflection
+```
+
 ### Web/WASM Build
 
 ```bash
