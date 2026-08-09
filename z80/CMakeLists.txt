@@ -8,4 +8,6 @@ add_subdirectory(v2)
 if (NOT SPECBOLT_WASM)
     # need to "natively" compile the v3 generator-generator. Can't be arsed to get that working right now.
     add_subdirectory(v3)
+    # No way this works on wasm any time soon
+    add_subdirectory(v4)
 endif ()
