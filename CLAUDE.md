@@ -33,7 +33,7 @@ mkdir -p ~/opt && curl -fsSL https://s3.amazonaws.com/compiler-explorer/opt/gcc-
 CC=~/opt/gcc-16.2.0/bin/gcc CXX=~/opt/gcc-16.2.0/bin/g++ cmake --preset debug-reflection
 ```
 
-Reflection presets set `SPECBOLT_MODULES=OFF`; combining reflection with modules is untested.
+Reflection works inside module interface units on gcc 16 — including `template for` in a module purview, and exported templates that reflect on their own parameters and get instantiated in importing TUs. The reflection presets still set `SPECBOLT_MODULES=OFF` to keep the reflection and modules axes separable; flip it in a `CMakeUserPresets.json` to build both together.
 
 ## Lint/Format
 
