@@ -53,6 +53,28 @@
       }
     },
     {
+      "name": "debug-reflection",
+      "inherits": "_base",
+      "displayName": "Debug with C++26 reflection",
+      "description": "Requires gcc 16+. Fails to configure if reflection is unavailable.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "SPECBOLT_MODULES": "OFF",
+        "SPECBOLT_REFLECTION": "ON"
+      }
+    },
+    {
+      "name": "release-reflection",
+      "inherits": "_base",
+      "displayName": "RelWithDebInfo with C++26 reflection",
+      "description": "Requires gcc 16+. Fails to configure if reflection is unavailable.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "SPECBOLT_MODULES": "OFF",
+        "SPECBOLT_REFLECTION": "ON"
+      }
+    },
+    {
       "name": "wasm",
       "inherits": "_base",
       "displayName": "WebAssembly (RelWithDebInfo, no modules)",
@@ -80,6 +102,14 @@
     {
       "name": "release-modules",
       "configurePreset": "release-modules"
+    },
+    {
+      "name": "debug-reflection",
+      "configurePreset": "debug-reflection"
+    },
+    {
+      "name": "release-reflection",
+      "configurePreset": "release-reflection"
     },
     {
       "name": "wasm",
@@ -115,6 +145,16 @@
     {
       "name": "release-modules",
       "configurePreset": "release-modules",
+      "inherits": "_test-base"
+    },
+    {
+      "name": "debug-reflection",
+      "configurePreset": "debug-reflection",
+      "inherits": "_test-base"
+    },
+    {
+      "name": "release-reflection",
+      "configurePreset": "release-reflection",
       "inherits": "_test-base"
     }
   ]

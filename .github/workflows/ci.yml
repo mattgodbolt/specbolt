@@ -33,6 +33,54 @@ jobs:
       - name: Test
         run: env CTEST_PARALLEL_LEVEL=$(nproc) ctest --preset ${{ matrix.preset }}
 
+  reflection-build-and-test:
+    # C++26 reflection (P2996) needs gcc 16, which no distro packages yet, so we
+    # pull the compiler-explorer build. Modules are off here: gcc rejects this
+    # tree's module partitions, so reflection work lives on the headers path.
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        preset: [ debug-reflection, release-reflection ]
+        gcc_version: [ 16.2.0 ]
+    steps:
+      - uses: actions/checkout@v6
+      - name: setup system dependencies
+        run: |
+          sudo apt update -y
+          sudo apt install -y libsdl2-dev libreadline-dev
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
+        with:
+          cmake-version: '3.30.x'
+      - name: Install ninja-build tool
+        uses: seanmiddleditch/gha-setup-ninja@v6
+      # Caching the unpacked tree rather than the tarball: it's bigger over the
+      # wire, but saves the ~1.6GB xz decompression on every run too.
+      - name: cache gcc
+        id: cache-gcc
+        uses: actions/cache@v4
+        with:
+          path: ~/opt/gcc-${{ matrix.gcc_version }}
+          key: gcc-${{ matrix.gcc_version }}-${{ runner.os }}-${{ runner.arch }}
+      - name: download gcc
+        if: steps.cache-gcc.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "${HOME}/opt"
+          curl -fsSL "https://s3.amazonaws.com/compiler-explorer/opt/gcc-${{ matrix.gcc_version }}.tar.xz" \
+            | tar Jxf - -C "${HOME}/opt"
+      - name: select gcc
+        run: |
+          GCC_ROOT="${HOME}/opt/gcc-${{ matrix.gcc_version }}"
+          "${GCC_ROOT}/bin/g++" --version
+          echo "CC=${GCC_ROOT}/bin/gcc" >> "$GITHUB_ENV"
+          echo "CXX=${GCC_ROOT}/bin/g++" >> "$GITHUB_ENV"
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+      - name: Test
+        run: env CTEST_PARALLEL_LEVEL=$(nproc) ctest --preset ${{ matrix.preset }}
+
   mac-build-and-test:
     runs-on: macos-15
     strategy:
