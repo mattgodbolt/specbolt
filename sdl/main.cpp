@@ -1,6 +1,3 @@
-#include "heatmap/heatmap_renderer.hpp"
-#include "sdl_wrapper.hpp"
-
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -8,6 +5,9 @@
 #include <print>
 
 #include <lyra/lyra.hpp>
+
+#include "heatmap/heatmap_renderer.hpp"
+#include "sdl_wrapper.hpp"
 
 #ifdef SPECBOLT_MODULES
 import peripherals;

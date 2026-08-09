@@ -1,3 +1,7 @@
+#include <bitset>
+#include <catch2/catch_test_macros.hpp>
+#include <cstdint>
+#include <format>
 #include <iostream>
 
 #ifdef SPECBOLT_MODULES
@@ -5,12 +9,6 @@ import z80_v2;
 #else
 #include "z80/v2/Z80Impl.hpp"
 #endif
-
-
-#include <bitset>
-#include <catch2/catch_test_macros.hpp>
-#include <cstdint>
-#include <format>
 
 namespace specbolt::v2 {
 

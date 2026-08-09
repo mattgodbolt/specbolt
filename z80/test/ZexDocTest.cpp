@@ -1,4 +1,8 @@
+#include <filesystem>
+#include <format>
 #include <iostream>
+
+#include <lyra/lyra.hpp>
 
 #ifdef SPECBOLT_MODULES
 import z80_v1;
@@ -11,11 +15,6 @@ import z80_common;
 #include "z80/v2/Z80.hpp"
 #include "z80/v3/Z80.hpp"
 #endif
-
-#include <filesystem>
-#include <format>
-
-#include <lyra/lyra.hpp>
 
 #ifdef SPECBOLT_MODULES
 import peripherals;

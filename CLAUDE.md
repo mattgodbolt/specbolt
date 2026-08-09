@@ -33,7 +33,7 @@ mkdir -p ~/opt && curl -fsSL https://s3.amazonaws.com/compiler-explorer/opt/gcc-
 CC=~/opt/gcc-16.2.0/bin/gcc CXX=~/opt/gcc-16.2.0/bin/g++ cmake --preset debug-reflection
 ```
 
-Reflection presets set `SPECBOLT_MODULES=OFF`: gcc rejects this tree's module partitions (`peripherals:Blip_Buffer` is an interface partition the primary module never re-exports), so the two features can't currently be combined.
+Reflection presets set `SPECBOLT_MODULES=OFF`; combining reflection with modules is untested.
 
 ## Lint/Format
 
@@ -47,3 +47,8 @@ See [STYLE_GUIDE.md](STYLE_GUIDE.md). Quick reminders:
 - `const` by default, if-init where it tightens scope
 - PascalCase types, snake_case functions/variables, 120-col, 2-space indent
 - Catch2 (`TEST_CASE` / `SECTION`) for tests
+
+Modules-specific rules, both enforced by gcc and silently accepted by clang:
+
+- In any TU, put every `#include` **before** the first `import` (including imports a project header performs for you). gcc merges the module's global module fragment on import, and a standard header pulled in afterwards redefines what the module already supplied.
+- Code `#include`d into a module interface partition must not put entities named by templates in an anonymous namespace — a template attached to a module can't name a TU-local entity.

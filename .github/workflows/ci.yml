@@ -33,14 +33,15 @@ jobs:
       - name: Test
         run: env CTEST_PARALLEL_LEVEL=$(nproc) ctest --preset ${{ matrix.preset }}
 
-  reflection-build-and-test:
+  gcc-build-and-test:
     # C++26 reflection (P2996) needs gcc 16, which no distro packages yet, so we
-    # pull the compiler-explorer build. Modules are off here: gcc rejects this
-    # tree's module partitions, so reflection work lives on the headers path.
+    # pull the compiler-explorer build. debug-modules rides along on the same
+    # toolchain: gcc enforces several module rules clang lets through, so this
+    # leg is what keeps the modules build standard-conforming.
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        preset: [ debug-reflection, release-reflection ]
+        preset: [ debug-modules, debug-reflection, release-reflection ]
         gcc_version: [ 16.2.0 ]
     steps:
       - uses: actions/checkout@v6

@@ -1,15 +1,13 @@
+#include <catch2/catch_test_macros.hpp>
+#include <cstdint>
 #include <iostream>
+#include <ranges>
 
 #ifdef SPECBOLT_MODULES
 import z80_v2;
 #else
 #include "z80/v2/Disassembler.hpp"
 #endif
-
-
-#include <catch2/catch_test_macros.hpp>
-#include <cstdint>
-#include <ranges>
 
 #ifdef SPECBOLT_MODULES
 import peripherals;

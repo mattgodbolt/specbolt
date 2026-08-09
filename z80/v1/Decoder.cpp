@@ -10,8 +10,6 @@
 
 namespace specbolt::v1::impl {
 
-namespace {
-
 using Operand = Instruction::Operand;
 using Op = Instruction::Operation;
 
@@ -150,8 +148,6 @@ constexpr std::uint8_t operand_length(const Instruction::Operand operand) {
     case Operand::ByteImmediate: return 1;
   }
 }
-
-} // namespace
 
 template<typename RegisterSet>
 Instruction decode_bit(const std::span<const std::uint8_t> opcodes) {

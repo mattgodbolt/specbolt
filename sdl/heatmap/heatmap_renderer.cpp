@@ -1,7 +1,7 @@
-#include "heatmap_renderer.hpp"
-
 #include <chrono>
 #include <print>
+
+#include "heatmap_renderer.hpp"
 
 using namespace std::chrono_literals;
 
