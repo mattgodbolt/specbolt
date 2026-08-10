@@ -1,6 +1,10 @@
 module;
 
 #include <cstdint>
+#include <meta>
+#include <span>
+#include <string_view>
+#include <vector>
 
 export module z80_v4:Z80;
 

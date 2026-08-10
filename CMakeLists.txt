@@ -75,7 +75,10 @@ endif ()
 
 find_program(CCACHE ccache)
 if(CCACHE)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE}")
+    # Depend mode keys off the compiler's depfile, which lists #embed resources;
+    # direct mode only tracks includes and serves stale objects when they change.
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE
+            "${CMAKE_COMMAND} -E env CCACHE_DEPEND=1 ${CCACHE}")
 endif()
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
