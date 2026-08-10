@@ -8,15 +8,14 @@ namespace specbolt::v4 {
 
 SPECBOLT_EXPORT class Parser {
 public:
-  constexpr explicit Parser(std::string_view buf, std::size_t line = 1) : line_(line), buf_(buf) {}
+  constexpr explicit Parser(const std::string_view buf, const std::size_t line = 1) : line_(line), buf_(buf) {}
 
-  // Skip all whitespace.
-  constexpr void skip_any(std::string_view skip) {
+  constexpr void skip_any(const std::string_view skip) {
     const auto pos = buf_.find_first_not_of(skip);
     consume(pos == std::string_view::npos ? buf_.size() : pos);
   }
 
-  constexpr Parser split_to(char delim) {
+  constexpr Parser split_to(const char delim) {
     const auto pos = buf_.find(delim);
     const auto line = line_;
     if (pos == std::string_view::npos) {
@@ -29,12 +28,12 @@ public:
     return Parser(result, line);
   }
 
-  constexpr bool eof() const { return buf_.empty(); }
-  constexpr std::size_t line() const { return line_; }
-  constexpr std::string_view data() const { return buf_; }
+  [[nodiscard]] constexpr bool eof() const { return buf_.empty(); }
+  [[nodiscard]] constexpr std::size_t line() const { return line_; }
+  [[nodiscard]] constexpr std::string_view data() const { return buf_; }
 
 private:
-  constexpr void consume(std::size_t count) {
+  constexpr void consume(const std::size_t count) {
     for (const auto character: buf_.substr(0, count))
       if (character == '\n')
         ++line_;

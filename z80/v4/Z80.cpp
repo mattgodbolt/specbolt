@@ -1,5 +1,7 @@
 #ifndef SPECBOLT_MODULES
 #include "z80/v4/Z80.hpp"
+#include "z80/v4/Matched.hpp"
+#include "z80/v4/Parser.hpp"
 
 #include <meta>
 #include <span>
@@ -39,27 +41,22 @@ struct CompileTimeString {
       text(std::define_static_string(line)), length(line.size()) {}
 };
 
-struct BitSlice {
-  std::uint8_t shift;
-  std::uint8_t mask;
-};
-struct Matched {
-  uint8_t opcode_bits;
-  std::vector<BitSlice> bit_slices;
+struct ParsedLine {
+  Matched matched;
   std::string_view instruction;
+  std::string_view actions;
 };
 
-constexpr Matched parse_line(std::string_view line) {
-  const auto split = split_on_char(line, '|');
-  if (split.size() != 3)
-    throw std::runtime_error("Invalid line format '" + std::string(line) + "'");
-  Matched result;
-  result.instruction = split_line(line);
-  return result;
+constexpr ParsedLine parse_line(const std::string_view line) {
+  Parser parser(line);
+  auto bits = parser.split_to('|');
+  bits.skip_any(" ");
+  const auto instruction = parser.split_to('|');
+  return {parse_opcode_bits(bits.split_to(' ').data()), instruction.data(), parser.data()};
 }
 
-constexpr std::vector<Matched> parse_lines(std::string_view lines) {
-  std::vector<Matched> result;
+constexpr std::vector<ParsedLine> parse_lines(std::string_view lines) {
+  std::vector<ParsedLine> result;
   while (!lines.empty()) {
     auto line = split_line(lines);
     // line = skipws(line);
