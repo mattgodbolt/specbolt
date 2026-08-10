@@ -10,7 +10,7 @@ import z80_v4;
 #endif
 
 namespace specbolt::v4 {
-TEST_CASE("Parser tests") {
+TEST_CASE("TODO tests") {
   Scheduler scheduler;
   Memory memory{4};
   Z80 z80{scheduler, memory};

@@ -12,6 +12,7 @@ namespace specbolt::v4 {
 // clang-format off
 constexpr char z80_raw[] = {
 #embed "z80.cpu"
+
   , 0
 };
 // clang-format on
@@ -31,23 +32,54 @@ constexpr std::string_view split_on_char(std::string_view &buf, char character) 
 }
 constexpr std::string_view split_line(std::string_view &buf) { return split_on_char(buf, '\n'); }
 
-struct CompileTimeLine {
+struct CompileTimeString {
   const char *text;
   std::size_t length;
-  explicit consteval CompileTimeLine(std::string_view line) :
+  explicit consteval CompileTimeString(std::string_view line) :
       text(std::define_static_string(line)), length(line.size()) {}
 };
 
-consteval std::vector<CompileTimeLine> split_lines(std::string_view buf) {
-  std::vector<CompileTimeLine> result;
+struct BitSlice {
+  std::uint8_t shift;
+  std::uint8_t mask;
+};
+struct Matched {
+  uint8_t opcode_bits;
+  std::vector<BitSlice> bit_slices;
+  std::string_view instruction;
+};
+
+constexpr Matched parse_line(std::string_view line) {
+  const auto split = split_on_char(line, '|');
+  if (split.size() != 3)
+    throw std::runtime_error("Invalid line format '" + std::string(line) + "'");
+  Matched result;
+  result.instruction = split_line(line);
+  return result;
+}
+
+constexpr std::vector<Matched> parse_lines(std::string_view lines) {
+  std::vector<Matched> result;
+  while (!lines.empty()) {
+    auto line = split_line(lines);
+    // line = skipws(line);
+    if (line.empty() || line[0] == '#')
+      continue;
+    result.push_back(parse_line(line));
+  }
+  return result;
+}
+
+consteval std::vector<CompileTimeString> split_lines(std::string_view buf) {
+  std::vector<CompileTimeString> result;
   while (!buf.empty()) {
-    result.push_back(CompileTimeLine{split_line(buf)});
+    result.push_back(CompileTimeString{split_line(buf)});
   }
   return result;
 }
 
 
-constexpr std::span<const CompileTimeLine> lines = std::define_static_array(split_lines(z80_description));
+constexpr std::span<const CompileTimeString> lines = std::define_static_array(split_lines(z80_description));
 
 size_t Z80::test() { return lines.size(); }
 

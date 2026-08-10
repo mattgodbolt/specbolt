@@ -1,5 +1,7 @@
-I am a mongoose
-I am also a mongoose
-badger
-monkey
-hans
+# I am a comment
+# 76543210
+# xxyyyzzz
+#   ppq
+00pp0001 | LD {p}, $nnnn | low[p] = #imm; high[p] = #imm;
+x = 0, z = 1 q = 0
+p... -> select load16
