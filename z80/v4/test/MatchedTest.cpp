@@ -13,7 +13,7 @@ namespace specbolt::v4 {
 
 TEST_CASE("Opcode bit parsing") {
   SECTION("LD xx, IMM16") {
-    constexpr auto matched = parse_opcode_bits("00pp0001");
+    constexpr auto matched = parse_opcode_bits("00pp0001", 1);
     STATIC_CHECK(matched.opcode_bits == 0b00000001);
     STATIC_CHECK(matched.num_slices == 1);
     STATIC_CHECK(matched.slices[0] == BitSlice{'p', 4, 3});
@@ -21,7 +21,7 @@ TEST_CASE("Opcode bit parsing") {
     STATIC_CHECK(matched.fixed_mask() == 0b11001111);
   }
   SECTION("LD r, r'") {
-    constexpr auto matched = parse_opcode_bits("01yyyzzz");
+    constexpr auto matched = parse_opcode_bits("01yyyzzz", 1);
     STATIC_CHECK(matched.opcode_bits == 0b01000000);
     STATIC_CHECK(matched.num_slices == 2);
     STATIC_CHECK(matched.slices[0] == BitSlice{'y', 3, 7});
@@ -29,31 +29,31 @@ TEST_CASE("Opcode bit parsing") {
     STATIC_CHECK(matched.fixed_mask() == 0b11000000);
   }
   SECTION("Wholly fixed") {
-    constexpr auto matched = parse_opcode_bits("11001001");
+    constexpr auto matched = parse_opcode_bits("11001001", 1);
     STATIC_CHECK(matched.opcode_bits == 0xc9);
     STATIC_CHECK(matched.num_slices == 0);
     STATIC_CHECK(matched.fixed_mask() == 0xff);
   }
   SECTION("Wholly variable") {
-    constexpr auto matched = parse_opcode_bits("nnnnnnnn");
+    constexpr auto matched = parse_opcode_bits("nnnnnnnn", 1);
     STATIC_CHECK(matched.opcode_bits == 0);
     STATIC_CHECK(matched.slices[0] == BitSlice{'n', 0, 0xff});
     STATIC_CHECK(matched.fixed_mask() == 0);
   }
   SECTION("Rejects bad patterns") {
-    CHECK_THROWS(parse_opcode_bits("0101"));
-    CHECK_THROWS(parse_opcode_bits("011011011"));
-    CHECK_THROWS(parse_opcode_bits("00pp0p01"));
-    CHECK_THROWS(parse_opcode_bits("abcde001"));
+    CHECK_THROWS(parse_opcode_bits("0101", 1));
+    CHECK_THROWS(parse_opcode_bits("011011011", 1));
+    CHECK_THROWS(parse_opcode_bits("00pp0p01", 1));
+    CHECK_THROWS(parse_opcode_bits("abcde001", 1));
   }
   SECTION("Accepts the widest supported field count") {
-    constexpr auto matched = parse_opcode_bits("wwxxyyzz");
+    constexpr auto matched = parse_opcode_bits("wwxxyyzz", 1);
     STATIC_CHECK(matched.num_slices == Matched::max_slices);
     STATIC_CHECK(matched.fixed_mask() == 0);
   }
 }
 
-constexpr auto ld_rr_imm16 = parse_opcode_bits("00pp0001");
+constexpr auto ld_rr_imm16 = parse_opcode_bits("00pp0001", 1);
 
 TEST_CASE("Opcode matching") {
   constexpr auto matched = ld_rr_imm16;

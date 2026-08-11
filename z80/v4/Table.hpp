@@ -3,11 +3,13 @@
 #ifndef SPECBOLT_MODULES
 #include "z80/v4/Matched.hpp"
 #include "z80/v4/Parser.hpp"
+#include "z80/v4/TableError.hpp"
 
 #include <algorithm>
 #include <array>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -17,7 +19,7 @@ namespace specbolt::v4 {
 
 // clang-format off
 inline constexpr char cpu_raw[] = {
-#embed "z80.cpu"
+#embed SPECBOLT_CPU_TABLE
   , 0
 };
 // clang-format on
@@ -31,14 +33,14 @@ struct Name {
   std::size_t length{};
   constexpr Name() = default;
   template<std::size_t N>
-  constexpr Name(const char (&text)[N]) { // NOLINT(*-explicit-constructor)
-    std::ranges::copy_n(text, N - 1, storage.begin());
-    length = N - 1;
-  }
+  constexpr Name(const char (&text)[N]) : Name(std::string_view{text, N - 1}) {} // NOLINT(*-explicit-constructor)
   constexpr Name(const std::string_view text) { // NOLINT(*-explicit-constructor)
+    if (text.size() > storage.size())
+      throw std::length_error("name does not fit");
     std::ranges::copy(text, storage.begin());
     length = text.size();
   }
+  static constexpr std::size_t capacity = decltype(storage){}.size();
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), length}; }
   [[nodiscard]] constexpr bool empty() const { return length == 0; }
   constexpr bool operator==(const Name &) const = default;
@@ -47,10 +49,11 @@ struct Name {
 // An operand is a constant, a name the CPU can resolve, or a field reference.
 // `a`, `hl`, `carry` and `f` are all just names.
 struct Operand {
-  enum class Kind : std::uint8_t { Constant, Named, Immediate, Field };
+  enum class Kind : std::uint8_t { Constant, Named, Immediate, Field, Discard };
   Kind kind{};
   Name name{};
   std::uint16_t constant{};
+  std::uint8_t width{};
   std::uint8_t field_index{};
   std::uint8_t slice_index{};
   constexpr bool operator==(const Operand &) const = default;
@@ -100,21 +103,6 @@ struct Row {
   std::size_t line{};
 };
 
-[[nodiscard]] consteval std::string decimal(std::size_t value) {
-  if (value == 0)
-    return "0";
-  std::string result;
-  while (value != 0) {
-    result.insert(result.begin(), static_cast<char>('0' + value % 10));
-    value /= 10;
-  }
-  return result;
-}
-
-[[nodiscard]] consteval std::runtime_error table_error(const std::size_t line, const std::string_view what) {
-  return std::runtime_error("z80.cpu:" + decimal(line) + ": " + std::string(what));
-}
-
 [[nodiscard]] constexpr std::string_view trim(std::string_view text) {
   while (!text.empty() && (text.front() == ' ' || text.front() == '\t'))
     text.remove_prefix(1);
@@ -149,20 +137,36 @@ struct Row {
 }
 
 [[nodiscard]] consteval Operand parse_simple_operand(const std::string_view word, const std::size_t line) {
-  if (word == "n" || word == "nn")
-    return {Operand::Kind::Immediate, {}, 0, 0, 0};
+  if (word.empty())
+    throw table_error(line, "empty operand in action");
+  if (word == "-")
+    return {Operand::Kind::Discard, {}, 0, 0, 0, 0};
+  if (word == "n")
+    return {Operand::Kind::Immediate, {}, 0, 1, 0, 0};
+  if (word == "nn")
+    return {Operand::Kind::Immediate, {}, 0, 2, 0, 0};
   if (word.front() >= '0' && word.front() <= '9') {
-    std::uint16_t value = 0;
-    for (const auto digit: word) {
-      if (digit < '0' || digit > '9')
+    const auto hex = word.starts_with("0x");
+    const auto digits = hex ? word.substr(2) : word;
+    const auto base = hex ? 16u : 10u;
+    if (digits.empty())
+      throw table_error(line, "malformed constant '" + std::string(word) + "'");
+    unsigned value = 0;
+    for (const auto character: digits) {
+      const auto digit = character >= '0' && character <= '9'   ? static_cast<unsigned>(character - '0')
+                         : character >= 'a' && character <= 'f' ? static_cast<unsigned>(character - 'a' + 10)
+                                                                : base;
+      if (digit >= base)
         throw table_error(line, "malformed constant '" + std::string(word) + "'");
-      value = static_cast<std::uint16_t>(value * 10 + (digit - '0'));
+      value = value * base + digit;
+      if (value > 0xffff)
+        throw table_error(line, "constant '" + std::string(word) + "' does not fit in 16 bits");
     }
-    return {Operand::Kind::Constant, {}, value, 0, 0};
+    return {Operand::Kind::Constant, {}, static_cast<std::uint16_t>(value), 0, 0, 0};
   }
-  if (word.size() >= Name{}.storage.size())
+  if (word.size() > Name::capacity)
     throw table_error(line, "operand name '" + std::string(word) + "' is too long");
-  return {Operand::Kind::Named, Name{word}, 0, 0, 0};
+  return {Operand::Kind::Named, Name{word}, 0, 0, 0, 0};
 }
 
 // `bc` is display only; `adc:add8+carry` binds to a primitive and appends an
@@ -266,7 +270,7 @@ inline constexpr auto fields = parse_fields<count_matching(&is_field)>();
   if (!word.starts_with('{'))
     return parse_simple_operand(word, line);
   const auto reference = reference_from_braces(word, matched, line);
-  return {Operand::Kind::Field, {}, 0, reference.field_index, reference.slice_index};
+  return {Operand::Kind::Field, {}, 0, 0, reference.field_index, reference.slice_index};
 }
 
 consteval void lower_mnemonic(Row &row) {
@@ -313,6 +317,22 @@ consteval void lower_mnemonic(Row &row) {
   }
 }
 
+// The mnemonic decides how many bytes the instruction occupies; the action
+// decides what is read. If they disagree the row's length is a lie.
+consteval void check_immediates(const Row &row) {
+  const auto declared = [&](const std::uint8_t width) {
+    const auto kind = width == 1 ? Piece::Kind::Imm8 : Piece::Kind::Imm16;
+    return std::ranges::count(std::span{row.pieces.data(), row.num_pieces}, kind, &Piece::kind);
+  };
+  const auto used = [&](const std::uint8_t width) {
+    return std::ranges::count_if(std::span{row.operands.data(), row.num_operands},
+        [width](const Operand &operand) { return operand.kind == Operand::Kind::Immediate && operand.width == width; });
+  };
+  for (const std::uint8_t width: {std::uint8_t{1}, std::uint8_t{2}})
+    if (declared(width) != used(width))
+      throw table_error(row.line, "the mnemonic and the action disagree about immediate operands");
+}
+
 template<std::size_t N>
 [[nodiscard]] consteval std::array<Row, N> parse_rows() {
   std::array<Row, N> result{};
@@ -326,7 +346,7 @@ template<std::size_t N>
     Parser parser(text, at);
     auto &row = result[index++];
     row.line = at;
-    row.matched = parse_opcode_bits(trim(parser.split_to('|').data()));
+    row.matched = parse_opcode_bits(trim(parser.split_to('|').data()), at);
     row.mnemonic = trim(parser.split_to('|').data());
     Parser action(trim(parser.data()));
     row.verb = next_word(action);
@@ -337,26 +357,29 @@ template<std::size_t N>
     // `verb dest <- args...`; the destination is optional
     auto writing_destination = action.data().contains("<-");
     while (!action.eof()) {
-      const auto word = next_word(action);
+      const auto word = trim_comma(next_word(action));
       if (word.empty())
         continue;
       if (word == "<-") {
         writing_destination = false;
         continue;
       }
-      const auto operand = parse_operand(word == "," ? word : trim_comma(word), row.matched, at);
+      const auto operand = parse_operand(trim_comma(word), row.matched, at);
       if (writing_destination) {
         if (row.num_destinations == Row::max_operands)
           throw table_error(at, "too many destinations");
         row.destinations[row.num_destinations++] = operand;
       }
       else {
+        if (operand.kind == Operand::Kind::Discard)
+          throw table_error(at, "'-' discards a result, so it can only be a destination");
         if (row.num_operands == Row::max_operands)
           throw table_error(at, "too many operands");
         row.operands[row.num_operands++] = operand;
       }
     }
     lower_mnemonic(row);
+    check_immediates(row);
   }
   return result;
 }
@@ -371,33 +394,39 @@ inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
   const auto live = [&](const Reference reference) {
     return !fields[reference.field_index].values[row.matched.slices[reference.slice_index].extract(opcode)].hole;
   };
-  for (std::size_t at = 0; at < row.num_pieces; ++at)
-    if (row.pieces[at].kind == Piece::Kind::Field && !live({row.pieces[at].field_index, row.pieces[at].slice_index}))
-      return false;
-  for (std::size_t at = 0; at < row.num_operands; ++at)
-    if (row.operands[at].kind == Operand::Kind::Field &&
-        !live({row.operands[at].field_index, row.operands[at].slice_index}))
-      return false;
-  for (std::size_t at = 0; at < row.num_destinations; ++at)
-    if (row.destinations[at].kind == Operand::Kind::Field &&
-        !live({row.destinations[at].field_index, row.destinations[at].slice_index}))
-      return false;
-  if (row.verb_reference && !live(*row.verb_reference))
-    return false;
-  return true;
+  const auto operands_live = [&](const std::span<const Operand> operands) {
+    return std::ranges::all_of(operands, [&](const Operand &operand) {
+      return operand.kind != Operand::Kind::Field || live({operand.field_index, operand.slice_index});
+    });
+  };
+  return std::ranges::all_of(std::span{row.pieces.data(), row.num_pieces},
+             [&](const Piece &piece) {
+               return piece.kind != Piece::Kind::Field || live({piece.field_index, piece.slice_index});
+             }) &&
+         operands_live({row.operands.data(), row.num_operands}) &&
+         operands_live({row.destinations.data(), row.num_destinations}) &&
+         (!row.verb_reference || live(*row.verb_reference));
 }
 
-[[nodiscard]] constexpr std::optional<std::size_t> find_row(const std::uint8_t opcode) {
-  for (std::size_t index = 0; index < rows.size(); ++index)
-    if (row_matches(rows[index], opcode))
-      return index;
-  return std::nullopt;
-}
+// Earlier rows win, so a specific encoding must precede the general one that
+// would otherwise swallow it: `halt` before `ld {r:y}, {r:z}`.
+inline constexpr auto decoded = [] {
+  std::array<std::optional<std::size_t>, 256> table{};
+  for (std::size_t opcode = 0; opcode < table.size(); ++opcode)
+    for (std::size_t index = 0; index < rows.size(); ++index)
+      if (row_matches(rows[index], static_cast<std::uint8_t>(opcode))) {
+        table[opcode] = index;
+        break;
+      }
+  return table;
+}();
+
+[[nodiscard]] constexpr std::optional<std::size_t> find_row(const std::uint8_t opcode) { return decoded[opcode]; }
 
 [[nodiscard]] constexpr std::uint8_t field_value(const Row &row, const char name, const std::uint8_t opcode) {
   const auto slice = find_slice(row.matched, name);
   if (!slice)
-    throw std::runtime_error("mnemonic references a field the pattern does not define");
+    throw table_error(row.line, "row references a field the opcode pattern does not define");
   return row.matched.slices[*slice].extract(opcode);
 }
 

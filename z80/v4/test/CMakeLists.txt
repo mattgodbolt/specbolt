@@ -2,7 +2,6 @@ ensure_catch2()
 
 add_executable(
         z80_v4_test
-        Z80Test.cpp
         ParserTest.cpp
         MatchedTest.cpp
         TableTest.cpp

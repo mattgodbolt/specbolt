@@ -1,9 +1,10 @@
 #pragma once
 
 #ifndef SPECBOLT_MODULES
+#include "z80/v4/TableError.hpp"
+
 #include <array>
 #include <cstdint>
-#include <stdexcept>
 #include <string_view>
 #endif
 
@@ -43,9 +44,9 @@ SPECBOLT_EXPORT struct Matched {
   }
 };
 
-SPECBOLT_EXPORT [[nodiscard]] constexpr Matched parse_opcode_bits(const std::string_view bits) {
+SPECBOLT_EXPORT [[nodiscard]] constexpr Matched parse_opcode_bits(const std::string_view bits, const std::size_t line) {
   if (bits.size() != Matched::num_bits)
-    throw std::runtime_error("opcode pattern must be 8 characters");
+    throw table_error(line, "opcode pattern must be 8 characters");
   Matched result;
   for (std::size_t index = 0; index < bits.size(); ++index) {
     const auto bit = static_cast<std::uint8_t>(Matched::num_bits - 1 - index);
@@ -60,7 +61,7 @@ SPECBOLT_EXPORT [[nodiscard]] constexpr Matched parse_opcode_bits(const std::str
       if (result.slices[slice].name != character)
         continue;
       if (result.slices[slice].shift != bit + 1)
-        throw std::runtime_error("opcode pattern has non-contiguous bits for a field");
+        throw table_error(line, "opcode pattern has non-contiguous bits for a field");
       result.slices[slice].shift = bit;
       result.slices[slice].mask = static_cast<std::uint8_t>((result.slices[slice].mask << 1) | 1);
       extended = true;
@@ -69,7 +70,7 @@ SPECBOLT_EXPORT [[nodiscard]] constexpr Matched parse_opcode_bits(const std::str
     if (extended)
       continue;
     if (result.num_slices == Matched::max_slices)
-      throw std::runtime_error("opcode pattern has too many fields");
+      throw table_error(line, "opcode pattern has too many fields");
     result.slices[result.num_slices++] = BitSlice{character, bit, 1};
   }
   return result;

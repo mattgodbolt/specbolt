@@ -22,12 +22,12 @@ else ()
 
     target_sources(z80_v4 PRIVATE
             Disassembler.cpp
-            Z80.cpp
     )
     target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
             include/z80/v4/Disassembler.hpp
             include/z80/v4/Matched.hpp
             include/z80/v4/Parser.hpp
+            include/z80/v4/TableError.hpp
             include/z80/v4/Z80.hpp
     )
 endif ()

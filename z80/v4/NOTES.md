@@ -110,6 +110,12 @@ and survives promotion". It is neither, and both halves were verified false.
   [pr124197]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124197
 - The range must be a constant expression. A `std::array` built inside the same lambda does not
   qualify; hoist it to namespace scope as `inline constexpr`.
+- **There is no `template switch`.** An expansion statement generates statements, and a `case`
+  label is not one, so a 256-way dispatch cannot be expanded into a `switch`. The generated forms
+  available are a table of function pointers (what `dispatch` does) or a chain of `if`s. A
+  `switch` over a dense contiguous range is the one shape the compiler turns into a jump table on
+  its own, so it is exactly the shape reflection cannot reach — worth knowing before assuming
+  generated dispatch matches a hand-written interpreter's codegen.
 
 ### Toolchain
 
@@ -508,55 +514,42 @@ debugger view can ask questions of the table at runtime.
 
 ## Where the framework/CPU boundary sits
 
-`Z80Cpu.hpp` is the whole customisation surface. Retargeting means writing one of these and nothing
-else:
+`Z80Cpu.hpp` is the whole customisation surface — 70 lines. Retargeting means writing one of these
+and nothing else:
 
 - `Cpu` and `Ops` — the machine state and its non-ALU primitives
 - `primitive_scopes()` — where the table may name operations from
-- `location_scopes()`, `accumulator`, `read`/`write` overloads — where it may name storage, and how
-  to touch it
-- `CpuFlags`, `flags_of`, `set_flags`
-- `is_supplied_by_framework`
+- `location_scopes()` — where it may name storage
+- `read`/`write` overloads — how to touch that storage
 
-The framework no longer names `RegisterFile`, `Alu` or `Flags`.
+The framework names no CPU type at all: not `RegisterFile`, not `Alu`, not `Flags`. It knows only
+that a row has a verb, some operands and some destinations, and that the CPU can resolve a name.
 
-### Z80-isms still in the framework
+### The collapse that got us here
 
-All three are the same mistake — inferring meaning from a C++ type — and all three are really just
-operands the row should have declared:
+Three Z80-isms used to live in the framework, and all three were the same mistake — inferring
+meaning from a C++ type rather than reading it off the row:
 
-- **`Operand::Kind::Accumulator`** presumes a CPU has one. `a` should be a name like `hl` is.
-- **`CarrySource`** fills a `bool` parameter from the carry flag. This is already wrong for
-  `Alu::iff2_flags_for(u8, Flags, bool iff2)`, which takes a `bool` that is not carry: name it in a
-  table row today and the framework silently passes carry.
-- **`is_supplied_by_framework`** does the same for `Flags` and `Cpu &`.
+- `Operand::Kind::Accumulator` presumed a CPU has one.
+- `CarrySource` filled a `bool` parameter from the carry flag. Already wrong for
+  `Alu::iff2_flags_for(u8, Flags, bool iff2)`, whose `bool` is not carry.
+- `is_supplied_by_framework` did the same for `Flags` and `Cpu &`.
 
-The collapse: one operand concept — immediate, constant, name, or field reference — where `a`,
-`carry` and `f` are all just names the CPU resolves. Vocabulary members may append operands
-(`add:add8+0`, `adc:add8+carry`), so the carry policy stops being a framework concept. Destinations
-become a list, so `a, f <- add8 a b carry` destructures the result and the framework's last
-assumption — that a result type has a member called `flags` — goes too.
+All three became one operand concept — constant, immediate, name, field reference, or discard —
+where `a`, `carry` and `flags` are just names the CPU resolves. Vocabulary members may append an
+operand (`add:add8+0`, `adc:add8+carry`), so the carry policy is data in the table. Destinations
+are a list, so `{q} a, flags <- a {r:z}` destructures whatever the primitive returns, and the last
+assumption — that a result type has a member called `flags` — went with it.
 
-**This is gated on a structural fixed-capacity string.** `Operand` is used as a template argument, so
-it cannot hold a `string_view`, which is why each of the three above reached for an enum or a
-dedicated `Kind` instead. That string is not tidy-up work; it is the prerequisite for the whole
-simplification, and it should shrink the framework rather than grow it.
+### What the framework relies on instead
 
-Lesser leaks, for the record: `$nn`/`$nnnn` and `0x{:02x}` in the disassembler are Z80 output
-conventions that belong in per-CPU operand declarations; `Matched::num_bits = 8` and the 256-entry
-dispatch assume an 8-bit opcode space.
+Three properties of the primitive, all read by reflection, none of them Z80-specific:
 
-## Open questions
+- its arity, checked against the number of operands the row supplies
+- its parameter types, which each operand converts to — so a 16-bit location handed to an 8-bit
+  parameter is a `-Wconversion` error, not a truncation
+- its return type: `void` means the row may name no destination, a scalar means exactly one, and a
+  class means one destination per non-static data member, in declaration order
 
-- Whether the common case can stay terse under the step model. A verb plus operands is pleasant to
-  author; an explicit step list is honest but wordier. Probably an implied default sequence, with
-  only the awkward rows spelling it out — but that is unproven, and mixing two notations may cost
-  more than it saves.
-- Whether non-contiguous bit slices are ever needed. No Z80 case found; 6502 undocumented tables may
-  want them. Cheap to allow now (store shift/mask pairs) and expensive later.
-- How deep to go on the Q register. `scf`/`ccf` currently follow the Greenway model (bits 3 and 5
-  copied from A) rather than tracking whether the previous instruction touched the flags. Needed for
-  Harte's suite; it is a per-step side effect the framework must thread through everything, so it is
-  a design input rather than a detail.
-- Interrupt acceptance between a prefix and its opcode — believed not to happen on real hardware,
-  neither implemented nor tested here.
+A `-` destination discards a component, which is how `cp` uses `cmp8` without writing the result
+back to `a`.

@@ -14,7 +14,7 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 16);
+    STATIC_CHECK(rows.size() == 18);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
@@ -41,8 +41,7 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(alu.values[1].display == "adc");
     STATIC_CHECK(alu.values[1].primitive == "add8");
     STATIC_CHECK(alu.values[1].appended->name == Name{"carry"});
-    STATIC_CHECK(fields[3].values[3].display == "cp");
-    STATIC_CHECK(fields[3].values[3].primitive == "cmp8");
+    STATIC_CHECK(fields[3].values[3].hole);
     STATIC_CHECK(fields[0].values[0].primitive.empty());
   }
   SECTION("Finds rows by opcode") {
@@ -155,11 +154,28 @@ TEST_CASE("Generated execution") {
     CHECK(!Flags(cpu.registers.get(RegisterFile::R8::F)).carry());
     CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xf0);
   }
-  SECTION("Unknown opcodes are inert") {
-    execute(cpu, 0x21, 0x1234);
-    execute(cpu, 0x08);
-    CHECK(cpu.registers.get(RegisterFile::R16::HL) == 0x1234);
+  SECTION("ld r, r'") {
+    cpu.registers.set(RegisterFile::R8::C, 0x37);
+    execute(cpu, 0x41); // ld b, c
+    CHECK(cpu.registers.get(RegisterFile::R8::B) == 0x37);
+    execute(cpu, 0x7f); // ld a, a
+    CHECK(cpu.registers.get(RegisterFile::R8::C) == 0x37);
   }
+  SECTION("inc r and dec r") {
+    cpu.registers.set(RegisterFile::R8::B, 0x7f);
+    execute(cpu, 0x04); // inc b
+    CHECK(cpu.registers.get(RegisterFile::R8::B) == 0x80);
+    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).overflow());
+    execute(cpu, 0x05); // dec b
+    CHECK(cpu.registers.get(RegisterFile::R8::B) == 0x7f);
+  }
+  SECTION("daa reads and writes the flags") {
+    cpu.registers.set(RegisterFile::R8::A, 0x0f);
+    cpu.registers.set(RegisterFile::R8::F, 0);
+    execute(cpu, 0x27);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x15);
+  }
+  SECTION("Undecoded opcodes are rejected, not ignored") { CHECK_THROWS(execute(cpu, 0x08)); }
 }
 
 } // namespace specbolt::v4
