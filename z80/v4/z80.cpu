@@ -7,21 +7,21 @@ field r = b c d e h l - a
 field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
 field w = and:and8 xor:xor8 or:or8 -
 
-00000000 | nop           | nop
-01110110 | halt          | ld8 halted <- 1
-00pp0001 | ld {p}, $nnnn | ld16 {p} <- nn
-00pp0011 | inc {p}       | inc16 {p} <- {p}
-00pp1011 | dec {p}       | dec16 {p} <- {p}
-00100111 | daa           | daa a, flags <- a flags
-00101111 | cpl           | cpl a, flags <- a flags
-00110111 | scf           | scf a, flags <- a flags
-00111111 | ccf           | ccf a, flags <- a flags
-00yyy100 | inc {r:y}     | inc8 {r:y}, flags <- {r:y} flags
-00yyy101 | dec {r:y}     | dec8 {r:y}, flags <- {r:y} flags
+00000000 | nop             | nop
+01110110 | halt            | ld8 halted <- 1
+00pp0001 | ld {p}, $nnnn   | ld16 {p} <- nn
+00pp0011 | inc {p}         | inc16 {p} <- {p}
+00pp1011 | dec {p}         | dec16 {p} <- {p}
+00100111 | daa             | daa a, flags <- a flags
+00101111 | cpl             | cpl a, flags <- a flags
+00110111 | scf             | scf a, flags <- a flags
+00111111 | ccf             | ccf a, flags <- a flags
+00yyy100 | inc {r:y}       | inc8 {r:y}, flags <- {r:y} flags
+00yyy101 | dec {r:y}       | dec8 {r:y}, flags <- {r:y} flags
 01yyyzzz | ld {r:y}, {r:z} | ld8 {r:y} <- {r:z}
-100qqzzz | {q} a, {r:z}  | {q} a, flags <- a {r:z}
-101wwzzz | {w} {r:z}     | {w} a, flags <- a {r:z}
-10111zzz | cp {r:z}      | cmp8 -, flags <- a {r:z}
-110qq110 | {q} a, $nn    | {q} a, flags <- a n
-111ww110 | {w} $nn       | {w} a, flags <- a n
-11111110 | cp $nn        | cmp8 -, flags <- a n
+100qqzzz | {q} a, {r:z}    | {q} a, flags <- a {r:z}
+101wwzzz | {w} {r:z}       | {w} a, flags <- a {r:z}
+10111zzz | cp {r:z}        | cmp8 -, flags <- a {r:z}
+110qq110 | {q} a, $nn      | {q} a, flags <- a n
+111ww110 | {w} $nn         | {w} a, flags <- a n
+11111110 | cp $nn          | cmp8 -, flags <- a n
