@@ -91,9 +91,13 @@ struct Piece {
 
 inline constexpr std::size_t max_operands = 4;
 
-// One application of one primitive. A row is an ordered list of these, which is
-// where cost lives: an internal delay is a step like any other.
+// One application of one primitive, or a transfer into another decoding table.
+// A row is an ordered list of these, which is where cost lives: an internal
+// delay is a step like any other.
 struct Step {
+  enum class Kind : std::uint8_t { Apply, Goto };
+  Kind kind{};
+  std::uint8_t target{};
   std::string_view verb{};
   std::optional<Reference> verb_reference{};
   std::array<Operand, max_operands> destinations{};
@@ -111,6 +115,7 @@ struct Row {
   std::size_t num_pieces{};
   std::uint8_t immediate_bytes{};
   std::size_t length{1};
+  std::uint8_t table{};
   std::array<Step, max_steps> steps{};
   std::size_t num_steps{};
   std::size_t line{};
@@ -136,8 +141,9 @@ struct Row {
 }
 
 [[nodiscard]] constexpr bool is_field(const std::string_view line) { return line.starts_with("field "); }
+[[nodiscard]] constexpr bool is_table(const std::string_view line) { return line.starts_with("table "); }
 [[nodiscard]] constexpr bool is_row(const std::string_view line) {
-  return !line.empty() && line.front() != '#' && !is_field(line) && line.contains('|');
+  return !line.empty() && line.front() != '#' && !is_field(line) && !is_table(line) && line.contains('|');
 }
 
 [[nodiscard]] consteval std::size_t count_matching(bool (*predicate)(std::string_view)) {
@@ -251,6 +257,40 @@ template<std::size_t N>
 
 inline constexpr auto fields = parse_fields<count_matching(&is_field)>();
 
+template<std::size_t N>
+[[nodiscard]] consteval std::array<std::string_view, N> parse_tables() {
+  std::array<std::string_view, N> result{};
+  Parser lines(cpu_description);
+  std::size_t index = 0;
+  while (!lines.eof()) {
+    const auto at = lines.line();
+    const auto text = trim(lines.split_to('\n').data());
+    if (!is_table(text))
+      continue;
+    Parser parser(text);
+    static_cast<void>(next_word(parser));
+    const auto name = next_word(parser);
+    if (name.empty())
+      throw table_error(at, "table declaration has no name");
+    if (!next_word(parser).empty())
+      throw table_error(at, "table declaration takes a single name");
+    for (std::size_t other = 0; other < index; ++other)
+      if (result[other] == name)
+        throw table_error(at, "duplicate table name");
+    result[index++] = name;
+  }
+  return result;
+}
+
+inline constexpr auto tables = parse_tables<count_matching(&is_table)>();
+
+[[nodiscard]] consteval std::uint8_t find_table(const std::string_view name, const std::size_t line) {
+  for (std::size_t index = 0; index < tables.size(); ++index)
+    if (tables[index] == name)
+      return static_cast<std::uint8_t>(index);
+  throw table_error(line, "no table named '" + std::string(name) + "'");
+}
+
 [[nodiscard]] constexpr std::optional<std::size_t> find_field(const char name) {
   for (std::size_t index = 0; index < fields.size(); ++index)
     if (fields[index].name == name)
@@ -359,14 +399,24 @@ template<std::size_t N>
   std::array<Row, N> result{};
   Parser lines(cpu_description);
   std::size_t index = 0;
+  std::optional<std::uint8_t> current;
   while (!lines.eof()) {
     const auto at = lines.line();
     const auto text = trim(lines.split_to('\n').data());
+    if (is_table(text)) {
+      Parser declaration(text);
+      static_cast<void>(next_word(declaration));
+      current = find_table(next_word(declaration), at);
+      continue;
+    }
     if (!is_row(text))
       continue;
+    if (!current)
+      throw table_error(at, "this row is not in any table; declare one with `table <name>` first");
     Parser parser(text, at);
     auto &row = result[index++];
     row.line = at;
+    row.table = *current;
     Parser encoding(trim(parser.split_to('|').data()), at);
     row.matched = parse_opcode_bits(next_word(encoding), at);
     while (!encoding.eof()) {
@@ -391,6 +441,13 @@ template<std::size_t N>
         throw table_error(at, "row has too many steps");
       auto &step = row.steps[row.num_steps++];
       step.verb = next_word(action);
+      if (step.verb == "goto") {
+        step.kind = Step::Kind::Goto;
+        step.target = find_table(next_word(action), at);
+        if (!next_word(action).empty())
+          throw table_error(at, "goto takes a single table name");
+        continue;
+      }
       if (step.verb.starts_with('{'))
         step.verb_reference = reference_from_braces(step.verb, row.matched, at);
       // `verb dest <- args...`; the destination is optional
@@ -467,20 +524,37 @@ inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
 // Earlier rows win, so a specific encoding must precede the general one that
 // would otherwise swallow it: `halt` before `ld {r:y}, {r:z}`.
 inline constexpr auto decoded = [] {
-  std::array<std::optional<std::size_t>, 256> table{};
-  for (std::size_t opcode = 0; opcode < table.size(); ++opcode)
-    for (std::size_t index = 0; index < rows.size(); ++index)
-      if (row_matches(rows[index], static_cast<std::uint8_t>(opcode))) {
-        table[opcode] = index;
-        break;
-      }
-  return table;
+  std::array<std::array<std::optional<std::size_t>, 256>, tables.size()> all{};
+  for (std::size_t which = 0; which < all.size(); ++which)
+    for (std::size_t opcode = 0; opcode < all[which].size(); ++opcode)
+      for (std::size_t index = 0; index < rows.size(); ++index)
+        if (rows[index].table == which && row_matches(rows[index], static_cast<std::uint8_t>(opcode))) {
+          all[which][opcode] = index;
+          break;
+        }
+  return all;
 }();
 
-[[nodiscard]] constexpr std::optional<std::size_t> find_row(const std::uint8_t opcode) { return decoded[opcode]; }
+// Decoding starts in the first table declared; no name is special.
+inline constexpr std::uint8_t entry_table = 0;
 
-inline constexpr std::size_t decoded_count =
-    static_cast<std::size_t>(std::ranges::count_if(decoded, &std::optional<std::size_t>::has_value));
+[[nodiscard]] constexpr std::optional<std::size_t> find_row(const std::uint8_t table, const std::uint8_t opcode) {
+  return decoded[table][opcode];
+}
+
+// A row that only transfers elsewhere renders nothing: it is a prefix.
+[[nodiscard]] constexpr std::optional<std::uint8_t> transfers_to(const Row &row) {
+  if (row.num_steps == 1 && row.steps[0].kind == Step::Kind::Goto)
+    return row.steps[0].target;
+  return std::nullopt;
+}
+
+inline constexpr std::size_t decoded_count = [] {
+  std::size_t count = 0;
+  for (const auto &table: decoded)
+    count += static_cast<std::size_t>(std::ranges::count_if(table, &std::optional<std::size_t>::has_value));
+  return count;
+}();
 
 [[nodiscard]] consteval std::array<bool, 256> opcodes_matching(const Row &row) {
   std::array<bool, 256> result{};
@@ -499,11 +573,13 @@ consteval bool check_row_precedence() {
       throw table_error(rows[earlier].line, "this row matches no opcode at all");
     bool wins = false;
     for (std::size_t opcode = 0; opcode < mine.size(); ++opcode)
-      if (mine[opcode] && decoded[opcode] == earlier)
+      if (mine[opcode] && decoded[rows[earlier].table][opcode] == earlier)
         wins = true;
     if (!wins)
       throw table_error(rows[earlier].line, "an earlier row shadows this one completely");
     for (std::size_t later = earlier + 1; later < rows.size(); ++later) {
+      if (rows[later].table != rows[earlier].table)
+        continue;
       const auto theirs = opcodes_matching(rows[later]);
       bool shared = false;
       bool escapes = false;
@@ -519,6 +595,34 @@ consteval bool check_row_precedence() {
 }
 
 static_assert(check_row_precedence());
+
+// Handlers are generated by instantiating one table from another, so a cycle
+// would not terminate. Prefix chains need one, which is what the loop model in
+// NOTES is for; until then, say so plainly.
+consteval bool check_no_goto_cycles() {
+  for (std::size_t start = 0; start < tables.size(); ++start) {
+    std::array<bool, 64> seen{};
+    std::size_t at = start;
+    for (std::size_t depth = 0; depth <= tables.size(); ++depth) {
+      if (seen[at])
+        throw table_error(0, "tables goto each other in a cycle, which cannot be unrolled");
+      seen[at] = true;
+      bool moved = false;
+      for (const auto &row: rows)
+        if (row.table == at)
+          for (const auto &step: std::span{row.steps.data(), row.num_steps})
+            if (step.kind == Step::Kind::Goto && !moved) {
+              at = step.target;
+              moved = true;
+            }
+      if (!moved)
+        break;
+    }
+  }
+  return true;
+}
+
+static_assert(check_no_goto_cycles());
 
 [[nodiscard]] constexpr std::uint8_t field_value(const Row &row, const char name, const std::uint8_t opcode) {
   const auto slice = find_slice(row.matched, name);

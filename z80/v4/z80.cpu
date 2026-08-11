@@ -6,6 +6,9 @@ field p = bc de hl sp
 field r = b c d e h l (hl) a
 field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
 field w = and:and8 xor:xor8 or:or8 -
+field b = 0 1 2 3 4 5 6 7
+
+table base
 
 00000000     | nop             | nop
 01110110     | halt            | ld8 halted <- 1
@@ -32,3 +35,13 @@ field w = and:and8 xor:xor8 or:or8 -
 110qq110 n   | {q} a, $nn      | {q} a, flags <- a n
 111ww110 n   | {w} $nn         | {w} a, flags <- a n
 11111110 n   | cp $nn          | cmp8 -, flags <- a n
+11001011     | (cb)            | goto cb
+
+table cb
+
+01bbb110     | bit {b}, (hl)   | bit8 flags <- (hl) {b} flags ; delay 1
+10bbb110     | res {b}, (hl)   | res8 (hl) <- (hl) {b} ; delay 1
+11bbb110     | set {b}, (hl)   | set8 (hl) <- (hl) {b} ; delay 1
+01bbbzzz     | bit {b}, {r:z}  | bit8 flags <- {r:z} {b} flags
+10bbbzzz     | res {b}, {r:z}  | res8 {r:z} <- {r:z} {b}
+11bbbzzz     | set {b}, {r:z}  | set8 {r:z} <- {r:z} {b}

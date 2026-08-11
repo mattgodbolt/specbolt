@@ -389,6 +389,45 @@ effective address" (which is what all three versions already do).
 
 ## Prefixes
 
+### Status: the table switch works; the views do not exist yet
+
+`table <name>` declares a decoding table, and `goto <table>` is a step. A prefix is an ordinary row:
+
+```
+11001011     | (cb)            | goto cb
+
+table cb
+
+01bbb110     | bit {b}, (hl)   | bit8 flags <- (hl) {b} flags ; delay 1
+01bbbzzz     | bit {b}, {r:z}  | bit8 flags <- {r:z} {b} flags
+```
+
+Decoding starts in the first table declared, so no name is special to the framework. Dispatch,
+precedence checking and coverage are all per-table; the `(hl)` override rows inside `cb` are checked
+for containment exactly as the ones in `base` are.
+
+`goto` is deliberately *not* a CPU primitive. Fetching the next byte is (`fetch_opcode`), but
+choosing a table is the framework's own job — it is the one verb the framework understands.
+
+Scored on `z80/test/OpcodeTests.cpp`:
+
+| suite | passing | undecoded | wrong |
+|---|---|---|---|
+| unprefixed | 139 / 192 | 53 | 0 |
+| cb | 21 / 39 | 16 | **2** |
+
+The two wrong answers are one gap, not two: `bit n,(hl)` takes flag3/flag5 from the bus, which means
+WZ, which §8 says is per-instruction data the table cannot yet express. `bit8` passes 0. Everything
+else — including all three CB timings, 8 for register forms, 12 for `bit n,(hl)`, 15 for
+`res`/`set` on memory — is correct.
+
+**Not done, and the hard half:** DD/FD as *views* over an existing table, and DDCB. What exists is a
+table switch, which CB and ED need and which is the easy case. A view has to rewrite `{field}`
+references without touching literal text, and DD re-enters the table it came from — a cycle. The
+generator unrolls by instantiating one table from another, so a cycle would not terminate;
+`check_no_goto_cycles()` currently rejects one with a clear message rather than melting the
+compiler. Lifting that is the loop model below, and it is the next real piece of work.
+
 ### What DD actually does, measured
 
 Diffing `execute_one_dd` against `execute_one_base` in v3's generated code, case by case:

@@ -24,6 +24,16 @@ struct Ops {
   static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
   static std::uint8_t ld8(const std::uint8_t value) { return value; }
   static void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.pass_time(cycles); }
+  // Alu::bit takes a mask; the encoding carries an index, as res and set do.
+  static Flags bit8(const std::uint8_t value, const std::uint8_t bit, const Flags flags) {
+    return Alu::bit(value, static_cast<std::uint8_t>(1u << bit), flags, 0);
+  }
+  static std::uint8_t res8(const std::uint8_t value, const std::uint8_t bit) {
+    return static_cast<std::uint8_t>(value & ~(1u << bit));
+  }
+  static std::uint8_t set8(const std::uint8_t value, const std::uint8_t bit) {
+    return static_cast<std::uint8_t>(value | 1u << bit);
+  }
 };
 
 // Where the table may name operations from.
@@ -43,6 +53,8 @@ enum class Word : std::uint8_t { flags };
 [[nodiscard]] consteval std::array<std::meta::info, 5> location_scopes() {
   return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word};
 }
+
+[[nodiscard]] inline std::uint8_t fetch_opcode(Cpu &cpu) { return cpu.read_opcode(); }
 
 [[nodiscard]] inline std::uint16_t fetch_immediate(Cpu &cpu, const std::uint8_t width) {
   return width == 1 ? cpu.read_immediate() : cpu.read_immediate16();

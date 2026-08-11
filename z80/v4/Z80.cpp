@@ -11,7 +11,7 @@ void Z80::execute_one() {
     pass_time(1);
     return;
   }
-  execute(*this, read_opcode());
+  enter<entry_table>(*this);
 }
 
 std::uint8_t Z80::read_opcode() {

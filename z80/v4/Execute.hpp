@@ -175,7 +175,14 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
   return result;
 }
 
-template<std::uint8_t Opcode, std::size_t Index>
+using Handler = void (*)(Cpu &);
+
+// A goto fetches another byte and decodes it in the named table. Declared here
+// because the tables instantiate each other.
+template<std::uint8_t Table>
+void enter(Cpu &cpu);
+
+template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 void execute_one(Cpu &cpu) {
   constexpr auto row = rows[Index];
   // The encoding column says what is fetched, and it is fetched once before any
@@ -186,38 +193,44 @@ void execute_one(Cpu &cpu) {
 #pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
   template for (constexpr auto at: std::views::iota(0uz, row.num_steps)) {
     constexpr auto step = row.steps[at];
-    constexpr auto member = member_for(step, row.matched, Opcode);
-    constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
-    apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line)>(cpu, immediate);
+    if constexpr (step.kind == Step::Kind::Goto)
+      enter<step.target>(cpu);
+    else {
+      constexpr auto member = member_for(step, row.matched, Opcode);
+      constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
+      apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line)>(cpu, immediate);
+    }
   }
 #pragma GCC diagnostic pop
 }
 
-using Handler = void (*)(Cpu &);
-
-template<std::uint8_t Opcode>
+template<std::uint8_t Table, std::uint8_t Opcode>
 inline constexpr Handler handler_for = [] {
-  constexpr auto found = find_row(Opcode);
+  constexpr auto found = find_row(Table, Opcode);
   if constexpr (found)
-    return &execute_one<Opcode, *found>;
+    return &execute_one<Table, Opcode, *found>;
   else
     return nullptr;
 }();
 
+template<std::uint8_t Table>
 inline constexpr auto dispatch = [] {
-  std::array<Handler, 256> table{};
+  std::array<Handler, 256> handlers{};
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
-  template for (constexpr auto opcode: std::views::iota(0uz, 256uz)) table[opcode] =
-      handler_for<static_cast<std::uint8_t>(opcode)>;
+  template for (constexpr auto opcode: std::views::iota(0uz, 256uz)) handlers[opcode] =
+      handler_for<Table, static_cast<std::uint8_t>(opcode)>;
 #pragma GCC diagnostic pop
-  return table;
+  return handlers;
 }();
 
-inline void execute(Cpu &cpu, const std::uint8_t opcode) {
-  const auto handler = dispatch[opcode];
+template<std::uint8_t Table>
+void enter(Cpu &cpu) {
+  const auto opcode = fetch_opcode(cpu);
+  const auto handler = dispatch<Table>[opcode];
   if (!handler)
-    throw std::runtime_error(std::format("no row in " SPECBOLT_CPU_TABLE " decodes opcode 0x{:02x}", opcode));
+    throw std::runtime_error(
+        std::format("no row in " SPECBOLT_CPU_TABLE " table '{}' decodes opcode 0x{:02x}", tables[Table], opcode));
   handler(cpu);
 }
 

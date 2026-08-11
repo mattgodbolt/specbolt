@@ -10,21 +10,21 @@ namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
-    STATIC_CHECK(fields.size() == 4);
+    STATIC_CHECK(fields.size() == 5);
     STATIC_CHECK(fields[0].name == 'p');
     STATIC_CHECK(fields[0].num_values == 4);
     STATIC_CHECK(fields[0].values[0].display == "bc");
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 25);
+    STATIC_CHECK(rows.size() == 32);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].steps[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
   }
   SECTION("Keeps the line number for diagnostics") {
-    STATIC_CHECK(rows[0].line == 10);
-    STATIC_CHECK(rows[2].line == 12);
+    STATIC_CHECK(rows[0].line == 13);
+    STATIC_CHECK(rows[2].line == 15);
   }
   SECTION("A hole means the row does not cover that opcode") {
     STATIC_CHECK(fields[3].name == 'w');
@@ -34,12 +34,12 @@ TEST_CASE("Table parsing") {
   SECTION("Parentheses make an operand an address") {
     STATIC_CHECK(fields[1].name == 'r');
     STATIC_CHECK(fields[1].values[6].display == "(hl)");
-    constexpr auto ld = rows[*find_row(0x46)]; // ld b, (hl)
+    constexpr auto ld = rows[*find_row(entry_table, 0x46)]; // ld b, (hl)
     STATIC_CHECK(resolve(ld.steps[0].operands[0], ld.matched, 0x46, ld.line).indirect);
     STATIC_CHECK(!resolve(ld.steps[0].destinations[0], ld.matched, 0x46, ld.line).indirect);
     STATIC_CHECK(resolve(ld.steps[0].destinations[0], ld.matched, 0x70, ld.line).indirect); // ld (hl), b
-    STATIC_CHECK(find_row(0x86)); // add a, (hl)
-    STATIC_CHECK(find_row(0x70)); // ld (hl), b
+    STATIC_CHECK(find_row(entry_table, 0x86)); // add a, (hl)
+    STATIC_CHECK(find_row(entry_table, 0x70)); // ld (hl), b
   }
   SECTION("Members bind to primitives and a carry policy") {
     constexpr auto alu = fields[2];
@@ -56,16 +56,18 @@ TEST_CASE("Table parsing") {
   SECTION("Reports how much of the instruction set it covers") {
     // Only ever goes up. Rows are checked for precedence at compile time, so
     // there is no way to gain coverage by silently shadowing another row.
-    STATIC_CHECK(decoded_count == 181);
+    STATIC_CHECK(tables.size() == 2);
+    STATIC_CHECK(tables[entry_table] == "base");
+    STATIC_CHECK(decoded_count == 374);
   }
   SECTION("Finds rows by opcode") {
-    STATIC_CHECK(find_row(0x00) == 0u);
-    STATIC_CHECK(find_row(0x76) == 1u);
-    STATIC_CHECK(rows[*find_row(0x21)].steps[0].verb == "ld16");
-    STATIC_CHECK(!find_row(0x08));
+    STATIC_CHECK(find_row(entry_table, 0x00) == 0u);
+    STATIC_CHECK(find_row(entry_table, 0x76) == 1u);
+    STATIC_CHECK(rows[*find_row(entry_table, 0x21)].steps[0].verb == "ld16");
+    STATIC_CHECK(!find_row(entry_table, 0x08));
   }
   SECTION("Lowers mnemonics into validated pieces") {
-    constexpr auto ld = rows[*find_row(0x21)];
+    constexpr auto ld = rows[*find_row(entry_table, 0x21)];
     STATIC_CHECK(ld.length == 3);
     STATIC_CHECK(ld.num_pieces == 4);
     STATIC_CHECK(ld.pieces[0].kind == Piece::Kind::Literal);
@@ -73,11 +75,11 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(ld.pieces[1].kind == Piece::Kind::Field);
     STATIC_CHECK(ld.pieces[2].text == ", ");
     STATIC_CHECK(ld.pieces[3].kind == Piece::Kind::Imm16);
-    STATIC_CHECK(rows[*find_row(0x00)].length == 1);
-    STATIC_CHECK(rows[*find_row(0x03)].length == 1);
+    STATIC_CHECK(rows[*find_row(entry_table, 0x00)].length == 1);
+    STATIC_CHECK(rows[*find_row(entry_table, 0x03)].length == 1);
   }
   SECTION("Extracts field values from the opcode") {
-    constexpr auto ld = rows[*find_row(0x21)];
+    constexpr auto ld = rows[*find_row(entry_table, 0x21)];
     STATIC_CHECK(field_value(ld, 'p', 0x01) == 0);
     STATIC_CHECK(field_value(ld, 'p', 0x21) == 2);
     STATIC_CHECK(field_value(ld, 'p', 0x31) == 3);
@@ -222,6 +224,26 @@ TEST_CASE("Generated execution") {
     run(0x0a); // ld a, (bc)
     CHECK(cpu.get(RegisterFile::R8::A) == 0x3c);
   }
+  SECTION("A prefix transfers to another table") {
+    cpu.set(RegisterFile::R8::B, 0b0000'0000);
+    run(0xcb, 0xc0); // set 0, b
+    CHECK(cpu.get(RegisterFile::R8::B) == 0b0000'0001);
+    run(0xcb, 0xf8); // set 7, b
+    CHECK(cpu.get(RegisterFile::R8::B) == 0b1000'0001);
+    run(0xcb, 0x80); // res 0, b
+    CHECK(cpu.get(RegisterFile::R8::B) == 0b1000'0000);
+    run(0xcb, 0x78); // bit 7, b
+    CHECK(!Flags(cpu.get(RegisterFile::R8::F)).zero());
+    run(0xcb, 0x40); // bit 0, b
+    CHECK(Flags(cpu.get(RegisterFile::R8::F)).zero());
+  }
+  SECTION("A prefixed instruction can reach memory") {
+    cpu.set(RegisterFile::R16::HL, 0x9000);
+    run(0xcb, 0xfe); // set 7, (hl)
+    CHECK(memory.read(0x9000) == 0x80);
+    run(0xcb, 0xbe); // res 7, (hl)
+    CHECK(memory.read(0x9000) == 0x00);
+  }
   SECTION("Timing falls out of the fetch cycle") {
     const auto cycles = [&](const auto... bytes) {
       const auto before = cpu.cycle_count();
@@ -237,6 +259,9 @@ TEST_CASE("Generated execution") {
     CHECK(cycles(0x36, 0x00) == 10); // ld (hl), n
     CHECK(cycles(0x03) == 6); // inc bc: two internal cycles
     CHECK(cycles(0x34) == 11); // inc (hl): read, modify, write, plus one
+    CHECK(cycles(0xcb, 0xc0) == 8); // set 0, b: two opcode fetches
+    CHECK(cycles(0xcb, 0xfe) == 15); // set 7, (hl)
+    CHECK(cycles(0xcb, 0x7e) == 12); // bit 7, (hl)
   }
 }
 
