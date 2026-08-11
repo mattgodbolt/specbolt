@@ -37,7 +37,9 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
     const auto &part = row->pieces[piece];
     switch (part.kind) {
       case Piece::Kind::Literal: result += part.text; break;
-      case Piece::Kind::Field: result += member_of(fields, part.reference, row->matched, opcode).display; break;
+      case Piece::Kind::Field:
+        result += member_of(fields, part.reference, row->matched, opcode, tables[table].rules).display;
+        break;
       case Piece::Kind::Imm8:
         result += std::format("0x{:02x}", byte_at(offset));
         offset += 1;

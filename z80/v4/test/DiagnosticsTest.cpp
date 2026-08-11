@@ -19,6 +19,7 @@ struct Parsed {
   std::array<Field, max_fields> fields{};
   std::array<TableDecl, max_tables> tables{};
   std::array<Row, max_rows> rows{};
+  std::array<std::array<std::optional<std::size_t>, 256>, max_tables> decoded{};
 };
 
 // Runs the whole pipeline, including the checks that are `static_assert`s
@@ -34,6 +35,10 @@ Parsed parse(const std::string_view description) {
     check_immediates(row);
   check_row_precedence(rows, parsed.fields, parsed.tables.size());
   check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
+  std::vector<OpcodeSet> opcodes;
+  for (const auto &row: rows)
+    opcodes.push_back(opcodes_of(parsed.fields, row));
+  parsed.decoded = decode_tables<max_tables>(rows, opcodes, parsed.tables);
   return parsed;
 }
 
@@ -95,10 +100,50 @@ TEST_CASE("Table diagnostics") {
   }
   SECTION("Tables") {
     CHECK_THROWS_WITH(parse("table\n"), Equals("z80.cpu:1: table declaration has no name"));
-    CHECK_THROWS_WITH(parse("table t u\n"), Equals("z80.cpu:1: table declaration takes a single name"));
+    CHECK_THROWS_WITH(
+        parse("table t u\n"), Equals("z80.cpu:1: expected '= <parent> with <substitutions>' after the table name"));
     CHECK_THROWS_WITH(parse("table t\ntable t\n"), Equals("z80.cpu:2: duplicate table name"));
     CHECK_THROWS_WITH(
         parse("table t\n00000000 | nop | goto elsewhere\n"), Equals("z80.cpu:2: no table named 'elsewhere'"));
+  }
+  SECTION("Derived tables") {
+    constexpr std::string_view base = "field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n";
+    CHECK_NOTHROW(parse(std::string(base) + "table u = t with b -> c\n"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = nowhere with b -> c\n"),
+        Equals("z80.cpu:5: no table named 'nowhere' is declared above this one"));
+    // A parent must come first, so that a chain resolves in declaration order.
+    CHECK_THROWS_WITH(parse("table u = t with b -> c\ntable t\n00000000 | nop | nop\n"),
+        Equals("z80.cpu:1: no table named 't' is declared above this one"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = u with b -> c\n"),
+        Equals("z80.cpu:5: no table named 'u' is declared above this one"));
+    CHECK_THROWS_WITH(
+        parse(std::string(base) + "table u = t\n"), Equals("z80.cpu:5: expected 'with' after the parent table name"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with b\n"),
+        Equals("z80.cpu:5: expected '->' in table substitution 'b'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with b ->\n"),
+        Equals("z80.cpu:5: a table substitution needs a name on each side of '->'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with b -> n\n"),
+        Equals("z80.cpu:5: a vocabulary member must name something the CPU can resolve"));
+  }
+  SECTION("A derived table decodes its parent's rows, renamed") {
+    const auto parsed = parse("field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"
+                              "table u = t with b -> ixh\n00000000 | frob | nop\n");
+    const auto &derived = parsed.tables[1];
+    const auto &row = parsed.rows[1];
+    const auto reference = row.pieces[1].reference;
+
+    // The substitution reaches whatever the row names, and only that member.
+    CHECK(member_of(parsed.fields, reference, row.matched, 0x00).display == "b");
+    CHECK(member_of(parsed.fields, reference, row.matched, 0x00, derived.rules).display == "ixh");
+    CHECK(member_of(parsed.fields, reference, row.matched, 0x01, derived.rules).display == "c");
+    CHECK(resolve(parsed.fields, row.steps[0].destinations[0], row.matched, 0x00, derived.rules).name == Name{"ixh"});
+
+    // Opcode 0 is the derived table's own row; 1 it inherits; 0xdd it inherits,
+    // which is what makes `dd dd` re-enter.
+    CHECK(parsed.decoded[1][0x00].value() == 2);
+    CHECK(parsed.decoded[1][0x01].value() == 1);
+    CHECK(parsed.decoded[1][0xdd].value() == 0);
+    CHECK_FALSE(parsed.decoded[1][0x02].has_value());
   }
   SECTION("Operands") {
     CHECK_THROWS_WITH(

@@ -447,7 +447,7 @@ failures showed up, and both are now fixed.
 
 ## Prefixes
 
-### Status: the table switch works; the views do not exist yet
+### Status: the table switch works; views are built but not yet used by `z80.cpu`
 
 `table <name>` declares a decoding table, and `goto <table>` is a step. A prefix is an ordinary row:
 
@@ -516,9 +516,36 @@ and the groundwork is this, roughly in the order it has to happen:
    It costs one branch per instruction and nothing per prefix byte: `cb` compiles to
    `mov $0x101,%eax; ret`, and the two-dimensional dispatch folds into a single scaled load indexed
    by `table << 8 | opcode`.
-2. **`goto` learns `with view=`.** It takes a bare table name today. Note that `Next` is a table
-   index; with views it becomes an index over (table, view) pairs, and nothing else in the loop
-   changes.
+2. ~~**`goto` learns `with view=`.**~~ **Not needed — the item dissolved.** The sketch below spelled
+   the same idea twice: `goto base with view=ix` *and* `table ix = base with hl->ix, …`. Only the
+   second is necessary. If a view is a **derived table**, then `goto` never changes: it already takes
+   a table name, and `ix` is one. `Next` stays a table index rather than becoming a (table, view)
+   pair, and the state count stops being a product.
+
+   It also gets `ed` right for free. `ED` discards a pending `DD`, which the first spelling needed an
+   explicit `with view=hl` to say. Under derived tables the inherited row is `goto ed`, a goto names
+   a table and a substitution rewrites *members*, not table names — so decoding lands in plain `ed`
+   with no rule to write.
+
+   What exists now:
+   - `table ix = base with hl->ix, h->ixh, l->ixl` — either spacing round the arrow. The right-hand
+     side is parsed as a full vocabulary member, so a substitute brings its own primitive and its own
+     `/delay=`.
+   - `decode_tables` gives a derived table its parent's rows for every opcode it does not claim
+     itself, so an override row is just a row and first-match-wins does the rest. A parent must be
+     declared above its children, which makes the derivation a forest and lets declaration order
+     resolve a chain.
+   - `member_of` applies the renaming, and it is still the only place a reference is followed. That
+     is the whole of the mechanism: **a view is a function from member to member, applied at the one
+     point a `{field}` is resolved.** Literal text is untouched by construction, which is the rule
+     stated below, now enforced by there being nowhere else for a rule to act.
+   - A derived table with no rows of its own is legal — it *is* its parent, renamed — so
+     `check_tables_used` no longer demands rows of one.
+
+   Not yet wired into `z80.cpu`: `(hl)` must become `(ix+d)`, which fetches a displacement byte, and
+   that is item 4. Adding `dd` before then would decode `inc (hl)` as `inc (hl)` under DD — a
+   knowingly wrong emulator — so the mechanism is tested on its own description in `DiagnosticsTest`
+   instead, including that `dd dd` re-enters.
 3. ~~**References before views.**~~ **Done.** `Operand` and `Piece` each spelled a reference as two
    loose indices, and four places spelled out the lookup that follows one. Both now hold a
    `Reference`, and `member_of` is the only place one is followed — which is the place a view will
@@ -553,22 +580,25 @@ The shape of the affected set decides the design. They are vocabulary slices —
 bit-pattern family. `01yyyzzz` covers 64 opcodes of which 38 are affected and 26 are not, with no bit
 pattern separating them.
 
-### The model: `goto <table> [with <view>]`
+### The model: `goto <table>`, where a view is a derived table
 
-One primitive. Prefix rows are ordinary rows.
+No new primitive. Prefix rows are ordinary rows, and a view is a table declaration.
 
 ```
 table base
   11001011 | (cb) | goto cb
-  11101101 | (ed) | goto ed with view=hl     # ED discards a pending DD/FD
-  11011101 | (dd) | goto base with view=ix   # re-enter the same map, renamed
-  11111101 | (fd) | goto base with view=iy
+  11101101 | (ed) | goto ed     # lands in plain ed: a rule renames members, not tables
+  11011101 | (dd) | goto ix     # re-enter the same map, renamed
+  11111101 | (fd) | goto iy
 
 table ix = base with hl->ix, h->ixh, l->ixl, (hl)->(ix+d)
   11001011 | (dd cb)          | goto ddcb          # override: a jump, not a rename
   01yyy110 | ld {r8:y}, (i+d) | ld_from_indexed    # override: half-registers stay real
   01110zzz | ld (i+d), {r8:z} | ld_to_indexed
 ```
+
+An earlier sketch also gave `goto` a `with view=` clause. That was the same idea written twice; the
+declaration form is enough, and keeping only it means the decode state stays a single table index.
 
 A derived table may carry **override rows** that shadow the derived ones by first-match-wins — which
 §5 already requires anyway, so overrides cost no new mechanism. That is what removes the two
@@ -578,12 +608,15 @@ special-purpose mechanisms an earlier sketch needed: no `view=` guard for routin
 Stating DD as "re-enter the table you were already in" is also more honest than "set a mode": it
 makes clear a full opcode fetch follows, with its 4 T-states and R increment.
 
-State remains (table, view) — seven legal combinations, exactly v2's seven tables. Prefix chains
-(`DD DD FD`) fall out: each just re-enters with a different view, last wins.
+State is one table index — seven of them, exactly v2's seven tables. Prefix chains (`DD DD FD`) fall
+out: `ix` inherits base's `goto iy` row, so each byte just re-enters, last wins.
 
 **One rule to keep: only `{field}` references are rewritten; literal text never is.** `ex de, hl`
 written literally is therefore immune by construction. Substitution-by-default would reproduce the
-exact bug v2 and v3 both have.
+exact bug v2 and v3 both have. This is now structural rather than a rule to remember: `member_of` is
+the only place a rule is consulted, and it is only reachable through a `{field}`. An override row
+escapes a rename by naming a different vocabulary, not by being exempt — which is why the rows above
+say `{r8:y}` rather than `{r:y}`.
 
 ### DDCB is different in kind, and substitution provably cannot express it
 

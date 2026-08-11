@@ -169,20 +169,21 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
 
 // A vocabulary member may bind the verb late, and may append an operand the
 // encoding does not carry.
-[[nodiscard]] consteval Member member_for(const Step &step, const Matched &matched, const std::uint8_t opcode) {
+[[nodiscard]] consteval Member member_for(
+    const Step &step, const Matched &matched, const std::uint8_t opcode, const Rules &rules) {
   if (!step.verb_reference)
     return {};
-  return member_of(fields, *step.verb_reference, matched, opcode);
+  return member_of(fields, *step.verb_reference, matched, opcode, rules);
 }
 
 [[nodiscard]] consteval Call call_for(
-    const Step &step, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
-  const auto member = member_for(step, matched, opcode);
+    const Step &step, const Matched &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
+  const auto member = member_for(step, matched, opcode, rules);
   Call result{.line = line};
   for (const auto &operand: step.operands)
-    result.operands.push_back(resolve(fields, operand, matched, opcode), line, "too many operands");
+    result.operands.push_back(resolve(fields, operand, matched, opcode, rules), line, "too many operands");
   for (const auto &target: step.destinations) {
-    auto destination = resolve(fields, target, matched, opcode);
+    auto destination = resolve(fields, target, matched, opcode, rules);
     // The idle cycle belongs to a write-back, so only to something also read.
     const auto was_read = std::ranges::any_of(
         result.operands, [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
@@ -206,6 +207,9 @@ using Handler = Next (*)(Cpu &);
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 Next execute_one(Cpu &cpu) {
   constexpr auto row = rows[Index];
+  // The row may belong to a table this one derives from, so the renaming comes
+  // from where the opcode was decoded rather than from where the row was written.
+  constexpr auto rules = tables[Table].rules;
   // The encoding column says what is fetched, and it is fetched once before any
   // step: argument order within a call is unspecified, and a later step may
   // store through an address an earlier one read.
@@ -215,9 +219,9 @@ Next execute_one(Cpu &cpu) {
     if constexpr (step.kind == Step::Kind::Goto)
       return step.target;
     else {
-      constexpr auto member = member_for(step, row.matched, Opcode);
+      constexpr auto member = member_for(step, row.matched, Opcode, rules);
       constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
-      apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line)>(cpu, immediate);
+      apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line, rules)>(cpu, immediate);
     }
   }
   return std::nullopt;

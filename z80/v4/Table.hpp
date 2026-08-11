@@ -91,11 +91,28 @@ struct Field {
   Vector<Member, max_values> values{};
 };
 
-// The one place a reference is followed. Every column resolves the same way:
-// the slice picks a member, the opcode says which.
-[[nodiscard]] constexpr const Member &member_of(
-    const std::span<const Field> fields, const Reference reference, const Matched &matched, const std::uint8_t opcode) {
-  return fields[reference.field_index].values[matched.slices[reference.slice_index].extract(opcode)];
+// A derived table re-reads its parent's rows with some vocabulary members
+// renamed: `dd` is `base` read with hl->ix. The left side is a member's text as
+// the vocabulary writes it; the right is a whole member, so a substitute may
+// bring its own primitive and its own access sequence.
+struct Rule {
+  std::string_view from{};
+  Member to{};
+  constexpr bool operator==(const Rule &) const = default;
+};
+
+using Rules = Vector<Rule, 6>;
+
+// The one place a reference is followed, and therefore the one place a derived
+// table's renaming has to happen. Every column resolves the same way: the slice
+// picks a member, the opcode says which.
+[[nodiscard]] constexpr Member member_of(const std::span<const Field> fields, const Reference reference,
+    const Matched &matched, const std::uint8_t opcode, const Rules &rules = {}) {
+  const auto &member = fields[reference.field_index].values[matched.slices[reference.slice_index].extract(opcode)];
+  for (const auto &rule: rules)
+    if (rule.from == member.display)
+      return rule.to;
+  return member;
 }
 
 struct Piece {
@@ -276,7 +293,30 @@ template<std::size_t N>
 struct TableDecl {
   std::string_view name{};
   std::size_t line{};
+  // A derived table decodes its parent's rows under `rules`, and may carry rows
+  // of its own that override them.
+  bool derived{};
+  std::uint8_t parent{};
+  Rules rules{};
 };
+
+// `hl->ix, h -> ixh`: either spacing, because both read naturally.
+constexpr void parse_substitutions(const std::string_view text, TableDecl &table, const std::size_t line) {
+  Parser list(text);
+  while (!list.eof()) {
+    const auto rule = Parser::trim(list.split_to(',').data());
+    if (rule.empty())
+      continue;
+    const auto arrow = rule.find("->");
+    if (arrow == std::string_view::npos)
+      throw table_error(line, "expected '->' in table substitution '" + std::string(rule) + "'");
+    const auto from = Parser::trim(rule.substr(0, arrow));
+    const auto to = Parser::trim(rule.substr(arrow + 2));
+    if (from.empty() || to.empty())
+      throw table_error(line, "a table substitution needs a name on each side of '->'");
+    table.rules.push_back({from, parse_member(to, line)}, line, "too many substitutions in table");
+  }
+}
 
 template<std::size_t N>
 [[nodiscard]] constexpr std::array<TableDecl, N> parse_tables(const std::string_view description) {
@@ -292,12 +332,30 @@ template<std::size_t N>
     const auto name = parser.next_word();
     if (name.empty())
       throw table_error(at, "table declaration has no name");
-    if (!parser.next_word().empty())
-      throw table_error(at, "table declaration takes a single name");
     for (std::size_t other = 0; other < index; ++other)
       if (result[other].name == name)
         throw table_error(at, "duplicate table name");
-    result[index++] = {name, at};
+    auto &table = result[index++];
+    table = {.name = name, .line = at};
+    if (const auto equals = parser.next_word(); equals.empty())
+      continue;
+    else if (equals != "=")
+      throw table_error(at, "expected '= <parent> with <substitutions>' after the table name");
+    // Only a table already declared, which makes the derivation a forest: a
+    // parent's own rows are resolved before anything inherits them.
+    const auto parent = parser.next_word();
+    table.derived = true;
+    table.parent = 0xff;
+    for (std::size_t other = 0; other + 1 < index; ++other)
+      if (result[other].name == parent)
+        table.parent = static_cast<std::uint8_t>(other);
+    if (table.parent == 0xff)
+      throw table_error(at, "no table named '" + std::string(parent) + "' is declared above this one");
+    if (parser.next_word() != "with")
+      throw table_error(at, "expected 'with' after the parent table name");
+    parse_substitutions(parser.data(), table, at);
+    if (table.rules.empty())
+      throw table_error(at, "a derived table declares no substitutions, so it is its parent");
   }
   return result;
 }
@@ -498,11 +556,11 @@ template<std::size_t N>
 
 // A field operand names whichever vocabulary member its slice selects, and that
 // member is written the same way an operand is written in a row.
-[[nodiscard]] constexpr Operand resolve(
-    const std::span<const Field> fields, const Operand operand, const Matched &matched, const std::uint8_t opcode) {
+[[nodiscard]] constexpr Operand resolve(const std::span<const Field> fields, const Operand operand,
+    const Matched &matched, const std::uint8_t opcode, const Rules &rules = {}) {
   if (operand.kind != Operand::Kind::Field)
     return operand;
-  const auto &member = member_of(fields, operand.reference, matched, opcode);
+  const auto member = member_of(fields, operand.reference, matched, opcode, rules);
   auto result = member.operand;
   result.write_back_delay = member.write_back_delay;
   return result;
@@ -610,12 +668,34 @@ constexpr bool check_row_precedence(
   return true;
 }
 
+// Which row, if any, each table decodes each opcode to. Earlier rows win; then
+// a derived table takes from its parent whatever it did not claim itself.
+// Declaration order resolves a chain, because a parent is always declared
+// before its children.
+template<std::size_t NumTables>
+[[nodiscard]] constexpr auto decode_tables(const std::span<const Row> rows, const std::span<const OpcodeSet> opcodes,
+    const std::span<const TableDecl> tables) {
+  std::array<std::array<std::optional<std::size_t>, 256>, NumTables> all{};
+  for (std::size_t index = 0; index < rows.size(); ++index)
+    for (std::size_t opcode = 0; opcode < 256; ++opcode)
+      if (opcodes[index].contains(static_cast<std::uint8_t>(opcode)) && !all[rows[index].table][opcode])
+        all[rows[index].table][opcode] = index;
+  for (std::size_t which = 0; which < tables.size(); ++which)
+    if (tables[which].derived)
+      for (std::size_t opcode = 0; opcode < 256; ++opcode)
+        if (!all[which][opcode])
+          all[which][opcode] = all[tables[which].parent][opcode];
+  return all;
+}
+
 // A table nothing reaches is never instantiated, so nothing in it is ever
 // type-checked. An empty one is a typo.
 constexpr bool check_tables_used(
     const std::span<const Row> rows, const std::span<const TableDecl> tables, const std::uint8_t entry) {
   for (std::size_t which = 0; which < tables.size(); ++which) {
-    if (std::ranges::none_of(rows, [&](const Row &row) { return row.table == which; }))
+    // A derived table with no rows of its own is its parent, renamed -- which is
+    // the whole point of one.
+    if (!tables[which].derived && std::ranges::none_of(rows, [&](const Row &row) { return row.table == which; }))
       throw table_error(tables[which].line, "this table has no rows");
     if (which == entry)
       continue;
@@ -642,14 +722,7 @@ inline constexpr auto row_opcodes = [] {
   return all;
 }();
 
-inline constexpr auto decoded = [] {
-  std::array<std::array<std::optional<std::size_t>, 256>, tables.size()> all{};
-  for (std::size_t index = 0; index < rows.size(); ++index)
-    for (std::size_t opcode = 0; opcode < 256; ++opcode)
-      if (row_opcodes[index].contains(static_cast<std::uint8_t>(opcode)) && !all[rows[index].table][opcode])
-        all[rows[index].table][opcode] = index;
-  return all;
-}();
+inline constexpr auto decoded = decode_tables<tables.size()>(rows, row_opcodes, tables);
 
 // Decoding starts in the first table declared; no name is special.
 inline constexpr std::uint8_t entry_table = 0;
