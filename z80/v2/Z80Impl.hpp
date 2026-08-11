@@ -596,8 +596,9 @@ constexpr auto instruction<opcode> = Op<"ex (sp), "s + IndexReg<opcode.hl_set>::
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 5)
-constexpr auto instruction<opcode> = Op<"ex de, "s + IndexReg<opcode.hl_set>::name,
-    [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, IndexReg<opcode.hl_set>::highlow); }>{};
+// DD/FD leave EX DE,HL unaffected on real Z80s.
+constexpr auto instruction<opcode> =
+    Op<"ex de, hl", [](Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }>{};
 
 template<Opcode opcode>
   requires(opcode.x == 3 && opcode.z == 3 && opcode.y == 6)

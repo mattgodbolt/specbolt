@@ -315,9 +315,9 @@ Op match_op(const Opcode opcode) {
             std::format("set(R16::{},  static_cast<std::uint16_t>(sp_old_low | sp_old_high << 8));",
                 upper(opcode.reg_set.index_reg))}};
 
+  // DD/FD leave EX DE,HL unaffected on real Z80s.
   if (opcode.x == 3 && opcode.z == 3 && opcode.y == 5)
-    return {std::format("ex de, {}", opcode.reg_set.index_reg),
-        {std::format("regs_.ex(R16::DE, R16::{});", upper(opcode.reg_set.index_reg))}};
+    return {"ex de, hl", {"regs_.ex(R16::DE, R16::HL);"}};
   if (opcode.x == 3 && opcode.z == 3 && opcode.y == 6)
     return {"di", {"iff1_ = iff2_ = false;"}};
   if (opcode.x == 3 && opcode.z == 3 && opcode.y == 7)
