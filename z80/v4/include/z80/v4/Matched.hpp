@@ -2,6 +2,7 @@
 
 #ifndef SPECBOLT_MODULES
 #include "z80/v4/TableError.hpp"
+#include "z80/v4/Vector.hpp"
 
 #include <array>
 #include <cstdint>
@@ -29,13 +30,12 @@ SPECBOLT_EXPORT struct Matched {
   static constexpr std::size_t num_bits = 8;
 
   std::uint8_t opcode_bits{};
-  std::array<BitSlice, max_slices> slices{};
-  std::size_t num_slices{};
+  Vector<BitSlice, max_slices> slices{};
 
   [[nodiscard]] constexpr std::uint8_t variable_mask() const {
     std::uint8_t result = 0;
-    for (std::size_t index = 0; index < num_slices; ++index)
-      result = static_cast<std::uint8_t>(result | slices[index].place(slices[index].mask));
+    for (const auto &slice: slices)
+      result = static_cast<std::uint8_t>(result | slice.place(slice.mask));
     return result;
   }
   [[nodiscard]] constexpr std::uint8_t fixed_mask() const { return static_cast<std::uint8_t>(~variable_mask()); }
@@ -57,21 +57,18 @@ SPECBOLT_EXPORT [[nodiscard]] constexpr Matched parse_opcode_bits(const std::str
       continue;
     }
     auto extended = false;
-    for (std::size_t slice = 0; slice < result.num_slices; ++slice) {
-      if (result.slices[slice].name != character)
+    for (auto &slice: result.slices) {
+      if (slice.name != character)
         continue;
-      if (result.slices[slice].shift != bit + 1)
+      if (slice.shift != bit + 1)
         throw table_error(line, "opcode pattern has non-contiguous bits for a field");
-      result.slices[slice].shift = bit;
-      result.slices[slice].mask = static_cast<std::uint8_t>((result.slices[slice].mask << 1) | 1);
+      slice.shift = bit;
+      slice.mask = static_cast<std::uint8_t>((slice.mask << 1) | 1);
       extended = true;
       break;
     }
-    if (extended)
-      continue;
-    if (result.num_slices == Matched::max_slices)
-      throw table_error(line, "opcode pattern has too many fields");
-    result.slices[result.num_slices++] = BitSlice{character, bit, 1};
+    if (!extended)
+      result.slices.push_back({character, bit, 1}, line, "opcode pattern has too many fields");
   }
   return result;
 }

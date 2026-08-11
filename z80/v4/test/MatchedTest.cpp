@@ -15,7 +15,7 @@ TEST_CASE("Opcode bit parsing") {
   SECTION("LD xx, IMM16") {
     constexpr auto matched = parse_opcode_bits("00pp0001", 1);
     STATIC_CHECK(matched.opcode_bits == 0b00000001);
-    STATIC_CHECK(matched.num_slices == 1);
+    STATIC_CHECK(matched.slices.size() == 1);
     STATIC_CHECK(matched.slices[0] == BitSlice{'p', 4, 3});
     STATIC_CHECK(matched.variable_mask() == 0b00110000);
     STATIC_CHECK(matched.fixed_mask() == 0b11001111);
@@ -23,7 +23,7 @@ TEST_CASE("Opcode bit parsing") {
   SECTION("LD r, r'") {
     constexpr auto matched = parse_opcode_bits("01yyyzzz", 1);
     STATIC_CHECK(matched.opcode_bits == 0b01000000);
-    STATIC_CHECK(matched.num_slices == 2);
+    STATIC_CHECK(matched.slices.size() == 2);
     STATIC_CHECK(matched.slices[0] == BitSlice{'y', 3, 7});
     STATIC_CHECK(matched.slices[1] == BitSlice{'z', 0, 7});
     STATIC_CHECK(matched.fixed_mask() == 0b11000000);
@@ -31,7 +31,7 @@ TEST_CASE("Opcode bit parsing") {
   SECTION("Wholly fixed") {
     constexpr auto matched = parse_opcode_bits("11001001", 1);
     STATIC_CHECK(matched.opcode_bits == 0xc9);
-    STATIC_CHECK(matched.num_slices == 0);
+    STATIC_CHECK(matched.slices.size() == 0);
     STATIC_CHECK(matched.fixed_mask() == 0xff);
   }
   SECTION("Wholly variable") {
@@ -48,7 +48,7 @@ TEST_CASE("Opcode bit parsing") {
   }
   SECTION("Accepts the widest supported field count") {
     constexpr auto matched = parse_opcode_bits("wwxxyyzz", 1);
-    STATIC_CHECK(matched.num_slices == Matched::max_slices);
+    STATIC_CHECK(matched.slices.size() == Matched::max_slices);
     STATIC_CHECK(matched.fixed_mask() == 0);
   }
 }

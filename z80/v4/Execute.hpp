@@ -71,10 +71,8 @@ template<std::meta::info Fn>
 
 // Everything one step needs, with its field references already resolved.
 struct Call {
-  std::array<Operand, max_operands> operands{};
-  std::size_t num_operands{};
-  std::array<Operand, max_operands> destinations{};
-  std::size_t num_destinations{};
+  Vector<Operand, max_operands> operands{};
+  Vector<Operand, max_operands> destinations{};
   std::size_t line{};
 };
 
@@ -126,8 +124,8 @@ template<std::meta::info Fn, Call C>
 void apply(Cpu &cpu, const std::uint16_t immediate) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
   static_assert(
-      C.num_operands + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
-  constexpr auto arguments = std::make_index_sequence<C.num_operands>{};
+      C.operands.size() + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
+  constexpr auto arguments = std::make_index_sequence<C.operands.size()>{};
   const auto call = [&]<std::size_t... I>(std::index_sequence<I...>) {
     if constexpr (takes_cpu<Fn>())
       return [:Fn:](cpu, value_of<C.operands[I], C.line, parameter_type<Fn, I + 1>>(cpu, immediate)...);
@@ -137,21 +135,21 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
 
   using Result = decltype(call(arguments));
   if constexpr (std::is_void_v<Result>) {
-    static_assert(C.num_destinations == 0, "this operation returns nothing, so the row may not name a destination");
+    static_assert(C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
     call(arguments);
   }
-  else if constexpr (C.num_destinations == 1) {
+  else if constexpr (C.destinations.size() == 1) {
     store<C.destinations[0], C.line>(cpu, immediate, call(arguments));
   }
   else {
     static constexpr auto members =
         std::define_static_array(std::meta::nonstatic_data_members_of(^^Result, std::meta::access_context::current()));
     static_assert(
-        C.num_destinations == members.size(), "the row's destinations do not match what this operation returns");
+        C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
     const auto result = call(arguments);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
-    template for (constexpr auto at: std::views::iota(0uz, C.num_destinations))
+    template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
         store<C.destinations[at], C.line>(cpu, immediate, result.[:members[at]:]);
 #pragma GCC diagnostic pop
   }
@@ -169,19 +167,21 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
 [[nodiscard]] consteval Call call_for(
     const Step &step, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
   const auto member = member_for(step, matched, opcode);
-  Call result{{}, step.num_operands, {}, step.num_destinations, line};
-  for (std::size_t at = 0; at < step.num_operands; ++at)
-    result.operands[at] = resolve(step.operands[at], matched, opcode, line);
-  for (std::size_t at = 0; at < step.num_destinations; ++at) {
-    auto destination = resolve(step.destinations[at], matched, opcode, line);
-    const auto was_read = std::ranges::any_of(std::span{result.operands.data(), result.num_operands},
-        [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
+  Call result{.line = line};
+  for (const auto &operand: step.operands)
+    result.operands.push_back(resolve(operand, matched, opcode, line), line, "too many operands");
+  for (const auto &target: step.destinations) {
+    auto destination = resolve(target, matched, opcode, line);
+    // The idle cycle belongs to a write-back, so only to something also read.
+    const auto was_read = std::ranges::any_of(
+        result.operands, [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
     if (!was_read)
       destination.write_back_delay = 0;
-    result.destinations[at] = destination;
+    result.destinations.push_back(destination, line, "too many destinations");
   }
+  // A vocabulary member may append an operand the encoding does not carry.
   if (member.appended)
-    result.operands[result.num_operands++] = *member.appended;
+    result.operands.push_back(*member.appended, line, "too many operands");
   return result;
 }
 
@@ -201,7 +201,7 @@ void execute_one(Cpu &cpu) {
   const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : fetch_immediate(cpu, row.immediate_bytes);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
-  template for (constexpr auto at: std::views::iota(0uz, row.num_steps)) {
+  template for (constexpr auto at: std::views::iota(0uz, row.steps.size())) {
     constexpr auto step = row.steps[at];
     if constexpr (step.kind == Step::Kind::Goto)
       enter<step.target>(cpu);

@@ -33,7 +33,7 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
 
   std::string result;
   const auto opcode = byte_at(offset - 1);
-  for (std::size_t piece = 0; piece < row->num_pieces; ++piece) {
+  for (std::size_t piece = 0; piece < row->pieces.size(); ++piece) {
     const auto &part = row->pieces[piece];
     switch (part.kind) {
       case Piece::Kind::Literal: result += part.text; break;

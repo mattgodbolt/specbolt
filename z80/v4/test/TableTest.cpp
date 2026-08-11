@@ -12,7 +12,7 @@ TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
     STATIC_CHECK(fields.size() == 5);
     STATIC_CHECK(fields[0].name == 'p');
-    STATIC_CHECK(fields[0].num_values == 4);
+    STATIC_CHECK(fields[0].values.size() == 4);
     STATIC_CHECK(fields[0].values[0].display == "bc");
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
@@ -69,7 +69,7 @@ TEST_CASE("Table parsing") {
   SECTION("Lowers mnemonics into validated pieces") {
     constexpr auto ld = rows[*find_row(entry_table, 0x21)];
     STATIC_CHECK(ld.length == 3);
-    STATIC_CHECK(ld.num_pieces == 4);
+    STATIC_CHECK(ld.pieces.size() == 4);
     STATIC_CHECK(ld.pieces[0].kind == Piece::Kind::Literal);
     STATIC_CHECK(ld.pieces[0].text == "ld ");
     STATIC_CHECK(ld.pieces[1].kind == Piece::Kind::Field);
