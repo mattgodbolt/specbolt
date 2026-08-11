@@ -137,24 +137,53 @@ and survives promotion". It is neither, and both halves were verified false.
 These dictate the `Row`/`Field`/`Matched` data shapes and are expensive to retrofit. Everything else
 is additive.
 
-### 1. Encoding is a byte sequence, not one 8-bit pattern
+### 1. Encoding is a byte sequence, not one 8-bit pattern — partly done
 
-`parse_opcode_bits` requires exactly 8 characters. Real encodings are up to four bytes, and `DD CB d
-op` puts the displacement **between** the prefix and the opcode. Proposal: the first column becomes a
-whitespace-separated token list of literal bytes, bit patterns and operand names.
+The encoding column is now a token sequence rather than a single pattern:
+
+```
+00pp0001 n n | ld {p}, $nnnn | ld16 {p} <- n
+110qq110 n   | {q} a, $nn    | {q} a, flags <- a n
+```
+
+`length` is derived from it, where it used to be inferred by counting `$n`s in the *display* text —
+a human-facing string deciding how many bytes the CPU fetches. The fetch itself is now driven by
+`row.immediate_bytes` too, so the encoding is the single source of truth for what is read.
+
+That collapses a redundancy: an immediate operand has one spelling, `n`, and the encoding says how
+wide it is. `nn` in an action is now an error suggesting the fix. A vocabulary member may not append
+an immediate at all, since only the encoding fetches.
+
+The three columns now cross-check, each failure naming its line:
+
+| broken | reported |
+|---|---|
+| encoding fetches fewer bytes than the mnemonic renders | `the mnemonic renders a different number of immediate bytes than the encoding fetches` |
+| encoding fetches an immediate the action never uses | `the action and the encoding disagree about whether there is an immediate` |
+| `nn` written in an action | `write 'n'; the encoding column says how many bytes it occupies` |
+| unknown encoding token | `'d' is not an encoding byte; expected 'n'` |
+
+Still to do, and it *is* prefixes rather than a separate step: more than one bit-pattern token per
+row, so `11001011 <pattern>` and the DDCB fetch reordering become expressible. The token sequence is
+the structure that will carry them; today every row has exactly one pattern token, at the front.
+
+#### Where this is going
+
+Real encodings are up to four bytes, and `DD CB d op` puts the displacement **between** the prefix
+and the opcode. The token list generalises to that without changing shape:
 
 ```
 DD CB d 01bbbzzz | bit {b}, (ix{d}) | ...
-00pp0001 nn      | ld {p}, {nn}     | ld16
 ```
 
-Length then falls out of the token count and is never stated. Fetch order is textual order, which is
-what timing needs. Note the execution path currently takes a single pre-fetched operand, which cannot
-express `ld (ix+d), n` (two immediates, fetched at different points).
+Fetch order is textual order, which is what timing needs, and it settles the DDCB inversion for
+free: the row states left to right that the displacement precedes the opcode, so no per-table "the
+operands come in this order" declaration is needed.
 
-This also settles the DDCB fetch inversion for free: `DD CB d 01bbbzzz` states left to right that the
-displacement precedes the opcode, so no per-table "the operands come in this order" declaration is
-needed.
+One known limitation to lift on the way: the execution path fetches a single immediate before any
+step runs, which cannot express `ld (ix+d), n` — two immediates read at different points. Fetching
+per-token, at the point the token appears, is the fix, and it is the same change that makes multiple
+pattern tokens work.
 
 ### 2. Vocabulary members must be structured
 
@@ -479,15 +508,14 @@ extrapolates to about **12 s / 390 MB**.
 
 ## Follow-up work, in order
 
-1. **Multi-slot rows.** `{vocab:slice}`, verb arity from `parameters_of`, remove the
-   `num_slices <= 1` `static_assert`. Unblocks `ld r,r'` and the whole ALU group — the bulk of the
-   base table.
-2. **Compile-time overlap and coverage checking.** Before rows 6–250 are written, because `halt` vs
-   `ld r,r'` starts biting the moment the second lands.
-3. **Encoding as a byte sequence.** Prefixes, immediates, displacements; length derived. Also
-   prerequisite for prefixes, since it is what expresses the DDCB fetch order.
+1. ~~**Multi-slot rows.**~~ Done.
+2. ~~**Compile-time overlap and coverage checking.**~~ Done — see §5.
+3. **Encoding as a byte sequence.** Immediates and length derived: done. Multiple pattern tokens
+   per row, which is what expresses the DDCB fetch order: folded into 4, because it is the same work.
 4. **Prefixes** — `goto <table> [with <view>]`, derived tables, override rows.
-5. **Timing**, as an unrolled step sequence with `t=` assertions.
+5. ~~**Timing**~~ Done as an unrolled step sequence, ahead of schedule because it was the only
+   source of wrong answers. `t=` assertions still want static per-step costs, which do not exist
+   yet: cost currently lives inside the CPU's own `read`/`write`/`delay`.
 6. **WZ**, flags cross-checks, `undoc` marking.
 7. **Project `Row` into artefact tables** rather than scanning at runtime.
 

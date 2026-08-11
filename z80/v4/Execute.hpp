@@ -175,24 +175,13 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
   return result;
 }
 
-[[nodiscard]] consteval std::uint8_t immediate_width_of(const Row &row, const std::uint8_t opcode) {
-  std::uint8_t width = 0;
-  for (std::size_t at = 0; at < row.num_steps; ++at) {
-    const auto call = call_for(row.steps[at], row.matched, opcode, row.line);
-    for (std::size_t operand = 0; operand < call.num_operands; ++operand)
-      if (call.operands[operand].kind == Operand::Kind::Immediate)
-        width = call.operands[operand].width;
-  }
-  return width;
-}
-
 template<std::uint8_t Opcode, std::size_t Index>
 void execute_one(Cpu &cpu) {
   constexpr auto row = rows[Index];
-  // Fetched once, before any step, because argument order within a call is
-  // unspecified and a later step may store through an earlier one's address.
-  constexpr auto width = immediate_width_of(row, Opcode);
-  const std::uint16_t immediate = width == 0 ? 0 : fetch_immediate(cpu, width);
+  // The encoding column says what is fetched, and it is fetched once before any
+  // step: argument order within a call is unspecified, and a later step may
+  // store through an address an earlier one read.
+  const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : fetch_immediate(cpu, row.immediate_bytes);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
   template for (constexpr auto at: std::views::iota(0uz, row.num_steps)) {

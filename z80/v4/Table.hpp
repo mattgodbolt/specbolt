@@ -109,6 +109,7 @@ struct Row {
   std::string_view mnemonic{};
   std::array<Piece, max_pieces> pieces{};
   std::size_t num_pieces{};
+  std::uint8_t immediate_bytes{};
   std::size_t length{1};
   std::array<Step, max_steps> steps{};
   std::size_t num_steps{};
@@ -164,9 +165,9 @@ struct Row {
     return addressed;
   }
   if (word == "n")
-    return {Operand::Kind::Immediate, {}, 0, 1, 0, 0, false};
+    return {Operand::Kind::Immediate, {}, 0, 0, 0, 0, false};
   if (word == "nn")
-    return {Operand::Kind::Immediate, {}, 0, 2, 0, 0, false};
+    throw table_error(line, "write 'n'; the encoding column says how many bytes it occupies");
   if (word.front() >= '0' && word.front() <= '9') {
     const auto hex = word.starts_with("0x");
     const auto digits = hex ? word.substr(2) : word;
@@ -204,8 +205,11 @@ struct Row {
   }
   Parser primitive(member.primitive);
   member.primitive = primitive.split_to('+').data();
-  if (const auto appended = primitive.data(); !appended.empty())
+  if (const auto appended = primitive.data(); !appended.empty()) {
     member.appended = parse_simple_operand(appended, line);
+    if (member.appended->kind == Operand::Kind::Immediate)
+      throw table_error(line, "a vocabulary member cannot append an immediate; only the encoding fetches those");
+  }
   return member;
 }
 
@@ -312,14 +316,8 @@ consteval void lower_mnemonic(Row &row) {
       const auto remaining = text.data().size();
       text.skip_any("n");
       switch (remaining - text.data().size()) {
-        case 2:
-          push({Piece::Kind::Imm8, {}, 0, 0});
-          row.length += 1;
-          break;
-        case 4:
-          push({Piece::Kind::Imm16, {}, 0, 0});
-          row.length += 2;
-          break;
+        case 2: push({Piece::Kind::Imm8, {}, 0, 0}); break;
+        case 4: push({Piece::Kind::Imm16, {}, 0, 0}); break;
         default: throw table_error(row.line, "expected $nn or $nnnn in mnemonic");
       }
     }
@@ -339,25 +337,21 @@ consteval void lower_mnemonic(Row &row) {
   }
 }
 
-// The mnemonic decides how many bytes the instruction occupies; the action
-// decides what is read. If they disagree the row's length is a lie.
+// The encoding says what is fetched. The mnemonic must render exactly that, and
+// the action must use it: otherwise one of the three columns is lying.
 consteval void check_immediates(const Row &row) {
-  const auto declared = [&](const std::uint8_t width) {
-    const auto kind = width == 1 ? Piece::Kind::Imm8 : Piece::Kind::Imm16;
-    return std::ranges::count(std::span{row.pieces.data(), row.num_pieces}, kind, &Piece::kind);
-  };
-  const auto used = [&](const std::uint8_t width) {
-    std::ptrdiff_t count = 0;
-    for (const auto &step: std::span{row.steps.data(), row.num_steps})
-      count +=
-          std::ranges::count_if(std::span{step.operands.data(), step.num_operands}, [width](const Operand &operand) {
-            return operand.kind == Operand::Kind::Immediate && operand.width == width;
-          });
-    return count;
-  };
-  for (const std::uint8_t width: {std::uint8_t{1}, std::uint8_t{2}})
-    if (declared(width) != used(width))
-      throw table_error(row.line, "the mnemonic and the action disagree about immediate operands");
+  std::size_t rendered = 0;
+  for (const auto &piece: std::span{row.pieces.data(), row.num_pieces})
+    rendered += piece.kind == Piece::Kind::Imm8 ? 1u : piece.kind == Piece::Kind::Imm16 ? 2u : 0u;
+  if (rendered != row.immediate_bytes)
+    throw table_error(row.line, "the mnemonic renders a different number of immediate bytes than the encoding fetches");
+
+  const auto uses_immediate = std::ranges::any_of(std::span{row.steps.data(), row.num_steps}, [](const Step &step) {
+    return std::ranges::any_of(std::span{step.operands.data(), step.num_operands},
+        [](const Operand &operand) { return operand.kind == Operand::Kind::Immediate; });
+  });
+  if (uses_immediate != (row.immediate_bytes != 0))
+    throw table_error(row.line, "the action and the encoding disagree about whether there is an immediate");
 }
 
 template<std::size_t N>
@@ -373,7 +367,19 @@ template<std::size_t N>
     Parser parser(text, at);
     auto &row = result[index++];
     row.line = at;
-    row.matched = parse_opcode_bits(trim(parser.split_to('|').data()), at);
+    Parser encoding(trim(parser.split_to('|').data()), at);
+    row.matched = parse_opcode_bits(next_word(encoding), at);
+    while (!encoding.eof()) {
+      const auto token = next_word(encoding);
+      if (token.empty())
+        continue;
+      if (token != "n")
+        throw table_error(at, "'" + std::string(token) + "' is not an encoding byte; expected 'n'");
+      ++row.immediate_bytes;
+    }
+    if (row.immediate_bytes > 2)
+      throw table_error(at, "an instruction may carry at most two immediate bytes");
+    row.length = 1u + row.immediate_bytes;
     row.mnemonic = trim(parser.split_to('|').data());
     // steps run in order, separated by `;`
     Parser sequence(trim(parser.data()));
@@ -415,6 +421,10 @@ template<std::size_t N>
     if (row.num_steps == 0)
       throw table_error(at, "row has no action");
     lower_mnemonic(row);
+    for (auto &step: std::span{row.steps.data(), row.num_steps})
+      for (auto &operand: std::span{step.operands.data(), step.num_operands})
+        if (operand.kind == Operand::Kind::Immediate)
+          operand.width = row.immediate_bytes;
     check_immediates(row);
   }
   return result;
