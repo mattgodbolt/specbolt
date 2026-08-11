@@ -469,6 +469,47 @@ inline constexpr auto decoded = [] {
 
 [[nodiscard]] constexpr std::optional<std::size_t> find_row(const std::uint8_t opcode) { return decoded[opcode]; }
 
+inline constexpr std::size_t decoded_count =
+    static_cast<std::size_t>(std::ranges::count_if(decoded, &std::optional<std::size_t>::has_value));
+
+[[nodiscard]] consteval std::array<bool, 256> opcodes_matching(const Row &row) {
+  std::array<bool, 256> result{};
+  for (std::size_t opcode = 0; opcode < result.size(); ++opcode)
+    result[opcode] = row_matches(row, static_cast<std::uint8_t>(opcode));
+  return result;
+}
+
+// Line order silently decides who wins, so say what the legal shapes are: a row
+// must win something, and where two rows overlap the earlier must be wholly
+// contained in the later. That is an override. A partial overlap is an accident.
+consteval bool check_row_precedence() {
+  for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
+    const auto mine = opcodes_matching(rows[earlier]);
+    if (std::ranges::none_of(mine, std::identity{}))
+      throw table_error(rows[earlier].line, "this row matches no opcode at all");
+    bool wins = false;
+    for (std::size_t opcode = 0; opcode < mine.size(); ++opcode)
+      if (mine[opcode] && decoded[opcode] == earlier)
+        wins = true;
+    if (!wins)
+      throw table_error(rows[earlier].line, "an earlier row shadows this one completely");
+    for (std::size_t later = earlier + 1; later < rows.size(); ++later) {
+      const auto theirs = opcodes_matching(rows[later]);
+      bool shared = false;
+      bool escapes = false;
+      for (std::size_t opcode = 0; opcode < mine.size(); ++opcode) {
+        shared = shared || (mine[opcode] && theirs[opcode]);
+        escapes = escapes || (mine[opcode] && !theirs[opcode]);
+      }
+      if (shared && escapes)
+        throw table_error(rows[earlier].line, "this row overlaps a later one without being contained by it");
+    }
+  }
+  return true;
+}
+
+static_assert(check_row_precedence());
+
 [[nodiscard]] constexpr std::uint8_t field_value(const Row &row, const char name, const std::uint8_t opcode) {
   const auto slice = find_slice(row.matched, name);
   if (!slice)

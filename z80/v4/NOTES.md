@@ -240,13 +240,30 @@ Project it at compile time into artefact-shaped tables: `winner[256]` (kills the
 *and* enables overlap detection), decode, dispatch, text, cycles, flags-affected. The `line` field
 should propagate into every projection so any mismatch reports `z80.cpu:N`.
 
-### 5. First-match-wins needs compile-time checking
+### 5. First-match-wins needs compile-time checking — done
 
-`halt` (`01110110`) collides with `ld r,r'` (`01yyyzzz`), and today the winner is decided by line
-order, silently. All three prior implementations treat this as a hazard needing an explicit
-statement. Since the domain is 256, build the winner array at compile time and **error** on
-unreachable rows and on overlaps where the earlier row is not a strict subset of the later one,
-unless explicitly marked as an intentional override. Report uncovered opcodes.
+`halt` (`01110110`) collides with `ld r,r'` (`01yyyzzz`), and the winner was decided by line order,
+silently. All three prior implementations treat this as a hazard needing an explicit statement.
+
+Implemented as `check_row_precedence()`, a `static_assert` over the winner array. Two rules:
+
+- a row must win at least one opcode
+- where two rows overlap, the earlier must be **wholly contained** in the later — that is an
+  override, and it is how `halt`, `cp` and `inc (hl)` all work. A partial overlap is an accident and
+  is rejected.
+
+No "intentional override" marker turned out to be needed: containment already distinguishes the
+legitimate case from the accident, so the legal shape is checked rather than merely asserted by the
+author. Verified by breaking the table three ways and reading the diagnostic:
+
+| what was broken | reported |
+|---|---|
+| override placed *after* the general row | `z80.cpu:25: this row overlaps a later one without being contained by it` |
+| a row partly overlapping a later one | `z80.cpu:13: …` |
+| a row all of whose vocabulary members are holes | `z80.cpu:30: this row matches no opcode at all` |
+
+Coverage is `decoded_count`, a compile-time constant, ratcheted by a test. Because precedence is
+checked, coverage cannot be gained by silently shadowing another row.
 
 ### 6. Timing attaches to the micro-op sequence
 

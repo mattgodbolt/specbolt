@@ -53,6 +53,11 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[3].values[3].hole);
     STATIC_CHECK(fields[0].values[0].primitive.empty());
   }
+  SECTION("Reports how much of the instruction set it covers") {
+    // Only ever goes up. Rows are checked for precedence at compile time, so
+    // there is no way to gain coverage by silently shadowing another row.
+    STATIC_CHECK(decoded_count == 181);
+  }
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(0x00) == 0u);
     STATIC_CHECK(find_row(0x76) == 1u);
