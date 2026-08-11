@@ -28,13 +28,6 @@ public:
 
   using Z80Base::halted;
   void halted(bool value);
-
-  // Holds a value mid-instruction, so a row can state the bus sequence.
-  [[nodiscard]] std::uint8_t latch() const { return latch_; }
-  void latch(const std::uint8_t value) { latch_ = value; }
-
-private:
-  std::uint8_t latch_{};
 };
 
 } // namespace specbolt::v4

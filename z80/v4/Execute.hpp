@@ -108,8 +108,12 @@ template<Operand Op, std::size_t Line, typename T>
 void store(Cpu &cpu, const std::uint16_t immediate, const T value) {
   if constexpr (Op.kind == Operand::Kind::Discard)
     static_cast<void>(value);
-  else if constexpr (Op.indirect)
+  else if constexpr (Op.indirect) {
+    // The addressing mode says how long the machine idles before writing back.
+    if constexpr (Op.write_back_delay != 0)
+      delay(cpu, Op.write_back_delay);
     write_memory(cpu, direct_value_of<Op, Line, std::uint16_t>(cpu, immediate), value);
+  }
   else {
     static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
     write(cpu, [:find_location(Op.name.view(), Line):], value);
@@ -168,8 +172,14 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
   Call result{{}, step.num_operands, {}, step.num_destinations, line};
   for (std::size_t at = 0; at < step.num_operands; ++at)
     result.operands[at] = resolve(step.operands[at], matched, opcode, line);
-  for (std::size_t at = 0; at < step.num_destinations; ++at)
-    result.destinations[at] = resolve(step.destinations[at], matched, opcode, line);
+  for (std::size_t at = 0; at < step.num_destinations; ++at) {
+    auto destination = resolve(step.destinations[at], matched, opcode, line);
+    const auto was_read = std::ranges::any_of(std::span{result.operands.data(), result.num_operands},
+        [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
+    if (!was_read)
+      destination.write_back_delay = 0;
+    result.destinations[at] = destination;
+  }
   if (member.appended)
     result.operands[result.num_operands++] = *member.appended;
   return result;

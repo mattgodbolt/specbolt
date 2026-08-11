@@ -17,7 +17,7 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 32);
+    STATIC_CHECK(rows.size() == 28);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].steps[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);

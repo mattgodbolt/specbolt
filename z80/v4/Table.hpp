@@ -59,6 +59,7 @@ struct Operand {
   std::uint8_t field_index{};
   std::uint8_t slice_index{};
   bool indirect{};
+  std::uint8_t write_back_delay{};
   constexpr bool operator==(const Operand &) const = default;
 };
 
@@ -67,6 +68,9 @@ struct Member {
   std::string_view primitive{};
   std::optional<Operand> appended{};
   bool hole{};
+  // An addressing mode carries its own access sequence. This one says how long
+  // the machine idles between reading through it and writing back.
+  std::uint8_t write_back_delay{};
 };
 
 struct Reference {
@@ -159,7 +163,7 @@ struct Row {
   if (word.empty())
     throw table_error(line, "empty operand in action");
   if (word == "-")
-    return {Operand::Kind::Discard, {}, 0, 0, 0, 0, false};
+    return {Operand::Kind::Discard, {}, 0, 0, 0, 0, false, 0};
   if (word.starts_with('(')) {
     if (!word.ends_with(')'))
       throw table_error(line, "unterminated '(' in operand '" + std::string(word) + "'");
@@ -171,7 +175,7 @@ struct Row {
     return addressed;
   }
   if (word == "n")
-    return {Operand::Kind::Immediate, {}, 0, 0, 0, 0, false};
+    return {Operand::Kind::Immediate, {}, 0, 0, 0, 0, false, 0};
   if (word == "nn")
     throw table_error(line, "write 'n'; the encoding column says how many bytes it occupies");
   if (word.front() >= '0' && word.front() <= '9') {
@@ -191,18 +195,31 @@ struct Row {
       if (value > 0xffff)
         throw table_error(line, "constant '" + std::string(word) + "' does not fit in 16 bits");
     }
-    return {Operand::Kind::Constant, {}, static_cast<std::uint16_t>(value), 0, 0, 0, false};
+    return {Operand::Kind::Constant, {}, static_cast<std::uint16_t>(value), 0, 0, 0, false, 0};
   }
   if (word.size() > Name::capacity)
     throw table_error(line, "operand name '" + std::string(word) + "' is too long");
-  return {Operand::Kind::Named, Name{word}, 0, 0, 0, 0, false};
+  return {Operand::Kind::Named, Name{word}, 0, 0, 0, 0, false, 0};
 }
 
 // `bc` is display only; `adc:add8+carry` binds to a primitive and appends an
 // operand the encoding does not carry.
+// `bc` is display only; `adc:add8+carry` binds a primitive and appends an
+// operand; `(hl)/delay=1` states the access sequence of an addressing mode.
 [[nodiscard]] consteval Member parse_member(const std::string_view text, const std::size_t line) {
-  Parser parser(text);
-  Member member{parser.split_to(':').data(), parser.data(), std::nullopt, false};
+  Parser whole(text);
+  Parser parser(whole.split_to('/').data());
+  Member member{parser.split_to(':').data(), parser.data(), std::nullopt, false, 0};
+  if (const auto attributes = whole.data(); !attributes.empty()) {
+    Parser attribute(attributes);
+    const auto key = attribute.split_to('=').data();
+    const auto value = attribute.data();
+    if (key != "delay")
+      throw table_error(line, "'" + std::string(key) + "' is not a member attribute; expected 'delay'");
+    if (value.size() != 1 || value.front() < '0' || value.front() > '9')
+      throw table_error(line, "delay must be a single digit");
+    member.write_back_delay = static_cast<std::uint8_t>(value.front() - '0');
+  }
   if (member.display.empty())
     throw table_error(line, "field member has no name");
   if (member.display == "-") {
@@ -336,7 +353,7 @@ inline constexpr auto tables = parse_tables<count_matching(&is_table)>();
   if (!word.starts_with('{'))
     return parse_simple_operand(word, line);
   const auto reference = reference_from_braces(word, matched, line);
-  return {Operand::Kind::Field, {}, 0, 0, reference.field_index, reference.slice_index, false};
+  return {Operand::Kind::Field, {}, 0, 0, reference.field_index, reference.slice_index, false, 0};
 }
 
 consteval void lower_mnemonic(Row &row) {
@@ -495,8 +512,10 @@ inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
     const Operand operand, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
   if (operand.kind != Operand::Kind::Field)
     return operand;
-  return parse_simple_operand(
-      fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)].display, line);
+  const auto &member = fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)];
+  auto result = parse_simple_operand(member.display, line);
+  result.write_back_delay = member.write_back_delay;
+  return result;
 }
 
 // A row matches only if the bits fit AND every vocabulary member it names is live:

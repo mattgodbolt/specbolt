@@ -3,7 +3,7 @@
 #   ppq
 
 field p = bc de hl sp
-field r = b c d e h l (hl) a
+field r = b c d e h l (hl)/delay=1 a
 field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
 field w = and:and8 xor:xor8 or:or8 -
 field b = 0 1 2 3 4 5 6 7
@@ -24,8 +24,6 @@ table base
 00101111     | cpl             | cpl a, flags <- a flags
 00110111     | scf             | scf -, flags <- a flags
 00111111     | ccf             | ccf -, flags <- a flags
-00110100     | inc (hl)        | ld8 t <- (hl) ; inc8 t, flags <- t flags ; delay 1 ; ld8 (hl) <- t
-00110101     | dec (hl)        | ld8 t <- (hl) ; dec8 t, flags <- t flags ; delay 1 ; ld8 (hl) <- t
 00yyy100     | inc {r:y}       | inc8 {r:y}, flags <- {r:y} flags
 00yyy101     | dec {r:y}       | dec8 {r:y}, flags <- {r:y} flags
 01yyyzzz     | ld {r:y}, {r:z} | ld8 {r:y} <- {r:z}
@@ -40,8 +38,6 @@ table base
 table cb
 
 01bbb110     | bit {b}, (hl)   | bit8 flags <- (hl) {b} flags h ; delay 1
-10bbb110     | res {b}, (hl)   | ld8 t <- (hl) ; res8 t <- t {b} ; delay 1 ; ld8 (hl) <- t
-11bbb110     | set {b}, (hl)   | ld8 t <- (hl) ; set8 t <- t {b} ; delay 1 ; ld8 (hl) <- t
 01bbbzzz     | bit {b}, {r:z}  | bit8 flags <- {r:z} {b} flags {r:z}
 10bbbzzz     | res {b}, {r:z}  | res8 {r:z} <- {r:z} {b}
 11bbbzzz     | set {b}, {r:z}  | set8 {r:z} <- {r:z} {b}

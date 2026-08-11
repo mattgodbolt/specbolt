@@ -185,15 +185,53 @@ step runs, which cannot express `ld (ix+d), n` — two immediates read at differ
 per-token, at the point the token appears, is the fix, and it is the same change that makes multiple
 pattern tokens work.
 
-### 2. Vocabulary members must be structured
+### 2. Vocabulary members must be structured — the timing half is done
 
-A member is currently just a name. But in `r = b c d e h l (hl) a`, member 6 changes storage class,
-timing (`+1` T-state), and the flag inputs to `Alu::bit` (bus noise comes from `wz` when indirect).
-There is also a ninth pseudo-member `$nn` with no bit encoding, used so one ALU row serves both
-`add a,(hl)` and `add a,nn`.
+A member was just a name. But in `r = b c d e h l (hl) a`, member 6 changes storage class, timing
+(`+1` T-state), and the flag inputs to `Alu::bit` (bus noise comes from `wz` when indirect).
 
-Members need a kind and attributes; vocabularies need holes (patterns that must not match) and empty
-members (the ED block group concatenates three vocabularies, one containing `""`).
+The member now carries its own access sequence:
+
+```
+field r = b c d e h l (hl)/delay=1 a
+```
+
+`delay=1` says the machine idles for one cycle between reading through this addressing mode and
+writing back through it. The framework applies it only to a destination that was also a source, so
+`ld (hl), b` stays 7 and `inc (hl)` becomes 11 with the idle cycle in the right place, between the
+read and the write, rather than appended to make the total come out.
+
+#### Latches: built, then deleted
+
+The first attempt made the sequence explicit in the row, with a latch to hold the value:
+
+```
+00110100 | inc (hl) | ld8 t <- (hl) ; inc8 t, flags <- t flags ; delay 1 ; ld8 (hl) <- t
+```
+
+That works, and the mechanism cost nothing — **a latch is just a location**, so the CPU declares it
+and the framework needs no support at all. But it produced four pairs of near-duplicate rows
+(`inc (hl)` beside `inc {r:y}`, and the same for `dec`, `res`, `set`), each differing only by a
+mechanical `ld8 t <- X ; … ; ld8 X <- t` bracket. That bracket is not information; it is a
+consequence of X being memory, and the framework already knew that.
+
+Moving it to the member deleted all four extra rows and left the general rows exactly as they were:
+
+```
+00yyy100 | inc {r:y}      | inc8 {r:y}, flags <- {r:y} flags
+10bbbzzz | res {b}, {r:z} | res8 {r:z} <- {r:z} {b}
+```
+
+The latch was removed with them. It returns for DDCB and `ld (ix+d), n`, which genuinely need a
+value to survive between steps, but nothing needs it today and speculative surface in a table meant
+to be read is worse than re-adding six lines later.
+
+`bit {b}, (hl)` keeps its own row, and that is not boilerplate: its idle cycle follows a read with
+no write-back at all, and its bus noise differs from the register form. Genuinely different
+behaviour, genuinely a different row.
+
+Vocabularies still need empty members (the ED block group concatenates three vocabularies, one
+containing `""`). Holes exist and are checked.
 
 **This is also where 6502 support lives or dies.** On the Z80 exactly one member is special. On the
 6502 *every* member of `bbb` is an addressing mode that changes length, cycles and whether the row
@@ -428,11 +466,6 @@ the things the suites do *not* catch, or catch only because we match an approxim
   instruction WZ's high byte is HL's. It is right for the tested cases and states the approximation
   where a reader can see it, but it is not WZ. §8 stands. The register form is *not* an
   approximation: flags 3 and 5 genuinely come from the operand, which the row now says.
-- **Internal cycles are appended, not placed.** `inc (hl)` reads, writes, then delays 1. Hardware
-  puts that cycle between the read and the write. The total is right and nothing observable depends
-  on the position today, because there is no contention model and no sub-instruction interrupt
-  acceptance. Placing it properly needs the read and the write to be separate steps with a latch
-  between them, which is the same machinery DDCB needs.
 - **Interrupts are not handled at all.** v3 checks `irq_pending_` at the top of `execute_one`; v4
   does not. Not a papered-over difference so much as a missing feature, but it is missing.
 - **The immediate is fetched once, before any step**, rather than at the token that names it. Fine
@@ -629,6 +662,7 @@ implementation, which makes it the scoreboard. Two measurements, before and afte
 | registers only | 18 | 145 / 256 | 73 / 146 | **0** |
 | with memory operands | 23 | 181 / 256 | 135 / 192 | **4** |
 | with timing steps | 25 | 181 / 256 | 139 / 192 | **0** |
+| with CB, addressing modes carrying their own timing | 28 | 182 base + 192 cb | 139 / 192 and 23 / 39 | **0** |
 
 The "wrong answers" column is the one that matters: everything the table describes, it gets right,
 including the `pc()` and `cycle_count()` checks that suite makes on every section. The gap is
@@ -680,6 +714,19 @@ now have a working precedent rather than a promise.
 
 Result: the four timing failures are gone. On the unprefixed suite the failure count is now exactly
 equal to the undecoded-opcode count — **zero wrong answers of any kind**.
+
+#### Where cost actually lives
+
+Three places, and none of them is a number written on a row:
+
+- **the fetch cycle**, which the CPU's `read_opcode`/`read_immediate` already pay for
+- **the addressing mode**, via `read`/`write` costing 3 and `/delay=1` for the idle cycle in a
+  read-modify-write
+- **an explicit `delay` step**, for an idle cycle that belongs to the operation rather than to an
+  operand — `inc {p} ; delay 2`, and `bit {b}, (hl)`
+
+A row states a number only in the third case, which is the case where the number is genuinely a
+property of that instruction. Everything else falls out.
 
 #### The steps really do vanish
 
