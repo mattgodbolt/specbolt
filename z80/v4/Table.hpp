@@ -28,6 +28,12 @@ struct Member {
   std::string_view display{};
   std::string_view primitive{};
   CarrySource carry{};
+  bool hole{};
+};
+
+struct Reference {
+  std::uint8_t field_index{};
+  std::uint8_t slice_index{};
 };
 
 struct Field {
@@ -53,7 +59,7 @@ struct Operand {
 };
 
 struct Row {
-  static constexpr std::size_t max_pieces = 8;
+  static constexpr std::size_t max_pieces = 12;
   static constexpr std::size_t max_operands = 4;
   Matched matched{};
   std::string_view mnemonic{};
@@ -61,6 +67,7 @@ struct Row {
   std::size_t num_pieces{};
   std::size_t length{1};
   std::string_view verb{};
+  std::optional<Reference> verb_reference{};
   std::optional<Operand> destination{};
   std::array<Operand, max_operands> operands{};
   std::size_t num_operands{};
@@ -112,9 +119,13 @@ struct Row {
 // `bc` is display only; `adc:add8+c` binds to a primitive and says the carry comes from the flags.
 [[nodiscard]] consteval Member parse_member(const std::string_view text, const std::size_t line) {
   Parser parser(text);
-  Member member{parser.split_to(':').data(), parser.data(), CarrySource::Zero};
+  Member member{parser.split_to(':').data(), parser.data(), CarrySource::Zero, false};
   if (member.display.empty())
     throw table_error(line, "field member has no name");
+  if (member.display == "-") {
+    member.hole = true;
+    return member;
+  }
   if (member.primitive.ends_with("+c")) {
     member.primitive.remove_suffix(2);
     member.carry = CarrySource::FromFlags;
@@ -174,13 +185,30 @@ inline constexpr auto fields = parse_fields<count_matching(&is_field)>();
   return std::nullopt;
 }
 
-consteval void check_field_reference(const std::string_view text, const Matched &matched, const std::size_t line) {
-  if (text.size() != 3 || !text.ends_with('}'))
-    throw table_error(line, "field reference must be of the form {x}");
-  if (!find_field(text[1]))
-    throw table_error(line, "action names a field that does not exist");
-  if (!find_slice(matched, text[1]))
-    throw table_error(line, "action names a field the opcode pattern does not define");
+// `{p}` names one letter for both; `{r:z}` binds vocabulary r to slice z.
+[[nodiscard]] consteval Reference parse_reference(
+    const std::string_view inner, const Matched &matched, const std::size_t line) {
+  Parser parser(inner);
+  const auto vocabulary = parser.split_to(':').data();
+  const auto slice = parser.eof() ? vocabulary : parser.data();
+  if (vocabulary.size() != 1 || slice.size() != 1)
+    throw table_error(line, "reference must be {x} or {vocabulary:slice}");
+  const auto field = find_field(vocabulary.front());
+  if (!field)
+    throw table_error(line, "reference names a vocabulary that does not exist");
+  const auto found = find_slice(matched, slice.front());
+  if (!found)
+    throw table_error(line, "reference names a field the opcode pattern does not define");
+  if (fields[*field].num_values != std::size_t{matched.slices[*found].mask} + 1)
+    throw table_error(line, "vocabulary has the wrong number of values for its opcode bits");
+  return {static_cast<std::uint8_t>(*field), static_cast<std::uint8_t>(*found)};
+}
+
+[[nodiscard]] consteval Reference reference_from_braces(
+    const std::string_view text, const Matched &matched, const std::size_t line) {
+  if (!text.starts_with('{') || !text.ends_with('}'))
+    throw table_error(line, "reference must be {x} or {vocabulary:slice}");
+  return parse_reference(text.substr(1, text.size() - 2), matched, line);
 }
 
 [[nodiscard]] consteval Operand parse_operand(
@@ -191,9 +219,8 @@ consteval void check_field_reference(const std::string_view text, const Matched 
     return {Operand::Kind::Immediate, 0, 0};
   if (!word.starts_with('{'))
     throw table_error(line, "unknown operand '" + std::string(word) + "' in action");
-  check_field_reference(word, matched, line);
-  return {Operand::Kind::Field, static_cast<std::uint8_t>(*find_field(word[1])),
-      static_cast<std::uint8_t>(*find_slice(matched, word[1]))};
+  const auto reference = reference_from_braces(word, matched, line);
+  return {Operand::Kind::Field, reference.field_index, reference.slice_index};
 }
 
 consteval void lower_mnemonic(Row &row) {
@@ -235,18 +262,8 @@ consteval void lower_mnemonic(Row &row) {
     push_text(Parser(parser.split_to('{').data()));
     if (!parser.data().contains('}'))
       throw table_error(row.line, "unterminated field reference in mnemonic");
-    const auto name = parser.split_to('}').data();
-    if (name.size() != 1)
-      throw table_error(row.line, "field reference must name a single character");
-    const auto field = find_field(name.front());
-    if (!field)
-      throw table_error(row.line, "mnemonic names a field that does not exist");
-    const auto slice = find_slice(row.matched, name.front());
-    if (!slice)
-      throw table_error(row.line, "mnemonic names a field the opcode pattern does not define");
-    if (fields[*field].num_values != std::size_t{row.matched.slices[*slice].mask} + 1)
-      throw table_error(row.line, "field has the wrong number of values for its opcode bits");
-    push({Piece::Kind::Field, {}, static_cast<std::uint8_t>(*field), static_cast<std::uint8_t>(*slice)});
+    const auto reference = parse_reference(parser.split_to('}').data(), row.matched, row.line);
+    push({Piece::Kind::Field, {}, reference.field_index, reference.slice_index});
   }
 }
 
@@ -270,7 +287,7 @@ template<std::size_t N>
     if (row.verb.empty())
       throw table_error(at, "row has no action");
     if (row.verb.starts_with('{'))
-      check_field_reference(row.verb, row.matched, at);
+      row.verb_reference = reference_from_braces(row.verb, row.matched, at);
     // `verb dest <- args...`; the destination is optional
     auto writing_destination = action.data().contains("<-");
     while (!action.eof()) {
@@ -300,9 +317,32 @@ template<std::size_t N>
 
 inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
 
+// A row matches only if the bits fit AND every vocabulary member it names is live:
+// a `-` member is a hole, so the row simply does not cover that opcode.
+[[nodiscard]] constexpr bool row_matches(const Row &row, const std::uint8_t opcode) {
+  if (!row.matched.matches(opcode))
+    return false;
+  const auto live = [&](const Reference reference) {
+    return !fields[reference.field_index].values[row.matched.slices[reference.slice_index].extract(opcode)].hole;
+  };
+  for (std::size_t at = 0; at < row.num_pieces; ++at)
+    if (row.pieces[at].kind == Piece::Kind::Field && !live({row.pieces[at].field_index, row.pieces[at].slice_index}))
+      return false;
+  for (std::size_t at = 0; at < row.num_operands; ++at)
+    if (row.operands[at].kind == Operand::Kind::Field &&
+        !live({row.operands[at].field_index, row.operands[at].slice_index}))
+      return false;
+  if (row.destination && row.destination->kind == Operand::Kind::Field &&
+      !live({row.destination->field_index, row.destination->slice_index}))
+    return false;
+  if (row.verb_reference && !live(*row.verb_reference))
+    return false;
+  return true;
+}
+
 [[nodiscard]] constexpr std::optional<std::size_t> find_row(const std::uint8_t opcode) {
   for (std::size_t index = 0; index < rows.size(); ++index)
-    if (rows[index].matched.matches(opcode))
+    if (row_matches(rows[index], opcode))
       return index;
   return std::nullopt;
 }

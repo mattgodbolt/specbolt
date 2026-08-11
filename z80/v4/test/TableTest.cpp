@@ -7,24 +7,33 @@ namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
-    STATIC_CHECK(fields.size() == 3);
+    STATIC_CHECK(fields.size() == 4);
     STATIC_CHECK(fields[0].name == 'p');
     STATIC_CHECK(fields[0].num_values == 4);
     STATIC_CHECK(fields[0].values[0].display == "bc");
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 11);
+    STATIC_CHECK(rows.size() == 16);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
   }
   SECTION("Keeps the line number for diagnostics") {
-    STATIC_CHECK(rows[0].line == 9);
-    STATIC_CHECK(rows[2].line == 11);
+    STATIC_CHECK(rows[0].line == 10);
+    STATIC_CHECK(rows[2].line == 12);
+  }
+  SECTION("A hole means the row does not cover that opcode") {
+    STATIC_CHECK(fields[1].name == 'r');
+    STATIC_CHECK(fields[1].values[6].hole);
+    STATIC_CHECK(!fields[1].values[7].hole);
+    STATIC_CHECK(find_row(0x40)); // ld b, b
+    STATIC_CHECK(!find_row(0x46)); // ld b, (hl) needs memory
+    STATIC_CHECK(!find_row(0x86)); // add a, (hl) likewise
+    STATIC_CHECK(find_row(0x80)); // add a, b
   }
   SECTION("Members bind to primitives and a carry policy") {
-    constexpr auto alu = fields[1];
+    constexpr auto alu = fields[2];
     STATIC_CHECK(alu.name == 'q');
     STATIC_CHECK(alu.values[0].display == "add");
     STATIC_CHECK(alu.values[0].primitive == "add8");
@@ -32,8 +41,8 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(alu.values[1].display == "adc");
     STATIC_CHECK(alu.values[1].primitive == "add8");
     STATIC_CHECK(alu.values[1].carry == CarrySource::FromFlags);
-    STATIC_CHECK(fields[2].values[3].display == "cp");
-    STATIC_CHECK(fields[2].values[3].primitive == "cmp8");
+    STATIC_CHECK(fields[3].values[3].display == "cp");
+    STATIC_CHECK(fields[3].values[3].primitive == "cmp8");
     STATIC_CHECK(fields[0].values[0].primitive.empty());
   }
   SECTION("Finds rows by opcode") {

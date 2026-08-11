@@ -9,6 +9,7 @@
 #include <array>
 #include <concepts>
 #include <meta>
+#include <optional>
 #include <ranges>
 #include <string>
 #include <type_traits>
@@ -28,6 +29,7 @@ struct Ops {
   static std::uint16_t ld16(const std::uint16_t value) { return value; }
   static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
   static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
+  static std::uint8_t ld8(const std::uint8_t value) { return value; }
 };
 
 [[nodiscard]] constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
@@ -35,12 +37,32 @@ struct Ops {
   return std::ranges::equal(lhs, rhs, {}, fold, fold);
 }
 
-// A vocabulary member naming a register binds to the real enumerator.
-[[nodiscard]] consteval RegisterFile::R16 register_for(const std::string_view name, const std::size_t line) {
-  for (const auto enumerator: std::meta::enumerators_of(^^RegisterFile::R16))
-    if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
-      return std::meta::extract<RegisterFile::R16>(enumerator);
-  throw table_error(line, "no register named '" + std::string(name) + "' in RegisterFile::R16");
+// Per-CPU configuration: where storage locations are named, which one is the
+// accumulator, and how to read and write one.
+[[nodiscard]] consteval std::array<std::meta::info, 2> location_scopes() {
+  return {^^RegisterFile::R8, ^^RegisterFile::R16};
+}
+inline constexpr auto accumulator = RegisterFile::R8::A;
+
+[[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R8 location) {
+  return cpu.registers.get(location);
+}
+[[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R16 location) {
+  return cpu.registers.get(location);
+}
+inline void write(Cpu &cpu, const RegisterFile::R8 location, const std::uint16_t value) {
+  cpu.registers.set(location, static_cast<std::uint8_t>(value));
+}
+inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_t value) {
+  cpu.registers.set(location, value);
+}
+
+[[nodiscard]] consteval std::meta::info find_location(const std::string_view name, const std::size_t line) {
+  for (const auto scope: location_scopes())
+    for (const auto enumerator: std::meta::enumerators_of(scope))
+      if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
+        return enumerator;
+  throw table_error(line, "no location named '" + std::string(name) + "' in this CPU");
 }
 
 // The scopes this CPU's table may name operations from. Per-CPU configuration,
@@ -90,21 +112,21 @@ template<typename T, std::size_t OperandIndex, CarrySource Carry>
 }
 
 template<Operand Op, std::uint8_t FieldValue, std::size_t Line>
-[[nodiscard]] std::uint16_t read(const Cpu &cpu, const std::uint16_t immediate) {
+[[nodiscard]] std::uint16_t operand_value(const Cpu &cpu, const std::uint16_t immediate) {
   if constexpr (Op.kind == Operand::Kind::Accumulator)
-    return cpu.registers.get(RegisterFile::R8::A);
+    return read(cpu, accumulator);
   else if constexpr (Op.kind == Operand::Kind::Immediate)
     return immediate;
   else
-    return cpu.registers.get(register_for(fields[Op.field_index].values[FieldValue].display, Line));
+    return read(cpu, [:find_location(fields[Op.field_index].values[FieldValue].display, Line):]);
 }
 
 template<Operand Op, std::uint8_t FieldValue, std::size_t Line>
-void write_to(Cpu &cpu, const std::uint16_t value) {
+void store(Cpu &cpu, const std::uint16_t value) {
   if constexpr (Op.kind == Operand::Kind::Accumulator)
-    cpu.registers.set(RegisterFile::R8::A, static_cast<std::uint8_t>(value));
+    write(cpu, accumulator, value);
   else if constexpr (Op.kind == Operand::Kind::Field)
-    cpu.registers.set(register_for(fields[Op.field_index].values[FieldValue].display, Line), value);
+    write(cpu, [:find_location(fields[Op.field_index].values[FieldValue].display, Line):], value);
   else
     static_assert(false, "an immediate cannot be a destination");
 }
@@ -147,7 +169,6 @@ void execute_one(Cpu &cpu, const std::uint16_t immediate) {
   constexpr auto index = find_row(Opcode);
   if constexpr (index.has_value()) {
     constexpr auto row = rows[*index];
-    static_assert(row.matched.num_slices <= 1, "multi-field rows are not wired up yet");
     std::array<std::uint16_t, Row::max_operands> operands{};
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
@@ -156,7 +177,7 @@ void execute_one(Cpu &cpu, const std::uint16_t immediate) {
       constexpr auto value = operand.kind == Operand::Kind::Field
                                  ? row.matched.slices[operand.slice_index].extract(Opcode)
                                  : std::uint8_t{0};
-      operands[at] = read<operand, value, row.line>(cpu, immediate);
+      operands[at] = operand_value<operand, value, row.line>(cpu, immediate);
     }
 #pragma GCC diagnostic pop
     const auto write = [&](const std::uint16_t value) {
@@ -165,12 +186,13 @@ void execute_one(Cpu &cpu, const std::uint16_t immediate) {
         constexpr auto field_value = destination.kind == Operand::Kind::Field
                                          ? row.matched.slices[destination.slice_index].extract(Opcode)
                                          : std::uint8_t{0};
-        write_to<destination, field_value, row.line>(cpu, value);
+        store<destination, field_value, row.line>(cpu, value);
       }
     };
-    if constexpr (row.verb.starts_with('{')) {
-      constexpr auto slice = row.matched.slices[*find_slice(row.matched, row.verb[1])];
-      constexpr auto member = fields[*find_field(row.verb[1])].values[slice.extract(Opcode)];
+    if constexpr (row.verb_reference) {
+      constexpr auto reference = *row.verb_reference;
+      constexpr auto member =
+          fields[reference.field_index].values[row.matched.slices[reference.slice_index].extract(Opcode)];
       apply<decltype(write), find_primitive(member.primitive, row.line), member.carry, row.destination.has_value()>(
           cpu, operands, write);
     }

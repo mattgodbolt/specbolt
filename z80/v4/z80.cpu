@@ -3,6 +3,7 @@
 #   ppq
 
 field p = bc de hl sp
+field r = b c d e h l - a
 field q = add:add8 adc:add8+c sub:sub8 sbc:sub8+c
 field w = and:and8 xor:xor8 or:or8 cp:cmp8
 
@@ -15,5 +16,10 @@ field w = and:and8 xor:xor8 or:or8 cp:cmp8
 00101111 | cpl           | cpl a <- a
 00110111 | scf           | scf a <- a
 00111111 | ccf           | ccf a <- a
+00yyy100 | inc {r:y}     | inc8 {r:y} <- {r:y}
+00yyy101 | dec {r:y}     | dec8 {r:y} <- {r:y}
+01yyyzzz | ld {r:y}, {r:z} | ld8 {r:y} <- {r:z}
+100qqzzz | {q} a, {r:z}  | {q} a <- a {r:z}
+101wwzzz | {w} {r:z}     | {w} a <- a {r:z}
 110qq110 | {q} a, $nn    | {q} a <- a n
 111ww110 | {w} $nn       | {w} a <- a n
