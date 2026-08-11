@@ -506,6 +506,46 @@ debugger view can ask questions of the table at runtime.
 
 ---
 
+## Where the framework/CPU boundary sits
+
+`Z80Cpu.hpp` is the whole customisation surface. Retargeting means writing one of these and nothing
+else:
+
+- `Cpu` and `Ops` — the machine state and its non-ALU primitives
+- `primitive_scopes()` — where the table may name operations from
+- `location_scopes()`, `accumulator`, `read`/`write` overloads — where it may name storage, and how
+  to touch it
+- `CpuFlags`, `flags_of`, `set_flags`
+- `is_supplied_by_framework`
+
+The framework no longer names `RegisterFile`, `Alu` or `Flags`.
+
+### Z80-isms still in the framework
+
+All three are the same mistake — inferring meaning from a C++ type — and all three are really just
+operands the row should have declared:
+
+- **`Operand::Kind::Accumulator`** presumes a CPU has one. `a` should be a name like `hl` is.
+- **`CarrySource`** fills a `bool` parameter from the carry flag. This is already wrong for
+  `Alu::iff2_flags_for(u8, Flags, bool iff2)`, which takes a `bool` that is not carry: name it in a
+  table row today and the framework silently passes carry.
+- **`is_supplied_by_framework`** does the same for `Flags` and `Cpu &`.
+
+The collapse: one operand concept — immediate, constant, name, or field reference — where `a`,
+`carry` and `f` are all just names the CPU resolves. Vocabulary members may append operands
+(`add:add8+0`, `adc:add8+carry`), so the carry policy stops being a framework concept. Destinations
+become a list, so `a, f <- add8 a b carry` destructures the result and the framework's last
+assumption — that a result type has a member called `flags` — goes too.
+
+**This is gated on a structural fixed-capacity string.** `Operand` is used as a template argument, so
+it cannot hold a `string_view`, which is why each of the three above reached for an enum or a
+dedicated `Kind` instead. That string is not tidy-up work; it is the prerequisite for the whole
+simplification, and it should shrink the framework rather than grow it.
+
+Lesser leaks, for the record: `$nn`/`$nnnn` and `0x{:02x}` in the disassembler are Z80 output
+conventions that belong in per-CPU operand declarations; `Matched::num_bits = 8` and the 256-entry
+dispatch assume an 8-bit opcode space.
+
 ## Open questions
 
 - Whether the common case can stay terse under the step model. A verb plus operands is pleasant to

@@ -2,8 +2,7 @@
 
 #ifndef SPECBOLT_MODULES
 #include "Table.hpp"
-#include "z80/common/Alu.hpp"
-#include "z80/common/RegisterFile.hpp"
+#include "Z80Cpu.hpp"
 
 #include <algorithm>
 #include <array>
@@ -18,43 +17,9 @@
 
 namespace specbolt::v4 {
 
-struct Cpu {
-  RegisterFile registers;
-  bool halted{};
-};
-
-struct Ops {
-  static void nop() {}
-  static void halt(Cpu &cpu) { cpu.halted = true; }
-  static std::uint16_t ld16(const std::uint16_t value) { return value; }
-  static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
-  static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
-  static std::uint8_t ld8(const std::uint8_t value) { return value; }
-};
-
 [[nodiscard]] constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
   constexpr auto fold = [](const char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
   return std::ranges::equal(lhs, rhs, {}, fold, fold);
-}
-
-// Per-CPU configuration: where storage locations are named, which one is the
-// accumulator, and how to read and write one.
-[[nodiscard]] consteval std::array<std::meta::info, 2> location_scopes() {
-  return {^^RegisterFile::R8, ^^RegisterFile::R16};
-}
-inline constexpr auto accumulator = RegisterFile::R8::A;
-
-[[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R8 location) {
-  return cpu.registers.get(location);
-}
-[[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R16 location) {
-  return cpu.registers.get(location);
-}
-inline void write(Cpu &cpu, const RegisterFile::R8 location, const std::uint16_t value) {
-  cpu.registers.set(location, static_cast<std::uint8_t>(value));
-}
-inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_t value) {
-  cpu.registers.set(location, value);
 }
 
 [[nodiscard]] consteval std::meta::info find_location(const std::string_view name, const std::size_t line) {
@@ -67,8 +32,6 @@ inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_
 
 // The scopes this CPU's table may name operations from. Per-CPU configuration,
 // not framework knowledge: a 6502 would list its own.
-[[nodiscard]] consteval std::array<std::meta::info, 2> primitive_scopes() { return {^^Ops, ^^Alu}; }
-
 [[nodiscard]] consteval std::meta::info find_primitive(const std::string_view name, const std::size_t line) {
   for (const auto scope: primitive_scopes())
     for (const auto member: std::meta::members_of(scope, std::meta::access_context::current()))
@@ -76,11 +39,6 @@ inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_
           std::meta::identifier_of(member) == name)
         return member;
   throw table_error(line, "no operation '" + std::string(name) + "' in this CPU's primitives");
-}
-
-[[nodiscard]] consteval bool is_supplied_by_framework(const std::meta::info parameter) {
-  const auto type = std::meta::type_of(parameter);
-  return type == ^^Flags || type == ^^bool || type == ^^Cpu &;
 }
 
 [[nodiscard]] consteval std::size_t operand_index_of(const std::meta::info fn, const std::size_t upto) {
@@ -100,10 +58,10 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 
 template<typename T, std::size_t OperandIndex, CarrySource Carry>
 [[nodiscard]] constexpr T argument_for(
-    Cpu &cpu, const Flags flags, const std::array<std::uint16_t, Row::max_operands> &operands) {
+    Cpu &cpu, const CpuFlags flags, const std::array<std::uint16_t, Row::max_operands> &operands) {
   if constexpr (std::same_as<T, Cpu &>)
     return cpu;
-  else if constexpr (std::same_as<T, Flags>)
+  else if constexpr (std::same_as<T, CpuFlags>)
     return flags;
   else if constexpr (std::same_as<T, bool>)
     return Carry == CarrySource::FromFlags && flags.carry();
@@ -134,12 +92,12 @@ void store(Cpu &cpu, const std::uint16_t value) {
 template<typename T>
 concept ValueAndFlags = requires(T result) {
   result.result;
-  { result.flags } -> std::convertible_to<Flags>;
+  { result.flags } -> std::convertible_to<CpuFlags>;
 };
 
 template<typename Write, std::meta::info Fn, CarrySource Carry, bool HasDestination>
 void apply(Cpu &cpu, const std::array<std::uint16_t, Row::max_operands> &operands, Write write) {
-  const auto flags = Flags(cpu.registers.get(RegisterFile::R8::F));
+  const auto flags = flags_of(cpu);
   const auto call = [&]<std::size_t... I>(std::index_sequence<I...>) {
     return [:Fn:](argument_for<parameter_type<Fn, I>, operand_index_of(Fn, I), Carry>(cpu, flags, operands)...);
   };
@@ -148,15 +106,15 @@ void apply(Cpu &cpu, const std::array<std::uint16_t, Row::max_operands> &operand
   if constexpr (std::is_void_v<Result>) {
     call(parameters);
   }
-  else if constexpr (std::same_as<Result, Flags>) {
-    cpu.registers.set(RegisterFile::R8::F, call(parameters).to_u8());
+  else if constexpr (std::same_as<Result, CpuFlags>) {
+    set_flags(cpu, call(parameters));
   }
   else {
     static_assert(HasDestination, "this action returns a value but the row declares no destination");
     const auto result = call(parameters);
     if constexpr (ValueAndFlags<Result>) {
       write(static_cast<std::uint16_t>(result.result));
-      cpu.registers.set(RegisterFile::R8::F, result.flags.to_u8());
+      set_flags(cpu, result.flags);
     }
     else {
       write(static_cast<std::uint16_t>(result));
