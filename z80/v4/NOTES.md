@@ -414,12 +414,34 @@ Scored on `z80/test/OpcodeTests.cpp`:
 | suite | passing | undecoded | wrong |
 |---|---|---|---|
 | unprefixed | 139 / 192 | 53 | 0 |
-| cb | 21 / 39 | 16 | **2** |
+| cb | 23 / 39 | 16 | 0 |
 
-The two wrong answers are one gap, not two: `bit n,(hl)` takes flag3/flag5 from the bus, which means
-WZ, which §8 says is per-instruction data the table cannot yet express. `bit8` passes 0. Everything
-else — including all three CB timings, 8 for register forms, 12 for `bit n,(hl)`, 15 for
-`res`/`set` on memory — is correct.
+Every failure in both is an opcode the table does not describe. All three CB timings are right: 8
+for register forms, 12 for `bit n,(hl)`, 15 for `res`/`set` on memory.
+
+### What is papered over, deliberately
+
+Audited against every suite in `OpcodeTests.cpp`; no suite reports a genuine mismatch. These are
+the things the suites do *not* catch, or catch only because we match an approximation v3 also makes:
+
+- **WZ is not modelled.** `bit {b}, (hl)` names `h` as its bus-noise source, because for that one
+  instruction WZ's high byte is HL's. It is right for the tested cases and states the approximation
+  where a reader can see it, but it is not WZ. §8 stands. The register form is *not* an
+  approximation: flags 3 and 5 genuinely come from the operand, which the row now says.
+- **Internal cycles are appended, not placed.** `inc (hl)` reads, writes, then delays 1. Hardware
+  puts that cycle between the read and the write. The total is right and nothing observable depends
+  on the position today, because there is no contention model and no sub-instruction interrupt
+  acceptance. Placing it properly needs the read and the write to be separate steps with a latch
+  between them, which is the same machinery DDCB needs.
+- **Interrupts are not handled at all.** v3 checks `irq_pending_` at the top of `execute_one`; v4
+  does not. Not a papered-over difference so much as a missing feature, but it is missing.
+- **The immediate is fetched once, before any step**, rather than at the token that names it. Fine
+  for every row that exists; wrong for `ld (ix+d), n`.
+
+Found by this audit and fixed rather than recorded: `scf` and `ccf` had `a` as a destination, but
+`Alu::scf`/`ccf` return the accumulator unchanged, so the rows claimed a write that never happened.
+They now discard, as `cp` does. Harmless in behaviour, wrong as documentation -- and the table is
+documentation.
 
 **Not done, and the hard half:** DD/FD as *views* over an existing table, and DDCB. What exists is a
 table switch, which CB and ED need and which is the easy case. A view has to rewrite `{field}`
