@@ -30,7 +30,7 @@ Reflection (P2996) needs **gcc 16+**; no clang release implements it yet, and th
 
 See [README.md](README.md) for getting a gcc 16 toolchain.
 
-Reflection works inside module interface units on gcc 16 — including `template for` in a module purview, and exported templates that reflect on their own parameters and get instantiated in importing TUs. The reflection presets still set `SPECBOLT_MODULES=OFF` to keep the reflection and modules axes separable; flip it in a `CMakeUserPresets.json` to build both together.
+Reflection works inside module interface units on gcc 16 — including `template for` in a module purview, and exported templates that reflect on their own parameters and get instantiated in importing TUs. The reflection presets set `SPECBOLT_MODULES=OFF`, and v4 is not built when modules are on: its table is a header included into more than one module partition, so its definitions duplicate. Everything else builds under both.
 
 ## Lint/Format
 
