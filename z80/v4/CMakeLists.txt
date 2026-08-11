@@ -22,6 +22,7 @@ else ()
 
     target_sources(z80_v4 PRIVATE
             Disassembler.cpp
+            Z80.cpp
     )
     target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
             include/z80/v4/Disassembler.hpp

@@ -3,6 +3,7 @@
 #ifndef SPECBOLT_MODULES
 #include "z80/common/Alu.hpp"
 #include "z80/common/RegisterFile.hpp"
+#include "z80/v4/Z80.hpp"
 
 #include <array>
 #include <cstdint>
@@ -14,10 +15,7 @@
 
 namespace specbolt::v4 {
 
-struct Cpu {
-  RegisterFile registers;
-  bool halted{};
-};
+using Cpu = Z80;
 
 struct Ops {
   static void nop() {}
@@ -45,25 +43,21 @@ enum class Word : std::uint8_t { flags };
   return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word};
 }
 
-[[nodiscard]] inline std::uint8_t read(const Cpu &cpu, const RegisterFile::R8 location) {
-  return cpu.registers.get(location);
-}
-[[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R16 location) {
-  return cpu.registers.get(location);
-}
-inline void write(Cpu &cpu, const RegisterFile::R8 location, const std::uint8_t value) {
-  cpu.registers.set(location, value);
-}
-inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_t value) {
-  cpu.registers.set(location, value);
+[[nodiscard]] inline std::uint16_t fetch_immediate(Cpu &cpu, const std::uint8_t width) {
+  return width == 1 ? cpu.read_immediate() : cpu.read_immediate16();
 }
 
+[[nodiscard]] inline std::uint8_t read(const Cpu &cpu, const RegisterFile::R8 location) { return cpu.get(location); }
+[[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R16 location) { return cpu.get(location); }
+inline void write(Cpu &cpu, const RegisterFile::R8 location, const std::uint8_t value) { cpu.set(location, value); }
+inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_t value) { cpu.set(location, value); }
+
 [[nodiscard]] inline bool read(const Cpu &cpu, const Bit which) {
-  return ((cpu.registers.get(RegisterFile::R8::F) >> static_cast<unsigned>(which)) & 1u) != 0;
+  return (cpu.flags().to_u8() >> static_cast<unsigned>(which) & 1u) != 0;
 }
-[[nodiscard]] inline Flags read(const Cpu &cpu, Word) { return Flags(cpu.registers.get(RegisterFile::R8::F)); }
-inline void write(Cpu &cpu, Word, const Flags value) { cpu.registers.set(RegisterFile::R8::F, value.to_u8()); }
-[[nodiscard]] inline bool read(const Cpu &cpu, State) { return cpu.halted; }
-inline void write(Cpu &cpu, State, const bool value) { cpu.halted = value; }
+[[nodiscard]] inline Flags read(const Cpu &cpu, Word) { return cpu.flags(); }
+inline void write(Cpu &cpu, Word, const Flags value) { cpu.flags(value); }
+[[nodiscard]] inline bool read(const Cpu &cpu, State) { return cpu.halted(); }
+inline void write(Cpu &cpu, State, const bool value) { cpu.halted(value); }
 
 } // namespace specbolt::v4

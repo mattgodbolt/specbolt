@@ -65,6 +65,7 @@ struct Call {
   std::size_t num_operands{};
   std::array<Operand, Row::max_operands> destinations{};
   std::size_t num_destinations{};
+  std::uint8_t immediate_width{};
   std::size_t line{};
 };
 
@@ -84,7 +85,7 @@ struct Call {
 // everything else converts implicitly, so handing a 16-bit location to an
 // 8-bit parameter is a diagnosable narrowing rather than a silent truncation.
 template<Operand Op, std::size_t Line, typename Parameter>
-[[nodiscard]] Parameter value_of(const Cpu &cpu, const std::uint16_t immediate) {
+[[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate) {
   if constexpr (Op.kind == Operand::Kind::Constant)
     return static_cast<Parameter>(Op.constant);
   else if constexpr (Op.kind == Operand::Kind::Immediate) {
@@ -110,8 +111,10 @@ void store(Cpu &cpu, const T value) {
 // Arguments are supplied positionally; destinations destructure the result in
 // declaration order. Nothing here has an opinion on what an operand means.
 template<std::meta::info Fn, Call C>
-void apply(Cpu &cpu, const std::uint16_t immediate) {
+void apply(Cpu &cpu) {
   static_assert(C.num_operands == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
+  // Fetched here rather than inside the call, whose argument order is unspecified.
+  const std::uint16_t immediate = C.immediate_width == 0 ? 0 : fetch_immediate(cpu, C.immediate_width);
   constexpr auto arguments = std::make_index_sequence<C.num_operands>{};
   const auto call = [&]<std::size_t... I>(std::index_sequence<I...>) {
     return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate)...);
@@ -140,7 +143,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
 }
 
 template<std::uint8_t Opcode, std::size_t Index>
-void execute_one(Cpu &cpu, const std::uint16_t immediate) {
+void execute_one(Cpu &cpu) {
   constexpr auto row = rows[Index];
   constexpr auto member = row.verb_reference
                               ? fields[row.verb_reference->field_index]
@@ -148,7 +151,7 @@ void execute_one(Cpu &cpu, const std::uint16_t immediate) {
                               : Member{};
   constexpr auto primitive = row.verb_reference ? member.primitive : row.verb;
   constexpr auto call = [&row = row, &member = member] {
-    Call result{{}, row.num_operands, {}, row.num_destinations, row.line};
+    Call result{{}, row.num_operands, {}, row.num_destinations, 0, row.line};
     for (std::size_t at = 0; at < row.num_operands; ++at)
       result.operands[at] = resolve(row.operands[at], row.matched, Opcode, row.line);
     for (std::size_t at = 0; at < row.num_destinations; ++at)
@@ -156,13 +159,16 @@ void execute_one(Cpu &cpu, const std::uint16_t immediate) {
     // a late-bound operation may append an operand the encoding does not carry
     if (member.appended)
       result.operands[result.num_operands++] = *member.appended;
+    for (std::size_t at = 0; at < result.num_operands; ++at)
+      if (result.operands[at].kind == Operand::Kind::Immediate)
+        result.immediate_width = result.operands[at].width;
     return result;
   }();
 
-  apply<find_primitive(primitive, row.line), call>(cpu, immediate);
+  apply<find_primitive(primitive, row.line), call>(cpu);
 }
 
-using Handler = void (*)(Cpu &, std::uint16_t);
+using Handler = void (*)(Cpu &);
 
 template<std::uint8_t Opcode>
 inline constexpr Handler handler_for = [] {
@@ -183,11 +189,11 @@ inline constexpr auto dispatch = [] {
   return table;
 }();
 
-inline void execute(Cpu &cpu, const std::uint8_t opcode, const std::uint16_t immediate = 0) {
+inline void execute(Cpu &cpu, const std::uint8_t opcode) {
   const auto handler = dispatch[opcode];
   if (!handler)
     throw std::runtime_error(std::format("no row in " SPECBOLT_CPU_TABLE " decodes opcode 0x{:02x}", opcode));
-  handler(cpu, immediate);
+  handler(cpu);
 }
 
 } // namespace specbolt::v4

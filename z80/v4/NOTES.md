@@ -512,6 +512,27 @@ debugger view can ask questions of the table at runtime.
 
 ---
 
+## What the real Z80 buys, measured
+
+`Z80Cpu.hpp` now targets `v4::Z80 : Z80Base` rather than a stand-in struct. With 18 rows:
+
+- **145 of 256 base opcodes decode.** The remaining 111 are the shapes the table cannot describe
+  yet: anything touching memory (`(hl)`, `(nn)`), anything that branches, `ex`/`push`/`pop`, and
+  the rotate group.
+- **Timing is mostly free.** It falls out of the fetch cycle rather than being data the table
+  carries: `nop` 4, `add a, b` 4, `add a, n` 7, `ld bc, nn` 10 — all correct without the table
+  saying anything about cycles. The exception is instructions with internal cycles the fetch does
+  not account for: `inc bc` reads 4 where it should be 6. That gap is exactly the micro-op sequence
+  argument below, and it is small enough to be worth resisting until a row needs it for another
+  reason.
+- **Immediates are fetched by the framework**, in table order, before the call. Argument
+  evaluation order is unspecified in C++, so a row with two immediates would otherwise fetch them
+  in whichever order the compiler picked.
+
+The customisation surface grew by exactly one function to get here: `fetch_immediate(Cpu &, width)`.
+
+---
+
 ## Where the framework/CPU boundary sits
 
 `Z80Cpu.hpp` is the whole customisation surface — 70 lines. Retargeting means writing one of these
@@ -521,6 +542,7 @@ and nothing else:
 - `primitive_scopes()` — where the table may name operations from
 - `location_scopes()` — where it may name storage
 - `read`/`write` overloads — how to touch that storage
+- `fetch_immediate` — how to read an immediate out of the instruction stream
 
 The framework names no CPU type at all: not `RegisterFile`, not `Alu`, not `Flags`. It knows only
 that a row has a verb, some operands and some destinations, and that the CPU can resolve a name.

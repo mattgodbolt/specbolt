@@ -3,6 +3,8 @@
 #include "Execute.hpp"
 #include "Table.hpp"
 
+#include "peripherals/Memory.hpp"
+
 namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
@@ -71,111 +73,134 @@ TEST_CASE("Table parsing") {
 }
 
 TEST_CASE("Generated execution") {
-  Cpu cpu;
+  Scheduler scheduler;
+  Memory memory{4};
+  Z80 cpu{scheduler, memory};
+  constexpr std::uint16_t base_address = 0x8000;
+  // Assemble one instruction at a fixed address and step the CPU over it.
+  const auto run = [&](const auto... bytes) {
+    write_to_memory(memory, base_address, static_cast<std::uint8_t>(bytes)...);
+    cpu.regs().pc(base_address);
+    cpu.execute_one();
+  };
   SECTION("ld rr, nn") {
-    execute(cpu, 0x21, 0x4000);
-    CHECK(cpu.registers.get(RegisterFile::R16::HL) == 0x4000);
-    execute(cpu, 0x11, 0xbeef);
-    CHECK(cpu.registers.get(RegisterFile::R16::DE) == 0xbeef);
-    execute(cpu, 0x31, 0xfffe);
-    CHECK(cpu.registers.get(RegisterFile::R16::SP) == 0xfffe);
+    run(0x21, 0x4000 & 0xff, 0x4000 >> 8);
+    CHECK(cpu.get(RegisterFile::R16::HL) == 0x4000);
+    run(0x11, 0xbeef & 0xff, 0xbeef >> 8);
+    CHECK(cpu.get(RegisterFile::R16::DE) == 0xbeef);
+    run(0x31, 0xfffe & 0xff, 0xfffe >> 8);
+    CHECK(cpu.get(RegisterFile::R16::SP) == 0xfffe);
   }
   SECTION("inc rr and dec rr") {
-    execute(cpu, 0x01, 0x1234);
-    execute(cpu, 0x03);
-    CHECK(cpu.registers.get(RegisterFile::R16::BC) == 0x1235);
-    execute(cpu, 0x0b);
-    execute(cpu, 0x0b);
-    CHECK(cpu.registers.get(RegisterFile::R16::BC) == 0x1233);
+    run(0x01, 0x1234 & 0xff, 0x1234 >> 8);
+    run(0x03);
+    CHECK(cpu.get(RegisterFile::R16::BC) == 0x1235);
+    run(0x0b);
+    run(0x0b);
+    CHECK(cpu.get(RegisterFile::R16::BC) == 0x1233);
   }
   SECTION("inc rr wraps") {
-    execute(cpu, 0x21, 0xffff);
-    execute(cpu, 0x23);
-    CHECK(cpu.registers.get(RegisterFile::R16::HL) == 0);
+    run(0x21, 0xffff & 0xff, 0xffff >> 8);
+    run(0x23);
+    CHECK(cpu.get(RegisterFile::R16::HL) == 0);
   }
   SECTION("nop does nothing, halt halts") {
-    execute(cpu, 0x21, 0x1234);
-    execute(cpu, 0x00);
-    CHECK(cpu.registers.get(RegisterFile::R16::HL) == 0x1234);
-    CHECK(!cpu.halted);
-    execute(cpu, 0x76);
-    CHECK(cpu.halted);
+    run(0x21, 0x1234 & 0xff, 0x1234 >> 8);
+    run(0x00);
+    CHECK(cpu.get(RegisterFile::R16::HL) == 0x1234);
+    CHECK(!cpu.halted());
+    run(0x76);
+    CHECK(cpu.halted());
   }
   SECTION("add ignores the carry flag, adc reads it") {
-    cpu.registers.set(RegisterFile::R8::A, 0x10);
-    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    execute(cpu, 0xc6, 0x01);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x11);
+    cpu.set(RegisterFile::R8::A, 0x10);
+    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    run(0xc6, 0x01);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x11);
 
-    cpu.registers.set(RegisterFile::R8::A, 0x10);
-    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    execute(cpu, 0xce, 0x01);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x12);
+    cpu.set(RegisterFile::R8::A, 0x10);
+    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    run(0xce, 0x01);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x12);
   }
   SECTION("sub and sbc likewise") {
-    cpu.registers.set(RegisterFile::R8::A, 0x10);
-    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    execute(cpu, 0xd6, 0x01);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x0f);
+    cpu.set(RegisterFile::R8::A, 0x10);
+    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    run(0xd6, 0x01);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x0f);
 
-    cpu.registers.set(RegisterFile::R8::A, 0x10);
-    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    execute(cpu, 0xde, 0x01);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x0e);
+    cpu.set(RegisterFile::R8::A, 0x10);
+    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    run(0xde, 0x01);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x0e);
   }
   SECTION("logic operations take no carry input") {
-    cpu.registers.set(RegisterFile::R8::A, 0xf0);
-    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    execute(cpu, 0xe6, 0x3f);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x30);
-    execute(cpu, 0xee, 0xff);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xcf);
-    execute(cpu, 0xf6, 0x0f);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xcf);
+    cpu.set(RegisterFile::R8::A, 0xf0);
+    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    run(0xe6, 0x3f);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x30);
+    run(0xee, 0xff);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0xcf);
+    run(0xf6, 0x0f);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0xcf);
   }
   SECTION("cp leaves a alone but sets flags") {
-    cpu.registers.set(RegisterFile::R8::A, 0x42);
-    execute(cpu, 0xfe, 0x42);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x42);
-    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).zero());
-    execute(cpu, 0xfe, 0x43);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x42);
-    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).carry());
+    cpu.set(RegisterFile::R8::A, 0x42);
+    run(0xfe, 0x42);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x42);
+    CHECK(Flags(cpu.get(RegisterFile::R8::F)).zero());
+    run(0xfe, 0x43);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x42);
+    CHECK(Flags(cpu.get(RegisterFile::R8::F)).carry());
   }
   SECTION("Accumulator operations") {
-    cpu.registers.set(RegisterFile::R8::A, 0x0f);
-    execute(cpu, 0x2f); // cpl
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xf0);
+    cpu.set(RegisterFile::R8::A, 0x0f);
+    run(0x2f); // cpl
+    CHECK(cpu.get(RegisterFile::R8::A) == 0xf0);
 
-    cpu.registers.set(RegisterFile::R8::F, 0);
-    execute(cpu, 0x37); // scf
-    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).carry());
-    execute(cpu, 0x3f); // ccf
-    CHECK(!Flags(cpu.registers.get(RegisterFile::R8::F)).carry());
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xf0);
+    cpu.set(RegisterFile::R8::F, 0);
+    run(0x37); // scf
+    CHECK(Flags(cpu.get(RegisterFile::R8::F)).carry());
+    run(0x3f); // ccf
+    CHECK(!Flags(cpu.get(RegisterFile::R8::F)).carry());
+    CHECK(cpu.get(RegisterFile::R8::A) == 0xf0);
   }
   SECTION("ld r, r'") {
-    cpu.registers.set(RegisterFile::R8::C, 0x37);
-    execute(cpu, 0x41); // ld b, c
-    CHECK(cpu.registers.get(RegisterFile::R8::B) == 0x37);
-    execute(cpu, 0x7f); // ld a, a
-    CHECK(cpu.registers.get(RegisterFile::R8::C) == 0x37);
+    cpu.set(RegisterFile::R8::C, 0x37);
+    run(0x41); // ld b, c
+    CHECK(cpu.get(RegisterFile::R8::B) == 0x37);
+    run(0x7f); // ld a, a
+    CHECK(cpu.get(RegisterFile::R8::C) == 0x37);
   }
   SECTION("inc r and dec r") {
-    cpu.registers.set(RegisterFile::R8::B, 0x7f);
-    execute(cpu, 0x04); // inc b
-    CHECK(cpu.registers.get(RegisterFile::R8::B) == 0x80);
-    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).overflow());
-    execute(cpu, 0x05); // dec b
-    CHECK(cpu.registers.get(RegisterFile::R8::B) == 0x7f);
+    cpu.set(RegisterFile::R8::B, 0x7f);
+    run(0x04); // inc b
+    CHECK(cpu.get(RegisterFile::R8::B) == 0x80);
+    CHECK(Flags(cpu.get(RegisterFile::R8::F)).overflow());
+    run(0x05); // dec b
+    CHECK(cpu.get(RegisterFile::R8::B) == 0x7f);
   }
   SECTION("daa reads and writes the flags") {
-    cpu.registers.set(RegisterFile::R8::A, 0x0f);
-    cpu.registers.set(RegisterFile::R8::F, 0);
-    execute(cpu, 0x27);
-    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x15);
+    cpu.set(RegisterFile::R8::A, 0x0f);
+    cpu.set(RegisterFile::R8::F, 0);
+    run(0x27);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x15);
   }
-  SECTION("Undecoded opcodes are rejected, not ignored") { CHECK_THROWS(execute(cpu, 0x08)); }
+  SECTION("Undecoded opcodes are rejected, not ignored") { CHECK_THROWS(run(0x08)); }
+  SECTION("Timing falls out of the fetch cycle") {
+    const auto cycles = [&](const auto... bytes) {
+      const auto before = cpu.cycle_count();
+      run(bytes...);
+      return cpu.cycle_count() - before;
+    };
+    CHECK(cycles(0x00) == 4); // nop
+    CHECK(cycles(0x01, 0x00, 0x00) == 10); // ld bc, nn
+    CHECK(cycles(0x80) == 4); // add a, b
+    CHECK(cycles(0xc6, 0x01) == 7); // add a, n
+    // TODO: the two internal cycles that extend 16-bit inc/dec belong to the
+    // micro-op sequence the table does not describe yet.
+    // CHECK(cycles(0x03) == 6); // inc bc
+  }
 }
 
 } // namespace specbolt::v4
