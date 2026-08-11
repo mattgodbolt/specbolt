@@ -496,12 +496,29 @@ Found by this audit and fixed rather than recorded: `scf` and `ccf` had `a` as a
 They now discard, as `cp` does. Harmless in behaviour, wrong as documentation -- and the table is
 documentation.
 
-**Not done, and the hard half:** DD/FD as *views* over an existing table, and DDCB. What exists is a
-table switch, which CB and ED need and which is the easy case. A view has to rewrite `{field}`
-references without touching literal text, and DD re-enters the table it came from — a cycle. The
-generator unrolls by instantiating one table from another, so a cycle would not terminate;
-`check_no_goto_cycles()` currently rejects one with a clear message rather than melting the
-compiler. Lifting that is the loop model below, and it is the next real piece of work.
+### What DD/FD needs, in order
+
+What exists is a table switch, which is what CB and ED need and is the easy case. DD/FD are *views*,
+and the groundwork is this, roughly in the order it has to happen:
+
+1. **The execution model, before any syntax.** `goto base with view=ix` re-enters the table it came
+   from, and `check_no_goto_cycles` rejects that today — deliberately. The reason is *not* that
+   template instantiation would fail to terminate: `enter<Table>` is forward-declared and mutual
+   instantiation is fine. It is that each goto is a real opcode fetch, so a cycle is unbounded
+   **runtime** recursion, and `DD DD DD…` is legal Z80. That is the loop-not-recursion argument
+   below arriving as a compile error, and it has to be answered first.
+2. **`goto` learns `with view=`.** It takes a bare table name today.
+3. **References before views.** A view rewrites `{field}` references and must not touch literal
+   text. `Operand` currently spells a reference as two loose indices, and `Piece` spells the same
+   pair again — worth collapsing into `Reference` *before* writing the thing that rewrites them.
+4. **Per-token fetching, and the latch it needs.** `DD CB d op` puts the displacement before the
+   opcode, and `ld (ix+d), n` reads two immediates at different points. The executor fetches one
+   immediate up front. This is also what makes the encoding column carry more than one pattern token.
+5. **Capacity.** `Field::max_values` is 8 and the `ix` view's register vocabulary is exactly 8
+   (`b c d e ixh ixl (ix+d) a`) — no headroom. `Row::max_steps` is 6, which DDCB may exceed.
+
+Nothing in 1–4 is a syntax question. The table language for prefixes is already written down below;
+what is missing is the machinery underneath it.
 
 ### What DD actually does, measured
 
