@@ -10,25 +10,31 @@ here.
 
 ## Where the spike is
 
-`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts:
+`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 28 rows in two decoding
+tables cover 182 of 256 base opcodes and 192 of 256 CB opcodes:
 
-- **Disassembly.** Five rows (`nop`, `halt`, `ld rr,nn`, `inc rr`, `dec rr`) cover 13 opcodes, all
-  byte-exact against the pre-existing `DisassemblerTest` expectations copied from v3.
-- **Execution.** A 256-entry dispatch table built with a `template for` expansion statement, one
-  `execute_one<Opcode>` instantiation per opcode, each resolving its verb by reflection over `Ops`.
+- **Disassembly.** Walks the row's lowered pieces, following a `goto` through a prefix table.
+- **Execution.** A 256-entry dispatch table per decoding table, built with a `template for`
+  expansion statement, one `execute_one<Table, Opcode, Index>` instantiation per entry, each
+  resolving its verb by reflection over the CPU's `primitive_scopes()`.
 
 The pipeline is `#embed` → `consteval` parse → lower to validated pieces → `template for` → splice.
 
+A row has three columns: an encoding token sequence, a mnemonic, and an ordered list of steps. Each
+column is checked against the others — length and what is fetched come from the encoding, never from
+the display text.
+
 Mnemonics are **lowered at parse time** into a fixed `Piece` array (literal chunk, field reference
-with field and slice indices already resolved, immediate slot). `Row::length` is derived from that.
-The disassembler therefore parses nothing at runtime: it walks pieces and emits.
+with field and slice indices already resolved, immediate slot), so the disassembler parses nothing
+at runtime.
 
 Malformed tables are compile errors carrying the source line, e.g.
 
 ```
-z80.cpu:9: mnemonic names a field that does not exist
-z80.cpu:9: field has the wrong number of values for its opcode bits
-z80.cpu:9: no operation 'ld17' in Ops
+z80.cpu:9: reference names a vocabulary that does not exist
+z80.cpu:9: vocabulary has the wrong number of values for its opcode bits
+z80.cpu:9: this CPU has nothing named 'ld17'
+z80.cpu:25: this row overlaps a later one without being contained by it
 ```
 
 ### The argument this exists to make
@@ -237,12 +243,12 @@ containing `""`). Holes exist and are checked.
 6502 *every* member of `bbb` is an addressing mode that changes length, cycles and whether the row
 exists at all. Design the member record for the 6502 case and the Z80 becomes the easy instance.
 
-### 3. Rows need several slots, and slot ≠ letter
+### 3. Rows need several slots, and slot ≠ letter — done
 
-`execute_one` hard-codes `slices[0]`; there is now a `static_assert` so a second field fails loudly
-rather than vanishing. `01yyyzzz | ld {y}, {z}` needs the same vocabulary bound to two different
-slices, so field name and slice letter must be decoupled — `{vocab:slice}`. Verb arity and parameter
-kinds should then be checked by reflecting `parameters_of` on the resolved primitive.
+`{vocab:slice}` decouples the vocabulary name from the slice letter, so `01yyyzzz | ld {r:y}, {r:z}`
+binds one vocabulary to two slices. Arity and parameter types are checked by reflecting
+`parameters_of` on the resolved primitive, which is also what makes a width mismatch a
+`-Wconversion` error rather than a truncation.
 
 `Matched::max_slices` is 4 and `Field::max_values` is 8; no Z80 row needs more, but `r` and `cc` sit
 exactly at 8 with no headroom.
@@ -301,11 +307,13 @@ This is the same axis as the structured-members decision in §2 and subsumes it:
 special?" and "what does this member bind to?" are one question. Design the member record to answer
 it once.
 
-### 4. Row is parse-time only
+### 4. Row is parse-time only — partly done
 
-Project it at compile time into artefact-shaped tables: `winner[256]` (kills the runtime linear scan
-*and* enables overlap detection), decode, dispatch, text, cycles, flags-affected. The `line` field
-should propagate into every projection so any mismatch reports `z80.cpu:N`.
+`decoded[table][256]` exists: it killed the runtime linear scan and is what precedence checking and
+coverage are computed from. Text is projected into `pieces` at parse time. Cycles and
+flags-affected are not projected — cost is resolved during execution from the addressing mode and
+the step list, and nothing consumes a flags-affected table yet. The `line` field propagates
+everywhere, so every diagnostic reports `z80.cpu:N`.
 
 ### 5. First-match-wins needs compile-time checking — done
 
@@ -332,9 +340,12 @@ author. Verified by breaking the table three ways and reading the diagnostic:
 Coverage is `decoded_count`, a compile-time constant, ratcheted by a test. Because precedence is
 checked, coverage cannot be gained by silently shadowing another row.
 
-### 6. Timing attaches to the micro-op sequence
+### 6. Timing attaches to the micro-op sequence — done, and it moved
 
-Not to rows, and not to operands. Evidence from this repo:
+Landed, but not where this section predicted. Cost turned out to belong to the **addressing mode**
+for anything to do with an operand, with an explicit `delay` step only for idle cycles belonging to
+the operation itself. See "Where cost actually lives" and "Time passes in exactly one place" below.
+The original argument, which still stands:
 
 - v3 has **no cycle numbers anywhere**. Timing emerges from the primitives (`read`/`write` = 3,
   opcode fetch = 4) plus `pass_time(n)` interleaved at the right points.
@@ -422,6 +433,13 @@ Cannot be inferred, and all three existing versions are incomplete — nothing s
 `ex (sp),hl`, `jp nn`, `call` or `out (n),a`, all of which the real chip updates and all observable
 through `bit n,(hl)`. An optional per-row attribute, defaulting to "a memory operand sets WZ to the
 effective address" (which is what all three versions already do).
+
+v4 does not model it either. `bit {b}, (hl)` names `h` as its bus-noise source, which is HL's high
+byte and therefore right for that one instruction — the same approximation v3 computes. The reason
+nobody notices is structural: the only regression test in the repo is **zexdoc**, and "doc" means
+documented flags. There is no zexall, so undocumented-flag behaviour is untested repo-wide apart
+from a handful of hand-written checks in `OpcodeTests.cpp` — which is exactly where v4's two
+failures showed up, and both are now fixed.
 
 ---
 
@@ -606,12 +624,19 @@ extrapolates to about **12 s / 390 MB**.
 2. ~~**Compile-time overlap and coverage checking.**~~ Done — see §5.
 3. **Encoding as a byte sequence.** Immediates and length derived: done. Multiple pattern tokens
    per row, which is what expresses the DDCB fetch order: folded into 4, because it is the same work.
-4. **Prefixes** — `goto <table> [with <view>]`, derived tables, override rows.
-5. ~~**Timing**~~ Done as an unrolled step sequence, ahead of schedule because it was the only
-   source of wrong answers. `t=` assertions still want static per-step costs, which do not exist
-   yet: cost currently lives inside the CPU's own `read`/`write`/`delay`.
-6. **WZ**, flags cross-checks, `undoc` marking.
-7. **Project `Row` into artefact tables** rather than scanning at runtime.
+4. **Prefixes.** Table switch and override rows: done, CB works. Still to do, and the hard half:
+   DD/FD as *views*, DDCB, and the goto cycle that views require — see the Prefixes section.
+5. ~~**Timing**~~ Done, though not as this list expected: cost belongs to the addressing mode, with
+   an explicit `delay` step only for idle cycles belonging to the operation. `t=` assertions still
+   want static per-step costs, which do not exist: cost is resolved inside `Z80::bus`.
+6. **Interrupts.** Absent entirely. jsbeeb samples the interrupt at a named position in the cycle
+   schedule rather than at the top of the instruction, which is the difference between exact and
+   approximate — worth deciding before writing the easy version.
+7. **WZ**, flags cross-checks, `undoc` marking. Nothing will catch a regression here until there is
+   a zexall run; zexdoc tests documented flags only.
+8. **Conditional cycle schedules.** `djnz` 8/13 has no expression today. jsbeeb's `split(condition)`
+   forks the remaining schedule, which states both rather than asserting a range.
+9. **Project `Row` into artefact tables** rather than scanning at runtime.
 
 Parallel, not blocking: make `RegisterFile` header-only and `constexpr` so execution tests can be
 `STATIC_CHECK`. `static_assert(run(0x21, 0x4000).get(R16::HL) == 0x4000)` is the slide the talk
@@ -814,14 +839,20 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 
 ## Where the framework/CPU boundary sits
 
-`Z80Cpu.hpp` is the whole customisation surface — 70 lines. Retargeting means writing one of these
+`Z80Cpu.hpp` is the whole customisation surface — 82 lines. Retargeting means writing one of these
 and nothing else:
 
 - `Cpu` and `Ops` — the machine state and its non-ALU primitives
 - `primitive_scopes()` — where the table may name operations from
 - `location_scopes()` — where it may name storage
 - `read`/`write` overloads — how to touch that storage
-- `fetch_immediate` — how to read an immediate out of the instruction stream
+- `read_memory`/`write_memory` — how to touch memory through an address
+- `fetch_opcode`/`fetch_immediate` — how to read the instruction stream
+- `delay` — how to spend an idle cycle
+
+A primitive may take `Cpu &` as its first parameter, which the framework supplies. That is the one
+type it is parameterised on, so it is the one thing it can always hand over — and it is what `jp`,
+`call`, `push` and `in`/`out` will need.
 
 The framework names no CPU type at all: not `RegisterFile`, not `Alu`, not `Flags`. It knows only
 that a row has a verb, some operands and some destinations, and that the CPU can resolve a name.
