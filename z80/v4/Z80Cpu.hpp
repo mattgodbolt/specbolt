@@ -46,13 +46,16 @@ enum class Bit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag
 // Machine state that is not a register but is still addressable by name.
 enum class State : std::uint8_t { halted };
 
+// Somewhere to put a value between two steps of the same instruction.
+enum class Latch : std::uint8_t { t };
+
 // The whole flag word, distinct from R8::F so that only a Flags-shaped value
 // can be written to it.
 enum class Word : std::uint8_t { flags };
 
 // Where the table may name storage locations from.
-[[nodiscard]] consteval std::array<std::meta::info, 5> location_scopes() {
-  return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word};
+[[nodiscard]] consteval std::array<std::meta::info, 6> location_scopes() {
+  return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word, ^^Latch};
 }
 
 [[nodiscard]] inline std::uint8_t fetch_opcode(Cpu &cpu) { return cpu.read_opcode(); }
@@ -74,6 +77,8 @@ inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_
 }
 [[nodiscard]] inline Flags read(const Cpu &cpu, Word) { return cpu.flags(); }
 inline void write(Cpu &cpu, Word, const Flags value) { cpu.flags(value); }
+[[nodiscard]] inline std::uint8_t read(const Cpu &cpu, Latch) { return cpu.latch(); }
+inline void write(Cpu &cpu, Latch, const std::uint8_t value) { cpu.latch(value); }
 [[nodiscard]] inline bool read(const Cpu &cpu, State) { return cpu.halted(); }
 inline void write(Cpu &cpu, State, const bool value) { cpu.halted(value); }
 

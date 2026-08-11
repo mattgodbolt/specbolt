@@ -108,7 +108,7 @@ struct Step {
 
 struct Row {
   static constexpr std::size_t max_pieces = 12;
-  static constexpr std::size_t max_steps = 4;
+  static constexpr std::size_t max_steps = 6;
   Matched matched{};
   std::string_view mnemonic{};
   std::array<Piece, max_pieces> pieces{};
