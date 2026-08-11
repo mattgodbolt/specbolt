@@ -22,10 +22,18 @@ inline constexpr char cpu_raw[] = {
 
 inline constexpr std::string_view cpu_description{cpu_raw};
 
+enum class CarrySource : std::uint8_t { Zero, FromFlags };
+
+struct Member {
+  std::string_view display{};
+  std::string_view primitive{};
+  CarrySource carry{};
+};
+
 struct Field {
   static constexpr std::size_t max_values = 8;
   char name{};
-  std::array<std::string_view, max_values> values{};
+  std::array<Member, max_values> values{};
   std::size_t num_values{};
 };
 
@@ -37,14 +45,25 @@ struct Piece {
   std::uint8_t slice_index{};
 };
 
+struct Operand {
+  enum class Kind : std::uint8_t { Accumulator, Immediate, Field };
+  Kind kind{};
+  std::uint8_t field_index{};
+  std::uint8_t slice_index{};
+};
+
 struct Row {
   static constexpr std::size_t max_pieces = 8;
+  static constexpr std::size_t max_operands = 4;
   Matched matched{};
   std::string_view mnemonic{};
   std::array<Piece, max_pieces> pieces{};
   std::size_t num_pieces{};
   std::size_t length{1};
   std::string_view verb{};
+  std::optional<Operand> destination{};
+  std::array<Operand, max_operands> operands{};
+  std::size_t num_operands{};
   std::size_t line{};
 };
 
@@ -90,6 +109,19 @@ struct Row {
   return count;
 }
 
+// `bc` is display only; `adc:add8+c` binds to a primitive and says the carry comes from the flags.
+[[nodiscard]] consteval Member parse_member(const std::string_view text, const std::size_t line) {
+  Parser parser(text);
+  Member member{parser.split_to(':').data(), parser.data(), CarrySource::Zero};
+  if (member.display.empty())
+    throw table_error(line, "field member has no name");
+  if (member.primitive.ends_with("+c")) {
+    member.primitive.remove_suffix(2);
+    member.carry = CarrySource::FromFlags;
+  }
+  return member;
+}
+
 template<std::size_t N>
 [[nodiscard]] consteval std::array<Field, N> parse_fields() {
   std::array<Field, N> result{};
@@ -115,7 +147,7 @@ template<std::size_t N>
         continue;
       if (field.num_values == Field::max_values)
         throw table_error(at, "too many values in field");
-      field.values[field.num_values++] = value;
+      field.values[field.num_values++] = parse_member(value, at);
     }
     if (field.num_values == 0)
       throw table_error(at, "field declares no values");
@@ -140,6 +172,28 @@ inline constexpr auto fields = parse_fields<count_matching(&is_field)>();
     if (matched.slices[index].name == name)
       return index;
   return std::nullopt;
+}
+
+consteval void check_field_reference(const std::string_view text, const Matched &matched, const std::size_t line) {
+  if (text.size() != 3 || !text.ends_with('}'))
+    throw table_error(line, "field reference must be of the form {x}");
+  if (!find_field(text[1]))
+    throw table_error(line, "action names a field that does not exist");
+  if (!find_slice(matched, text[1]))
+    throw table_error(line, "action names a field the opcode pattern does not define");
+}
+
+[[nodiscard]] consteval Operand parse_operand(
+    const std::string_view word, const Matched &matched, const std::size_t line) {
+  if (word == "a")
+    return {Operand::Kind::Accumulator, 0, 0};
+  if (word == "n" || word == "nn")
+    return {Operand::Kind::Immediate, 0, 0};
+  if (!word.starts_with('{'))
+    throw table_error(line, "unknown operand '" + std::string(word) + "' in action");
+  check_field_reference(word, matched, line);
+  return {Operand::Kind::Field, static_cast<std::uint8_t>(*find_field(word[1])),
+      static_cast<std::uint8_t>(*find_slice(matched, word[1]))};
 }
 
 consteval void lower_mnemonic(Row &row) {
@@ -215,6 +269,30 @@ template<std::size_t N>
     row.verb = next_word(action);
     if (row.verb.empty())
       throw table_error(at, "row has no action");
+    if (row.verb.starts_with('{'))
+      check_field_reference(row.verb, row.matched, at);
+    // `verb dest <- args...`; the destination is optional
+    auto writing_destination = action.data().contains("<-");
+    while (!action.eof()) {
+      const auto word = next_word(action);
+      if (word.empty())
+        continue;
+      if (word == "<-") {
+        writing_destination = false;
+        continue;
+      }
+      const auto operand = parse_operand(word, row.matched, at);
+      if (writing_destination) {
+        if (row.destination)
+          throw table_error(at, "an action may only have one destination");
+        row.destination = operand;
+      }
+      else {
+        if (row.num_operands == Row::max_operands)
+          throw table_error(at, "too many operands");
+        row.operands[row.num_operands++] = operand;
+      }
+    }
     lower_mnemonic(row);
   }
   return result;

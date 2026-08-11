@@ -3,9 +3,17 @@
 #   ppq
 
 field p = bc de hl sp
+field q = add:add8 adc:add8+c sub:sub8 sbc:sub8+c
+field w = and:and8 xor:xor8 or:or8 cp:cmp8
 
 00000000 | nop           | nop
 01110110 | halt          | halt
-00pp0001 | ld {p}, $nnnn | ld16
-00pp0011 | inc {p}       | inc16
-00pp1011 | dec {p}       | dec16
+00pp0001 | ld {p}, $nnnn | ld16 {p} <- nn
+00pp0011 | inc {p}       | inc16 {p} <- {p}
+00pp1011 | dec {p}       | dec16 {p} <- {p}
+00100111 | daa           | daa a <- a
+00101111 | cpl           | cpl a <- a
+00110111 | scf           | scf a <- a
+00111111 | ccf           | ccf a <- a
+110qq110 | {q} a, $nn    | {q} a <- a n
+111ww110 | {w} $nn       | {w} a <- a n

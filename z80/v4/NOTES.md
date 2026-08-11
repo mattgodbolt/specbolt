@@ -57,6 +57,12 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   splice: `[: find_verb(row.verb) :]`, never `[: stored.fn :]`.
 - **`identifier_of` throws on members without identifiers** (constructors, etc). Guard with
   `has_identifier` before comparing names, or the exception pre-empts your own diagnostic.
+- **Reflection must live in template arguments and alias templates, never in a local.** A
+  `constexpr auto parameters = define_static_array(parameters_of(Fn));` inside a function body is an
+  immediate-escalating expression: it promotes the enclosing function to `consteval`, which then
+  cannot be called with runtime CPU state. Use `template<info Fn> constexpr auto arity_of = …` and
+  `template<info Fn, size_t I> using parameter_type = typename[:type_of(parameters_of(Fn)[I]):]`
+  instead. This is the sharp edge of the consteval-only rule and it is easy to trip over twice.
 - **`access_context::current()` at namespace scope excludes private members.** This is why `Ops` is a
   struct with a private section rather than a namespace: access control gates which names the table
   may use as verbs. Deliberate and worth keeping.
@@ -286,12 +292,39 @@ It also retires v3's `is_load_immediate` boolean. The 5T-vs-2T displacement prol
 because the fetches of `d` and `n` interleave with the internal delay; as an ordered step list that
 is simply *stated* rather than special-cased.
 
-### 7. Flags come from the primitive signature
+### 7. Flags come from the primitive signature — mostly
 
-`Alu` already returns `ResultT<T>{result, flags}`, so "writes flags" is a reflectable property of the
-return type and the table should not restate it. A `Flags` parameter means it reads flags. Residues
-that genuinely need saying: partial preservation (`in r,(c)`), extra inputs (`bit`'s bus noise), and
-the block ops, which will never be table-expressible and get a bespoke primitive.
+The table never mentions F. The CPU holds the flags; `Alu` returns `ResultT<T>{result, flags}` and
+the framework routes the flags half into the register file. **Spiked and working** against the real
+`Alu` shapes — all four calling conventions fall out of reflection alone:
+
+| primitive | derived wiring |
+|---|---|
+| `R8 add8(u8, u8, bool)` | carry spliced in; result → destination, flags → F |
+| `R8 and8(u8, u8)` | no flag input at all |
+| `R16 add16(u16, u16, Flags)` | whole flag word spliced in |
+| `Flags bit(u8, u8, Flags, u8)` | flags only — destination untouched |
+
+Parameter types decide what is read; the return type decides whether a value is written. Verified by
+`static_assert` that `bit` leaves A alone while `add8` writes it, purely from the signatures.
+
+**But the signature is not sufficient on its own.** `add8` is shared by ADD and ADC: v3 calls
+`add8(a, rhs, false)` for one and `add8(a, rhs, flags().carry())` for the other. Same for
+`sub8`/SUB/SBC. So "a `bool` parameter means splice the carry" is wrong half the time, and nothing in
+the signature distinguishes them.
+
+The policy belongs on the **vocabulary member**, which is where the encoding already puts it —
+`10ooozzz`'s `ooo` field *is* the add/adc/sub/sbc/and/xor/or/cp vocabulary. So a member binds to a
+primitive **and** a calling policy for whatever the signature leaves ambiguous. Verified: `add` and
+`adc` route through the same `add8` and differ only in the member's carry source.
+
+Refined claim: **the signature determines the shape; the vocabulary member determines the policy for
+what the shape leaves ambiguous.** Weaker than "the signature is the whole declaration", still beyond
+anything a text-emitting generator can check.
+
+Residues that need saying explicitly regardless: partial preservation (`in r,(c)`), extra inputs
+(`bit`'s bus noise), and the block ops, which will never be table-expressible and get a bespoke
+primitive.
 
 ### 8. WZ/MEMPTR is per-instruction data
 
@@ -446,7 +479,13 @@ site hand-rolls its own bounds check and denies itself range-`for` and algorithm
 `constexpr`-friendly fixed-capacity vector with `push_back` (throwing on overflow, which is a compile
 error during constant evaluation), `size()`, `begin()`/`end()` and `operator[]` removes all of that.
 
-The obvious answer is `std::inplace_vector`, and it is the wrong one *for now*: gcc 16.2 ships
+Worth considering a structural fixed-capacity **string** at the same time. `string_view` being
+non-structural has now blocked three separate things — `Row` as an NTTP, `Piece` in an
+`inplace_vector`, and a vocabulary member as a template argument — and each time the workaround is to
+pass an *index* and look the object up inside. That works, but a structural string type would remove
+the class of problem rather than the instances.
+
+The obvious answer for the vector is `std::inplace_vector`, and it is the wrong one *for now*: gcc 16.2 ships
 `<inplace_vector>` but its constexpr path supports **trivial types only** —
 `__builtin_unreachable(); // only trivial types are supported at compile time`. `Piece` holds a
 `std::string_view`, which is trivially copyable but not trivially default constructible, so it does

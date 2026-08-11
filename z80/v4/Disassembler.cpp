@@ -24,7 +24,7 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
     switch (part.kind) {
       case Piece::Kind::Literal: result += part.text; break;
       case Piece::Kind::Field:
-        result += fields[part.field_index].values[row.matched.slices[part.slice_index].extract(opcode)];
+        result += fields[part.field_index].values[row.matched.slices[part.slice_index].extract(opcode)].display;
         break;
       case Piece::Kind::Imm8:
         result += std::format("0x{:02x}", memory.read(static_cast<std::uint16_t>(address + offset)));

@@ -7,21 +7,34 @@ namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
-    STATIC_CHECK(fields.size() == 1);
+    STATIC_CHECK(fields.size() == 3);
     STATIC_CHECK(fields[0].name == 'p');
     STATIC_CHECK(fields[0].num_values == 4);
-    STATIC_CHECK(fields[0].values[0] == "bc");
-    STATIC_CHECK(fields[0].values[3] == "sp");
+    STATIC_CHECK(fields[0].values[0].display == "bc");
+    STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 5);
+    STATIC_CHECK(rows.size() == 11);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
   }
   SECTION("Keeps the line number for diagnostics") {
-    STATIC_CHECK(rows[0].line == 7);
-    STATIC_CHECK(rows[2].line == 9);
+    STATIC_CHECK(rows[0].line == 9);
+    STATIC_CHECK(rows[2].line == 11);
+  }
+  SECTION("Members bind to primitives and a carry policy") {
+    constexpr auto alu = fields[1];
+    STATIC_CHECK(alu.name == 'q');
+    STATIC_CHECK(alu.values[0].display == "add");
+    STATIC_CHECK(alu.values[0].primitive == "add8");
+    STATIC_CHECK(alu.values[0].carry == CarrySource::Zero);
+    STATIC_CHECK(alu.values[1].display == "adc");
+    STATIC_CHECK(alu.values[1].primitive == "add8");
+    STATIC_CHECK(alu.values[1].carry == CarrySource::FromFlags);
+    STATIC_CHECK(fields[2].values[3].display == "cp");
+    STATIC_CHECK(fields[2].values[3].primitive == "cmp8");
+    STATIC_CHECK(fields[0].values[0].primitive.empty());
   }
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(0x00) == 0u);
@@ -79,6 +92,59 @@ TEST_CASE("Generated execution") {
     CHECK(!cpu.halted);
     execute(cpu, 0x76);
     CHECK(cpu.halted);
+  }
+  SECTION("add ignores the carry flag, adc reads it") {
+    cpu.registers.set(RegisterFile::R8::A, 0x10);
+    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    execute(cpu, 0xc6, 0x01);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x11);
+
+    cpu.registers.set(RegisterFile::R8::A, 0x10);
+    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    execute(cpu, 0xce, 0x01);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x12);
+  }
+  SECTION("sub and sbc likewise") {
+    cpu.registers.set(RegisterFile::R8::A, 0x10);
+    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    execute(cpu, 0xd6, 0x01);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x0f);
+
+    cpu.registers.set(RegisterFile::R8::A, 0x10);
+    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    execute(cpu, 0xde, 0x01);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x0e);
+  }
+  SECTION("logic operations take no carry input") {
+    cpu.registers.set(RegisterFile::R8::A, 0xf0);
+    cpu.registers.set(RegisterFile::R8::F, Flags::Carry().to_u8());
+    execute(cpu, 0xe6, 0x3f);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x30);
+    execute(cpu, 0xee, 0xff);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xcf);
+    execute(cpu, 0xf6, 0x0f);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xcf);
+  }
+  SECTION("cp leaves a alone but sets flags") {
+    cpu.registers.set(RegisterFile::R8::A, 0x42);
+    execute(cpu, 0xfe, 0x42);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x42);
+    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).zero());
+    execute(cpu, 0xfe, 0x43);
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0x42);
+    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).carry());
+  }
+  SECTION("Accumulator operations") {
+    cpu.registers.set(RegisterFile::R8::A, 0x0f);
+    execute(cpu, 0x2f); // cpl
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xf0);
+
+    cpu.registers.set(RegisterFile::R8::F, 0);
+    execute(cpu, 0x37); // scf
+    CHECK(Flags(cpu.registers.get(RegisterFile::R8::F)).carry());
+    execute(cpu, 0x3f); // ccf
+    CHECK(!Flags(cpu.registers.get(RegisterFile::R8::F)).carry());
+    CHECK(cpu.registers.get(RegisterFile::R8::A) == 0xf0);
   }
   SECTION("Unknown opcodes are inert") {
     execute(cpu, 0x21, 0x1234);
