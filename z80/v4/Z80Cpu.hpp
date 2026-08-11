@@ -17,7 +17,7 @@ namespace specbolt::v4 {
 
 using Cpu = Z80;
 
-inline void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.pass_time(cycles); }
+inline void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.idle(cycles); }
 
 struct Ops {
   static void nop() {}

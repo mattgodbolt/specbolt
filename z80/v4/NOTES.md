@@ -715,6 +715,58 @@ now have a working precedent rather than a promise.
 Result: the four timing failures are gone. On the unprefixed suite the failure count is now exactly
 equal to the undecoded-opcode count — **zero wrong answers of any kind**.
 
+### Time passes in exactly one place
+
+`Z80::bus(Bus kind, uint16_t address)` is the only function in the CPU that advances the clock.
+Every access routes through it: `read_opcode`, `read_immediate`, `read`, `write`, and `idle`. It
+takes the address and runs *before* the transfer, so anything scheduled sees the machine as it was
+at the moment of the access.
+
+```cpp
+enum class Bus : std::uint8_t { opcode, operand, read, write, io_read, io_write, internal };
+```
+
+The enum is **per-CPU**, declared in `Z80.hpp` rather than the framework. A 6502 declares its own,
+and would add the one kind the Z80 has no use for: a dummy cycle the bus sees but whose value is
+discarded — a *write* on the NMOS 6502 and a *read* on the 65C12. I/O is in, because the Z80
+genuinely has a separate address space with its own wait state, and separate address spaces are not
+unusual.
+
+Contention and cycle stretching are one commented line inside `bus`. Everything they need is already
+there: the kind, the address, and `cycle_count()`, from which frame position is `% 70000`. Nothing in
+the repo models either today — the Spectrum contends `0x4000-0x7fff` while the display is drawn, and
+none of v1, v2 or v3 attempt it.
+
+### What jsbeeb does, and what is worth taking
+
+jsbeeb is cycle-accurate with BBC-specific 1MHz stretching, so it is the right thing to check this
+design against rather than guessing.
+
+What it validates:
+
+- **Advance time immediately before the access that ends it.** jsbeeb batches contiguous cycles and
+  flushes them with `polltimeAddr(cycles, addr, isWrite)` just before the memory operation, so
+  peripherals are caught up to that instant. `bus()` has the same shape.
+- **The machine owns the stretch policy, not the CPU.** `polltimeAddr` consults `is1MHzAccess(addr)`;
+  `readmem`/`writemem` do no timing at all. Ours matches: `Z80::bus` charges, `Memory::read`
+  transfers.
+- **The minimum information really is (cycles, address, is-write).** jsbeeb needs no enum of kinds.
+  Ours is a didactic layer over the same three facts — worth knowing it is a convenience, not a
+  requirement.
+- **Cycles that cannot stretch pass no address.** jsbeeb uses plain `polltime` for zero-page and
+  stack, which are always fast. The Spectrum differs: an internal cycle still contends on whatever
+  the address bus holds, which is why `idle` presents `bus_address_` rather than nothing.
+
+Two ideas worth stealing that we have no answer for yet:
+
+- **`split(condition)`** forks the remaining cycle schedule on a runtime condition — page crossing on
+  the 6502, and exactly the shape of `djnz` 8/13. Better than the `t=min/max` sketch in §6, because
+  the two schedules are both stated rather than a range being asserted.
+- **The interrupt is sampled at a named position in the schedule** — jsbeeb injects `checkInt()`
+  before the penultimate cycle. Since v4 does not handle interrupts at all yet, that is the detail
+  that makes them exact rather than approximate, and it argues for adding them as a step position
+  rather than a check at the top of `execute_one`.
+
 #### Where cost actually lives
 
 Three places, and none of them is a number written on a row:
