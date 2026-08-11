@@ -422,6 +422,16 @@ template<std::size_t N>
 
 inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
 
+// A field operand names whichever vocabulary member its slice selects, and that
+// member is written the same way an operand is written in a row.
+[[nodiscard]] consteval Operand resolve(
+    const Operand operand, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
+  if (operand.kind != Operand::Kind::Field)
+    return operand;
+  return parse_simple_operand(
+      fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)].display, line);
+}
+
 // A row matches only if the bits fit AND every vocabulary member it names is live:
 // a `-` member is a hole, so the row simply does not cover that opcode.
 [[nodiscard]] constexpr bool row_matches(const Row &row, const std::uint8_t opcode) {

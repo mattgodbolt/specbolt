@@ -78,16 +78,6 @@ struct Call {
   std::size_t line{};
 };
 
-// A field operand names whichever vocabulary member its slice selects, and that
-// member is written the same way an operand is written in a row.
-[[nodiscard]] consteval Operand resolve(
-    const Operand operand, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
-  if (operand.kind != Operand::Kind::Field)
-    return operand;
-  return parse_simple_operand(
-      fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)].display, line);
-}
-
 // Only a literal written in the table is narrowed on the author's say-so;
 // everything else converts implicitly, so handing a 16-bit location to an
 // 8-bit parameter is a diagnosable narrowing rather than a silent truncation.

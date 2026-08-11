@@ -1,7 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Execute.hpp"
 #include "Table.hpp"
+
+#include "z80/v4/Z80.hpp"
 
 #include "peripherals/Memory.hpp"
 
