@@ -14,6 +14,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 #endif
 
 namespace specbolt::v4 {
@@ -131,14 +132,20 @@ struct Row {
   return text;
 }
 
-[[nodiscard]] constexpr bool is_field(const std::string_view line) { return line.starts_with("field "); }
-[[nodiscard]] constexpr bool is_table(const std::string_view line) { return line.starts_with("table "); }
+// A keyword on its own is still that keyword, so `table` with no name reaches
+// the diagnostic that says so rather than being silently ignored.
+[[nodiscard]] constexpr bool is_directive(const std::string_view line, const std::string_view keyword) {
+  return line.starts_with(keyword) && (line.size() == keyword.size() || line[keyword.size()] == ' ');
+}
+[[nodiscard]] constexpr bool is_field(const std::string_view line) { return is_directive(line, "field"); }
+[[nodiscard]] constexpr bool is_table(const std::string_view line) { return is_directive(line, "table"); }
 [[nodiscard]] constexpr bool is_row(const std::string_view line) {
   return !line.empty() && line.front() != '#' && !is_field(line) && !is_table(line) && line.contains('|');
 }
 
-[[nodiscard]] consteval std::size_t count_matching(bool (*predicate)(std::string_view)) {
-  Parser lines(cpu_description);
+[[nodiscard]] constexpr std::size_t count_matching(
+    const std::string_view description, bool (*predicate)(std::string_view)) {
+  Parser lines(description);
   std::size_t count = 0;
   while (!lines.eof())
     if (predicate(lines.next_line().text))
@@ -146,7 +153,7 @@ struct Row {
   return count;
 }
 
-[[nodiscard]] consteval Operand parse_simple_operand(std::string_view word, const std::size_t line) {
+[[nodiscard]] constexpr Operand parse_simple_operand(std::string_view word, const std::size_t line) {
   if (word.empty())
     throw table_error(line, "empty operand in action");
   if (word == "-")
@@ -191,7 +198,7 @@ struct Row {
 
 // `bc` is display only; `adc:add8+carry` binds a primitive and appends an
 // operand; `(hl)/delay=1` states the access sequence of an addressing mode.
-[[nodiscard]] consteval Member parse_member(const std::string_view text, const std::size_t line) {
+[[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);
   Parser parser(whole.split_to('/').data());
   Member member{.display = parser.split_to(':').data(), .primitive = parser.data()};
@@ -222,9 +229,9 @@ struct Row {
 }
 
 template<std::size_t N>
-[[nodiscard]] consteval std::array<Field, N> parse_fields() {
+[[nodiscard]] constexpr std::array<Field, N> parse_fields(const std::string_view description) {
   std::array<Field, N> result{};
-  Parser lines(cpu_description);
+  Parser lines(description);
   std::size_t index = 0;
   while (!lines.eof()) {
     const auto [at, text] = lines.next_line();
@@ -254,12 +261,10 @@ template<std::size_t N>
   return result;
 }
 
-inline constexpr auto fields = parse_fields<count_matching(&is_field)>();
-
 template<std::size_t N>
-[[nodiscard]] consteval std::array<std::string_view, N> parse_tables() {
+[[nodiscard]] constexpr std::array<std::string_view, N> parse_tables(const std::string_view description) {
   std::array<std::string_view, N> result{};
-  Parser lines(cpu_description);
+  Parser lines(description);
   std::size_t index = 0;
   while (!lines.eof()) {
     const auto [at, text] = lines.next_line();
@@ -280,16 +285,15 @@ template<std::size_t N>
   return result;
 }
 
-inline constexpr auto tables = parse_tables<count_matching(&is_table)>();
-
-[[nodiscard]] consteval std::uint8_t find_table(const std::string_view name, const std::size_t line) {
+[[nodiscard]] constexpr std::uint8_t find_table(
+    const std::span<const std::string_view> tables, const std::string_view name, const std::size_t line) {
   for (std::size_t index = 0; index < tables.size(); ++index)
     if (tables[index] == name)
       return static_cast<std::uint8_t>(index);
   throw table_error(line, "no table named '" + std::string(name) + "'");
 }
 
-[[nodiscard]] constexpr std::optional<std::size_t> find_field(const char name) {
+[[nodiscard]] constexpr std::optional<std::size_t> find_field(const std::span<const Field> fields, const char name) {
   for (std::size_t index = 0; index < fields.size(); ++index)
     if (fields[index].name == name)
       return index;
@@ -304,14 +308,14 @@ inline constexpr auto tables = parse_tables<count_matching(&is_table)>();
 }
 
 // `{p}` names one letter for both; `{r:z}` binds vocabulary r to slice z.
-[[nodiscard]] consteval Reference parse_reference(
-    const std::string_view inner, const Matched &matched, const std::size_t line) {
+[[nodiscard]] constexpr Reference parse_reference(
+    const std::span<const Field> fields, const std::string_view inner, const Matched &matched, const std::size_t line) {
   Parser parser(inner);
   const auto vocabulary = parser.split_to(':').data();
   const auto slice = parser.eof() ? vocabulary : parser.data();
   if (vocabulary.size() != 1 || slice.size() != 1)
     throw table_error(line, "reference must be {x} or {vocabulary:slice}");
-  const auto field = find_field(vocabulary.front());
+  const auto field = find_field(fields, vocabulary.front());
   if (!field)
     throw table_error(line, "reference names a vocabulary that does not exist");
   const auto found = find_slice(matched, slice.front());
@@ -322,22 +326,22 @@ inline constexpr auto tables = parse_tables<count_matching(&is_table)>();
   return {static_cast<std::uint8_t>(*field), static_cast<std::uint8_t>(*found)};
 }
 
-[[nodiscard]] consteval Reference reference_from_braces(
-    const std::string_view text, const Matched &matched, const std::size_t line) {
+[[nodiscard]] constexpr Reference reference_from_braces(
+    const std::span<const Field> fields, const std::string_view text, const Matched &matched, const std::size_t line) {
   if (!text.starts_with('{') || !text.ends_with('}'))
     throw table_error(line, "reference must be {x} or {vocabulary:slice}");
-  return parse_reference(text.substr(1, text.size() - 2), matched, line);
+  return parse_reference(fields, text.substr(1, text.size() - 2), matched, line);
 }
 
-[[nodiscard]] consteval Operand parse_operand(
-    const std::string_view word, const Matched &matched, const std::size_t line) {
+[[nodiscard]] constexpr Operand parse_operand(
+    const std::span<const Field> fields, const std::string_view word, const Matched &matched, const std::size_t line) {
   if (!word.starts_with('{'))
     return parse_simple_operand(word, line);
-  const auto reference = reference_from_braces(word, matched, line);
+  const auto reference = reference_from_braces(fields, word, matched, line);
   return {.kind = Operand::Kind::Field, .field_index = reference.field_index, .slice_index = reference.slice_index};
 }
 
-consteval void lower_mnemonic(Row &row) {
+constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
   const auto push = [&row](const Piece piece) { row.pieces.push_back(piece, row.line, "mnemonic is too complicated"); };
   const auto push_text = [&](Parser text) {
     while (!text.eof()) {
@@ -366,14 +370,14 @@ consteval void lower_mnemonic(Row &row) {
     push_text(Parser(parser.split_to('{').data()));
     if (!parser.data().contains('}'))
       throw table_error(row.line, "unterminated field reference in mnemonic");
-    const auto reference = parse_reference(parser.split_to('}').data(), row.matched, row.line);
+    const auto reference = parse_reference(fields, parser.split_to('}').data(), row.matched, row.line);
     push({.kind = Piece::Kind::Field, .field_index = reference.field_index, .slice_index = reference.slice_index});
   }
 }
 
 // The encoding says what is fetched. The mnemonic must render exactly that, and
 // the action must use it: otherwise one of the three columns is lying.
-consteval void check_immediates(const Row &row) {
+constexpr void check_immediates(const Row &row) {
   std::size_t rendered = 0;
   for (const auto &piece: row.pieces)
     rendered += piece.kind == Piece::Kind::Imm8 ? 1u : piece.kind == Piece::Kind::Imm16 ? 2u : 0u;
@@ -389,9 +393,10 @@ consteval void check_immediates(const Row &row) {
 }
 
 template<std::size_t N>
-[[nodiscard]] consteval std::array<Row, N> parse_rows() {
+[[nodiscard]] constexpr std::array<Row, N> parse_rows(const std::string_view description,
+    const std::span<const Field> fields, const std::span<const std::string_view> tables) {
   std::array<Row, N> result{};
-  Parser lines(cpu_description);
+  Parser lines(description);
   std::size_t index = 0;
   std::optional<std::uint8_t> current;
   while (!lines.eof()) {
@@ -399,7 +404,7 @@ template<std::size_t N>
     if (is_table(text)) {
       Parser declaration(text);
       static_cast<void>(declaration.next_word());
-      current = find_table(declaration.next_word(), at);
+      current = find_table(tables, declaration.next_word(), at);
       continue;
     }
     if (!is_row(text))
@@ -435,13 +440,13 @@ template<std::size_t N>
       step.verb = action.next_word();
       if (step.verb == "goto") {
         step.kind = Step::Kind::Goto;
-        step.target = find_table(action.next_word(), at);
+        step.target = find_table(tables, action.next_word(), at);
         if (!action.next_word().empty())
           throw table_error(at, "goto takes a single table name");
         continue;
       }
       if (step.verb.starts_with('{'))
-        step.verb_reference = reference_from_braces(step.verb, row.matched, at);
+        step.verb_reference = reference_from_braces(fields, step.verb, row.matched, at);
       // `verb dest <- args...`; the destination is optional
       auto writing_destination = action.data().contains("<-");
       while (!action.eof()) {
@@ -452,7 +457,7 @@ template<std::size_t N>
           writing_destination = false;
           continue;
         }
-        const auto operand = parse_operand(trim_comma(word), row.matched, at);
+        const auto operand = parse_operand(fields, trim_comma(word), row.matched, at);
         if (writing_destination) {
           step.destinations.push_back(operand, at, "too many destinations");
         }
@@ -465,7 +470,7 @@ template<std::size_t N>
     }
     if (row.steps.empty())
       throw table_error(at, "row has no action");
-    lower_mnemonic(row);
+    lower_mnemonic(fields, row);
     for (auto &step: row.steps)
       for (auto &operand: step.operands)
         if (operand.kind == Operand::Kind::Immediate)
@@ -475,12 +480,10 @@ template<std::size_t N>
   return result;
 }
 
-inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
-
 // A field operand names whichever vocabulary member its slice selects, and that
 // member is written the same way an operand is written in a row.
-[[nodiscard]] consteval Operand resolve(
-    const Operand operand, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
+[[nodiscard]] constexpr Operand resolve(const std::span<const Field> fields, const Operand operand,
+    const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
   if (operand.kind != Operand::Kind::Field)
     return operand;
   const auto &member = fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)];
@@ -491,7 +494,8 @@ inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
 
 // Every vocabulary member the row names must be live: a `-` member is a hole,
 // so the row does not cover that opcode even though the bits fit.
-[[nodiscard]] constexpr bool members_live(const Row &row, const std::uint8_t opcode) {
+[[nodiscard]] constexpr bool members_live(
+    const std::span<const Field> fields, const Row &row, const std::uint8_t opcode) {
   const auto live = [&](const Reference reference) {
     return !fields[reference.field_index].values[row.matched.slices[reference.slice_index].extract(opcode)].hole;
   };
@@ -522,6 +526,10 @@ struct OpcodeSet {
   [[nodiscard]] constexpr bool empty() const {
     return std::ranges::all_of(words, [](const std::uint64_t word) { return word == 0; });
   }
+  constexpr void add_all(const OpcodeSet &other) {
+    for (std::size_t at = 0; at < words.size(); ++at)
+      words[at] |= other.words[at];
+  }
   [[nodiscard]] constexpr bool overlaps(const OpcodeSet &other) const {
     for (std::size_t at = 0; at < words.size(); ++at)
       if ((words[at] & other.words[at]) != 0)
@@ -540,7 +548,7 @@ struct OpcodeSet {
 // A pattern *generates* its opcodes -- walk the cartesian product of its
 // variable fields and place each combination -- rather than being tested
 // against all 256. `BitSlice::place` exists for exactly this.
-[[nodiscard]] constexpr OpcodeSet opcodes_of(const Row &row) {
+[[nodiscard]] constexpr OpcodeSet opcodes_of(const std::span<const Field> fields, const Row &row) {
   OpcodeSet result;
   std::size_t combinations = 1;
   for (const auto &slice: row.matched.slices)
@@ -553,16 +561,52 @@ struct OpcodeSet {
       opcode = static_cast<std::uint8_t>(opcode | slice.place(static_cast<std::uint8_t>(remaining % values)));
       remaining /= values;
     }
-    if (members_live(row, opcode))
+    if (members_live(fields, row, opcode))
       result.add(opcode);
   }
   return result;
 }
 
+// Line order silently decides who wins, so say what the legal shapes are: a row
+// must win something, and where two rows overlap the earlier must be wholly
+// contained in the later. That is an override. A partial overlap is an accident.
+constexpr bool check_row_precedence(
+    const std::span<const Row> rows, const std::span<const Field> fields, const std::size_t num_tables) {
+  // What each row would cover on its own, and what it actually wins once the
+  // rows before it have taken their share.
+  std::vector<OpcodeSet> covers;
+  for (const auto &row: rows)
+    covers.push_back(opcodes_of(fields, row));
+  std::vector<OpcodeSet> claimed(num_tables);
+
+  for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
+    const auto &mine = covers[earlier];
+    if (mine.empty())
+      throw table_error(rows[earlier].line, "this row matches no opcode at all");
+    auto &already = claimed[rows[earlier].table];
+    if (mine.within(already))
+      throw table_error(rows[earlier].line, "an earlier row shadows this one completely");
+    already.add_all(mine);
+    for (std::size_t later = earlier + 1; later < rows.size(); ++later) {
+      if (rows[later].table != rows[earlier].table)
+        continue;
+      if (const auto &theirs = covers[later]; mine.overlaps(theirs) && !mine.within(theirs))
+        throw table_error(rows[earlier].line, "this row overlaps a later one without being contained by it");
+    }
+  }
+  return true;
+}
+
+// The description this build was compiled against. Everything above parses
+// whatever it is given; only these three name the embedded file.
+inline constexpr auto fields = parse_fields<count_matching(cpu_description, &is_field)>(cpu_description);
+inline constexpr auto tables = parse_tables<count_matching(cpu_description, &is_table)>(cpu_description);
+inline constexpr auto rows = parse_rows<count_matching(cpu_description, &is_row)>(cpu_description, fields, tables);
+
 inline constexpr auto row_opcodes = [] {
   std::array<OpcodeSet, rows.size()> all{};
   for (std::size_t index = 0; index < rows.size(); ++index)
-    all[index] = opcodes_of(rows[index]);
+    all[index] = opcodes_of(fields, rows[index]);
   return all;
 }();
 
@@ -596,31 +640,7 @@ inline constexpr std::size_t decoded_count = [] {
   return count;
 }();
 
-// Line order silently decides who wins, so say what the legal shapes are: a row
-// must win something, and where two rows overlap the earlier must be wholly
-// contained in the later. That is an override. A partial overlap is an accident.
-consteval bool check_row_precedence() {
-  for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
-    const auto &mine = row_opcodes[earlier];
-    if (mine.empty())
-      throw table_error(rows[earlier].line, "this row matches no opcode at all");
-    bool wins = false;
-    for (std::size_t opcode = 0; opcode < 256 && !wins; ++opcode)
-      wins = mine.contains(static_cast<std::uint8_t>(opcode)) && decoded[rows[earlier].table][opcode] == earlier;
-    if (!wins)
-      throw table_error(rows[earlier].line, "an earlier row shadows this one completely");
-    for (std::size_t later = earlier + 1; later < rows.size(); ++later) {
-      if (rows[later].table != rows[earlier].table)
-        continue;
-      const auto &theirs = row_opcodes[later];
-      if (mine.overlaps(theirs) && !mine.within(theirs))
-        throw table_error(rows[earlier].line, "this row overlaps a later one without being contained by it");
-    }
-  }
-  return true;
-}
-
-static_assert(check_row_precedence());
+static_assert(check_row_precedence(rows, fields, tables.size()));
 
 // Handlers are generated by instantiating one table from another, so a cycle
 // would not terminate. Prefix chains need one, which is what the loop model in

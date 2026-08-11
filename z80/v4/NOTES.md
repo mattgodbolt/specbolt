@@ -618,6 +618,25 @@ extrapolates to about **12 s / 390 MB**.
 
 ---
 
+### The parser reads whatever it is handed
+
+The parse functions used to read the `#embed`ed description directly, which meant the only way to
+see what a malformed table said was to damage the real one — done by hand four times before it was
+obvious that it was a smell rather than a technique.
+
+They now take the description, the vocabularies and the table names as parameters, and are
+`constexpr` rather than `consteval`, so they run at runtime too. The three names that reach for the
+embedded file are declared *below* every function that parses, so a parser cannot reach the
+production instance even by accident; `-Wshadow` enforces it, which is how the last two were found.
+
+`DiagnosticsTest.cpp` drives the whole pipeline with its own raw-string tables and asserts the exact
+message and line for every diagnostic a malformed table can produce. Writing it immediately found a
+dead one: `is_table` matched `"table "` with a space, so a bare `table` line was silently ignored
+rather than reporting that it has no name.
+
+The same change is what a second CPU needs, since nothing about the parser now says `z80.cpu` except
+the one line that embeds it.
+
 ## Follow-up work, in order
 
 1. ~~**Multi-slot rows.**~~ Done.

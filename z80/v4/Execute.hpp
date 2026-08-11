@@ -169,9 +169,9 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
   const auto member = member_for(step, matched, opcode);
   Call result{.line = line};
   for (const auto &operand: step.operands)
-    result.operands.push_back(resolve(operand, matched, opcode, line), line, "too many operands");
+    result.operands.push_back(resolve(fields, operand, matched, opcode, line), line, "too many operands");
   for (const auto &target: step.destinations) {
-    auto destination = resolve(target, matched, opcode, line);
+    auto destination = resolve(fields, target, matched, opcode, line);
     // The idle cycle belongs to a write-back, so only to something also read.
     const auto was_read = std::ranges::any_of(
         result.operands, [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });

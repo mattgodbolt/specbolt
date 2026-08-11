@@ -35,9 +35,9 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[1].name == 'r');
     STATIC_CHECK(fields[1].values[6].display == "(hl)");
     constexpr auto ld = rows[*find_row(entry_table, 0x46)]; // ld b, (hl)
-    STATIC_CHECK(resolve(ld.steps[0].operands[0], ld.matched, 0x46, ld.line).indirect);
-    STATIC_CHECK(!resolve(ld.steps[0].destinations[0], ld.matched, 0x46, ld.line).indirect);
-    STATIC_CHECK(resolve(ld.steps[0].destinations[0], ld.matched, 0x70, ld.line).indirect); // ld (hl), b
+    STATIC_CHECK(resolve(fields, ld.steps[0].operands[0], ld.matched, 0x46, ld.line).indirect);
+    STATIC_CHECK(!resolve(fields, ld.steps[0].destinations[0], ld.matched, 0x46, ld.line).indirect);
+    STATIC_CHECK(resolve(fields, ld.steps[0].destinations[0], ld.matched, 0x70, ld.line).indirect); // ld (hl), b
     STATIC_CHECK(find_row(entry_table, 0x86)); // add a, (hl)
     STATIC_CHECK(find_row(entry_table, 0x70)); // ld (hl), b
   }
