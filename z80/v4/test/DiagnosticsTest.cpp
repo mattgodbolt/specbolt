@@ -33,7 +33,6 @@ Parsed parse(const std::string_view description) {
   for (const auto &row: rows)
     check_immediates(row);
   check_row_precedence(rows, parsed.fields, parsed.tables.size());
-  check_no_goto_cycles(rows, parsed.tables.size());
   check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
   return parsed;
 }
@@ -130,13 +129,12 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\ntable dead\n00000000 | frob | nop\n"),
         Equals("z80.cpu:3: no goto reaches this table, so nothing in it is ever checked"));
   }
-  SECTION("Gotos may not form a cycle") {
-    CHECK_THROWS_WITH(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | back | goto t\n"),
-        Equals("z80.cpu:4: this goto completes a cycle between tables, which cannot be unrolled"));
-    // The cycle need not be direct: this one is t -> u -> v -> t.
-    CHECK_THROWS_WITH(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | (v) | goto v\n"
-                            "table v\n00000000 | back | goto t\n"),
-        Equals("z80.cpu:6: this goto completes a cycle between tables, which cannot be unrolled"));
+  SECTION("Gotos may form a cycle") {
+    // Decoding is a loop, and every turn of it fetches a byte, so a table that
+    // reaches itself makes progress rather than recursing. `dd dd dd ...` needs
+    // exactly this.
+    CHECK_NOTHROW(parse("table t\n11011101 | (t) | goto t\n00000000 | nop | nop\n"));
+    CHECK_NOTHROW(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | back | goto t\n"));
   }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("field r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));

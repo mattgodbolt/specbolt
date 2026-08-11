@@ -610,36 +610,7 @@ constexpr bool check_row_precedence(
   return true;
 }
 
-// A table reachable from itself would recurse for ever at runtime -- each goto
-// is a real opcode fetch, so nothing shrinks. Prefix chains need one, which is
-// what the loop model in NOTES is for.
-constexpr bool check_no_goto_cycles(const std::span<const Row> rows, const std::size_t num_tables) {
-  for (std::size_t start = 0; start < num_tables; ++start) {
-    std::vector<bool> seen(num_tables);
-    std::vector<std::size_t> pending{start};
-    while (!pending.empty()) {
-      const auto from = pending.back();
-      pending.pop_back();
-      for (const auto &row: rows) {
-        if (row.table != from)
-          continue;
-        for (const auto &step: row.steps) {
-          if (step.kind != Step::Kind::Goto)
-            continue;
-          if (step.target == start)
-            throw table_error(row.line, "this goto completes a cycle between tables, which cannot be unrolled");
-          if (!seen[step.target]) {
-            seen[step.target] = true;
-            pending.push_back(step.target);
-          }
-        }
-      }
-    }
-  }
-  return true;
-}
-
-// 8: a table nothing reaches is never instantiated, so nothing in it is ever
+// A table nothing reaches is never instantiated, so nothing in it is ever
 // type-checked. An empty one is a typo.
 constexpr bool check_tables_used(
     const std::span<const Row> rows, const std::span<const TableDecl> tables, const std::uint8_t entry) {
@@ -702,9 +673,6 @@ inline constexpr std::size_t decoded_count = [] {
 }();
 
 static_assert(check_row_precedence(rows, fields, tables.size()));
-
-static_assert(check_no_goto_cycles(rows, tables.size()));
 static_assert(check_tables_used(rows, tables, entry_table));
-
 
 } // namespace specbolt::v4

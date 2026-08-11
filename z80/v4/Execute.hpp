@@ -10,6 +10,7 @@
 #include <format>
 #include <limits>
 #include <meta>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <string>
@@ -195,15 +196,15 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
   return result;
 }
 
-using Handler = void (*)(Cpu &);
-
-// A goto fetches another byte and decodes it in the named table. Declared here
-// because the tables instantiate each other.
-template<std::uint8_t Table>
-void enter(Cpu &cpu);
+// What a row says to do once it has run: nothing, or fetch another byte and
+// decode it in the table named. A prefix *returns* where to go rather than
+// going there, because `dd dd dd ...` is a legal and unbounded Z80 instruction:
+// it must cost 4T a byte, not a stack frame a byte.
+using Next = std::optional<std::uint8_t>;
+using Handler = Next (*)(Cpu &);
 
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
-void execute_one(Cpu &cpu) {
+Next execute_one(Cpu &cpu) {
   constexpr auto row = rows[Index];
   // The encoding column says what is fetched, and it is fetched once before any
   // step: argument order within a call is unspecified, and a later step may
@@ -212,13 +213,14 @@ void execute_one(Cpu &cpu) {
   template for (constexpr auto at: std::views::iota(0uz, row.steps.size())) {
     constexpr auto step = row.steps[at];
     if constexpr (step.kind == Step::Kind::Goto)
-      enter<step.target>(cpu);
+      return step.target;
     else {
       constexpr auto member = member_for(step, row.matched, Opcode);
       constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
       apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line)>(cpu, immediate);
     }
   }
+  return std::nullopt;
 }
 
 template<std::uint8_t Table, std::uint8_t Opcode>
@@ -238,14 +240,33 @@ inline constexpr auto dispatch = [] {
   return handlers;
 }();
 
-template<std::uint8_t Table>
-void enter(Cpu &cpu) {
-  const auto opcode = fetch_opcode(cpu);
-  const auto handler = dispatch<Table>[opcode];
-  if (!handler)
-    throw std::runtime_error(
-        std::format("no row in " SPECBOLT_CPU_TABLE " table '{}' decodes opcode 0x{:02x}", tables[Table].name, opcode));
-  handler(cpu);
+// The loop's table is not a constant after the first byte, so every table's
+// dispatch has to be reachable by index. A pack rather than a `template for`:
+// gcc 16.2 still reports an expansion variable in a non-dependent context as
+// shadowing itself (PR c++/124197).
+template<std::size_t... Table>
+[[nodiscard]] consteval auto all_dispatches(std::index_sequence<Table...>) {
+  return std::array{dispatch<static_cast<std::uint8_t>(Table)>...};
+}
+
+inline constexpr auto dispatches = all_dispatches(std::make_index_sequence<tables.size()>{});
+
+// Fetch, decode, run; and go round again while what ran was a prefix. Each turn
+// of the loop is a real opcode fetch, so the loop always advances time and
+// always advances PC -- which is why a table may now reach itself.
+inline void execute_instruction(Cpu &cpu) {
+  auto table = entry_table;
+  while (true) {
+    const auto opcode = fetch_opcode(cpu);
+    const auto handler = dispatches[table][opcode];
+    if (!handler)
+      throw std::runtime_error(std::format(
+          "no row in " SPECBOLT_CPU_TABLE " table '{}' decodes opcode 0x{:02x}", tables[table].name, opcode));
+    const auto next = handler(cpu);
+    if (!next)
+      return;
+    table = *next;
+  }
 }
 
 } // namespace specbolt::v4

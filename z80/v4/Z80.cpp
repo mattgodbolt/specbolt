@@ -11,7 +11,7 @@ void Z80::execute_one() {
     pass_time(1);
     return;
   }
-  enter<entry_table>(*this);
+  execute_instruction(*this);
 }
 
 namespace {

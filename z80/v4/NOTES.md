@@ -501,16 +501,28 @@ documentation.
 What exists is a table switch, which is what CB and ED need and is the easy case. DD/FD are *views*,
 and the groundwork is this, roughly in the order it has to happen:
 
-1. **The execution model, before any syntax.** `goto base with view=ix` re-enters the table it came
-   from, and `check_no_goto_cycles` rejects that today — deliberately. The reason is *not* that
-   template instantiation would fail to terminate: `enter<Table>` is forward-declared and mutual
-   instantiation is fine. It is that each goto is a real opcode fetch, so a cycle is unbounded
-   **runtime** recursion, and `DD DD DD…` is legal Z80. That is the loop-not-recursion argument
-   below arriving as a compile error, and it has to be answered first.
-2. **`goto` learns `with view=`.** It takes a bare table name today.
-3. **References before views.** A view rewrites `{field}` references and must not touch literal
-   text. `Operand` currently spells a reference as two loose indices, and `Piece` spells the same
-   pair again — worth collapsing into `Reference` *before* writing the thing that rewrites them.
+1. ~~**The execution model, before any syntax.**~~ **Done.** `goto base with view=ix` re-enters the
+   table it came from, and the old `check_no_goto_cycles` rejected that. The reason was never that
+   template instantiation would fail to terminate — `enter<Table>` was forward-declared and mutual
+   instantiation is fine — but that each goto was a real opcode fetch made by a *nested call*, so a
+   cycle was unbounded C++ recursion, and `DD DD DD…` is legal Z80.
+
+   A handler now **returns** `Next` — the table to decode the next byte in, or nothing — and
+   `execute_instruction` loops on it. Every turn of that loop fetches a byte, so it always advances
+   both PC and the clock: a cycle is progress, not recursion, and the check is gone along with its
+   diagnostic. The handlers no longer instantiate each other at all, which is why the forward
+   declaration went too.
+
+   It costs one branch per instruction and nothing per prefix byte: `cb` compiles to
+   `mov $0x101,%eax; ret`, and the two-dimensional dispatch folds into a single scaled load indexed
+   by `table << 8 | opcode`.
+2. **`goto` learns `with view=`.** It takes a bare table name today. Note that `Next` is a table
+   index; with views it becomes an index over (table, view) pairs, and nothing else in the loop
+   changes.
+3. ~~**References before views.**~~ **Done.** `Operand` and `Piece` each spelled a reference as two
+   loose indices, and four places spelled out the lookup that follows one. Both now hold a
+   `Reference`, and `member_of` is the only place one is followed — which is the place a view will
+   have to intercept.
 4. **Per-token fetching, and the latch it needs.** `DD CB d op` puts the displacement before the
    opcode, and `ld (ix+d), n` reads two immediates at different points. The executor fetches one
    immediate up front. This is also what makes the encoding column carry more than one pattern token.
@@ -519,6 +531,10 @@ and the groundwork is this, roughly in the order it has to happen:
 
 Nothing in 1–4 is a syntax question. The table language for prefixes is already written down below;
 what is missing is the machinery underneath it.
+
+Still untested for real: that a long prefix chain does not grow the stack. `DiagnosticsTest` asserts
+only that a self-goto *parses*, because no row uses one yet. The test to write alongside DD is
+`dd dd dd … 00`: constant stack, 4T a byte, `r` incremented once a byte.
 
 ### What DD actually does, measured
 
@@ -624,6 +640,11 @@ That matters because **none of v1/v2/v3 model interrupt acceptance around prefix
 sample `irq_pending_` once at the top and swallow the whole chain. With recursion it is not even
 expressible.
 
+v4 does this now: `execute_instruction` is the loop and `Next` is the state. The interrupt half is
+still not done, but it has somewhere to go — the top of the loop is exactly the point the Z80 will
+not accept an interrupt at, because a prefix and its opcode are one instruction. Knowing that
+requires the state to be a value, which it now is.
+
 ### Costs, measured
 
 7 states × 256 = 1792 instantiations, of which **338 are byte-identical duplicates** (169 per index
@@ -675,9 +696,9 @@ are deferred rather than forgotten.
   description; `Execute.hpp` includes `Z80Cpu.hpp` by name for the same reason. Both should be
   `target_compile_definitions`, which is also what would let one binary hold two CPUs. Until then,
   "retargeting means writing one `Z80Cpu.hpp`" needs an asterisk.
-- **`Operand` carries jobs that already have types.** `field_index` + `slice_index` *are* a
-  `Reference`, spelled a third time in `Piece`. `write_back_delay` exists on both `Member` and
-  `Operand`, copied down by `resolve` with nothing saying so.
+- **`Operand` carries jobs that already have types.** The `Reference` half is done. What remains:
+  `write_back_delay` exists on both `Member` and `Operand`, copied down by `resolve` with nothing
+  saying so.
 - **The write-back-delay rule compares only the name**, not that both ends are indirect, and two
   nameless indirect operands compare equal. Nothing exercises it today; the rule meant is "the
   destination is the same addressing mode as one of the operands".
@@ -698,8 +719,9 @@ are deferred rather than forgotten.
 2. ~~**Compile-time overlap and coverage checking.**~~ Done — see §5.
 3. **Encoding as a byte sequence.** Immediates and length derived: done. Multiple pattern tokens
    per row, which is what expresses the DDCB fetch order: folded into 4, because it is the same work.
-4. **Prefixes.** Table switch and override rows: done, CB works. Still to do, and the hard half:
-   DD/FD as *views*, DDCB, and the goto cycle that views require — see the Prefixes section.
+4. **Prefixes.** Table switch and override rows: done, CB works; the goto cycle a view needs is now
+   legal, decoding being a loop. Still to do, and the hard half: DD/FD as *views* and DDCB — see the
+   Prefixes section.
 5. ~~**Timing**~~ Done, though not as this list expected: cost belongs to the addressing mode, with
    an explicit `delay` step only for idle cycles belonging to the operation. `t=` assertions still
    want static per-step costs, which do not exist: cost is resolved inside `Z80::bus`.
