@@ -4,8 +4,10 @@
 #include "z80/v4/Matched.hpp"
 #include "z80/v4/Parser.hpp"
 
+#include <algorithm>
 #include <array>
 #include <optional>
+#include <ranges>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -22,12 +24,42 @@ inline constexpr char cpu_raw[] = {
 
 inline constexpr std::string_view cpu_description{cpu_raw};
 
-enum class CarrySource : std::uint8_t { Zero, FromFlags };
+// Structural, so it can be a template argument. v2 has its own for the same
+// reason; this one is v4's.
+struct Name {
+  std::array<char, 15> storage{};
+  std::size_t length{};
+  constexpr Name() = default;
+  template<std::size_t N>
+  constexpr Name(const char (&text)[N]) { // NOLINT(*-explicit-constructor)
+    std::ranges::copy_n(text, N - 1, storage.begin());
+    length = N - 1;
+  }
+  constexpr Name(const std::string_view text) { // NOLINT(*-explicit-constructor)
+    std::ranges::copy(text, storage.begin());
+    length = text.size();
+  }
+  [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), length}; }
+  [[nodiscard]] constexpr bool empty() const { return length == 0; }
+  constexpr bool operator==(const Name &) const = default;
+};
+
+// An operand is a constant, a name the CPU can resolve, or a field reference.
+// `a`, `hl`, `carry` and `f` are all just names.
+struct Operand {
+  enum class Kind : std::uint8_t { Constant, Named, Immediate, Field };
+  Kind kind{};
+  Name name{};
+  std::uint16_t constant{};
+  std::uint8_t field_index{};
+  std::uint8_t slice_index{};
+  constexpr bool operator==(const Operand &) const = default;
+};
 
 struct Member {
   std::string_view display{};
   std::string_view primitive{};
-  CarrySource carry{};
+  std::optional<Operand> appended{};
   bool hole{};
 };
 
@@ -51,13 +83,6 @@ struct Piece {
   std::uint8_t slice_index{};
 };
 
-struct Operand {
-  enum class Kind : std::uint8_t { Accumulator, Immediate, Field };
-  Kind kind{};
-  std::uint8_t field_index{};
-  std::uint8_t slice_index{};
-};
-
 struct Row {
   static constexpr std::size_t max_pieces = 12;
   static constexpr std::size_t max_operands = 4;
@@ -68,7 +93,8 @@ struct Row {
   std::size_t length{1};
   std::string_view verb{};
   std::optional<Reference> verb_reference{};
-  std::optional<Operand> destination{};
+  std::array<Operand, max_operands> destinations{};
+  std::size_t num_destinations{};
   std::array<Operand, max_operands> operands{};
   std::size_t num_operands{};
   std::size_t line{};
@@ -97,6 +123,12 @@ struct Row {
   return text;
 }
 
+[[nodiscard]] constexpr std::string_view trim_comma(std::string_view text) {
+  if (text.ends_with(','))
+    text.remove_suffix(1);
+  return text;
+}
+
 [[nodiscard]] constexpr std::string_view next_word(Parser &parser) {
   parser.skip_any(" \t");
   return trim(parser.split_to(' ').data());
@@ -116,20 +148,38 @@ struct Row {
   return count;
 }
 
-// `bc` is display only; `adc:add8+c` binds to a primitive and says the carry comes from the flags.
+[[nodiscard]] consteval Operand parse_simple_operand(const std::string_view word, const std::size_t line) {
+  if (word == "n" || word == "nn")
+    return {Operand::Kind::Immediate, {}, 0, 0, 0};
+  if (word.front() >= '0' && word.front() <= '9') {
+    std::uint16_t value = 0;
+    for (const auto digit: word) {
+      if (digit < '0' || digit > '9')
+        throw table_error(line, "malformed constant '" + std::string(word) + "'");
+      value = static_cast<std::uint16_t>(value * 10 + (digit - '0'));
+    }
+    return {Operand::Kind::Constant, {}, value, 0, 0};
+  }
+  if (word.size() >= Name{}.storage.size())
+    throw table_error(line, "operand name '" + std::string(word) + "' is too long");
+  return {Operand::Kind::Named, Name{word}, 0, 0, 0};
+}
+
+// `bc` is display only; `adc:add8+carry` binds to a primitive and appends an
+// operand the encoding does not carry.
 [[nodiscard]] consteval Member parse_member(const std::string_view text, const std::size_t line) {
   Parser parser(text);
-  Member member{parser.split_to(':').data(), parser.data(), CarrySource::Zero, false};
+  Member member{parser.split_to(':').data(), parser.data(), std::nullopt, false};
   if (member.display.empty())
     throw table_error(line, "field member has no name");
   if (member.display == "-") {
     member.hole = true;
     return member;
   }
-  if (member.primitive.ends_with("+c")) {
-    member.primitive.remove_suffix(2);
-    member.carry = CarrySource::FromFlags;
-  }
+  Parser primitive(member.primitive);
+  member.primitive = primitive.split_to('+').data();
+  if (const auto appended = primitive.data(); !appended.empty())
+    member.appended = parse_simple_operand(appended, line);
   return member;
 }
 
@@ -213,14 +263,10 @@ inline constexpr auto fields = parse_fields<count_matching(&is_field)>();
 
 [[nodiscard]] consteval Operand parse_operand(
     const std::string_view word, const Matched &matched, const std::size_t line) {
-  if (word == "a")
-    return {Operand::Kind::Accumulator, 0, 0};
-  if (word == "n" || word == "nn")
-    return {Operand::Kind::Immediate, 0, 0};
   if (!word.starts_with('{'))
-    throw table_error(line, "unknown operand '" + std::string(word) + "' in action");
+    return parse_simple_operand(word, line);
   const auto reference = reference_from_braces(word, matched, line);
-  return {Operand::Kind::Field, reference.field_index, reference.slice_index};
+  return {Operand::Kind::Field, {}, 0, reference.field_index, reference.slice_index};
 }
 
 consteval void lower_mnemonic(Row &row) {
@@ -298,11 +344,11 @@ template<std::size_t N>
         writing_destination = false;
         continue;
       }
-      const auto operand = parse_operand(word, row.matched, at);
+      const auto operand = parse_operand(word == "," ? word : trim_comma(word), row.matched, at);
       if (writing_destination) {
-        if (row.destination)
-          throw table_error(at, "an action may only have one destination");
-        row.destination = operand;
+        if (row.num_destinations == Row::max_operands)
+          throw table_error(at, "too many destinations");
+        row.destinations[row.num_destinations++] = operand;
       }
       else {
         if (row.num_operands == Row::max_operands)
@@ -332,9 +378,10 @@ inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
     if (row.operands[at].kind == Operand::Kind::Field &&
         !live({row.operands[at].field_index, row.operands[at].slice_index}))
       return false;
-  if (row.destination && row.destination->kind == Operand::Kind::Field &&
-      !live({row.destination->field_index, row.destination->slice_index}))
-    return false;
+  for (std::size_t at = 0; at < row.num_destinations; ++at)
+    if (row.destinations[at].kind == Operand::Kind::Field &&
+        !live({row.destinations[at].field_index, row.destinations[at].slice_index}))
+      return false;
   if (row.verb_reference && !live(*row.verb_reference))
     return false;
   return true;

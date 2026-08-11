@@ -6,9 +6,7 @@
 
 #include <algorithm>
 #include <array>
-#include <concepts>
 #include <meta>
-#include <optional>
 #include <ranges>
 #include <string>
 #include <type_traits>
@@ -30,8 +28,6 @@ namespace specbolt::v4 {
   throw table_error(line, "no location named '" + std::string(name) + "' in this CPU");
 }
 
-// The scopes this CPU's table may name operations from. Per-CPU configuration,
-// not framework knowledge: a 6502 would list its own.
 [[nodiscard]] consteval std::meta::info find_primitive(const std::string_view name, const std::size_t line) {
   for (const auto scope: primitive_scopes())
     for (const auto member: std::meta::members_of(scope, std::meta::access_context::current()))
@@ -41,123 +37,113 @@ namespace specbolt::v4 {
   throw table_error(line, "no operation '" + std::string(name) + "' in this CPU's primitives");
 }
 
-[[nodiscard]] consteval std::size_t operand_index_of(const std::meta::info fn, const std::size_t upto) {
-  std::size_t count = 0;
-  const auto parameters = std::meta::parameters_of(fn);
-  for (std::size_t index = 0; index < upto; ++index)
-    if (!is_supplied_by_framework(parameters[index]))
-      ++count;
-  return count;
+template<typename T>
+[[nodiscard]] constexpr T from_word(std::type_identity<T>, const std::uint16_t value) {
+  return static_cast<T>(value);
 }
-
-template<std::meta::info Fn>
-inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
-template<typename T, std::size_t OperandIndex, CarrySource Carry>
-[[nodiscard]] constexpr T argument_for(
-    Cpu &cpu, const CpuFlags flags, const std::array<std::uint16_t, Row::max_operands> &operands) {
-  if constexpr (std::same_as<T, Cpu &>)
-    return cpu;
-  else if constexpr (std::same_as<T, CpuFlags>)
-    return flags;
-  else if constexpr (std::same_as<T, bool>)
-    return Carry == CarrySource::FromFlags && flags.carry();
-  else
-    return static_cast<T>(operands[OperandIndex]);
+// A field operand names whichever vocabulary member its slice selects. After
+// that every operand is a constant, an immediate, or a name.
+template<Operand Op, std::uint8_t FieldValue>
+[[nodiscard]] consteval Operand resolve(const std::size_t line) {
+  if constexpr (Op.kind != Operand::Kind::Field)
+    return Op;
+  else {
+    const auto display = fields[Op.field_index].values[FieldValue].display;
+    if (display.size() >= Name{}.storage.size())
+      throw table_error(line, "vocabulary member name is too long to be an operand");
+    return {Operand::Kind::Named, Name{display}, 0, 0, 0};
+  }
 }
 
 template<Operand Op, std::uint8_t FieldValue, std::size_t Line>
-[[nodiscard]] std::uint16_t operand_value(const Cpu &cpu, const std::uint16_t immediate) {
-  if constexpr (Op.kind == Operand::Kind::Accumulator)
-    return read(cpu, accumulator);
-  else if constexpr (Op.kind == Operand::Kind::Immediate)
+[[nodiscard]] std::uint16_t value_of(const Cpu &cpu, const std::uint16_t immediate) {
+  constexpr auto operand = resolve<Op, FieldValue>(Line);
+  if constexpr (operand.kind == Operand::Kind::Constant)
+    return operand.constant;
+  else if constexpr (operand.kind == Operand::Kind::Immediate)
     return immediate;
   else
-    return read(cpu, [:find_location(fields[Op.field_index].values[FieldValue].display, Line):]);
+    return read(cpu, [:find_location(operand.name.view(), Line):]);
 }
 
-template<Operand Op, std::uint8_t FieldValue, std::size_t Line>
-void store(Cpu &cpu, const std::uint16_t value) {
-  if constexpr (Op.kind == Operand::Kind::Accumulator)
-    write(cpu, accumulator, value);
-  else if constexpr (Op.kind == Operand::Kind::Field)
-    write(cpu, [:find_location(fields[Op.field_index].values[FieldValue].display, Line):], value);
-  else
-    static_assert(false, "an immediate cannot be a destination");
+template<Operand Op, std::uint8_t FieldValue, std::size_t Line, typename T>
+void store(Cpu &cpu, const T value) {
+  constexpr auto operand = resolve<Op, FieldValue>(Line);
+  static_assert(operand.kind == Operand::Kind::Named, "only a named location can be a destination");
+  write(cpu, [:find_location(operand.name.view(), Line):], value);
 }
 
-template<typename T>
-concept ValueAndFlags = requires(T result) {
-  result.result;
-  { result.flags } -> std::convertible_to<CpuFlags>;
-};
-
-template<typename Write, std::meta::info Fn, CarrySource Carry, bool HasDestination>
-void apply(Cpu &cpu, const std::array<std::uint16_t, Row::max_operands> &operands, Write write) {
-  const auto flags = flags_of(cpu);
+// Arguments are supplied positionally; destinations destructure the result in
+// declaration order. Nothing here has an opinion on what an operand means.
+template<std::meta::info Fn, std::size_t Arity, std::array Operands, std::array OperandFields, std::size_t Destinations,
+    std::array Targets, std::array TargetFields, std::size_t Line>
+void apply(Cpu &cpu, const std::uint16_t immediate) {
+  constexpr auto arguments = std::make_index_sequence<Arity>{};
   const auto call = [&]<std::size_t... I>(std::index_sequence<I...>) {
-    return [:Fn:](argument_for<parameter_type<Fn, I>, operand_index_of(Fn, I), Carry>(cpu, flags, operands)...);
+    return [:Fn:](from_word(
+        std::type_identity<parameter_type<Fn, I>>{}, value_of<Operands[I], OperandFields[I], Line>(cpu, immediate))...);
   };
-  constexpr auto parameters = std::make_index_sequence<arity_of<Fn>>{};
-  using Result = decltype(call(parameters));
+
+  using Result = decltype(call(arguments));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow"
   if constexpr (std::is_void_v<Result>) {
-    call(parameters);
+    static_assert(Destinations == 0, "this operation returns nothing, so the row may not name a destination");
+    call(arguments);
   }
-  else if constexpr (std::same_as<Result, CpuFlags>) {
-    set_flags(cpu, call(parameters));
+  else if constexpr (std::is_class_v<Result>) {
+    static constexpr auto members =
+        std::define_static_array(std::meta::nonstatic_data_members_of(^^Result, std::meta::access_context::current()));
+    static_assert(Destinations == members.size(), "the row's destinations do not match what this operation returns");
+    const auto result = call(arguments);
+    template for (constexpr auto at: std::views::iota(0uz, Destinations))
+        store<Targets[at], TargetFields[at], Line>(cpu, result.[:members[at]:]);
   }
   else {
-    static_assert(HasDestination, "this action returns a value but the row declares no destination");
-    const auto result = call(parameters);
-    if constexpr (ValueAndFlags<Result>) {
-      write(static_cast<std::uint16_t>(result.result));
-      set_flags(cpu, result.flags);
-    }
-    else {
-      write(static_cast<std::uint16_t>(result));
-    }
+    static_assert(Destinations == 1, "this operation returns one value, so the row needs exactly one destination");
+    store<Targets[0], TargetFields[0], Line>(cpu, call(arguments));
   }
+#pragma GCC diagnostic pop
+}
+
+// Which vocabulary member each field operand selects, for this opcode.
+template<std::uint8_t Opcode>
+[[nodiscard]] consteval std::array<std::uint8_t, Row::max_operands> selected(
+    const Matched &matched, const std::array<Operand, Row::max_operands> &operands) {
+  std::array<std::uint8_t, Row::max_operands> result{};
+  for (std::size_t at = 0; at < operands.size(); ++at)
+    if (operands[at].kind == Operand::Kind::Field)
+      result[at] = matched.slices[operands[at].slice_index].extract(Opcode);
+  return result;
 }
 
 template<std::uint8_t Opcode>
 void execute_one(Cpu &cpu, const std::uint16_t immediate) {
-  constexpr auto index = find_row(Opcode);
-  if constexpr (index.has_value()) {
-    constexpr auto row = rows[*index];
-    std::array<std::uint16_t, Row::max_operands> operands{};
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow"
-    template for (constexpr auto at: std::views::iota(0uz, row.num_operands)) {
-      constexpr auto operand = row.operands[at];
-      constexpr auto value = operand.kind == Operand::Kind::Field
-                                 ? row.matched.slices[operand.slice_index].extract(Opcode)
-                                 : std::uint8_t{0};
-      operands[at] = operand_value<operand, value, row.line>(cpu, immediate);
-    }
-#pragma GCC diagnostic pop
-    const auto write = [&](const std::uint16_t value) {
-      if constexpr (row.destination) {
-        constexpr auto destination = *row.destination;
-        constexpr auto field_value = destination.kind == Operand::Kind::Field
-                                         ? row.matched.slices[destination.slice_index].extract(Opcode)
-                                         : std::uint8_t{0};
-        store<destination, field_value, row.line>(cpu, value);
-      }
-    };
-    if constexpr (row.verb_reference) {
-      constexpr auto reference = *row.verb_reference;
-      constexpr auto member =
-          fields[reference.field_index].values[row.matched.slices[reference.slice_index].extract(Opcode)];
-      apply<decltype(write), find_primitive(member.primitive, row.line), member.carry, row.destination.has_value()>(
-          cpu, operands, write);
-    }
-    else {
-      apply<decltype(write), find_primitive(row.verb, row.line), CarrySource::Zero, row.destination.has_value()>(
-          cpu, operands, write);
-    }
+  constexpr auto found = find_row(Opcode);
+  if constexpr (found.has_value()) {
+    constexpr auto row = rows[*found];
+    constexpr auto member = row.verb_reference
+                                ? fields[row.verb_reference->field_index]
+                                      .values[row.matched.slices[row.verb_reference->slice_index].extract(Opcode)]
+                                : Member{};
+    constexpr auto primitive = row.verb_reference ? member.primitive : row.verb;
+
+    // a late-bound operation may append an operand the encoding does not carry
+    constexpr auto arity = row.num_operands + (member.appended ? 1u : 0u);
+    constexpr auto operands = [&row = row, &member = member] {
+      auto result = row.operands;
+      if (member.appended)
+        result[row.num_operands] = *member.appended;
+      return result;
+    }();
+
+    apply<find_primitive(primitive, row.line), arity, operands, selected<Opcode>(row.matched, operands),
+        row.num_destinations, row.destinations, selected<Opcode>(row.matched, row.destinations), row.line>(
+        cpu, immediate);
   }
 }
 
@@ -165,7 +151,6 @@ using Handler = void (*)(Cpu &, std::uint16_t);
 
 inline constexpr auto dispatch = [] {
   std::array<Handler, 256> table{};
-  // gcc reports each expansion as shadowing the previous one: PR c++/124197
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow"
   template for (constexpr auto opcode: std::views::iota(0uz, 256uz)) table[opcode] =

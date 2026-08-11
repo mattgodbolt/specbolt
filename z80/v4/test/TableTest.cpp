@@ -37,10 +37,10 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(alu.name == 'q');
     STATIC_CHECK(alu.values[0].display == "add");
     STATIC_CHECK(alu.values[0].primitive == "add8");
-    STATIC_CHECK(alu.values[0].carry == CarrySource::Zero);
+    STATIC_CHECK(alu.values[0].appended->kind == Operand::Kind::Constant);
     STATIC_CHECK(alu.values[1].display == "adc");
     STATIC_CHECK(alu.values[1].primitive == "add8");
-    STATIC_CHECK(alu.values[1].carry == CarrySource::FromFlags);
+    STATIC_CHECK(alu.values[1].appended->name == Name{"carry"});
     STATIC_CHECK(fields[3].values[3].display == "cp");
     STATIC_CHECK(fields[3].values[3].primitive == "cmp8");
     STATIC_CHECK(fields[0].values[0].primitive.empty());
