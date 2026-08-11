@@ -16,7 +16,7 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 18);
+    STATIC_CHECK(rows.size() == 23);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
@@ -26,13 +26,19 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(rows[2].line == 12);
   }
   SECTION("A hole means the row does not cover that opcode") {
+    STATIC_CHECK(fields[3].name == 'w');
+    STATIC_CHECK(fields[3].values[3].hole); // cp has its own rows
+    STATIC_CHECK(!fields[3].values[2].hole);
+  }
+  SECTION("Parentheses make an operand an address") {
     STATIC_CHECK(fields[1].name == 'r');
-    STATIC_CHECK(fields[1].values[6].hole);
-    STATIC_CHECK(!fields[1].values[7].hole);
-    STATIC_CHECK(find_row(0x40)); // ld b, b
-    STATIC_CHECK(!find_row(0x46)); // ld b, (hl) needs memory
-    STATIC_CHECK(!find_row(0x86)); // add a, (hl) likewise
-    STATIC_CHECK(find_row(0x80)); // add a, b
+    STATIC_CHECK(fields[1].values[6].display == "(hl)");
+    constexpr auto ld = rows[*find_row(0x46)]; // ld b, (hl)
+    STATIC_CHECK(resolve(ld.operands[0], ld.matched, 0x46, ld.line).indirect);
+    STATIC_CHECK(!resolve(ld.destinations[0], ld.matched, 0x46, ld.line).indirect);
+    STATIC_CHECK(resolve(ld.destinations[0], ld.matched, 0x70, ld.line).indirect); // ld (hl), b
+    STATIC_CHECK(find_row(0x86)); // add a, (hl)
+    STATIC_CHECK(find_row(0x70)); // ld (hl), b
   }
   SECTION("Members bind to primitives and a carry policy") {
     constexpr auto alu = fields[2];
@@ -187,6 +193,29 @@ TEST_CASE("Generated execution") {
     CHECK(cpu.get(RegisterFile::R8::A) == 0x15);
   }
   SECTION("Undecoded opcodes are rejected, not ignored") { CHECK_THROWS(run(0x08)); }
+  SECTION("Operands can be addresses") {
+    cpu.set(RegisterFile::R16::HL, 0x9000);
+    cpu.set(RegisterFile::R8::B, 0x5a);
+    run(0x70); // ld (hl), b
+    CHECK(memory.read(0x9000) == 0x5a);
+    run(0x4e); // ld c, (hl)
+    CHECK(cpu.get(RegisterFile::R8::C) == 0x5a);
+    cpu.set(RegisterFile::R8::A, 0x01);
+    run(0x86); // add a, (hl)
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x5b);
+    run(0x36, 0x99); // ld (hl), n
+    CHECK(memory.read(0x9000) == 0x99);
+  }
+  SECTION("The address can come from any register pair") {
+    cpu.set(RegisterFile::R16::DE, 0x9010);
+    cpu.set(RegisterFile::R8::A, 0x3c);
+    run(0x12); // ld (de), a
+    CHECK(memory.read(0x9010) == 0x3c);
+    cpu.set(RegisterFile::R16::BC, 0x9010);
+    cpu.set(RegisterFile::R8::A, 0);
+    run(0x0a); // ld a, (bc)
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x3c);
+  }
   SECTION("Timing falls out of the fetch cycle") {
     const auto cycles = [&](const auto... bytes) {
       const auto before = cpu.cycle_count();
@@ -197,9 +226,13 @@ TEST_CASE("Generated execution") {
     CHECK(cycles(0x01, 0x00, 0x00) == 10); // ld bc, nn
     CHECK(cycles(0x80) == 4); // add a, b
     CHECK(cycles(0xc6, 0x01) == 7); // add a, n
-    // TODO: the two internal cycles that extend 16-bit inc/dec belong to the
-    // micro-op sequence the table does not describe yet.
+    CHECK(cycles(0x4e) == 7); // ld c, (hl)
+    CHECK(cycles(0x70) == 7); // ld (hl), b
+    CHECK(cycles(0x36, 0x00) == 10); // ld (hl), n
+    // TODO: the internal cycles that extend 16-bit inc/dec and read-modify-write
+    // belong to the micro-op sequence the table does not describe yet.
     // CHECK(cycles(0x03) == 6); // inc bc
+    // CHECK(cycles(0x34) == 11); // inc (hl)
   }
 }
 

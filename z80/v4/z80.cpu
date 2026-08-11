@@ -3,13 +3,18 @@
 #   ppq
 
 field p = bc de hl sp
-field r = b c d e h l - a
+field r = b c d e h l (hl) a
 field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
 field w = and:and8 xor:xor8 or:or8 -
 
 00000000 | nop             | nop
 01110110 | halt            | ld8 halted <- 1
 00pp0001 | ld {p}, $nnnn   | ld16 {p} <- nn
+00yyy110 | ld {r:y}, $nn   | ld8 {r:y} <- n
+00000010 | ld (bc), a      | ld8 (bc) <- a
+00010010 | ld (de), a      | ld8 (de) <- a
+00001010 | ld a, (bc)      | ld8 a <- (bc)
+00011010 | ld a, (de)      | ld8 a <- (de)
 00pp0011 | inc {p}         | inc16 {p} <- {p}
 00pp1011 | dec {p}         | dec16 {p} <- {p}
 00100111 | daa             | daa a, flags <- a flags

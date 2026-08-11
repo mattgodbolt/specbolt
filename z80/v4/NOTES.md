@@ -514,22 +514,49 @@ debugger view can ask questions of the table at runtime.
 
 ## What the real Z80 buys, measured
 
-`Z80Cpu.hpp` now targets `v4::Z80 : Z80Base` rather than a stand-in struct. With 18 rows:
+`Z80Cpu.hpp` targets `v4::Z80 : Z80Base` rather than a stand-in struct, so v4 can be dropped
+straight into `z80/test/OpcodeTests.cpp` — that suite is already a template over the
+implementation, which makes it the scoreboard. Two measurements, before and after memory operands:
 
-- **145 of 256 base opcodes decode.** The remaining 111 are the shapes the table cannot describe
-  yet: anything touching memory (`(hl)`, `(nn)`), anything that branches, `ex`/`push`/`pop`, and
-  the rotate group.
-- **Timing is mostly free.** It falls out of the fetch cycle rather than being data the table
-  carries: `nop` 4, `add a, b` 4, `add a, n` 7, `ld bc, nn` 10 — all correct without the table
-  saying anything about cycles. The exception is instructions with internal cycles the fetch does
-  not account for: `inc bc` reads 4 where it should be 6. That gap is exactly the micro-op sequence
-  argument below, and it is small enough to be worth resisting until a row needs it for another
-  reason.
-- **Immediates are fetched by the framework**, in table order, before the call. Argument
-  evaluation order is unspecified in C++, so a row with two immediates would otherwise fetch them
-  in whichever order the compiler picked.
+| | rows | opcodes decoded | unprefixed suite | wrong answers |
+|---|---|---|---|---|
+| registers only | 18 | 145 / 256 | 73 / 146 | **0** |
+| with memory operands | 23 | 181 / 256 | 135 / 192 | **4** |
 
-The customisation surface grew by exactly one function to get here: `fetch_immediate(Cpu &, width)`.
+The "wrong answers" column is the one that matters: everything the table describes, it gets right,
+including the `pc()` and `cycle_count()` checks that suite makes on every section. The gap is
+"not written yet", not "written wrong".
+
+All four wrong answers are the same bug, and it is the one predicted below:
+
+| | want | got |
+|---|---|---|
+| `inc hl`, `dec hl` | 6 | 4 |
+| `inc (hl)`, `dec (hl)` | 11 | 10 |
+
+**Timing is otherwise free.** It falls out of the fetch cycle rather than being data the table
+carries: `nop` 4, `add a, b` 4, `add a, n` 7, `ld bc, nn` 10, `ld c, (hl)` 7, `ld (hl), n` 10 — all
+correct without the table saying anything about cycles. What is missing is only the *internal*
+cycles, which belong to no bus operation and therefore to no step the fetch cycle knows about. That
+is exactly the micro-op sequence argument, arriving from the direction of timing rather than of
+prefixes, and it now has four witnesses instead of one.
+
+**Immediates are fetched by the framework**, in table order, before the call. Argument evaluation
+order is unspecified in C++, so a row with two immediates would otherwise fetch them in whichever
+order the compiler picked. Getting this right for free is also why `ld (hl), n` has the correct
+fetch-then-write order.
+
+Getting from a fake CPU to a real one and then to memory cost three functions on the customisation
+surface: `fetch_immediate`, `read_memory`, `write_memory`.
+
+### Addresses are a modifier, not a kind
+
+`(hl)` is not a fifth kind of operand alongside constant, immediate, name and field reference. It is
+any of those with `indirect` set — "work out the operand, then use it as an address". That
+composes for free: `(bc)`, `(de)` and eventually `(nn)` need no new mechanism, and a vocabulary
+member may be written `(hl)` because a member's text is parsed by the same function that parses an
+operand in a row. Filling the `-` hole in `field r` with `(hl)` was therefore a one-word change to
+the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/`dec r`.
 
 ---
 

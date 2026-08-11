@@ -23,6 +23,9 @@ public:
   std::uint8_t read_immediate();
   std::uint16_t read_immediate16();
 
+  [[nodiscard]] std::uint8_t read(std::uint16_t address);
+  void write(std::uint16_t address, std::uint8_t value);
+
   using Z80Base::halted;
   void halted(bool value);
 };

@@ -69,23 +69,21 @@ struct Call {
   std::size_t line{};
 };
 
-// A field operand names whichever vocabulary member its slice selects. After
-// this every operand is a constant, an immediate, a name, or discarded.
+// A field operand names whichever vocabulary member its slice selects, and that
+// member is written the same way an operand is written in a row.
 [[nodiscard]] consteval Operand resolve(
     const Operand operand, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
   if (operand.kind != Operand::Kind::Field)
     return operand;
-  const auto display = fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)].display;
-  if (display.size() > Name::capacity)
-    throw table_error(line, "vocabulary member name is too long to be an operand");
-  return {Operand::Kind::Named, Name{display}, 0, 0, 0, 0};
+  return parse_simple_operand(
+      fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)].display, line);
 }
 
 // Only a literal written in the table is narrowed on the author's say-so;
 // everything else converts implicitly, so handing a 16-bit location to an
 // 8-bit parameter is a diagnosable narrowing rather than a silent truncation.
 template<Operand Op, std::size_t Line, typename Parameter>
-[[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate) {
+[[nodiscard]] Parameter direct_value_of(Cpu &cpu, const std::uint16_t immediate) {
   if constexpr (Op.kind == Operand::Kind::Constant)
     return static_cast<Parameter>(Op.constant);
   else if constexpr (Op.kind == Operand::Kind::Immediate) {
@@ -98,10 +96,21 @@ template<Operand Op, std::size_t Line, typename Parameter>
     return read(cpu, [:find_location(Op.name.view(), Line):]);
 }
 
+// An indirect operand is whatever it would have been, read as an address.
+template<Operand Op, std::size_t Line, typename Parameter>
+[[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate) {
+  if constexpr (Op.indirect)
+    return read_memory(cpu, direct_value_of<Op, Line, std::uint16_t>(cpu, immediate));
+  else
+    return direct_value_of<Op, Line, Parameter>(cpu, immediate);
+}
+
 template<Operand Op, std::size_t Line, typename T>
-void store(Cpu &cpu, const T value) {
+void store(Cpu &cpu, const std::uint16_t immediate, const T value) {
   if constexpr (Op.kind == Operand::Kind::Discard)
     static_cast<void>(value);
+  else if constexpr (Op.indirect)
+    write_memory(cpu, direct_value_of<Op, Line, std::uint16_t>(cpu, immediate), value);
   else {
     static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
     write(cpu, [:find_location(Op.name.view(), Line):], value);
@@ -126,7 +135,7 @@ void apply(Cpu &cpu) {
     call(arguments);
   }
   else if constexpr (C.num_destinations == 1) {
-    store<C.destinations[0], C.line>(cpu, call(arguments));
+    store<C.destinations[0], C.line>(cpu, immediate, call(arguments));
   }
   else {
     static constexpr auto members =
@@ -137,7 +146,7 @@ void apply(Cpu &cpu) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
     template for (constexpr auto at: std::views::iota(0uz, C.num_destinations))
-        store<C.destinations[at], C.line>(cpu, result.[:members[at]:]);
+        store<C.destinations[at], C.line>(cpu, immediate, result.[:members[at]:]);
 #pragma GCC diagnostic pop
   }
 }

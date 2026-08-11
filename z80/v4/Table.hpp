@@ -47,7 +47,9 @@ struct Name {
 };
 
 // An operand is a constant, a name the CPU can resolve, or a field reference.
-// `a`, `hl`, `carry` and `f` are all just names.
+// `a`, `hl`, `carry` and `f` are all just names. Wrapping one in parentheses
+// says to use it as an address rather than as a value, which is orthogonal to
+// all of the above.
 struct Operand {
   enum class Kind : std::uint8_t { Constant, Named, Immediate, Field, Discard };
   Kind kind{};
@@ -56,6 +58,7 @@ struct Operand {
   std::uint8_t width{};
   std::uint8_t field_index{};
   std::uint8_t slice_index{};
+  bool indirect{};
   constexpr bool operator==(const Operand &) const = default;
 };
 
@@ -136,15 +139,25 @@ struct Row {
   return count;
 }
 
-[[nodiscard]] consteval Operand parse_simple_operand(const std::string_view word, const std::size_t line) {
+[[nodiscard]] consteval Operand parse_simple_operand(std::string_view word, const std::size_t line) {
   if (word.empty())
     throw table_error(line, "empty operand in action");
   if (word == "-")
-    return {Operand::Kind::Discard, {}, 0, 0, 0, 0};
+    return {Operand::Kind::Discard, {}, 0, 0, 0, 0, false};
+  if (word.starts_with('(')) {
+    if (!word.ends_with(')'))
+      throw table_error(line, "unterminated '(' in operand '" + std::string(word) + "'");
+    word = word.substr(1, word.size() - 2);
+    auto addressed = parse_simple_operand(word, line);
+    if (addressed.indirect)
+      throw table_error(line, "an address cannot itself be indirect");
+    addressed.indirect = true;
+    return addressed;
+  }
   if (word == "n")
-    return {Operand::Kind::Immediate, {}, 0, 1, 0, 0};
+    return {Operand::Kind::Immediate, {}, 0, 1, 0, 0, false};
   if (word == "nn")
-    return {Operand::Kind::Immediate, {}, 0, 2, 0, 0};
+    return {Operand::Kind::Immediate, {}, 0, 2, 0, 0, false};
   if (word.front() >= '0' && word.front() <= '9') {
     const auto hex = word.starts_with("0x");
     const auto digits = hex ? word.substr(2) : word;
@@ -162,11 +175,11 @@ struct Row {
       if (value > 0xffff)
         throw table_error(line, "constant '" + std::string(word) + "' does not fit in 16 bits");
     }
-    return {Operand::Kind::Constant, {}, static_cast<std::uint16_t>(value), 0, 0, 0};
+    return {Operand::Kind::Constant, {}, static_cast<std::uint16_t>(value), 0, 0, 0, false};
   }
   if (word.size() > Name::capacity)
     throw table_error(line, "operand name '" + std::string(word) + "' is too long");
-  return {Operand::Kind::Named, Name{word}, 0, 0, 0, 0};
+  return {Operand::Kind::Named, Name{word}, 0, 0, 0, 0, false};
 }
 
 // `bc` is display only; `adc:add8+carry` binds to a primitive and appends an
@@ -270,7 +283,7 @@ inline constexpr auto fields = parse_fields<count_matching(&is_field)>();
   if (!word.starts_with('{'))
     return parse_simple_operand(word, line);
   const auto reference = reference_from_braces(word, matched, line);
-  return {Operand::Kind::Field, {}, 0, 0, reference.field_index, reference.slice_index};
+  return {Operand::Kind::Field, {}, 0, 0, reference.field_index, reference.slice_index, false};
 }
 
 consteval void lower_mnemonic(Row &row) {

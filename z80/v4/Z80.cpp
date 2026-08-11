@@ -34,6 +34,16 @@ std::uint16_t Z80::read_immediate16() {
   return static_cast<std::uint16_t>(high << 8 | low);
 }
 
+std::uint8_t Z80::read(const std::uint16_t address) {
+  pass_time(3);
+  return memory_.read(address);
+}
+
+void Z80::write(const std::uint16_t address, const std::uint8_t value) {
+  pass_time(3);
+  memory_.write(address, value);
+}
+
 void Z80::halted(const bool value) {
   if (value)
     halt();

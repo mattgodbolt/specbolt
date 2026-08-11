@@ -47,6 +47,9 @@ enum class Word : std::uint8_t { flags };
   return width == 1 ? cpu.read_immediate() : cpu.read_immediate16();
 }
 
+[[nodiscard]] inline std::uint8_t read_memory(Cpu &cpu, const std::uint16_t address) { return cpu.read(address); }
+inline void write_memory(Cpu &cpu, const std::uint16_t address, const std::uint8_t value) { cpu.write(address, value); }
+
 [[nodiscard]] inline std::uint8_t read(const Cpu &cpu, const RegisterFile::R8 location) { return cpu.get(location); }
 [[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R16 location) { return cpu.get(location); }
 inline void write(Cpu &cpu, const RegisterFile::R8 location, const std::uint8_t value) { cpu.set(location, value); }
