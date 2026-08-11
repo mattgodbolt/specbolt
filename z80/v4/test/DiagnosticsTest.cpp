@@ -181,6 +181,20 @@ TEST_CASE("Table diagnostics") {
     CHECK_NOTHROW(parse("table t\n11011101 | (t) | goto t\n00000000 | nop | nop\n"));
     CHECK_NOTHROW(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | back | goto t\n"));
   }
+  SECTION("Every fixed capacity says so when it is reached") {
+    // DD/FD will push on several of these, so what happens at the edge matters:
+    // each is a `Vector` whose overflow names the table's limit, not the C++ one.
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop ; nop ; nop ; nop ; nop ; nop ; nop\n"),
+        Equals("z80.cpu:2: row has too many steps"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- a a a a a\n"), Equals("z80.cpu:2: too many operands"));
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | ld8 a a a a a <- a\n"), Equals("z80.cpu:2: too many destinations"));
+    CHECK_THROWS_WITH(parse("field r = b c\ntable t\n0000000y | {r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x | nop\n"),
+        Equals("z80.cpu:3: mnemonic is too complicated"));
+    CHECK_THROWS_WITH(parse("field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n"
+                            "table u = t with b->c, c->b, x->b, y->b, z->b, w->b, v->b\n"),
+        Equals("z80.cpu:5: too many substitutions in table"));
+  }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("field r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
   }

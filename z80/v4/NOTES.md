@@ -553,8 +553,15 @@ and the groundwork is this, roughly in the order it has to happen:
 4. **Per-token fetching, and the latch it needs.** `DD CB d op` puts the displacement before the
    opcode, and `ld (ix+d), n` reads two immediates at different points. The executor fetches one
    immediate up front. This is also what makes the encoding column carry more than one pattern token.
-5. **Capacity.** `Field::max_values` is 8 and the `ix` view's register vocabulary is exactly 8
-   (`b c d e ixh ixl (ix+d) a`) — no headroom. `Row::max_steps` is 6, which DDCB may exceed.
+5. ~~**Capacity.**~~ **Checked; nothing to change.** `Field::max_values` is 8 and the `ix` view's
+   register vocabulary is exactly 8 (`b c d e ixh ixl (ix+d) a`) — it fits, with no headroom.
+   `Rules` holds 6 and `ix` needs 4. `Row::max_steps` is 6, which DDCB might exceed, but bumping a
+   limit before something reaches it is guessing.
+
+   What was actually missing was any evidence about the edge, so every fixed capacity now has a case
+   in `DiagnosticsTest`: steps, operands, destinations, mnemonic pieces, substitutions. All five
+   report the table's limit rather than corrupting quietly, so raising one when DDCB needs it is a
+   one-line change made in response to a message rather than to a guess.
 
 Nothing in 1–4 is a syntax question. The table language for prefixes is already written down below;
 what is missing is the machinery underneath it.
