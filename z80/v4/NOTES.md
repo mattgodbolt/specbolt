@@ -100,7 +100,9 @@ and survives promotion". It is neither, and both halves were verified false.
 
 ### Expansion statements
 
-- **`template for` + `-Wshadow` is a gcc bug** — [PR c++/124197][pr124197], unconfirmed as of writing.
+- **`template for` + `-Wshadow` was a gcc bug** — [PR c++/124197][pr124197], **fixed** in 16.2, which is
+  what this builds against. Verified by removing all six pragma lines and rebuilding with
+  `-Wshadow -Werror`: clean. Kept here because the shape of the bug is worth knowing.
   Each expanded copy is reported as shadowing the previous, though nothing is shadowed: every copy is
   its own scope. Minimal repro:
 
@@ -110,8 +112,8 @@ and survives promotion". It is neither, and both halves were verified false.
   template for (constexpr auto value : values) { sum += value; }   // 3 spurious warnings
   ```
 
-  Since `-Wshadow -Werror` is exactly this project's setting, expansion statements are unusable
-  without a local `#pragma GCC diagnostic ignored "-Wshadow"`. Remove the pragma when the PR lands.
+  `-Wshadow -Werror` is exactly this project's setting, so until it landed every expansion statement
+  needed a local `#pragma GCC diagnostic ignored "-Wshadow"`. They are all gone now.
 
   [pr124197]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124197
 - The range must be a constant expression. A `std::array` built inside the same lambda does not
@@ -636,6 +638,42 @@ rather than reporting that it has no name.
 
 The same change is what a second CPU needs, since nothing about the parser now says `z80.cpu` except
 the one line that embeds it.
+
+## Review findings still open
+
+A review of the whole spike found eighteen things. The correctness ones are fixed and each has a
+case in `DiagnosticsTest.cpp` where it can be tested at all; these are the rest, kept here so they
+are deferred rather than forgotten.
+
+- **Argument evaluation order.** `value_of` is not pure — it can advance the clock and set the
+  address bus — and pack-expansion argument order is unspecified. No row today has two bus-touching
+  operands, so nothing is observably wrong, but that is a property of `z80.cpu` rather than of the
+  framework. Fix: materialise into a braced `std::tuple{…}`, which is sequenced, and `std::apply`.
+- **A mistyped line vanishes.** `is_row` needs a `|`, so `00000000 nop nop` parses as nothing and
+  fails at *runtime* with "no row decodes opcode 0x00"; `feild r = …` is reported much later, at
+  whatever references `r`. Fix: after blanks and `#`, every line is a directive or a row, so let the
+  missing `|` be the diagnostic. Related: `next_word` splits on spaces only, so a tab-indented
+  `field` is not recognised at all.
+- **`SPECBOLT_CPU_TABLE` lives in `TableError.hpp`**, so a framework header names the CPU
+  description; `Execute.hpp` includes `Z80Cpu.hpp` by name for the same reason. Both should be
+  `target_compile_definitions`, which is also what would let one binary hold two CPUs. Until then,
+  "retargeting means writing one `Z80Cpu.hpp`" needs an asterisk.
+- **`Operand` carries jobs that already have types.** `field_index` + `slice_index` *are* a
+  `Reference`, spelled a third time in `Piece`. `write_back_delay` exists on both `Member` and
+  `Operand`, copied down by `resolve` with nothing saying so.
+- **The write-back-delay rule compares only the name**, not that both ends are indirect, and two
+  nameless indirect operands compare equal. Nothing exercises it today; the rule meant is "the
+  destination is the same addressing mode as one of the operands".
+- **`Matched::matches` is test-only and misleading** — it is the obvious way to decode and the
+  design deliberately does not use it. Either exercise `opcodes_of` in its place or say why it stays.
+- **Naming.** "field" means the `.cpu` keyword, the C++ `Field`, a `BitSlice` (in one error message),
+  and `Piece::Kind::Field`. One word per concept. `Matched` is a participle for "a parsed opcode
+  pattern". `Member::display` is not only for display.
+- **The v4 `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so every
+  `SPECBOLT_MODULES` branch in v4 is unbuildable by construction, and the partitions do not include
+  the headers they would need. They look maintained and are not.
+- **`DisassemblerTest` understates coverage.** Around twenty commented-out `CHECK`s are instructions
+  the table now covers, including the whole CB `bit`/`res`/`set` block.
 
 ## Follow-up work, in order
 

@@ -6,7 +6,9 @@
 
 #include <algorithm>
 #include <array>
+#include <concepts>
 #include <format>
+#include <limits>
 #include <meta>
 #include <ranges>
 #include <span>
@@ -61,6 +63,14 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 
 // A primitive may ask for the machine itself, which is the one type the
 // framework is parameterised on and so the one it can always supply.
+// What a result destructures into. A class with nothing accessible -- `Flags`
+// has private members -- is one value, not none.
+[[nodiscard]] consteval std::span<const std::meta::info> data_members_of(const std::meta::info type) {
+  if (!std::meta::is_class_type(type))
+    return {};
+  return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
+}
+
 template<std::meta::info Fn>
 [[nodiscard]] consteval bool takes_cpu() {
   if constexpr (arity_of<Fn> == 0)
@@ -81,8 +91,12 @@ struct Call {
 // 8-bit parameter is a diagnosable narrowing rather than a silent truncation.
 template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter direct_value_of(Cpu &cpu, const std::uint16_t immediate) {
-  if constexpr (Op.kind == Operand::Kind::Constant)
+  if constexpr (Op.kind == Operand::Kind::Constant) {
+    if constexpr (std::integral<Parameter>)
+      static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
+          "this constant does not fit the parameter it is passed to");
     return static_cast<Parameter>(Op.constant);
+  }
   else if constexpr (Op.kind == Operand::Kind::Immediate) {
     if constexpr (Op.width == 1)
       return static_cast<std::uint8_t>(immediate);
@@ -134,24 +148,21 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
   };
 
   using Result = decltype(call(arguments));
+  static constexpr auto members = data_members_of(^^Result);
   if constexpr (std::is_void_v<Result>) {
     static_assert(C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
     call(arguments);
   }
-  else if constexpr (C.destinations.size() == 1) {
-    store<C.destinations[0], C.line>(cpu, immediate, call(arguments));
-  }
-  else {
-    static constexpr auto members =
-        std::define_static_array(std::meta::nonstatic_data_members_of(^^Result, std::meta::access_context::current()));
+  else if constexpr (members.size() > 1) {
     static_assert(
         C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
     const auto result = call(arguments);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
         store<C.destinations[at], C.line>(cpu, immediate, result.[:members[at]:]);
-#pragma GCC diagnostic pop
+  }
+  else {
+    static_assert(C.destinations.size() == 1, "this operation returns one value, so the row must name one destination");
+    store<C.destinations[0], C.line>(cpu, immediate, call(arguments));
   }
 }
 
@@ -169,9 +180,9 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
   const auto member = member_for(step, matched, opcode);
   Call result{.line = line};
   for (const auto &operand: step.operands)
-    result.operands.push_back(resolve(fields, operand, matched, opcode, line), line, "too many operands");
+    result.operands.push_back(resolve(fields, operand, matched, opcode), line, "too many operands");
   for (const auto &target: step.destinations) {
-    auto destination = resolve(fields, target, matched, opcode, line);
+    auto destination = resolve(fields, target, matched, opcode);
     // The idle cycle belongs to a write-back, so only to something also read.
     const auto was_read = std::ranges::any_of(
         result.operands, [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
@@ -199,8 +210,6 @@ void execute_one(Cpu &cpu) {
   // step: argument order within a call is unspecified, and a later step may
   // store through an address an earlier one read.
   const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : fetch_immediate(cpu, row.immediate_bytes);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
   template for (constexpr auto at: std::views::iota(0uz, row.steps.size())) {
     constexpr auto step = row.steps[at];
     if constexpr (step.kind == Step::Kind::Goto)
@@ -211,7 +220,6 @@ void execute_one(Cpu &cpu) {
       apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line)>(cpu, immediate);
     }
   }
-#pragma GCC diagnostic pop
 }
 
 template<std::uint8_t Table, std::uint8_t Opcode>
@@ -226,11 +234,8 @@ inline constexpr Handler handler_for = [] {
 template<std::uint8_t Table>
 inline constexpr auto dispatch = [] {
   std::array<Handler, 256> handlers{};
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
   template for (constexpr auto opcode: std::views::iota(0uz, 256uz)) handlers[opcode] =
       handler_for<Table, static_cast<std::uint8_t>(opcode)>;
-#pragma GCC diagnostic pop
   return handlers;
 }();
 
@@ -240,7 +245,7 @@ void enter(Cpu &cpu) {
   const auto handler = dispatch<Table>[opcode];
   if (!handler)
     throw std::runtime_error(
-        std::format("no row in " SPECBOLT_CPU_TABLE " table '{}' decodes opcode 0x{:02x}", tables[Table], opcode));
+        std::format("no row in " SPECBOLT_CPU_TABLE " table '{}' decodes opcode 0x{:02x}", tables[Table].name, opcode));
   handler(cpu);
 }
 

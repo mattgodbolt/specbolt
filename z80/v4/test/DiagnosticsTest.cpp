@@ -12,12 +12,12 @@ namespace {
 
 // Generous fixed capacities: the descriptions below are a few lines each.
 constexpr std::size_t max_fields = 4;
-constexpr std::size_t max_tables = 3;
+constexpr std::size_t max_tables = 4;
 constexpr std::size_t max_rows = 8;
 
 struct Parsed {
   std::array<Field, max_fields> fields{};
-  std::array<std::string_view, max_tables> tables{};
+  std::array<TableDecl, max_tables> tables{};
   std::array<Row, max_rows> rows{};
 };
 
@@ -33,6 +33,8 @@ Parsed parse(const std::string_view description) {
   for (const auto &row: rows)
     check_immediates(row);
   check_row_precedence(rows, parsed.fields, parsed.tables.size());
+  check_no_goto_cycles(rows, parsed.tables.size());
+  check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
   return parsed;
 }
 
@@ -110,6 +112,31 @@ TEST_CASE("Table diagnostics") {
         Equals("z80.cpu:2: operand name 'averyverylongname' is too long"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- -\n"),
         Equals("z80.cpu:2: '-' discards a result, so it can only be a destination"));
+  }
+  SECTION("Immediates count wherever they appear") {
+    // An immediate destination is how `ld (nn), a` is written, and it used to be
+    // rejected because only operands were counted.
+    CHECK_NOTHROW(parse("table t\n00110010 n n | ld ($nnnn), a | ld8 (n) <- a\n"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | ld (hl), a | ld8 (n) <- a\n"),
+        Equals("z80.cpu:2: the action and the encoding disagree about whether there is an immediate"));
+  }
+  SECTION("A vocabulary member must name something resolvable") {
+    CHECK_THROWS_WITH(parse("field s = bc de hl n\ntable t\n"),
+        Equals("z80.cpu:1: a vocabulary member must name something the CPU can resolve"));
+  }
+  SECTION("Tables must be reachable and non-empty") {
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | nop\ntable dead\n"), Equals("z80.cpu:3: this table has no rows"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\ntable dead\n00000000 | frob | nop\n"),
+        Equals("z80.cpu:3: no goto reaches this table, so nothing in it is ever checked"));
+  }
+  SECTION("Gotos may not form a cycle") {
+    CHECK_THROWS_WITH(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | back | goto t\n"),
+        Equals("z80.cpu:4: this goto completes a cycle between tables, which cannot be unrolled"));
+    // The cycle need not be direct: this one is t -> u -> v -> t.
+    CHECK_THROWS_WITH(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | (v) | goto v\n"
+                            "table v\n00000000 | back | goto t\n"),
+        Equals("z80.cpu:6: this goto completes a cycle between tables, which cannot be unrolled"));
   }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("field r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));

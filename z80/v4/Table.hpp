@@ -69,6 +69,8 @@ struct Member {
   std::string_view display{};
   std::string_view primitive{};
   std::optional<Operand> appended{};
+  // The text is an operand, parsed once here rather than per opcode at splice time.
+  Operand operand{};
   bool hole{};
   // An addressing mode carries its own access sequence. This one says how long
   // the machine idles between reading through it and writing back.
@@ -120,7 +122,6 @@ struct Row {
   std::string_view mnemonic{};
   Vector<Piece, max_pieces> pieces{};
   std::uint8_t immediate_bytes{};
-  std::size_t length{1};
   std::uint8_t table{};
   Vector<Step, max_steps> steps{};
   std::size_t line{};
@@ -153,7 +154,8 @@ struct Row {
   return count;
 }
 
-[[nodiscard]] constexpr Operand parse_simple_operand(std::string_view word, const std::size_t line) {
+[[nodiscard]] constexpr Operand parse_simple_operand(
+    std::string_view word, const std::size_t line, const std::uint8_t immediate_bytes) {
   if (word.empty())
     throw table_error(line, "empty operand in action");
   if (word == "-")
@@ -162,14 +164,14 @@ struct Row {
     if (!word.ends_with(')'))
       throw table_error(line, "unterminated '(' in operand '" + std::string(word) + "'");
     word = word.substr(1, word.size() - 2);
-    auto addressed = parse_simple_operand(word, line);
+    auto addressed = parse_simple_operand(word, line, immediate_bytes);
     if (addressed.indirect)
       throw table_error(line, "an address cannot itself be indirect");
     addressed.indirect = true;
     return addressed;
   }
   if (word == "n")
-    return {.kind = Operand::Kind::Immediate};
+    return {.kind = Operand::Kind::Immediate, .width = immediate_bytes};
   if (word == "nn")
     throw table_error(line, "write 'n'; the encoding column says how many bytes it occupies");
   if (word.front() >= '0' && word.front() <= '9') {
@@ -218,10 +220,13 @@ struct Row {
     member.hole = true;
     return member;
   }
+  member.operand = parse_simple_operand(member.display, line, 0);
+  if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
+    throw table_error(line, "a vocabulary member must name something the CPU can resolve");
   Parser primitive(member.primitive);
   member.primitive = primitive.split_to('+').data();
   if (const auto appended = primitive.data(); !appended.empty()) {
-    member.appended = parse_simple_operand(appended, line);
+    member.appended = parse_simple_operand(appended, line, 0);
     if (member.appended->kind == Operand::Kind::Immediate)
       throw table_error(line, "a vocabulary member cannot append an immediate; only the encoding fetches those");
   }
@@ -261,9 +266,14 @@ template<std::size_t N>
   return result;
 }
 
+struct TableDecl {
+  std::string_view name{};
+  std::size_t line{};
+};
+
 template<std::size_t N>
-[[nodiscard]] constexpr std::array<std::string_view, N> parse_tables(const std::string_view description) {
-  std::array<std::string_view, N> result{};
+[[nodiscard]] constexpr std::array<TableDecl, N> parse_tables(const std::string_view description) {
+  std::array<TableDecl, N> result{};
   Parser lines(description);
   std::size_t index = 0;
   while (!lines.eof()) {
@@ -278,17 +288,17 @@ template<std::size_t N>
     if (!parser.next_word().empty())
       throw table_error(at, "table declaration takes a single name");
     for (std::size_t other = 0; other < index; ++other)
-      if (result[other] == name)
+      if (result[other].name == name)
         throw table_error(at, "duplicate table name");
-    result[index++] = name;
+    result[index++] = {name, at};
   }
   return result;
 }
 
 [[nodiscard]] constexpr std::uint8_t find_table(
-    const std::span<const std::string_view> tables, const std::string_view name, const std::size_t line) {
+    const std::span<const TableDecl> tables, const std::string_view name, const std::size_t line) {
   for (std::size_t index = 0; index < tables.size(); ++index)
-    if (tables[index] == name)
+    if (tables[index].name == name)
       return static_cast<std::uint8_t>(index);
   throw table_error(line, "no table named '" + std::string(name) + "'");
 }
@@ -333,10 +343,10 @@ template<std::size_t N>
   return parse_reference(fields, text.substr(1, text.size() - 2), matched, line);
 }
 
-[[nodiscard]] constexpr Operand parse_operand(
-    const std::span<const Field> fields, const std::string_view word, const Matched &matched, const std::size_t line) {
+[[nodiscard]] constexpr Operand parse_operand(const std::span<const Field> fields, const std::string_view word,
+    const Matched &matched, const std::size_t line, const std::uint8_t immediate_bytes) {
   if (!word.starts_with('{'))
-    return parse_simple_operand(word, line);
+    return parse_simple_operand(word, line, immediate_bytes);
   const auto reference = reference_from_braces(fields, word, matched, line);
   return {.kind = Operand::Kind::Field, .field_index = reference.field_index, .slice_index = reference.slice_index};
 }
@@ -384,17 +394,17 @@ constexpr void check_immediates(const Row &row) {
   if (rendered != row.immediate_bytes)
     throw table_error(row.line, "the mnemonic renders a different number of immediate bytes than the encoding fetches");
 
-  const auto uses_immediate = std::ranges::any_of(row.steps, [](const Step &step) {
-    return std::ranges::any_of(
-        step.operands, [](const Operand &operand) { return operand.kind == Operand::Kind::Immediate; });
+  const auto immediate = [](const Operand &operand) { return operand.kind == Operand::Kind::Immediate; };
+  const auto uses_immediate = std::ranges::any_of(row.steps, [&](const Step &step) {
+    return std::ranges::any_of(step.operands, immediate) || std::ranges::any_of(step.destinations, immediate);
   });
   if (uses_immediate != (row.immediate_bytes != 0))
     throw table_error(row.line, "the action and the encoding disagree about whether there is an immediate");
 }
 
 template<std::size_t N>
-[[nodiscard]] constexpr std::array<Row, N> parse_rows(const std::string_view description,
-    const std::span<const Field> fields, const std::span<const std::string_view> tables) {
+[[nodiscard]] constexpr std::array<Row, N> parse_rows(
+    const std::string_view description, const std::span<const Field> fields, const std::span<const TableDecl> tables) {
   std::array<Row, N> result{};
   Parser lines(description);
   std::size_t index = 0;
@@ -427,7 +437,6 @@ template<std::size_t N>
     }
     if (row.immediate_bytes > 2)
       throw table_error(at, "an instruction may carry at most two immediate bytes");
-    row.length = 1u + row.immediate_bytes;
     row.mnemonic = Parser::trim(parser.split_to('|').data());
     // steps run in order, separated by `;`
     Parser sequence(Parser::trim(parser.data()));
@@ -457,7 +466,7 @@ template<std::size_t N>
           writing_destination = false;
           continue;
         }
-        const auto operand = parse_operand(fields, trim_comma(word), row.matched, at);
+        const auto operand = parse_operand(fields, trim_comma(word), row.matched, at, row.immediate_bytes);
         if (writing_destination) {
           step.destinations.push_back(operand, at, "too many destinations");
         }
@@ -470,11 +479,12 @@ template<std::size_t N>
     }
     if (row.steps.empty())
       throw table_error(at, "row has no action");
+    // The disassembler renders nothing for a goto row and stops, so a goto has
+    // to be the whole row or the two would disagree about what an opcode means.
+    if (std::ranges::any_of(row.steps, [](const Step &step) { return step.kind == Step::Kind::Goto; }) &&
+        row.steps.size() != 1)
+      throw table_error(at, "a goto must be the row's only step");
     lower_mnemonic(fields, row);
-    for (auto &step: row.steps)
-      for (auto &operand: step.operands)
-        if (operand.kind == Operand::Kind::Immediate)
-          operand.width = row.immediate_bytes;
     check_immediates(row);
   }
   return result;
@@ -482,12 +492,12 @@ template<std::size_t N>
 
 // A field operand names whichever vocabulary member its slice selects, and that
 // member is written the same way an operand is written in a row.
-[[nodiscard]] constexpr Operand resolve(const std::span<const Field> fields, const Operand operand,
-    const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
+[[nodiscard]] constexpr Operand resolve(
+    const std::span<const Field> fields, const Operand operand, const Matched &matched, const std::uint8_t opcode) {
   if (operand.kind != Operand::Kind::Field)
     return operand;
   const auto &member = fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)];
-  auto result = parse_simple_operand(member.display, line);
+  auto result = member.operand;
   result.write_back_delay = member.write_back_delay;
   return result;
 }
@@ -597,6 +607,54 @@ constexpr bool check_row_precedence(
   return true;
 }
 
+// A table reachable from itself would recurse for ever at runtime -- each goto
+// is a real opcode fetch, so nothing shrinks. Prefix chains need one, which is
+// what the loop model in NOTES is for.
+constexpr bool check_no_goto_cycles(const std::span<const Row> rows, const std::size_t num_tables) {
+  for (std::size_t start = 0; start < num_tables; ++start) {
+    std::vector<bool> seen(num_tables);
+    std::vector<std::size_t> pending{start};
+    while (!pending.empty()) {
+      const auto from = pending.back();
+      pending.pop_back();
+      for (const auto &row: rows) {
+        if (row.table != from)
+          continue;
+        for (const auto &step: row.steps) {
+          if (step.kind != Step::Kind::Goto)
+            continue;
+          if (step.target == start)
+            throw table_error(row.line, "this goto completes a cycle between tables, which cannot be unrolled");
+          if (!seen[step.target]) {
+            seen[step.target] = true;
+            pending.push_back(step.target);
+          }
+        }
+      }
+    }
+  }
+  return true;
+}
+
+// 8: a table nothing reaches is never instantiated, so nothing in it is ever
+// type-checked. An empty one is a typo.
+constexpr bool check_tables_used(
+    const std::span<const Row> rows, const std::span<const TableDecl> tables, const std::uint8_t entry) {
+  for (std::size_t which = 0; which < tables.size(); ++which) {
+    if (std::ranges::none_of(rows, [&](const Row &row) { return row.table == which; }))
+      throw table_error(tables[which].line, "this table has no rows");
+    if (which == entry)
+      continue;
+    const auto reached = std::ranges::any_of(rows, [&](const Row &row) {
+      return std::ranges::any_of(
+          row.steps, [&](const Step &step) { return step.kind == Step::Kind::Goto && step.target == which; });
+    });
+    if (!reached)
+      throw table_error(tables[which].line, "no goto reaches this table, so nothing in it is ever checked");
+  }
+  return true;
+}
+
 // The description this build was compiled against. Everything above parses
 // whatever it is given; only these three name the embedded file.
 inline constexpr auto fields = parse_fields<count_matching(cpu_description, &is_field)>(cpu_description);
@@ -642,39 +700,8 @@ inline constexpr std::size_t decoded_count = [] {
 
 static_assert(check_row_precedence(rows, fields, tables.size()));
 
-// Handlers are generated by instantiating one table from another, so a cycle
-// would not terminate. Prefix chains need one, which is what the loop model in
-// NOTES is for; until then, say so plainly.
-consteval bool check_no_goto_cycles() {
-  for (std::size_t start = 0; start < tables.size(); ++start) {
-    std::array<bool, 64> seen{};
-    std::size_t at = start;
-    for (std::size_t depth = 0; depth <= tables.size(); ++depth) {
-      if (seen[at])
-        throw table_error(0, "tables goto each other in a cycle, which cannot be unrolled");
-      seen[at] = true;
-      bool moved = false;
-      for (const auto &row: rows)
-        if (row.table == at)
-          for (const auto &step: row.steps)
-            if (step.kind == Step::Kind::Goto && !moved) {
-              at = step.target;
-              moved = true;
-            }
-      if (!moved)
-        break;
-    }
-  }
-  return true;
-}
+static_assert(check_no_goto_cycles(rows, tables.size()));
+static_assert(check_tables_used(rows, tables, entry_table));
 
-static_assert(check_no_goto_cycles());
-
-[[nodiscard]] constexpr std::uint8_t field_value(const Row &row, const char name, const std::uint8_t opcode) {
-  const auto slice = find_slice(row.matched, name);
-  if (!slice)
-    throw table_error(row.line, "row references a field the opcode pattern does not define");
-  return row.matched.slices[*slice].extract(opcode);
-}
 
 } // namespace specbolt::v4
