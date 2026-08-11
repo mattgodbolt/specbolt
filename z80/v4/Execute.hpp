@@ -171,8 +171,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
 [[nodiscard]] consteval Member member_for(const Step &step, const Matched &matched, const std::uint8_t opcode) {
   if (!step.verb_reference)
     return {};
-  return fields[step.verb_reference->field_index]
-      .values[matched.slices[step.verb_reference->slice_index].extract(opcode)];
+  return member_of(fields, *step.verb_reference, matched, opcode);
 }
 
 [[nodiscard]] consteval Call call_for(

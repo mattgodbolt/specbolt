@@ -48,6 +48,14 @@ struct Name {
   constexpr bool operator==(const Name &) const = default;
 };
 
+// Which vocabulary to look a value up in, and which slice of the opcode says
+// which of its members to take. Anything a row can write `{r:z}` in holds one.
+struct Reference {
+  std::uint8_t field_index{};
+  std::uint8_t slice_index{};
+  constexpr bool operator==(const Reference &) const = default;
+};
+
 // An operand is a constant, a name the CPU can resolve, or a field reference.
 // `a`, `hl`, `carry` and `f` are all just names. Wrapping one in parentheses
 // says to use it as an address rather than as a value, which is orthogonal to
@@ -58,8 +66,7 @@ struct Operand {
   Name name{};
   std::uint16_t constant{};
   std::uint8_t width{};
-  std::uint8_t field_index{};
-  std::uint8_t slice_index{};
+  Reference reference{};
   bool indirect{};
   std::uint8_t write_back_delay{};
   constexpr bool operator==(const Operand &) const = default;
@@ -78,24 +85,24 @@ struct Member {
   constexpr bool operator==(const Member &) const = default;
 };
 
-struct Reference {
-  std::uint8_t field_index{};
-  std::uint8_t slice_index{};
-  constexpr bool operator==(const Reference &) const = default;
-};
-
 struct Field {
   static constexpr std::size_t max_values = 8;
   char name{};
   Vector<Member, max_values> values{};
 };
 
+// The one place a reference is followed. Every column resolves the same way:
+// the slice picks a member, the opcode says which.
+[[nodiscard]] constexpr const Member &member_of(
+    const std::span<const Field> fields, const Reference reference, const Matched &matched, const std::uint8_t opcode) {
+  return fields[reference.field_index].values[matched.slices[reference.slice_index].extract(opcode)];
+}
+
 struct Piece {
   enum class Kind : std::uint8_t { Literal, Field, Imm8, Imm16 };
   Kind kind{};
   std::string_view text{};
-  std::uint8_t field_index{};
-  std::uint8_t slice_index{};
+  Reference reference{};
   constexpr bool operator==(const Piece &) const = default;
 };
 
@@ -347,8 +354,7 @@ template<std::size_t N>
     const Matched &matched, const std::size_t line, const std::uint8_t immediate_bytes) {
   if (!word.starts_with('{'))
     return parse_simple_operand(word, line, immediate_bytes);
-  const auto reference = reference_from_braces(fields, word, matched, line);
-  return {.kind = Operand::Kind::Field, .field_index = reference.field_index, .slice_index = reference.slice_index};
+  return {.kind = Operand::Kind::Field, .reference = reference_from_braces(fields, word, matched, line)};
 }
 
 constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
@@ -380,8 +386,8 @@ constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
     push_text(Parser(parser.split_to('{').data()));
     if (!parser.data().contains('}'))
       throw table_error(row.line, "unterminated field reference in mnemonic");
-    const auto reference = parse_reference(fields, parser.split_to('}').data(), row.matched, row.line);
-    push({.kind = Piece::Kind::Field, .field_index = reference.field_index, .slice_index = reference.slice_index});
+    push({.kind = Piece::Kind::Field,
+        .reference = parse_reference(fields, parser.split_to('}').data(), row.matched, row.line)});
   }
 }
 
@@ -496,7 +502,7 @@ template<std::size_t N>
     const std::span<const Field> fields, const Operand operand, const Matched &matched, const std::uint8_t opcode) {
   if (operand.kind != Operand::Kind::Field)
     return operand;
-  const auto &member = fields[operand.field_index].values[matched.slices[operand.slice_index].extract(opcode)];
+  const auto &member = member_of(fields, operand.reference, matched, opcode);
   auto result = member.operand;
   result.write_back_delay = member.write_back_delay;
   return result;
@@ -506,16 +512,13 @@ template<std::size_t N>
 // so the row does not cover that opcode even though the bits fit.
 [[nodiscard]] constexpr bool members_live(
     const std::span<const Field> fields, const Row &row, const std::uint8_t opcode) {
-  const auto live = [&](const Reference reference) {
-    return !fields[reference.field_index].values[row.matched.slices[reference.slice_index].extract(opcode)].hole;
-  };
+  const auto live = [&](const Reference reference) { return !member_of(fields, reference, row.matched, opcode).hole; };
   const auto operands_live = [&](const auto &operands) {
-    return std::ranges::all_of(operands, [&](const Operand &operand) {
-      return operand.kind != Operand::Kind::Field || live({operand.field_index, operand.slice_index});
-    });
+    return std::ranges::all_of(operands,
+        [&](const Operand &operand) { return operand.kind != Operand::Kind::Field || live(operand.reference); });
   };
   return std::ranges::all_of(row.pieces, [&](const Piece &piece) {
-    return piece.kind != Piece::Kind::Field || live({piece.field_index, piece.slice_index});
+    return piece.kind != Piece::Kind::Field || live(piece.reference);
   }) && std::ranges::all_of(row.steps, [&](const Step &step) {
     return operands_live(step.operands) && operands_live(step.destinations) &&
            (!step.verb_reference || live(*step.verb_reference));
