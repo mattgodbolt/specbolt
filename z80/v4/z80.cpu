@@ -15,12 +15,14 @@ field w = and:and8 xor:xor8 or:or8 -
 00010010 | ld (de), a      | ld8 (de) <- a
 00001010 | ld a, (bc)      | ld8 a <- (bc)
 00011010 | ld a, (de)      | ld8 a <- (de)
-00pp0011 | inc {p}         | inc16 {p} <- {p}
-00pp1011 | dec {p}         | dec16 {p} <- {p}
+00pp0011 | inc {p}         | inc16 {p} <- {p} ; delay 2
+00pp1011 | dec {p}         | dec16 {p} <- {p} ; delay 2
 00100111 | daa             | daa a, flags <- a flags
 00101111 | cpl             | cpl a, flags <- a flags
 00110111 | scf             | scf a, flags <- a flags
 00111111 | ccf             | ccf a, flags <- a flags
+00110100 | inc (hl)        | inc8 (hl), flags <- (hl) flags ; delay 1
+00110101 | dec (hl)        | dec8 (hl), flags <- (hl) flags ; delay 1
 00yyy100 | inc {r:y}       | inc8 {r:y}, flags <- {r:y} flags
 00yyy101 | dec {r:y}       | dec8 {r:y}, flags <- {r:y} flags
 01yyyzzz | ld {r:y}, {r:z} | ld8 {r:y} <- {r:z}

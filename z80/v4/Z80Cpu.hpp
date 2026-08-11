@@ -23,6 +23,7 @@ struct Ops {
   static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
   static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
   static std::uint8_t ld8(const std::uint8_t value) { return value; }
+  static void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.pass_time(cycles); }
 };
 
 // Where the table may name operations from.

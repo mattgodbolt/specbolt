@@ -16,9 +16,9 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 23);
+    STATIC_CHECK(rows.size() == 25);
     STATIC_CHECK(rows[0].mnemonic == "nop");
-    STATIC_CHECK(rows[0].verb == "nop");
+    STATIC_CHECK(rows[0].steps[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
   }
   SECTION("Keeps the line number for diagnostics") {
@@ -34,9 +34,9 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[1].name == 'r');
     STATIC_CHECK(fields[1].values[6].display == "(hl)");
     constexpr auto ld = rows[*find_row(0x46)]; // ld b, (hl)
-    STATIC_CHECK(resolve(ld.operands[0], ld.matched, 0x46, ld.line).indirect);
-    STATIC_CHECK(!resolve(ld.destinations[0], ld.matched, 0x46, ld.line).indirect);
-    STATIC_CHECK(resolve(ld.destinations[0], ld.matched, 0x70, ld.line).indirect); // ld (hl), b
+    STATIC_CHECK(resolve(ld.steps[0].operands[0], ld.matched, 0x46, ld.line).indirect);
+    STATIC_CHECK(!resolve(ld.steps[0].destinations[0], ld.matched, 0x46, ld.line).indirect);
+    STATIC_CHECK(resolve(ld.steps[0].destinations[0], ld.matched, 0x70, ld.line).indirect); // ld (hl), b
     STATIC_CHECK(find_row(0x86)); // add a, (hl)
     STATIC_CHECK(find_row(0x70)); // ld (hl), b
   }
@@ -55,7 +55,7 @@ TEST_CASE("Table parsing") {
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(0x00) == 0u);
     STATIC_CHECK(find_row(0x76) == 1u);
-    STATIC_CHECK(rows[*find_row(0x21)].verb == "ld16");
+    STATIC_CHECK(rows[*find_row(0x21)].steps[0].verb == "ld16");
     STATIC_CHECK(!find_row(0x08));
   }
   SECTION("Lowers mnemonics into validated pieces") {
@@ -229,10 +229,8 @@ TEST_CASE("Generated execution") {
     CHECK(cycles(0x4e) == 7); // ld c, (hl)
     CHECK(cycles(0x70) == 7); // ld (hl), b
     CHECK(cycles(0x36, 0x00) == 10); // ld (hl), n
-    // TODO: the internal cycles that extend 16-bit inc/dec and read-modify-write
-    // belong to the micro-op sequence the table does not describe yet.
-    // CHECK(cycles(0x03) == 6); // inc bc
-    // CHECK(cycles(0x34) == 11); // inc (hl)
+    CHECK(cycles(0x03) == 6); // inc bc: two internal cycles
+    CHECK(cycles(0x34) == 11); // inc (hl): read, modify, write, plus one
   }
 }
 

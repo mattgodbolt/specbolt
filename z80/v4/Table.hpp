@@ -89,20 +89,29 @@ struct Piece {
   std::uint8_t slice_index{};
 };
 
-struct Row {
-  static constexpr std::size_t max_pieces = 12;
-  static constexpr std::size_t max_operands = 4;
-  Matched matched{};
-  std::string_view mnemonic{};
-  std::array<Piece, max_pieces> pieces{};
-  std::size_t num_pieces{};
-  std::size_t length{1};
+inline constexpr std::size_t max_operands = 4;
+
+// One application of one primitive. A row is an ordered list of these, which is
+// where cost lives: an internal delay is a step like any other.
+struct Step {
   std::string_view verb{};
   std::optional<Reference> verb_reference{};
   std::array<Operand, max_operands> destinations{};
   std::size_t num_destinations{};
   std::array<Operand, max_operands> operands{};
   std::size_t num_operands{};
+};
+
+struct Row {
+  static constexpr std::size_t max_pieces = 12;
+  static constexpr std::size_t max_steps = 4;
+  Matched matched{};
+  std::string_view mnemonic{};
+  std::array<Piece, max_pieces> pieces{};
+  std::size_t num_pieces{};
+  std::size_t length{1};
+  std::array<Step, max_steps> steps{};
+  std::size_t num_steps{};
   std::size_t line{};
 };
 
@@ -338,8 +347,13 @@ consteval void check_immediates(const Row &row) {
     return std::ranges::count(std::span{row.pieces.data(), row.num_pieces}, kind, &Piece::kind);
   };
   const auto used = [&](const std::uint8_t width) {
-    return std::ranges::count_if(std::span{row.operands.data(), row.num_operands},
-        [width](const Operand &operand) { return operand.kind == Operand::Kind::Immediate && operand.width == width; });
+    std::ptrdiff_t count = 0;
+    for (const auto &step: std::span{row.steps.data(), row.num_steps})
+      count +=
+          std::ranges::count_if(std::span{step.operands.data(), step.num_operands}, [width](const Operand &operand) {
+            return operand.kind == Operand::Kind::Immediate && operand.width == width;
+          });
+    return count;
   };
   for (const std::uint8_t width: {std::uint8_t{1}, std::uint8_t{2}})
     if (declared(width) != used(width))
@@ -361,36 +375,45 @@ template<std::size_t N>
     row.line = at;
     row.matched = parse_opcode_bits(trim(parser.split_to('|').data()), at);
     row.mnemonic = trim(parser.split_to('|').data());
-    Parser action(trim(parser.data()));
-    row.verb = next_word(action);
-    if (row.verb.empty())
-      throw table_error(at, "row has no action");
-    if (row.verb.starts_with('{'))
-      row.verb_reference = reference_from_braces(row.verb, row.matched, at);
-    // `verb dest <- args...`; the destination is optional
-    auto writing_destination = action.data().contains("<-");
-    while (!action.eof()) {
-      const auto word = trim_comma(next_word(action));
-      if (word.empty())
+    // steps run in order, separated by `;`
+    Parser sequence(trim(parser.data()));
+    while (!sequence.eof()) {
+      Parser action(trim(sequence.split_to(';').data()));
+      if (action.eof())
         continue;
-      if (word == "<-") {
-        writing_destination = false;
-        continue;
-      }
-      const auto operand = parse_operand(trim_comma(word), row.matched, at);
-      if (writing_destination) {
-        if (row.num_destinations == Row::max_operands)
-          throw table_error(at, "too many destinations");
-        row.destinations[row.num_destinations++] = operand;
-      }
-      else {
-        if (operand.kind == Operand::Kind::Discard)
-          throw table_error(at, "'-' discards a result, so it can only be a destination");
-        if (row.num_operands == Row::max_operands)
-          throw table_error(at, "too many operands");
-        row.operands[row.num_operands++] = operand;
+      if (row.num_steps == Row::max_steps)
+        throw table_error(at, "row has too many steps");
+      auto &step = row.steps[row.num_steps++];
+      step.verb = next_word(action);
+      if (step.verb.starts_with('{'))
+        step.verb_reference = reference_from_braces(step.verb, row.matched, at);
+      // `verb dest <- args...`; the destination is optional
+      auto writing_destination = action.data().contains("<-");
+      while (!action.eof()) {
+        const auto word = trim_comma(next_word(action));
+        if (word.empty())
+          continue;
+        if (word == "<-") {
+          writing_destination = false;
+          continue;
+        }
+        const auto operand = parse_operand(trim_comma(word), row.matched, at);
+        if (writing_destination) {
+          if (step.num_destinations == max_operands)
+            throw table_error(at, "too many destinations");
+          step.destinations[step.num_destinations++] = operand;
+        }
+        else {
+          if (operand.kind == Operand::Kind::Discard)
+            throw table_error(at, "'-' discards a result, so it can only be a destination");
+          if (step.num_operands == max_operands)
+            throw table_error(at, "too many operands");
+          step.operands[step.num_operands++] = operand;
+        }
       }
     }
+    if (row.num_steps == 0)
+      throw table_error(at, "row has no action");
     lower_mnemonic(row);
     check_immediates(row);
   }
@@ -412,13 +435,13 @@ inline constexpr auto rows = parse_rows<count_matching(&is_row)>();
       return operand.kind != Operand::Kind::Field || live({operand.field_index, operand.slice_index});
     });
   };
-  return std::ranges::all_of(std::span{row.pieces.data(), row.num_pieces},
-             [&](const Piece &piece) {
-               return piece.kind != Piece::Kind::Field || live({piece.field_index, piece.slice_index});
-             }) &&
-         operands_live({row.operands.data(), row.num_operands}) &&
-         operands_live({row.destinations.data(), row.num_destinations}) &&
-         (!row.verb_reference || live(*row.verb_reference));
+  return std::ranges::all_of(std::span{row.pieces.data(), row.num_pieces}, [&](const Piece &piece) {
+    return piece.kind != Piece::Kind::Field || live({piece.field_index, piece.slice_index});
+  }) && std::ranges::all_of(std::span{row.steps.data(), row.num_steps}, [&](const Step &step) {
+    return operands_live({step.operands.data(), step.num_operands}) &&
+           operands_live({step.destinations.data(), step.num_destinations}) &&
+           (!step.verb_reference || live(*step.verb_reference));
+  });
 }
 
 // Earlier rows win, so a specific encoding must precede the general one that

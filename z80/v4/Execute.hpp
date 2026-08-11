@@ -59,13 +59,22 @@ inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
-// Everything one opcode needs, with its field references already resolved.
+// A primitive may ask for the machine itself, which is the one type the
+// framework is parameterised on and so the one it can always supply.
+template<std::meta::info Fn>
+[[nodiscard]] consteval bool takes_cpu() {
+  if constexpr (arity_of<Fn> == 0)
+    return false;
+  else
+    return std::is_same_v<parameter_type<Fn, 0>, Cpu &>;
+}
+
+// Everything one step needs, with its field references already resolved.
 struct Call {
-  std::array<Operand, Row::max_operands> operands{};
+  std::array<Operand, max_operands> operands{};
   std::size_t num_operands{};
-  std::array<Operand, Row::max_operands> destinations{};
+  std::array<Operand, max_operands> destinations{};
   std::size_t num_destinations{};
-  std::uint8_t immediate_width{};
   std::size_t line{};
 };
 
@@ -120,13 +129,16 @@ void store(Cpu &cpu, const std::uint16_t immediate, const T value) {
 // Arguments are supplied positionally; destinations destructure the result in
 // declaration order. Nothing here has an opinion on what an operand means.
 template<std::meta::info Fn, Call C>
-void apply(Cpu &cpu) {
-  static_assert(C.num_operands == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
-  // Fetched here rather than inside the call, whose argument order is unspecified.
-  const std::uint16_t immediate = C.immediate_width == 0 ? 0 : fetch_immediate(cpu, C.immediate_width);
+void apply(Cpu &cpu, const std::uint16_t immediate) {
+  constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
+  static_assert(
+      C.num_operands + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
   constexpr auto arguments = std::make_index_sequence<C.num_operands>{};
   const auto call = [&]<std::size_t... I>(std::index_sequence<I...>) {
-    return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate)...);
+    if constexpr (takes_cpu<Fn>())
+      return [:Fn:](cpu, value_of<C.operands[I], C.line, parameter_type<Fn, I + 1>>(cpu, immediate)...);
+    else
+      return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate)...);
   };
 
   using Result = decltype(call(arguments));
@@ -151,30 +163,55 @@ void apply(Cpu &cpu) {
   }
 }
 
+// A vocabulary member may bind the verb late, and may append an operand the
+// encoding does not carry.
+[[nodiscard]] consteval Member member_for(const Step &step, const Matched &matched, const std::uint8_t opcode) {
+  if (!step.verb_reference)
+    return {};
+  return fields[step.verb_reference->field_index]
+      .values[matched.slices[step.verb_reference->slice_index].extract(opcode)];
+}
+
+[[nodiscard]] consteval Call call_for(
+    const Step &step, const Matched &matched, const std::uint8_t opcode, const std::size_t line) {
+  const auto member = member_for(step, matched, opcode);
+  Call result{{}, step.num_operands, {}, step.num_destinations, line};
+  for (std::size_t at = 0; at < step.num_operands; ++at)
+    result.operands[at] = resolve(step.operands[at], matched, opcode, line);
+  for (std::size_t at = 0; at < step.num_destinations; ++at)
+    result.destinations[at] = resolve(step.destinations[at], matched, opcode, line);
+  if (member.appended)
+    result.operands[result.num_operands++] = *member.appended;
+  return result;
+}
+
+[[nodiscard]] consteval std::uint8_t immediate_width_of(const Row &row, const std::uint8_t opcode) {
+  std::uint8_t width = 0;
+  for (std::size_t at = 0; at < row.num_steps; ++at) {
+    const auto call = call_for(row.steps[at], row.matched, opcode, row.line);
+    for (std::size_t operand = 0; operand < call.num_operands; ++operand)
+      if (call.operands[operand].kind == Operand::Kind::Immediate)
+        width = call.operands[operand].width;
+  }
+  return width;
+}
+
 template<std::uint8_t Opcode, std::size_t Index>
 void execute_one(Cpu &cpu) {
   constexpr auto row = rows[Index];
-  constexpr auto member = row.verb_reference
-                              ? fields[row.verb_reference->field_index]
-                                    .values[row.matched.slices[row.verb_reference->slice_index].extract(Opcode)]
-                              : Member{};
-  constexpr auto primitive = row.verb_reference ? member.primitive : row.verb;
-  constexpr auto call = [&row = row, &member = member] {
-    Call result{{}, row.num_operands, {}, row.num_destinations, 0, row.line};
-    for (std::size_t at = 0; at < row.num_operands; ++at)
-      result.operands[at] = resolve(row.operands[at], row.matched, Opcode, row.line);
-    for (std::size_t at = 0; at < row.num_destinations; ++at)
-      result.destinations[at] = resolve(row.destinations[at], row.matched, Opcode, row.line);
-    // a late-bound operation may append an operand the encoding does not carry
-    if (member.appended)
-      result.operands[result.num_operands++] = *member.appended;
-    for (std::size_t at = 0; at < result.num_operands; ++at)
-      if (result.operands[at].kind == Operand::Kind::Immediate)
-        result.immediate_width = result.operands[at].width;
-    return result;
-  }();
-
-  apply<find_primitive(primitive, row.line), call>(cpu);
+  // Fetched once, before any step, because argument order within a call is
+  // unspecified and a later step may store through an earlier one's address.
+  constexpr auto width = immediate_width_of(row, Opcode);
+  const std::uint16_t immediate = width == 0 ? 0 : fetch_immediate(cpu, width);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wshadow" // PR c++/124197: `template for` sees its own induction variable
+  template for (constexpr auto at: std::views::iota(0uz, row.num_steps)) {
+    constexpr auto step = row.steps[at];
+    constexpr auto member = member_for(step, row.matched, Opcode);
+    constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
+    apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line)>(cpu, immediate);
+  }
+#pragma GCC diagnostic pop
 }
 
 using Handler = void (*)(Cpu &);

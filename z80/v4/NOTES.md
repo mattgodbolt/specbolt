@@ -522,6 +522,7 @@ implementation, which makes it the scoreboard. Two measurements, before and afte
 |---|---|---|---|---|
 | registers only | 18 | 145 / 256 | 73 / 146 | **0** |
 | with memory operands | 23 | 181 / 256 | 135 / 192 | **4** |
+| with timing steps | 25 | 181 / 256 | 139 / 192 | **0** |
 
 The "wrong answers" column is the one that matters: everything the table describes, it gets right,
 including the `pc()` and `cycle_count()` checks that suite makes on every section. The gap is
@@ -548,6 +549,52 @@ fetch-then-write order.
 
 Getting from a fake CPU to a real one and then to memory cost three functions on the customisation
 surface: `fetch_immediate`, `read_memory`, `write_memory`.
+
+### Timing: steps, verified
+
+Implemented as design decision 6 says — cost lives in an ordered step list, not in an annotation on
+the row. The mechanism is one separator:
+
+```
+00pp0011 | inc {p}  | inc16 {p} <- {p} ; delay 2
+00110100 | inc (hl) | inc8 (hl), flags <- (hl) flags ; delay 1
+```
+
+`delay` is not a framework concept: it is an ordinary primitive in the CPU's `Ops`, and the only
+new framework rule is that **a primitive may take `Cpu &` as its first parameter**, which the
+framework supplies. That is not the `is_supplied_by_framework` mistake returning — that one
+special-cased `Flags`, a *domain* type. `Cpu` is the single type the framework is parameterised on,
+so it is the one thing it can always hand over, and it is what `jp`, `call`, `push` and `in`/`out`
+will all need.
+
+The conditional part — `inc (hl)` costs one more than `inc r`, and `{4,5,6}` is not maskable — needs
+no mechanism either. A specific row placed before the general one wins by first-match-wins, which
+§5 already requires. This is the same override mechanism the prefix design depends on, so prefixes
+now have a working precedent rather than a promise.
+
+Result: the four timing failures are gone. On the unprefixed suite the failure count is now exactly
+equal to the undecoded-opcode count — **zero wrong answers of any kind**.
+
+#### The steps really do vanish
+
+Verified on this code rather than on a spike, `-O2`, gcc 16.2, against hand-written equivalents:
+
+| | generated | by hand | identical | loops | indirect calls |
+|---|---|---|---|---|---|
+| `ld b, c` | 9 | 9 | **yes** | 0 | 0 |
+| `inc bc` (2 steps) | 58 | 58 | **yes** | 0 | 0 |
+| `inc (hl)` (2 steps) | 53 + 30 | 72 | no | 0 | 0 |
+
+No loop over steps, no function pointer, no `Step` data anywhere in the output. `inc bc` and
+`ld b, c` are instruction-for-instruction what a human would write, and the `delay 2` folds into a
+`lea [rax+2]` on the cycle counter.
+
+The one qualification, which the earlier spike measurement missed because everything in it was
+trivial: when a step's primitive is itself out-of-line — `Alu::inc8`, `Z80::read`, `Z80::write` —
+gcc declines to inline the `apply<…>` specialisation into the handler, so `inc (hl)` pays one extra
+call boundary. The body is still fully specialised straight-line code with no branches; it is just
+not merged. Whether to force it with `always_inline` is a tuning question, not a design one, and
+the 94 bytes/opcode v3 already ships is the number to beat.
 
 ### Addresses are a modifier, not a kind
 
