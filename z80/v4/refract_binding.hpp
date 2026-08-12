@@ -12,6 +12,7 @@
 // parameters. That is the honest limit of this arrangement.
 
 #include "Locations.hpp"
+#include "Operations.hpp"
 #include "Table.hpp"
 
 namespace specbolt::refract {

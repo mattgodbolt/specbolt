@@ -26,6 +26,41 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
   internal, // no transfer at all, but the address bus still holds something
 };
 
+// The state a description may name, beyond the registers it inherits from
+// `RegisterFile`. Each is an enum so that a flag bit, the halted state or the
+// program counter can appear in a row exactly as `a` or `hl` does; a splice of
+// one of these picks the matching `read` or `write` below by ordinary overload
+// resolution, which is why the framework needs no idea what kind of location it
+// is holding. `Locations.hpp` lists them as the places a name may come from.
+
+// Individually addressable flag bits, so `carry` is a location like any other.
+SPECBOLT_EXPORT enum class FlagBit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };
+
+// The same register taken whole, distinct from R8::F so that only a
+// Flags-shaped value can be written to it.
+SPECBOLT_EXPORT enum class FlagWord : std::uint8_t { flags };
+
+// The one-bit state the chip keeps outside any register. The two interrupt
+// enables are flip-flops in Zilog's own words and HALT is one too; `deferred`
+// is this emulator's, and behaves the same way.
+SPECBOLT_EXPORT enum class FlipFlop : std::uint8_t { halted, iff1, iff2, deferred };
+
+// The program counter, which is not in the programmer's register file.
+SPECBOLT_EXPORT enum class ProgramCounter : std::uint8_t { pc };
+
+// The high byte of the last address the machine formed -- WZ, as the Z80
+// literature calls it. `bit n, (ix+d)` takes flags 3 and 5 from it.
+SPECBOLT_EXPORT enum class AddressLatch : std::uint8_t { wzh };
+
+// How the chip is to answer an interrupt: `i` supplies the high byte of the
+// vector in mode 2, and `im` is the mode itself. Only the ED table reaches
+// either.
+SPECBOLT_EXPORT enum class Interrupt : std::uint8_t { i, im };
+
+// The memory refresh register, which the chip increments on every opcode fetch
+// whether or not a description ever names it.
+SPECBOLT_EXPORT enum class Refresh : std::uint8_t { r };
+
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
@@ -49,6 +84,59 @@ public:
   // is why `ld (ix+d), n` is 19 T-states and not 22, and why the framework says
   // how many bytes it already read.
   [[nodiscard]] std::uint16_t displaced_address(std::uint16_t base, std::uint8_t offset, std::uint8_t immediate_bytes);
+
+  // Reading and writing a named location. One overload per kind of location,
+  // all called `read` or `write`, because the framework has only the one name
+  // to call: it splices an enumerator and lets overload resolution land on the
+  // right one. The return types differ, and that is the point -- `carry` yields
+  // a `bool` and `flags` a `Flags`, without anything in between being told.
+  [[nodiscard]] std::uint8_t read(const RegisterFile::R8 location) const { return get(location); }
+  [[nodiscard]] std::uint16_t read(const RegisterFile::R16 location) const { return get(location); }
+  void write(const RegisterFile::R8 location, const std::uint8_t value) { set(location, value); }
+  void write(const RegisterFile::R16 location, const std::uint16_t value) { set(location, value); }
+
+  [[nodiscard]] bool read(const FlagBit which) const {
+    return (flags().to_u8() >> static_cast<unsigned>(which) & 1u) != 0;
+  }
+
+  [[nodiscard]] Flags read(FlagWord) const { return flags(); }
+  void write(FlagWord, const Flags value) { flags(value); }
+
+  [[nodiscard]] bool read(const FlipFlop which) const {
+    switch (which) {
+      case FlipFlop::iff1: return iff1();
+      case FlipFlop::iff2: return iff2();
+      case FlipFlop::deferred: return interrupts_deferred();
+      case FlipFlop::halted: break;
+    }
+    return halted();
+  }
+  void write(const FlipFlop which, const bool value) {
+    switch (which) {
+      case FlipFlop::iff1: iff1(value); return;
+      case FlipFlop::iff2: iff2(value); return;
+      case FlipFlop::deferred: interrupts_deferred(value); return;
+      case FlipFlop::halted: halted(value); return;
+    }
+  }
+
+  [[nodiscard]] std::uint16_t read(ProgramCounter) const { return pc(); }
+  void write(ProgramCounter, const std::uint16_t value) { regs().pc(value); }
+
+  [[nodiscard]] std::uint8_t read(AddressLatch) const { return static_cast<std::uint8_t>(bus_address() >> 8); }
+
+  [[nodiscard]] std::uint8_t read(const Interrupt which) const {
+    return which == Interrupt::i ? regs().i() : irq_mode();
+  }
+  void write(const Interrupt which, const std::uint8_t value) {
+    if (which == Interrupt::i)
+      regs().i(value);
+    else
+      irq_mode(value);
+  }
+
+  [[nodiscard]] std::uint8_t read(Refresh) const { return regs().r(); }
+  void write(Refresh, const std::uint8_t value) { regs().r(value); }
 
   // Advances time for one access, before the transfer happens, so anything
   // scheduled sees the machine as it was at that moment.

@@ -72,10 +72,10 @@ static_assert(
 //                                      the parser cannot know what a splice
 //                                      yields until it is instantiated.
 //   [:Fn:](arguments...)               a function, in callee position.
-//   read(cpu, [:find_location(…):])    an enumerator, yielding a prvalue of the
+//   cpu.read([:find_location(…):])     an enumerator, yielding a prvalue of the
 //                                      enum type — so ordinary overload
-//                                      resolution picks `read(…, R8)` or
-//                                      `read(…, Bit)`. The framework does not
+//                                      resolution picks `read(R8)` or
+//                                      `read(FlagBit)`. The framework does not
 //                                      dispatch on the kind of location; C++
 //                                      does, because the splice has a type.
 //   result.[:members[at]:]             a data member. The leading `.` is not a
@@ -239,11 +239,11 @@ template<Operand Op, std::size_t Line, typename Parameter>
   }
   else
     // An *enumerator* splice: this yields a prvalue whose type is the enum the
-    // name was found in, so the CPU's overload set decides what reading it
-    // means. `read(cpu, R8::A)` and `read(cpu, Bit::carry)` are different
+    // name was found in, so the machine's overload set decides what reading it
+    // means. `cpu.read(R8::A)` and `cpu.read(FlagBit::carry)` are different
     // functions returning different types, chosen here by nothing more exotic
     // than overload resolution.
-    return read(cpu, [:find_location(Op.name.view(), Line):]);
+    return cpu.read([:find_location(Op.name.view(), Line):]);
 }
 
 // The address an indirect operand addresses through. A displaced one was formed
@@ -288,7 +288,7 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
   }
   else {
     static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
-    write(cpu, [:find_location(Op.name.view(), Line):], value);
+    cpu.write([:find_location(Op.name.view(), Line):], value);
   }
 }
 

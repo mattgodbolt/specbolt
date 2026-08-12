@@ -15,10 +15,11 @@
 // is missing one, or has one with the wrong shape, is told so here rather than
 // through a failure deep inside a generated instruction.
 //
-// Locations are the exception, and deliberately: `read` and `write` on a
-// location stay free functions, because splicing an enumerator and letting
-// overload resolution choose is how the framework avoids knowing what kind of
-// location it is holding. See Locations.hpp.
+// A machine also needs `read` and `write` overloads for each kind of location
+// it declares, but those cannot be written down here: how many there are, and
+// what they take and return, is whatever the machine's own location scopes say.
+// A row naming a location the machine cannot reach is diagnosed where it is
+// spliced instead.
 
 #include <concepts>
 #include <cstdint>
