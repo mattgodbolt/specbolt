@@ -36,6 +36,7 @@ Parsed parse(const std::string_view description) {
   for (const auto &row: rows)
     opcodes.push_back(opcodes_of(parsed.fields, row));
   check_row_precedence(rows, opcodes, parsed.tables.size());
+  check_derived_rows_override(rows, opcodes, {parsed.tables.data(), count_matching(description, &is_table)});
   static_cast<void>(latched_tables<max_tables>(rows));
   check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
   parsed.decoded = decode_tables<max_tables>(rows, opcodes, parsed.tables);
@@ -131,8 +132,21 @@ TEST_CASE("Table diagnostics") {
         Equals("z80.cpu:5: expected '->' in table substitution 'r.b'"));
     CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b ->\n"),
         Equals("z80.cpu:5: a table substitution needs a name on each side of '->'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> -\n"),
+        Equals("z80.cpu:5: a substitution cannot rename something to nothing; a hole belongs in a vocabulary"));
     CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> n\n"),
         Equals("z80.cpu:5: a vocabulary member must name something the CPU can resolve"));
+  }
+  SECTION("A view's own row must fit inside the row it displaces") {
+    // The row in `u` claims both opcodes; the parent keeps one for itself, and
+    // swallowing it would take that instruction off the prefixed page entirely.
+    constexpr std::string_view shared = "field r = b c\ntable t\n11011101 | (dd) | goto u\n";
+    CHECK_NOTHROW(parse(std::string(shared) + "0000000y | ld {r:y} | ld8 {r:y} <- a\n"
+                                              "table u = t with r.b -> ixh\n0000000y | frob | nop\n"));
+    CHECK_THROWS_WITH(parse(std::string(shared) + "00000000 | special | nop\n0000000y | ld {r:y} | nop\n"
+                                                  "table u = t with r.b -> ixh\n0000000y | frob | nop\n"),
+        Equals("z80.cpu:7: this row overlaps one it inherits from 't' without replacing it or fitting inside it, "
+               "so it takes opcodes that row meant to keep"));
   }
   SECTION("A view must not silently inherit a row that spells the renamed name out") {
     constexpr std::string_view shared = "field p = bc hl\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | ";

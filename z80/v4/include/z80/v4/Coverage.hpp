@@ -250,8 +250,33 @@ constexpr bool check_inherited_literals(const std::span<const Row> rows, const s
   return true;
 }
 
-// A table nothing reaches is never instantiated, so nothing in it is ever
-// type-checked. An empty one is a typo.
+// Precedence within a table is checked pairwise, and a derived table's own rows
+// win over everything it inherits -- but nothing yet relates the two. A derived
+// row that overlaps a parent row without being contained in it is silently
+// taking opcodes the parent meant to keep.
+//
+// This is the check that would have caught writing `{r:y}` for `{s:y}` in the
+// `ix` table: `r` has no hole at slot 6, so the row would claim `0x76` and
+// `halt` would quietly vanish from the prefixed pages.
+constexpr bool check_derived_rows_override(
+    const std::span<const Row> rows, const std::span<const OpcodeSet> covers, const std::span<const TableDecl> tables) {
+  for (std::size_t mine = 0; mine < rows.size(); ++mine) {
+    const auto &table = tables[rows[mine].table];
+    if (!table.derived)
+      continue;
+    for (std::size_t theirs = 0; theirs < rows.size(); ++theirs)
+      if (rows[theirs].table == table.parent && covers[mine].overlaps(covers[theirs]) &&
+          !covers[mine].within(covers[theirs]))
+        throw table_error(rows[mine].line,
+            "this row overlaps one it inherits from '" + std::string(tables[table.parent].name) +
+                "' without replacing it or fitting inside it, so it takes opcodes that row meant to keep");
+  }
+  return true;
+}
+
+// A table nothing reaches is a typo: nothing can ever decode in it. It is still
+// generated -- every table's dispatch is instantiated regardless of whether a
+// goto names it -- so this catches the mistake rather than un-checked code.
 constexpr bool check_tables_used(
     const std::span<const Row> rows, const std::span<const TableDecl> tables, const std::uint8_t entry) {
   for (std::size_t which = 0; which < tables.size(); ++which) {

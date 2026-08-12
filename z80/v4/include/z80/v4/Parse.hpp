@@ -105,8 +105,13 @@ constexpr void parse_substitutions(
       throw table_error(line, "a table substitution needs a name on each side of '->'");
     if (std::ranges::none_of(fields[*field].values, [&](const Member &m) { return m.display == from; }))
       throw table_error(line, "vocabulary '" + std::string(vocabulary) + "' has no member '" + std::string(from) + "'");
+    // Coverage is worked out before any rule is applied, so a row renamed to
+    // nothing would still claim its opcodes and then resolve to a default zero.
+    const auto replacement = parse_member(to, line);
+    if (replacement.hole)
+      throw table_error(line, "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
     table.rules.push_back(
-        {static_cast<std::uint8_t>(*field), from, parse_member(to, line)}, line, "too many substitutions in table");
+        {static_cast<std::uint8_t>(*field), from, replacement}, line, "too many substitutions in table");
   }
 }
 
