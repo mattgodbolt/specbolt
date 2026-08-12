@@ -15,9 +15,9 @@ import z80_common;
 #include "z80/v3/Z80.hpp"
 #endif
 
-// v4 exists only where the compiler can do C++26 reflection, and the reflection
-// presets turn modules off, so this is the one spelling it needs.
-#ifdef SPECBOLT_REFLECTION
+// Set by CMake when the v4 target exists, which is not the same as reflection
+// being available: v4 is excluded when modules are on, and gcc 16 has both.
+#ifdef SPECBOLT_HAS_V4
 #include "z80/v4/Z80.hpp"
 #define SPECBOLT_IMPLEMENTATIONS v1::Z80, v2::Z80, v3::Z80, v4::Z80
 #else

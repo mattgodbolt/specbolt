@@ -119,9 +119,11 @@ indirect        = "(" , ( name | reference ) , [ "+d" ] , ")" ;
 number          = digit , { digit } | "0x" , hex-digit , { hex-digit } ;
 ```
 
-Operands within a step may be separated by spaces or by `, ` — a trailing comma
-on a word is stripped, so `flags <- a {r:z}` and `a, flags <- a {r:z}` both read
-naturally.
+**Commas are decoration.** A trailing comma is stripped from any word in a step,
+so `inc8 {r:y}, flags` and `inc8 {r:y} flags` mean the same thing. They are
+there so a row can be punctuated the way assembly is, and they carry no meaning:
+in particular a comma does *not* separate destinations from operands — `<-` does
+— and it does not separate steps — `;` does.
 
 ---
 
@@ -280,8 +282,17 @@ step like any other.
 verb  destination... <- operand...
 ```
 
-The `<-` is present only when there are destinations. Without it, everything
-after the verb is an operand.
+Three pieces of punctuation, and only two of them mean anything:
+
+| | |
+|---|---|
+| `;` | separates one step from the next |
+| `<-` | separates destinations from operands. Without it, everything after the verb is an operand |
+| `,` | **nothing at all** — stripped from the end of a word, so a row can be punctuated like assembly |
+
+So `inc8 {r:y}, flags <- {r:y} flags` has one step, two destinations
+(`{r:y}` and `flags`) and two operands (`{r:y}` and `flags`); the comma could be
+left out and the meaning would not change.
 
 | step | example |
 |---|---|
