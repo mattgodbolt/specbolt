@@ -11,9 +11,9 @@
 #include <string_view>
 #endif
 
-// The description this build compiles, and the constants built from it. These
-// live in the library's namespace because they *are* what it was given.
-namespace specbolt::refract {
+namespace specbolt::v4 {
+
+using namespace refract;
 
 // clang-format off
 inline constexpr char cpu_raw[] = {
@@ -73,4 +73,4 @@ static_assert(check_displacement_rendered<tables.size()>(vocabularies, rows, tab
 static_assert(check_inherited_literals<tables.size()>(rows, tables, decoded));
 static_assert(check_tables_total<tables.size()>(tables, decoded));
 
-} // namespace specbolt::refract
+} // namespace specbolt::v4

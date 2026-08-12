@@ -3,8 +3,10 @@
 // What this library needs from a machine, written down in one place.
 //
 // A `.cpu` description names operations and locations; this says how the
-// framework reaches the thing those names denote, and how it fetches, accesses
-// memory, forms an indexed address and spends time. A description plus a type
+// framework fetches, accesses memory, forms an indexed address and spends time.
+// Where the *names* are resolved is a separate question, answered by the
+// `operation_scopes()` and `location_scopes()` the target supplies -- they take
+// no argument, so no concept can reach them by lookup. A description plus a type
 // satisfying `Machine` is a complete emulator; neither alone is anything.
 //
 // The functions are found by ordinary unqualified lookup, so a machine supplies
@@ -18,23 +20,12 @@
 
 namespace specbolt::refract {
 
-// The two scopes a description's names are resolved against: the operations it
-// may name as verbs, and the locations it may read and write. Both are
-// `consteval` and return reflections, which is why they are checked only for
-// being callable -- their element type is `std::meta::info`, and requiring that
-// here would drag `<meta>` into every consumer.
-template<typename M>
-concept HasScopes = requires {
-  { operation_scopes() };
-  { location_scopes() };
-};
-
 // Everything the framework does *to* a machine. `delay` is separate from the
 // accesses because an idle cycle is not a transfer, and `displaced_address` is
 // separate because how a base and an offset combine, and what that costs, is
 // the machine's business rather than the format's.
 template<typename M>
-concept Machine = HasScopes<M> && requires(M &machine, const std::uint16_t address, const std::uint8_t byte) {
+concept Machine = requires(M &machine, const std::uint16_t address, const std::uint8_t byte) {
   // Reading the instruction stream.
   { fetch_opcode(machine) } -> std::same_as<std::uint8_t>;
   { fetch_immediate(machine, byte) } -> std::convertible_to<std::uint16_t>;

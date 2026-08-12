@@ -24,14 +24,23 @@
 
 namespace specbolt::refract {
 
+// The machine this build generates for, named once here rather than spelled
+// out at every use.
+using Cpu = target::Cpu;
+
 // The machine this build generates for. `Cpu` and the functions below come from
 // the CPU description the consumer includes; checking the contract here means a
 // machine missing one of them is told which, rather than finding out inside a
 // generated instruction three hundred lines away.
-static_assert(Machine<Cpu>, "this CPU does not supply everything the framework needs; see Machine.hpp");
+static_assert(Machine<Cpu>, "this machine does not supply everything the framework needs; see Machine.hpp");
+static_assert(
+    requires {
+      target::operation_scopes();
+      target::location_scopes();
+    }, "the target must say where a description's operation and location names are to be resolved");
 
 // This file turns a parsed instruction table into an interpreter. `Table.hpp`
-// has already read `z80.cpu` and lowered it to `constexpr` data; nothing here
+// has already read the description and lowered it to `constexpr` data; nothing here
 // parses anything. What is left is to look up the names that data holds in the
 // CPU description, and to emit one function per (table, opcode).
 //
@@ -84,7 +93,7 @@ static_assert(Machine<Cpu>, "this CPU does not supply everything the framework n
 //
 // **`consteval` functions that throw.** Nothing catches them. Throwing makes
 // the call not a constant expression, and *that* is the diagnostic: a mistake
-// in `z80.cpu` becomes a compile error carrying its line number. This is the
+// in the description becomes a compile error carrying its line number. This is
 // most surprising idiom in the file, and it is used everywhere.
 //
 // **`std::define_static_array`.** `nonstatic_data_members_of` returns a
@@ -119,7 +128,7 @@ static_assert(Machine<Cpu>, "this CPU does not supply everything the framework n
 
 // Every name a table uses must resolve to exactly one thing. Throwing from a
 // `consteval` function is how a bad name becomes a compile error naming the
-// line of `z80.cpu` that wrote it.
+// line of the description that wrote it.
 [[nodiscard]] consteval std::meta::info only_match(
     const std::span<const std::meta::info> candidates, const std::string_view name, const std::size_t line) {
   if (candidates.empty())
@@ -134,7 +143,7 @@ static_assert(Machine<Cpu>, "this CPU does not supply everything the framework n
 // one constant evaluation, which is allowed; what it must not do is escape.
 [[nodiscard]] consteval std::meta::info find_location(const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
-  for (const auto scope: location_scopes())
+  for (const auto scope: target::location_scopes())
     for (const auto enumerator: std::meta::enumerators_of(scope))
       if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
         candidates.push_back(enumerator);
@@ -145,7 +154,7 @@ static_assert(Machine<Cpu>, "this CPU does not supply everything the framework n
 // operation scopes.
 [[nodiscard]] consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
-  for (const auto scope: operation_scopes())
+  for (const auto scope: target::operation_scopes())
     for (const auto member: std::meta::members_of(scope, std::meta::access_context::current()))
       // `has_identifier` excludes the implicitly-declared special members, which
       // have no name to compare. `is_static_member` excludes ordinary member
@@ -379,7 +388,7 @@ template<std::meta::info Fn, Call C>
     const Step &step, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
   if (!step.operation_reference)
     return {};
-  return member_of(vocabularies, *step.operation_reference, matched, opcode, rules);
+  return member_of(target::vocabularies, *step.operation_reference, matched, opcode, rules);
 }
 
 [[nodiscard]] consteval Call call_for(
@@ -387,9 +396,10 @@ template<std::meta::info Fn, Call C>
   const auto member = member_for(step, matched, opcode, rules);
   Call result{.line = line};
   for (const auto &operand: step.operands)
-    result.operands.push_back(resolve(vocabularies, operand, matched, opcode, rules), line, "too many operands");
+    result.operands.push_back(
+        resolve(target::vocabularies, operand, matched, opcode, rules), line, "too many operands");
   for (const auto &target: step.destinations) {
-    auto destination = resolve(vocabularies, target, matched, opcode, rules);
+    auto destination = resolve(target::vocabularies, target, matched, opcode, rules);
     // The idle cycle belongs to a write-back, so only to something also read.
     const auto was_read = std::ranges::any_of(
         result.operands, [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
@@ -422,15 +432,15 @@ using Handler = Next (*)(Cpu &, std::uint8_t);
 // instructions, because every choice below is made at compile time.
 //
 // `Table` and `Opcode` are template parameters rather than arguments precisely
-// so that `rows[Index]`, the vocabulary lookups, and the renaming rules are all
+// so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules are all
 // constants here.
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 Next execute_one(Cpu &cpu, const std::uint8_t latch) {
-  constexpr auto row = rows[Index];
+  constexpr auto row = target::rows[Index];
   // A renaming applies to every row this table decodes, inherited or its own: a
   // rule names the vocabulary it rewrites, so `ld {s:y}, (ix+d)` keeps the real
   // h by naming a vocabulary no rule mentions.
-  constexpr auto rules = tables[Table].rules;
+  constexpr auto rules = target::tables[Table].rules;
   // The displacement is read before any immediate, which is the order the bytes
   // appear in: `dd 36 d n` is `ld (ix+d), n`.
   // Unless this table was entered with a displacement already read, in which
@@ -438,8 +448,8 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   // A `constexpr std::optional` used two ways: contextually converted to `bool`
   // by `if constexpr`, and then dereferenced to give a template argument. Both
   // work because `optional`'s members are `constexpr`.
-  constexpr auto displaced = displaced_through(vocabularies, row, Opcode, rules);
-  constexpr bool entered_latched = latched[Table];
+  constexpr auto displaced = displaced_through(target::vocabularies, row, Opcode, rules);
+  constexpr bool entered_latched = target::latched[Table];
   const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
                                         ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1))
                                         : latch;
@@ -452,7 +462,7 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   // happen *inside* the window that forms the address rather than before it.
   const std::uint16_t indexed = [&] -> std::uint16_t {
     if constexpr (displaced) {
-      // A table entered latched read its opcode inside the same window, so that
+      // A table entered target::latched read its opcode inside the same window, so that
       // byte counts too: it is why `dd cb d op` spends five cycles and not eight.
       //
       // The machine is told the count and works out what is left of the window
@@ -497,7 +507,7 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
 // Every table is total -- `check_tables_total` insists on it -- so there is
 // always a row here, which is why this dereferences without asking.
 template<std::uint8_t Table, std::uint8_t Opcode>
-inline constexpr Handler handler_for = &execute_one<Table, Opcode, *find_row(Table, Opcode)>;
+inline constexpr Handler handler_for = &execute_one<Table, Opcode, *target::find_row(Table, Opcode)>;
 
 // The clearest demonstration in the file of what an expansion statement buys:
 // `handler_for<Table, opcode>` needs `opcode` as a *template argument*, so an
@@ -519,18 +529,18 @@ template<std::size_t... Table>
   return std::array{dispatch<static_cast<std::uint8_t>(Table)>...};
 }
 
-inline constexpr auto dispatches = all_dispatches(std::make_index_sequence<tables.size()>{});
+inline constexpr auto dispatches = all_dispatches(std::make_index_sequence<target::tables.size()>{});
 
 // Fetch, decode, run; and go round again while what ran was a prefix. Each turn
 // of the loop is a real opcode fetch, so the loop always advances time and
 // always advances PC -- which is why a table may now reach itself.
 inline void execute_instruction(Cpu &cpu) {
-  auto table = entry_table;
+  auto table = target::entry_table;
   std::uint8_t latch = 0;
   while (true) {
-    // A latched table's opcode is not the instruction's first unknown byte, so
+    // A target::latched table's opcode is not the instruction's first unknown byte, so
     // it arrives as an operand read: three cycles, and no refresh.
-    const auto opcode = latched[table] ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : fetch_opcode(cpu);
+    const auto opcode = target::latched[table] ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : fetch_opcode(cpu);
     const auto next = dispatches[table][opcode](cpu, latch);
     if (!next)
       return;

@@ -351,14 +351,3 @@ inline void write(Cpu &cpu, const State which, const bool value) {
 }
 
 } // namespace specbolt::v4
-
-// This is the machine `refract` generates for. Everything else it needs takes a
-// `Z80` and is found by argument-dependent lookup; these three cannot be, so
-// they are named here.
-namespace specbolt::refract {
-
-using Cpu = v4::Z80;
-[[nodiscard]] consteval auto operation_scopes() { return v4::operation_scopes(); }
-[[nodiscard]] consteval auto location_scopes() { return v4::location_scopes(); }
-
-} // namespace specbolt::refract
