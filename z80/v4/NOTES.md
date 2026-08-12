@@ -1,7 +1,8 @@
 # v4: notes from the spike
 
-Working notes for the table-driven, compile-time v4. Covers what the spike does today, what was
-learned about C++26 along the way, and what remains between here and a working core.
+Working notes for the table-driven, compile-time v4: what it does today, what was learned about C++26
+along the way, and what remains. For the `.cpu` format itself — grammar, semantics and worked
+examples — see [CPU_FORMAT.md](CPU_FORMAT.md). This file is about *why* it is that shape.
 
 Known bugs in v1/v2/v3 discovered while researching this are filed as issues rather than recorded
 here.

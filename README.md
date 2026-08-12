@@ -72,6 +72,7 @@ npm start
 
 ## Project Documentation
 
+- [The `.cpu` format](z80/v4/CPU_FORMAT.md) - Reference for the instruction-set description v4 compiles
 - [Style Guide](STYLE_GUIDE.md) - Comprehensive coding standards for the project
 - [Project Glossary](GLOSSARY.md) - Definitions of ZX Spectrum and emulator terminology
 - [CLAUDE.md](CLAUDE.md) - Instructions for Claude AI when working with the codebase
