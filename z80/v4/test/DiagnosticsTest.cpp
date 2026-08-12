@@ -34,6 +34,7 @@ Parsed parse(const std::string_view description) {
   for (const auto &row: rows)
     check_immediates(row);
   check_row_precedence(rows, parsed.fields, parsed.tables.size());
+  static_cast<void>(latched_tables<max_tables>(rows));
   check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
   std::vector<OpcodeSet> opcodes;
   for (const auto &row: rows)
@@ -65,8 +66,10 @@ TEST_CASE("Table diagnostics") {
         Equals("z80.cpu:2: the action and the encoding disagree about whether there is an immediate"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- nn\n"),
         Equals("z80.cpu:2: write 'n'; the encoding column says how many bytes it occupies"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 x | nop | nop\n"),
+        Equals("z80.cpu:2: 'x' is not an encoding byte; expected 'n' or 'd'"));
     CHECK_THROWS_WITH(
-        parse("table t\n00000000 d | nop | nop\n"), Equals("z80.cpu:2: 'd' is not an encoding byte; expected 'n'"));
+        parse("table t\n00000000 d d | nop | nop\n"), Equals("z80.cpu:2: a row reads at most one displacement"));
   }
   SECTION("Row precedence") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\n00000000 | also nop | nop\n"),
@@ -173,6 +176,13 @@ TEST_CASE("Table diagnostics") {
         parse("table t\n00000000 | nop | nop\ntable dead\n"), Equals("z80.cpu:3: this table has no rows"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\ntable dead\n00000000 | frob | nop\n"),
         Equals("z80.cpu:3: no goto reaches this table, so nothing in it is ever checked"));
+  }
+  SECTION("A latched table must be reached the same way every time") {
+    CHECK_NOTHROW(parse("table t\n11001011 d | (cb) | goto u\n00000000 | nop | nop\n"
+                        "table u\n00000000 | frob | nop\n"));
+    CHECK_THROWS_WITH(parse("table t\n11001011 d | (cb) | goto u\n11011101 | (dd) | goto u\n"
+                            "table u\n00000000 | frob | nop\n"),
+        Equals("z80.cpu:3: this table is reached both with and without a displacement"));
   }
   SECTION("Gotos may form a cycle") {
     // Decoding is a loop, and every turn of it fetches a byte, so a table that

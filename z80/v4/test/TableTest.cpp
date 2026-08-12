@@ -17,7 +17,7 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 34);
+    STATIC_CHECK(rows.size() == 46);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].steps[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
@@ -56,9 +56,9 @@ TEST_CASE("Table parsing") {
   SECTION("Reports how much of the instruction set it covers") {
     // Only ever goes up. Rows are checked for precedence at compile time, so
     // there is no way to gain coverage by silently shadowing another row.
-    STATIC_CHECK(tables.size() == 4);
+    STATIC_CHECK(tables.size() == 6);
     STATIC_CHECK(tables[entry_table].name == "base");
-    STATIC_CHECK(decoded_count == 744);
+    STATIC_CHECK(decoded_count == 1128);
   }
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(entry_table, 0x00) == 0u);

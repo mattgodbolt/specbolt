@@ -552,9 +552,8 @@ and the groundwork is this, roughly in the order it has to happen:
    loose indices, and four places spelled out the lookup that follows one. Both now hold a
    `Reference`, and `member_of` is the only place one is followed — which is the place a view will
    have to intercept.
-4. **Per-token fetching, and the latch it needs.** Half done — see below. `DD CB d op` puts the
-   displacement before the opcode, which still needs the encoding column to carry more than one
-   pattern token.
+4. ~~**Per-token fetching, and the latch it needs.**~~ **Done** — and it needed no multi-token
+   encodings after all. See below.
 
 ### The displacement is derived, not declared
 
@@ -695,6 +694,43 @@ vocabulary it came from — a mistake this section used to recommend, and one `E
 The rows above still name `{s:y}` rather than `{r:y}`, but for the other reason: `s` has a hole where
 `r` has `(hl)`, so `01yyy110` does not claim `0x76` and `dd 76` stays `halt`.
 
+### How DDCB was actually done
+
+`d` in the encoding column, which was reserved for this from the start — the old diagnostic already
+said `'d' is not an encoding byte`. A row that reads one does not use it; it hands it to the table it
+goes to:
+
+```
+table ix = base with hl -> ix, …
+  11001011 d | (dd cb) | goto ddcb
+```
+
+Everything else is derived from that one token:
+
+- **A table is *latched* if the gotos reaching it read a displacement.** Its rows use the incoming
+  value instead of reading their own, and it is an error for a table to be reached both ways. Nothing
+  is declared on the table itself.
+- **A latched table's opcode arrives as an operand read**, not an instruction fetch — three cycles
+  and no refresh, which is exactly what the real chip does for that byte and why `R` does not
+  increment for it. The loop picks `fetch_immediate` over `fetch_opcode` on that one bit.
+- **The address window absorbs it.** The five-T-state window that forms `ix+d` contains the opcode
+  read here, just as it contains the immediate in `ld (ix+d), n`: `5 - 3×1 = 2` idle cycles.
+  `displaced_address` needed no change at all, only a truthful count of what was read inside it.
+
+So the latch is `Next` carrying a byte, and it costs nothing: the displacement arrives in a register
+parameter. `set 4, (ix+d), b` compiles to sign-extend, `idle`, `add`, `read`, `or $0x10`, `idle`,
+`write`, `mov` — the primitive inlined and the undocumented copy a single store.
+
+Two small capabilities came with it, both general rather than DDCB-shaped: an operand written out in
+a row may carry `/delay=1` exactly as a vocabulary member can, and one result may name more than one
+destination. The second *is* the undocumented copy.
+
+Timings verified against `OpcodeTests.cpp`: 20 for `bit n,(ix+d)`, 23 for `set`/`res`. Flags 3 and 5
+come from `wzh`, the high byte of the address the machine last formed, which is a named location now
+rather than a papered-over `h`.
+
+Still missing from these tables: the rotate family, because `cb` does not have it either.
+
 ### DDCB is different in kind, and substitution provably cannot express it
 
 CB and ED are pure table switches. DD and FD are re-readings of the same map. **DDCB is both, plus a
@@ -716,7 +752,15 @@ the undocumented register copy.
 So the repo contains a working implementation of "DD is a view over the CB table", and it is wrong
 224 times. Write down *why* `ddcb` is separate, or someone will fold it back into `cb`.
 
-The undocumented register copy is `-> {r8:z}`, with `.` as the "no destination" member for `z == 6`.
+The undocumented register copy is a second destination, and `z == 6` is a separate row reached by
+first-match-wins rather than a "no destination" member — `s` already has a hole at 6, so `10bbbzzz`
+does not claim it and `10bbb110` does. No new vocabulary syntax was needed.
+
+`ddcb` and `fdcb` are written out twice rather than one derived from the other, because they differ
+only in a *literal* operand and a rule rewrites only `{field}` references. That is the same rule that
+keeps `ex de, hl` safe, so the duplication is the price of it; worth revisiting together when
+`ex de,hl`, `jp (hl)` and `ld sp,hl` land, since those are the rows that decide whether literals
+should ever be rewritten.
 
 ### Pure goto is refuted by v1
 

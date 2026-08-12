@@ -160,6 +160,9 @@ struct Row {
   std::string_view mnemonic{};
   Vector<Piece, max_pieces> pieces{};
   std::uint8_t immediate_bytes{};
+  // `d` in the encoding: this row reads a displacement it does not use itself,
+  // and hands it to the table it goes to. Only `dd cb` needs this.
+  bool reads_displacement{};
   std::uint8_t table{};
   Vector<Step, max_steps> steps{};
   std::size_t line{};
@@ -192,10 +195,26 @@ struct Row {
   return count;
 }
 
+[[nodiscard]] constexpr std::uint8_t parse_delay(const std::string_view value, const std::size_t line) {
+  if (value.size() != 1 || value.front() < '0' || value.front() > '9')
+    throw table_error(line, "delay must be a single digit");
+  return static_cast<std::uint8_t>(value.front() - '0');
+}
+
 [[nodiscard]] constexpr Operand parse_simple_operand(
     std::string_view word, const std::size_t line, const std::uint8_t immediate_bytes) {
   if (word.empty())
     throw table_error(line, "empty operand in action");
+  // An addressing mode written out in a row says what it costs the same way a
+  // vocabulary member does.
+  if (const auto slash = word.find('/'); slash != std::string_view::npos) {
+    Parser attribute(word.substr(slash + 1));
+    if (attribute.split_to('=').data() != "delay")
+      throw table_error(line, "'" + std::string(word.substr(slash + 1)) + "' is not an operand attribute");
+    auto attributed = parse_simple_operand(word.substr(0, slash), line, immediate_bytes);
+    attributed.write_back_delay = parse_delay(attribute.data(), line);
+    return attributed;
+  }
   if (word == "-")
     return {.kind = Operand::Kind::Discard};
   if (word.starts_with('(')) {
@@ -290,9 +309,7 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
     const auto value = attribute.data();
     if (key != "delay")
       throw table_error(line, "'" + std::string(key) + "' is not a member attribute; expected 'delay'");
-    if (value.size() != 1 || value.front() < '0' || value.front() > '9')
-      throw table_error(line, "delay must be a single digit");
-    member.write_back_delay = static_cast<std::uint8_t>(value.front() - '0');
+    member.write_back_delay = parse_delay(value, line);
   }
   if (member.display.empty())
     throw table_error(line, "field member has no name");
@@ -538,8 +555,14 @@ template<std::size_t N>
       const auto token = encoding.next_word();
       if (token.empty())
         continue;
+      if (token == "d") {
+        if (row.reads_displacement)
+          throw table_error(at, "a row reads at most one displacement");
+        row.reads_displacement = true;
+        continue;
+      }
       if (token != "n")
-        throw table_error(at, "'" + std::string(token) + "' is not an encoding byte; expected 'n'");
+        throw table_error(at, "'" + std::string(token) + "' is not an encoding byte; expected 'n' or 'd'");
       ++row.immediate_bytes;
     }
     if (row.immediate_bytes > 2)
@@ -758,6 +781,29 @@ template<std::size_t NumTables>
   return all;
 }
 
+// Which tables are entered with a displacement already read. `dd cb d op` is
+// the one encoding whose opcode is not its last byte, so the row that reads `d`
+// hands it on rather than using it. Two consequences, both derived from the
+// gotos that reach a table rather than declared on it: its rows use the
+// displacement instead of reading one, and its opcode arrives by an operand
+// read rather than an instruction fetch -- the machine has already committed,
+// which is why the real chip does not increment R for that byte.
+template<std::size_t NumTables>
+[[nodiscard]] constexpr std::array<bool, NumTables> latched_tables(const std::span<const Row> rows) {
+  std::array<bool, NumTables> latched{};
+  std::array<bool, NumTables> seen{};
+  for (const auto &row: rows)
+    for (const auto &step: row.steps) {
+      if (step.kind != Step::Kind::Goto)
+        continue;
+      if (seen[step.target] && latched[step.target] != row.reads_displacement)
+        throw table_error(row.line, "this table is reached both with and without a displacement");
+      seen[step.target] = true;
+      latched[step.target] = row.reads_displacement;
+    }
+  return latched;
+}
+
 // A table nothing reaches is never instantiated, so nothing in it is ever
 // type-checked. An empty one is a typo.
 constexpr bool check_tables_used(
@@ -793,6 +839,7 @@ inline constexpr auto row_opcodes = [] {
 }();
 
 inline constexpr auto decoded = decode_tables<tables.size()>(rows, row_opcodes, tables);
+inline constexpr auto latched = latched_tables<tables.size()>(rows);
 
 // Decoding starts in the first table declared; no name is special.
 inline constexpr std::uint8_t entry_table = 0;

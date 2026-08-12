@@ -44,6 +44,10 @@ public:
   // scheduled sees the machine as it was at that moment.
   void bus(Bus kind, std::uint16_t address);
 
+  // What the address bus last held. Undocumented flags 3 and 5 come from here
+  // on the instructions that have nothing better to give them.
+  [[nodiscard]] std::uint16_t bus_address() const { return bus_address_; }
+
   using Z80Base::halted;
   void halted(bool value);
 

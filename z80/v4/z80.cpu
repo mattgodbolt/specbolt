@@ -54,8 +54,32 @@ table ix = base with hl -> ix, h -> ixh, l -> ixl, (hl) -> (ix+d)/delay=1
 
 01yyy110     | ld {s:y}, (ix+d) | ld8 {s:y} <- (ix+d)
 01110zzz     | ld (ix+d), {s:z} | ld8 (ix+d) <- {s:z}
+11001011 d   | (dd cb)          | goto ddcb
 
 table iy = base with hl -> iy, h -> iyh, l -> iyl, (hl) -> (iy+d)/delay=1
 
 01yyy110     | ld {s:y}, (iy+d) | ld8 {s:y} <- (iy+d)
 01110zzz     | ld (iy+d), {s:z} | ld8 (iy+d) <- {s:z}
+11001011 d   | (fd cb)          | goto fdcb
+
+# `dd cb d op` is the one encoding whose opcode is not its last byte, so the
+# row above reads the displacement and hands it on. These rows are not `cb`
+# renamed: every one of them works on memory, and the low bits name a register
+# the result is *also* copied into. Reading them as a view is the bug that makes
+# v2 and v3 wrong for 224 of 256 entries.
+
+table ddcb
+
+01bbbzzz     | bit {b}, (ix+d)          | bit8 flags <- (ix+d) {b} flags wzh ; delay 1
+10bbb110     | res {b}, (ix+d)          | res8 (ix+d)/delay=1 <- (ix+d) {b}
+10bbbzzz     | res {b}, (ix+d), {s:z}   | res8 (ix+d)/delay=1 {s:z} <- (ix+d) {b}
+11bbb110     | set {b}, (ix+d)          | set8 (ix+d)/delay=1 <- (ix+d) {b}
+11bbbzzz     | set {b}, (ix+d), {s:z}   | set8 (ix+d)/delay=1 {s:z} <- (ix+d) {b}
+
+table fdcb
+
+01bbbzzz     | bit {b}, (iy+d)          | bit8 flags <- (iy+d) {b} flags wzh ; delay 1
+10bbb110     | res {b}, (iy+d)          | res8 (iy+d)/delay=1 <- (iy+d) {b}
+10bbbzzz     | res {b}, (iy+d), {s:z}   | res8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}
+11bbb110     | set {b}, (iy+d)          | set8 (iy+d)/delay=1 <- (iy+d) {b}
+11bbbzzz     | set {b}, (iy+d), {s:z}   | set8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}

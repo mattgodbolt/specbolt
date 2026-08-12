@@ -172,8 +172,12 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
         store<C.destinations[at], C.line>(cpu, immediate, indexed, result.[:members[at]:]);
   }
   else {
-    static_assert(C.destinations.size() == 1, "this operation returns one value, so the row must name one destination");
-    store<C.destinations[0], C.line>(cpu, immediate, indexed, call(arguments));
+    static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
+    // More than one is how `dd cb d op` writes its result back through the
+    // addressing mode *and* into the register the low bits name.
+    const auto result = call(arguments);
+    template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
+        store<C.destinations[at], C.line>(cpu, immediate, indexed, result);
   }
 }
 
@@ -210,12 +214,18 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
 // What a row says to do once it has run: nothing, or fetch another byte and
 // decode it in the table named. A prefix *returns* where to go rather than
 // going there, because `dd dd dd ...` is a legal and unbounded Z80 instruction:
-// it must cost 4T a byte, not a stack frame a byte.
-using Next = std::optional<std::uint8_t>;
-using Handler = Next (*)(Cpu &);
+// it must cost 4T a byte, not a stack frame a byte. The displacement rides
+// along because `dd cb d op` reads its displacement one table before the row
+// that uses it.
+struct Transfer {
+  std::uint8_t table{};
+  std::uint8_t displacement{};
+};
+using Next = std::optional<Transfer>;
+using Handler = Next (*)(Cpu &, std::uint8_t);
 
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
-Next execute_one(Cpu &cpu) {
+Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   constexpr auto row = rows[Index];
   // A renaming applies to rows this table inherited, not to rows written in it:
   // an override row is written knowing which table it is in, so it means what
@@ -223,8 +233,12 @@ Next execute_one(Cpu &cpu) {
   constexpr auto rules = row.table == Table ? Rules{} : tables[Table].rules;
   // The displacement is read before any immediate, which is the order the bytes
   // appear in: `dd 36 d n` is `ld (ix+d), n`.
+  // Unless this table was entered with a displacement already read, in which
+  // case it arrived before this row's own opcode did.
   constexpr auto displaced = displaced_through(fields, row, Opcode, rules);
-  const std::uint8_t displacement = displaced ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : 0;
+  constexpr bool inherits = latched[Table];
+  const std::uint8_t displacement =
+      row.reads_displacement || (displaced && !inherits) ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : latch;
   // The encoding column says what is fetched, and it is fetched once before any
   // step: argument order within a call is unspecified, and a later step may
   // store through an address an earlier one read.
@@ -234,15 +248,17 @@ Next execute_one(Cpu &cpu) {
   // happen *inside* the window that forms the address rather than before it.
   const std::uint16_t indexed = [&] -> std::uint16_t {
     if constexpr (displaced)
-      return displaced_address(
-          cpu, direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate), displacement, row.immediate_bytes);
+      // A table entered latched read its opcode inside the same window, so that
+      // byte counts too: it is why `dd cb d op` spends five cycles and not eight.
+      return displaced_address(cpu, direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate), displacement,
+          static_cast<std::uint8_t>(row.immediate_bytes + (inherits ? 1 : 0)));
     else
       return 0;
   }();
   template for (constexpr auto at: std::views::iota(0uz, row.steps.size())) {
     constexpr auto step = row.steps[at];
     if constexpr (step.kind == Step::Kind::Goto)
-      return step.target;
+      return Transfer{step.target, displacement};
     else {
       constexpr auto member = member_for(step, row.matched, Opcode, rules);
       constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
@@ -286,16 +302,20 @@ inline constexpr auto dispatches = all_dispatches(std::make_index_sequence<table
 // always advances PC -- which is why a table may now reach itself.
 inline void execute_instruction(Cpu &cpu) {
   auto table = entry_table;
+  std::uint8_t latch = 0;
   while (true) {
-    const auto opcode = fetch_opcode(cpu);
+    // A latched table's opcode is not the instruction's first unknown byte, so
+    // it arrives as an operand read: three cycles, and no refresh.
+    const auto opcode = latched[table] ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : fetch_opcode(cpu);
     const auto handler = dispatches[table][opcode];
     if (!handler)
       throw std::runtime_error(std::format(
           "no row in " SPECBOLT_CPU_TABLE " table '{}' decodes opcode 0x{:02x}", tables[table].name, opcode));
-    const auto next = handler(cpu);
+    const auto next = handler(cpu, latch);
     if (!next)
       return;
-    table = *next;
+    table = next->table;
+    latch = next->displacement;
   }
 }
 

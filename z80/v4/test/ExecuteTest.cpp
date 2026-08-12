@@ -144,6 +144,49 @@ TEST_CASE("Indexed addressing") {
     }
   }
 
+  SECTION("dd cb reads its displacement before the byte that says what to do") {
+    regs.set(RegisterFile::R16::IX, 0x1236);
+    t.memory.write(0x1234, 0x00);
+    t.run(0xdd, 0xcb, 0xfe, 0xe6); // set 4, (ix-2)
+    CHECK(t.memory.read(0x1234) == 0b0001'0000);
+    CHECK(t.z80.pc() == 4);
+    CHECK(t.z80.cycle_count() == 23);
+  }
+
+  SECTION("bit n, (ix+d) takes flags 3 and 5 from the address, not a register") {
+    t.z80.flags(Flags());
+    regs.set(RegisterFile::R8::H, 0xff); // would set both if the row named h
+    regs.set(RegisterFile::R16::IX, 0x1234);
+    t.memory.write(0x1236, 0x00);
+    t.run(0xdd, 0xcb, 0x02, 0x46); // bit 0, (ix+2)
+    CHECK(t.z80.pc() == 4);
+    CHECK(t.z80.cycle_count() == 20);
+    CHECK(t.z80.flags() == (Flags::Zero() | Flags::HalfCarry() | Flags::Parity()));
+
+    t.memory.write(0x1236, 0x01);
+    t.run(0xdd, 0xcb, 0x02, 0x46);
+    CHECK(t.z80.flags() == Flags::HalfCarry());
+  }
+
+  SECTION("dd cb also copies its result into the register the low bits name") {
+    // The undocumented half: v2 and v3 read this as a view over cb and get the
+    // wrong answer for every entry where the low bits are not 6.
+    regs.set(RegisterFile::R16::IX, 0x1236);
+    t.memory.write(0x1234, 0x00);
+    t.run(0xdd, 0xcb, 0xfe, 0xe0); // set 4, (ix-2), b
+    CHECK(t.memory.read(0x1234) == 0b0001'0000);
+    CHECK(regs.get(RegisterFile::R8::B) == 0b0001'0000);
+    CHECK(t.z80.cycle_count() == 23);
+  }
+
+  SECTION("fd cb is the same again through iy") {
+    regs.set(RegisterFile::R16::IY, 0x1236);
+    t.memory.write(0x1234, 0xff);
+    t.run(0xfd, 0xcb, 0xfe, 0x86); // res 0, (iy-2)
+    CHECK(t.memory.read(0x1234) == 0xfe);
+    CHECK(t.z80.cycle_count() == 23);
+  }
+
   SECTION("dd 76 is still halt, because neither override row covers it") {
     t.run(0xdd, 0x76);
     CHECK(t.z80.halted());

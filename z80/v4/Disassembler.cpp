@@ -5,6 +5,7 @@
 #include "peripherals/Memory.hpp"
 
 #include <format>
+#include <optional>
 #include <string>
 #endif
 
@@ -19,12 +20,17 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
   std::size_t offset = 0;
   auto table = entry_table;
   const Row *row = nullptr;
+  std::optional<unsigned> latch;
   while (true) {
     const auto index = find_row(table, byte_at(offset));
     ++offset;
     if (!index)
       return {"??", offset};
     row = &rows[*index];
+    // `dd cb d op`: the displacement comes between the prefix and the byte that
+    // says what to do, so it is taken here rather than after the opcode.
+    if (row->reads_displacement)
+      latch = byte_at(offset++);
     const auto next = transfers_to(*row);
     if (!next)
       break;
@@ -36,10 +42,10 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
   // Only an inherited row is renamed; see the note in Execute.hpp.
   const auto &rules = row->table == table ? no_rules : tables[table].rules;
   // The displacement precedes any immediate, so it is taken before the pieces
-  // are walked and whatever they read follows it.
+  // are walked and whatever they read follows it -- unless a prefix already did.
   const auto displaced = displaced_through(fields, *row, opcode, rules);
-  const unsigned displacement = displaced ? byte_at(offset) : 0;
-  if (displaced)
+  const unsigned displacement = latch ? *latch : displaced ? byte_at(offset) : 0;
+  if (displaced && !latch)
     ++offset;
 
   const auto render = [&](const Piece &part) {
