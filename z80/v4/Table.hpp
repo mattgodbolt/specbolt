@@ -79,7 +79,7 @@ struct Operand {
 // a vocabulary member to look up, a value read from the encoding, or the
 // displacement an indexed addressing mode carries.
 struct Piece {
-  enum class Kind : std::uint8_t { Literal, Field, Imm8, Imm16, Displacement };
+  enum class Kind : std::uint8_t { Literal, Field, Imm8, Imm16, Displacement, Relative };
   Kind kind{};
   std::string_view text{};
   Reference reference{};
@@ -111,10 +111,13 @@ struct Field {
 };
 
 // A derived table re-reads its parent's rows with some vocabulary members
-// renamed: `dd` is `base` read with hl->ix. The left side is a member's text as
-// the vocabulary writes it; the right is a whole member, so a substitute may
-// bring its own primitive and its own access sequence.
+// renamed: `dd` is `base` read with `p.hl -> ix`. A rule names the vocabulary
+// it rewrites as well as the member, because the same text means different
+// things in different vocabularies -- `r.h` is renamed by a view and the `s.h`
+// of an indexed load is not. The right side is a whole member, so a substitute
+// may bring its own primitive and its own access sequence.
 struct Rule {
+  std::uint8_t field_index{};
   std::string_view from{};
   Member to{};
   constexpr bool operator==(const Rule &) const = default;
@@ -132,7 +135,7 @@ inline constexpr Rules no_rules{};
     const Matched &matched, const std::uint8_t opcode, const Rules &rules = {}) {
   const auto &member = fields[reference.field_index].values[matched.slices[reference.slice_index].extract(opcode)];
   for (const auto &rule: rules)
-    if (rule.from == member.display)
+    if (rule.field_index == reference.field_index && rule.from == member.display)
       return rule.to;
   return member;
 }
@@ -143,7 +146,10 @@ inline constexpr std::size_t max_operands = 4;
 // A row is an ordered list of these, which is where cost lives: an internal
 // delay is a step like any other.
 struct Step {
-  enum class Kind : std::uint8_t { Apply, Goto };
+  // `If` applies a primitive that yields a bool and abandons the rest of the
+  // row when it is false. Every Z80 conditional puts its conditional half last,
+  // so guarding the remainder is all a condition ever has to do.
+  enum class Kind : std::uint8_t { Apply, Goto, If };
   Kind kind{};
   std::uint8_t target{};
   std::string_view verb{};
@@ -275,12 +281,17 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
       }
       if (const auto literal = chunk.split_to('$').data(); !literal.empty())
         push(Piece{.kind = Piece::Kind::Literal, .text = literal});
+      if (chunk.data().starts_with('e')) {
+        chunk.skip_any("e");
+        push(Piece{.kind = Piece::Kind::Relative});
+        continue;
+      }
       const auto remaining = chunk.data().size();
       chunk.skip_any("n");
       switch (remaining - chunk.data().size()) {
         case 2: push(Piece{.kind = Piece::Kind::Imm8}); break;
         case 4: push(Piece{.kind = Piece::Kind::Imm16}); break;
-        default: throw table_error(line, "expected $nn or $nnnn in mnemonic");
+        default: throw table_error(line, "expected $nn, $nnnn or $e in mnemonic");
       }
     }
   };
@@ -376,8 +387,16 @@ struct TableDecl {
   Rules rules{};
 };
 
-// `hl->ix, h -> ixh`: either spacing, because both read naturally.
-constexpr void parse_substitutions(const std::string_view text, TableDecl &table, const std::size_t line) {
+[[nodiscard]] constexpr std::optional<std::size_t> find_field(const std::span<const Field> fields, const char name) {
+  for (std::size_t index = 0; index < fields.size(); ++index)
+    if (fields[index].name == name)
+      return index;
+  return std::nullopt;
+}
+
+// `p.hl->ix, r.h -> ixh`: either spacing, because both read naturally.
+constexpr void parse_substitutions(
+    const std::string_view text, const std::span<const Field> fields, TableDecl &table, const std::size_t line) {
   Parser list(text);
   while (!list.eof()) {
     const auto rule = Parser::trim(list.split_to(',').data());
@@ -386,16 +405,32 @@ constexpr void parse_substitutions(const std::string_view text, TableDecl &table
     const auto arrow = rule.find("->");
     if (arrow == std::string_view::npos)
       throw table_error(line, "expected '->' in table substitution '" + std::string(rule) + "'");
-    const auto from = Parser::trim(rule.substr(0, arrow));
+    const auto left = Parser::trim(rule.substr(0, arrow));
     const auto to = Parser::trim(rule.substr(arrow + 2));
-    if (from.empty() || to.empty())
+    if (left.empty() || to.empty())
       throw table_error(line, "a table substitution needs a name on each side of '->'");
-    table.rules.push_back({from, parse_member(to, line)}, line, "too many substitutions in table");
+    const auto dot = left.find('.');
+    if (dot == std::string_view::npos)
+      throw table_error(line, "a table substitution names the vocabulary it rewrites, as in 'r.h -> ixh'");
+    const auto vocabulary = left.substr(0, dot);
+    if (vocabulary.size() != 1)
+      throw table_error(line, "vocabulary name must be a single character");
+    const auto field = find_field(fields, vocabulary.front());
+    if (!field)
+      throw table_error(line, "substitution names a vocabulary that does not exist");
+    const auto from = left.substr(dot + 1);
+    if (from.empty())
+      throw table_error(line, "a table substitution needs a name on each side of '->'");
+    if (std::ranges::none_of(fields[*field].values, [&](const Member &m) { return m.display == from; }))
+      throw table_error(line, "vocabulary '" + std::string(vocabulary) + "' has no member '" + std::string(from) + "'");
+    table.rules.push_back(
+        {static_cast<std::uint8_t>(*field), from, parse_member(to, line)}, line, "too many substitutions in table");
   }
 }
 
 template<std::size_t N>
-[[nodiscard]] constexpr std::array<TableDecl, N> parse_tables(const std::string_view description) {
+[[nodiscard]] constexpr std::array<TableDecl, N> parse_tables(
+    const std::string_view description, const std::span<const Field> fields) {
   std::array<TableDecl, N> result{};
   Parser lines(description);
   std::size_t index = 0;
@@ -429,7 +464,7 @@ template<std::size_t N>
       throw table_error(at, "no table named '" + std::string(parent) + "' is declared above this one");
     if (parser.next_word() != "with")
       throw table_error(at, "expected 'with' after the parent table name");
-    parse_substitutions(parser.data(), table, at);
+    parse_substitutions(parser.data(), fields, table, at);
     if (table.rules.empty())
       throw table_error(at, "a derived table declares no substitutions, so it is its parent");
   }
@@ -442,13 +477,6 @@ template<std::size_t N>
     if (tables[index].name == name)
       return static_cast<std::uint8_t>(index);
   throw table_error(line, "no table named '" + std::string(name) + "'");
-}
-
-[[nodiscard]] constexpr std::optional<std::size_t> find_field(const std::span<const Field> fields, const char name) {
-  for (std::size_t index = 0; index < fields.size(); ++index)
-    if (fields[index].name == name)
-      return index;
-  return std::nullopt;
 }
 
 [[nodiscard]] constexpr std::optional<std::size_t> find_slice(const Matched &matched, const char name) {
@@ -514,7 +542,9 @@ constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
 constexpr void check_immediates(const Row &row) {
   std::size_t rendered = 0;
   for (const auto &piece: row.pieces)
-    rendered += piece.kind == Piece::Kind::Imm8 ? 1u : piece.kind == Piece::Kind::Imm16 ? 2u : 0u;
+    rendered += piece.kind == Piece::Kind::Imm8 || piece.kind == Piece::Kind::Relative ? 1u
+                : piece.kind == Piece::Kind::Imm16                                     ? 2u
+                                                                                       : 0u;
   if (rendered != row.immediate_bytes)
     throw table_error(row.line, "the mnemonic renders a different number of immediate bytes than the encoding fetches");
 
@@ -577,6 +607,12 @@ template<std::size_t N>
       row.steps.push_back({}, at, "row has too many steps");
       auto &step = row.steps[row.steps.size() - 1];
       step.verb = action.next_word();
+      if (step.verb == "if") {
+        step.kind = Step::Kind::If;
+        step.verb = action.next_word();
+        if (step.verb.empty())
+          throw table_error(at, "'if' needs something to test");
+      }
       if (step.verb == "goto") {
         step.kind = Step::Kind::Goto;
         step.target = find_table(tables, action.next_word(), at);
@@ -612,7 +648,7 @@ template<std::size_t N>
     // The disassembler renders nothing for a goto row and stops, so a goto has
     // to be the whole row or the two would disagree about what an opcode means.
     if (std::ranges::any_of(row.steps, [](const Step &step) { return step.kind == Step::Kind::Goto; }) &&
-        row.steps.size() != 1)
+        row.steps.size() != 1) // NOLINT
       throw table_error(at, "a goto must be the row's only step");
     lower_mnemonic(fields, row);
     check_immediates(row);
@@ -828,7 +864,7 @@ constexpr bool check_tables_used(
 // The description this build was compiled against. Everything above parses
 // whatever it is given; only these three name the embedded file.
 inline constexpr auto fields = parse_fields<count_matching(cpu_description, &is_field)>(cpu_description);
-inline constexpr auto tables = parse_tables<count_matching(cpu_description, &is_table)>(cpu_description);
+inline constexpr auto tables = parse_tables<count_matching(cpu_description, &is_table)>(cpu_description, fields);
 inline constexpr auto rows = parse_rows<count_matching(cpu_description, &is_row)>(cpu_description, fields, tables);
 
 inline constexpr auto row_opcodes = [] {

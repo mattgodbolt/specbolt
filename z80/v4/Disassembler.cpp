@@ -39,8 +39,7 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
 
   std::string result;
   const auto opcode = byte_at(offset - 1);
-  // Only an inherited row is renamed; see the note in Execute.hpp.
-  const auto &rules = row->table == table ? no_rules : tables[table].rules;
+  const auto &rules = tables[table].rules;
   // The displacement precedes any immediate, so it is taken before the pieces
   // are walked and whatever they read follows it -- unless a prefix already did.
   const auto displaced = displaced_through(fields, *row, opcode, rules);
@@ -60,6 +59,14 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
         result += std::format("0x{:02x}", byte_at(offset));
         offset += 1;
         break;
+      case Piece::Kind::Relative: {
+        // Measured from the byte after the offset, which is the end of the
+        // instruction: a relative jump never carries anything else.
+        const auto to = static_cast<std::int8_t>(byte_at(offset));
+        offset += 1;
+        result += std::format("0x{:04x}", static_cast<std::uint16_t>(address + offset + to));
+        break;
+      }
       case Piece::Kind::Imm16:
         result += std::format("0x{:04x}", static_cast<std::uint16_t>(byte_at(offset) | byte_at(offset + 1) << 8));
         offset += 2;

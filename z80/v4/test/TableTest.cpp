@@ -10,21 +10,22 @@ namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
-    STATIC_CHECK(fields.size() == 8);
+    STATIC_CHECK(fields.size() == 12);
     STATIC_CHECK(fields[0].name == 'p');
     STATIC_CHECK(fields[0].values.size() == 4);
     STATIC_CHECK(fields[0].values[0].display == "bc");
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 52);
+    STATIC_CHECK(rows.size() == 89);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].steps[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
   }
   SECTION("Keeps the line number for diagnostics") {
-    STATIC_CHECK(rows[0].line == 17);
-    STATIC_CHECK(rows[2].line == 19);
+    STATIC_CHECK(rows[0].line > 0);
+    STATIC_CHECK(rows[1].line > rows[0].line);
+    STATIC_CHECK(rows[rows.size() - 1].line > rows[0].line);
   }
   SECTION("A hole means the row does not cover that opcode") {
     STATIC_CHECK(fields[3].name == 'w');
@@ -58,13 +59,13 @@ TEST_CASE("Table parsing") {
     // there is no way to gain coverage by silently shadowing another row.
     STATIC_CHECK(tables.size() == 6);
     STATIC_CHECK(tables[entry_table].name == "base");
-    STATIC_CHECK(decoded_count == 1332);
+    STATIC_CHECK(decoded_count == 1533);
   }
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(entry_table, 0x00) == 0u);
     STATIC_CHECK(find_row(entry_table, 0x76) == 1u);
     STATIC_CHECK(rows[*find_row(entry_table, 0x21)].steps[0].verb == "ld16");
-    STATIC_CHECK(!find_row(entry_table, 0x08));
+    STATIC_CHECK(!find_row(entry_table, 0xed)); // the ed table is not described yet
   }
   SECTION("Lowers mnemonics into validated pieces") {
     constexpr auto ld = rows[*find_row(entry_table, 0x21)];
@@ -200,7 +201,7 @@ TEST_CASE("Generated execution") {
     run(0x27);
     CHECK(cpu.get(RegisterFile::R8::A) == 0x15);
   }
-  SECTION("Undecoded opcodes are rejected, not ignored") { CHECK_THROWS(run(0x08)); }
+  SECTION("Undecoded opcodes are rejected, not ignored") { CHECK_THROWS(run(0xed)); }
   SECTION("Operands can be addresses") {
     cpu.set(RegisterFile::R16::HL, 0x9000);
     cpu.set(RegisterFile::R8::B, 0x5a);

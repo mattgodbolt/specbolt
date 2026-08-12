@@ -118,11 +118,18 @@ template<Operand Op, std::size_t Line>
     return direct_value_of<Op, Line, std::uint16_t>(cpu, immediate);
 }
 
-// An indirect operand is whatever it would have been, read as an address.
+// An indirect operand is whatever it would have been, read as an address. How
+// wide the read is comes from the parameter it feeds, so `ld16 hl <- (n)` reads
+// two bytes and `ld8 a <- (n)` one, with the row saying neither.
 template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
-  if constexpr (Op.indirect)
-    return read_memory(cpu, address_of<Op, Line>(cpu, immediate, indexed));
+  if constexpr (Op.indirect) {
+    const auto address = address_of<Op, Line>(cpu, immediate, indexed);
+    if constexpr (std::same_as<Parameter, std::uint16_t>)
+      return read_memory16(cpu, address);
+    else
+      return read_memory(cpu, address);
+  }
   else
     return direct_value_of<Op, Line, Parameter>(cpu, immediate);
 }
@@ -135,7 +142,11 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
     // The addressing mode says how long the machine idles before writing back.
     if constexpr (Op.write_back_delay != 0)
       delay(cpu, Op.write_back_delay);
-    write_memory(cpu, address_of<Op, Line>(cpu, immediate, indexed), value);
+    const auto address = address_of<Op, Line>(cpu, immediate, indexed);
+    if constexpr (std::same_as<T, std::uint16_t>)
+      write_memory16(cpu, address, value);
+    else
+      write_memory(cpu, address, value);
   }
   else {
     static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
@@ -179,6 +190,18 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
         store<C.destinations[at], C.line>(cpu, immediate, indexed, result);
   }
+}
+
+// A condition is applied like any other primitive; only what is done with the
+// answer differs.
+template<std::meta::info Fn, Call C>
+[[nodiscard]] bool evaluate(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
+  static_assert(C.operands.size() == arity_of<Fn>, "the row supplies the wrong number of operands for this condition");
+  static_assert(C.destinations.size() == 0, "a condition names no destination; it decides whether the rest happens");
+  constexpr auto arguments = std::make_index_sequence<C.operands.size()>{};
+  return [&]<std::size_t... I>(std::index_sequence<I...>) {
+    return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate, indexed)...);
+  }(arguments);
 }
 
 // A vocabulary member may bind the verb late, and may append an operand the
@@ -227,10 +250,10 @@ using Handler = Next (*)(Cpu &, std::uint8_t);
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   constexpr auto row = rows[Index];
-  // A renaming applies to rows this table inherited, not to rows written in it:
-  // an override row is written knowing which table it is in, so it means what
-  // it says. That is what lets `ld {s:y}, (ix+d)` keep the real h.
-  constexpr auto rules = row.table == Table ? Rules{} : tables[Table].rules;
+  // A renaming applies to every row this table decodes, inherited or its own: a
+  // rule names the vocabulary it rewrites, so `ld {s:y}, (ix+d)` keeps the real
+  // h by naming a vocabulary no rule mentions.
+  constexpr auto rules = tables[Table].rules;
   // The displacement is read before any immediate, which is the order the bytes
   // appear in: `dd 36 d n` is `ld (ix+d), n`.
   // Unless this table was entered with a displacement already read, in which
@@ -262,8 +285,15 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
     else {
       constexpr auto member = member_for(step, row.matched, Opcode, rules);
       constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
-      apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line, rules)>(
-          cpu, immediate, indexed);
+      constexpr auto call = call_for(step, row.matched, Opcode, row.line, rules);
+      if constexpr (step.kind == Step::Kind::If) {
+        // The rest of the row is the conditional half, which is where the
+        // extra cycles of a taken branch come from too.
+        if (!evaluate<find_primitive(primitive, row.line), call>(cpu, immediate, indexed))
+          return std::nullopt;
+      }
+      else
+        apply<find_primitive(primitive, row.line), call>(cpu, immediate, indexed);
     }
   }
   return std::nullopt;

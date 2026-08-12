@@ -11,6 +11,13 @@ field g = rlc:rlc8 rrc:rrc8 rl:rl8+carry rr:rr8+carry sla:sla8 sra:sra8 sll:sll8
 field f = rlca:rlca8 rrca:rrca8 rla:rla8 rra:rra8
 # never renamed by a view: the register operand of an indexed load stays real
 field s = b c d e h l - a
+# the stack's view of the pairs: af where sp would be
+field k = bc de hl af
+field t = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
+# a condition binds a test and appends the flag it asks about
+field c = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry po:is_clear+parity pe:is_set+parity p:is_clear+sign m:is_set+sign
+# the four conditions jr can encode
+field j = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
 
 table base
 
@@ -38,6 +45,33 @@ table base
 110qq110 n   | {q} a, $nn      | {q} a, flags <- a n
 111ww110 n   | {w} $nn         | {w} a, flags <- a n
 11111110 n   | cp $nn          | cmp8 -, flags <- a n
+00100010 n n | ld ($nnnn), hl  | ld16 (n) <- hl
+00101010 n n | ld hl, ($nnnn)  | ld16 hl <- (n)
+00110010 n n | ld ($nnnn), a   | ld8 (n) <- a
+00111010 n n | ld a, ($nnnn)   | ld8 a <- (n)
+00pp1001     | add hl, {p}     | add16 hl, flags <- hl {p} flags ; delay 7
+00001000     | ex af, af'      | ex_af
+11011001     | exx             | exx
+11101011     | ex de, hl       | ex_de_hl
+11101001     | jp (hl)         | ld16 pc <- hl
+11111001     | ld sp, hl       | ld16 sp <- hl ; delay 2
+11110011     | di              | ld8 iff1 <- 0 ; ld8 iff2 <- 0
+11111011     | ei              | ld8 iff1 <- 1 ; ld8 iff2 <- 1
+11000011 n n | jp $nnnn        | ld16 pc <- n
+11kk0101     | push {k}        | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- {k}
+11kk0001     | pop {k}         | ld16 {k} <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11001101 n n | call $nnnn      | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
+11001001     | ret             | ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11yyy111     | rst {t:y}       | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- {t:y}
+00010000 n   | djnz $e         | delay 1 ; dec8_quiet b <- b ; if nonzero b ; delay 5 ; relative pc <- pc n
+00011000 n   | jr $e           | delay 5 ; relative pc <- pc n
+001jj000 n   | jr {j}, $e      | if {j} ; delay 5 ; relative pc <- pc n
+11yyy010 n n | jp {c:y}, $nnnn | if {c:y} ; ld16 pc <- n
+11yyy100 n n | call {c:y}, $nnnn | if {c:y} ; delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
+11yyy000     | ret {c:y}       | delay 1 ; if {c:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11010011 n   | out ($nn), a    | out_n n a
+11011011 n   | in a, ($nn)     | in_n a <- n a
+11100011     | ex (sp), hl     | ex_sp_hl hl <- hl
 11001011     | (cb)            | goto cb
 11011101     | (dd)            | goto ix
 11111101     | (fd)            | goto iy
@@ -54,14 +88,24 @@ table cb
 # the one case the rename gets wrong: in `ld r, (ix+d)` the register operand is
 # the real h or l, so it names a vocabulary a view does not touch.
 
-table ix = base with hl -> ix, h -> ixh, l -> ixl, (hl) -> (ix+d)/delay=1
+table ix = base with p.hl -> ix, k.hl -> ix, r.h -> ixh, r.l -> ixl, r.(hl) -> (ix+d)/delay=1
 
+00pp1001     | add ix, {p}     | add16 ix, flags <- ix {p} flags ; delay 7
+00100010 n n | ld ($nnnn), ix  | ld16 (n) <- ix
+00101010 n n | ld ix, ($nnnn)  | ld16 ix <- (n)
+11101001     | jp (ix)         | ld16 pc <- ix
+11111001     | ld sp, ix       | ld16 sp <- ix ; delay 2
 01yyy110     | ld {s:y}, (ix+d) | ld8 {s:y} <- (ix+d)
 01110zzz     | ld (ix+d), {s:z} | ld8 (ix+d) <- {s:z}
 11001011 d   | (dd cb)          | goto ddcb
 
-table iy = base with hl -> iy, h -> iyh, l -> iyl, (hl) -> (iy+d)/delay=1
+table iy = base with p.hl -> iy, k.hl -> iy, r.h -> iyh, r.l -> iyl, r.(hl) -> (iy+d)/delay=1
 
+00pp1001     | add iy, {p}     | add16 iy, flags <- iy {p} flags ; delay 7
+00100010 n n | ld ($nnnn), iy  | ld16 (n) <- iy
+00101010 n n | ld iy, ($nnnn)  | ld16 iy <- (n)
+11101001     | jp (iy)         | ld16 pc <- iy
+11111001     | ld sp, iy       | ld16 sp <- iy ; delay 2
 01yyy110     | ld {s:y}, (iy+d) | ld8 {s:y} <- (iy+d)
 01110zzz     | ld (iy+d), {s:z} | ld8 (iy+d) <- {s:z}
 11001011 d   | (fd cb)          | goto fdcb

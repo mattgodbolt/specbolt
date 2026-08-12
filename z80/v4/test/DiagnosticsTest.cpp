@@ -27,7 +27,7 @@ struct Parsed {
 Parsed parse(const std::string_view description) {
   Parsed parsed;
   parsed.fields = parse_fields<max_fields>(description);
-  parsed.tables = parse_tables<max_tables>(description);
+  parsed.tables = parse_tables<max_tables>(description, parsed.fields);
   parsed.rows = parse_rows<max_rows>(description, parsed.fields, parsed.tables);
   const auto row_count = count_matching(description, &is_row);
   const std::span rows{parsed.rows.data(), row_count};
@@ -111,26 +111,26 @@ TEST_CASE("Table diagnostics") {
   }
   SECTION("Derived tables") {
     constexpr std::string_view base = "field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n";
-    CHECK_NOTHROW(parse(std::string(base) + "table u = t with b -> c\n"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = nowhere with b -> c\n"),
+    CHECK_NOTHROW(parse(std::string(base) + "table u = t with r.b -> c\n"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = nowhere with r.b -> c\n"),
         Equals("z80.cpu:5: no table named 'nowhere' is declared above this one"));
     // A parent must come first, so that a chain resolves in declaration order.
-    CHECK_THROWS_WITH(parse("table u = t with b -> c\ntable t\n00000000 | nop | nop\n"),
+    CHECK_THROWS_WITH(parse("table u = t with r.b -> c\ntable t\n00000000 | nop | nop\n"),
         Equals("z80.cpu:1: no table named 't' is declared above this one"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = u with b -> c\n"),
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = u with r.b -> c\n"),
         Equals("z80.cpu:5: no table named 'u' is declared above this one"));
     CHECK_THROWS_WITH(
         parse(std::string(base) + "table u = t\n"), Equals("z80.cpu:5: expected 'with' after the parent table name"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with b\n"),
-        Equals("z80.cpu:5: expected '->' in table substitution 'b'"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with b ->\n"),
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b\n"),
+        Equals("z80.cpu:5: expected '->' in table substitution 'r.b'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b ->\n"),
         Equals("z80.cpu:5: a table substitution needs a name on each side of '->'"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with b -> n\n"),
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> n\n"),
         Equals("z80.cpu:5: a vocabulary member must name something the CPU can resolve"));
   }
   SECTION("A derived table decodes its parent's rows, renamed") {
     const auto parsed = parse("field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"
-                              "table u = t with b -> ixh\n00000000 | frob | nop\n");
+                              "table u = t with r.b -> ixh\n00000000 | frob | nop\n");
     const auto &derived = parsed.tables[1];
     const auto &row = parsed.rows[1];
     const auto reference = row.pieces[1].reference;
@@ -202,7 +202,7 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("field r = b c\ntable t\n0000000y | {r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x | nop\n"),
         Equals("z80.cpu:3: mnemonic is too complicated"));
     CHECK_THROWS_WITH(parse("field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n"
-                            "table u = t with b->c, c->b, x->b, y->b, z->b, w->b, v->b\n"),
+                            "table u = t with r.b->c, r.c->b, r.b->c, r.c->b, r.b->c, r.c->b, r.b->c\n"),
         Equals("z80.cpu:5: too many substitutions in table"));
   }
   SECTION("A well-formed table raises nothing") {

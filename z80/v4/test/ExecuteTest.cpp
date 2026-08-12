@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
+#include <optional>
 
 #ifdef SPECBOLT_MODULES
 import z80_v4;
@@ -36,6 +37,214 @@ struct Tester {
 };
 
 } // namespace
+
+TEST_CASE("Conditions") {
+  Tester t;
+  auto &regs = t.regs;
+  regs.sp(0x8000);
+
+  SECTION("jp cc costs the same either way") {
+    t.z80.flags(Flags::Zero());
+    t.run(0xc2, 0x34, 0x12); // jp nz, 0x1234 -- not taken
+    CHECK(t.z80.pc() == 3);
+    CHECK(t.z80.cycle_count() == 10);
+    t.run(0xca, 0x34, 0x12); // jp z, 0x1234 -- taken
+    CHECK(t.z80.pc() == 0x1234);
+    CHECK(t.z80.cycle_count() == 20);
+  }
+  SECTION("call cc pays for the push only when it takes it") {
+    t.z80.flags(Flags());
+    t.run(0xd4, 0x34, 0x12); // call nc, 0x1234 -- taken
+    CHECK(t.z80.pc() == 0x1234);
+    CHECK(regs.sp() == 0x7ffe);
+    CHECK(t.z80.cycle_count() == 17);
+  }
+  SECTION("call cc not taken is ten") {
+    t.z80.flags(Flags::Carry());
+    t.run(0xd4, 0x34, 0x12); // call nc -- not taken
+    CHECK(t.z80.pc() == 3);
+    CHECK(regs.sp() == 0x8000);
+    CHECK(t.z80.cycle_count() == 10);
+  }
+  SECTION("ret cc is eleven taken and five not") {
+    t.memory.write16(0x7ffe, 0xbeef);
+    regs.sp(0x7ffe);
+    t.z80.flags(Flags::Zero());
+    t.run(0xc0); // ret nz -- not taken
+    CHECK(t.z80.pc() == 1);
+    CHECK(regs.sp() == 0x7ffe);
+    CHECK(t.z80.cycle_count() == 5);
+
+    t.run(0xc8); // ret z -- taken
+    CHECK(t.z80.pc() == 0xbeef);
+    CHECK(regs.sp() == 0x8000);
+    CHECK(t.z80.cycle_count() == 5 + 11);
+  }
+  SECTION("jr is twelve taken and seven not") {
+    t.z80.flags(Flags::Zero());
+    t.run(0x20, 0x10); // jr nz, +16 -- not taken
+    CHECK(t.z80.pc() == 2);
+    CHECK(t.z80.cycle_count() == 7);
+    t.run(0x28, 0x10); // jr z, +16 -- taken
+    CHECK(t.z80.pc() == 2 + 2 + 16);
+    CHECK(t.z80.cycle_count() == 7 + 12);
+  }
+  SECTION("jr measures backwards from the end of the instruction") {
+    t.run(0x18, 0xfe); // jr -2: a tight loop onto itself
+    CHECK(t.z80.pc() == 0);
+    CHECK(t.z80.cycle_count() == 12);
+  }
+  SECTION("djnz counts b without touching the flags") {
+    t.z80.flags(Flags::Zero() | Flags::Carry());
+    regs.set(RegisterFile::R8::B, 2);
+    t.run(0x10, 0x10); // djnz +16 -- taken
+    CHECK(regs.get(RegisterFile::R8::B) == 1);
+    CHECK(t.z80.pc() == 2 + 16);
+    CHECK(t.z80.flags() == (Flags::Zero() | Flags::Carry()));
+    CHECK(t.z80.cycle_count() == 13);
+
+    regs.set(RegisterFile::R8::B, 1);
+    t.run(0x10, 0x10); // now b reaches zero
+    CHECK(regs.get(RegisterFile::R8::B) == 0);
+    CHECK(t.z80.cycle_count() == 13 + 8);
+  }
+}
+
+TEST_CASE("Ports and the odd exchange") {
+  Tester t;
+  auto &regs = t.regs;
+
+  SECTION("out (n), a puts the accumulator on both halves of the port") {
+    std::uint16_t seen_port = 0;
+    std::uint8_t seen_value = 0;
+    t.z80.add_out_handler([&](const std::uint16_t port, const std::uint8_t value) {
+      seen_port = port;
+      seen_value = value;
+    });
+    regs.set(RegisterFile::R8::A, 0x7f);
+    t.run(0xd3, 0xfe); // out (0xfe), a
+    CHECK(seen_port == 0x7ffe);
+    CHECK(seen_value == 0x7f);
+    CHECK(t.z80.cycle_count() == 11);
+  }
+  SECTION("in a, (n)") {
+    t.z80.add_in_handler([](std::uint16_t) { return std::optional<std::uint8_t>{0xa5}; });
+    regs.set(RegisterFile::R8::A, 0x12);
+    t.run(0xdb, 0x34); // in a, (0x34)
+    CHECK(regs.get(RegisterFile::R8::A) == 0xa5);
+    CHECK(t.z80.cycle_count() == 11);
+  }
+  SECTION("ex (sp), hl") {
+    regs.sp(0x9000);
+    t.memory.write16(0x9000, 0x1234);
+    regs.set(RegisterFile::R16::HL, 0xbeef);
+    t.run(0xe3);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0x1234);
+    CHECK(t.memory.read16(0x9000) == 0xbeef);
+    CHECK(t.z80.cycle_count() == 19);
+  }
+}
+
+TEST_CASE("Stack, jumps and exchanges") {
+  Tester t;
+  auto &regs = t.regs;
+  regs.sp(0x8000);
+
+  SECTION("push and pop are the stack pointer and a sixteen-bit access") {
+    regs.set(RegisterFile::R16::BC, 0x1234);
+    t.run(0xc5); // push bc
+    CHECK(regs.sp() == 0x7ffe);
+    CHECK(t.memory.read16(0x7ffe) == 0x1234);
+    CHECK(t.z80.cycle_count() == 11);
+
+    t.run(0xe1); // pop hl
+    CHECK(regs.get(RegisterFile::R16::HL) == 0x1234);
+    CHECK(regs.sp() == 0x8000);
+    CHECK(t.z80.cycle_count() == 11 + 10);
+  }
+  SECTION("call pushes the address after the instruction") {
+    t.run(0xcd, 0x34, 0x12); // call 0x1234
+    CHECK(t.z80.pc() == 0x1234);
+    CHECK(regs.sp() == 0x7ffe);
+    CHECK(t.memory.read16(0x7ffe) == 3);
+    CHECK(t.z80.cycle_count() == 17);
+  }
+  SECTION("ret takes it back off") {
+    t.memory.write16(0x7ffe, 0xbeef);
+    regs.sp(0x7ffe);
+    t.run(0xc9);
+    CHECK(t.z80.pc() == 0xbeef);
+    CHECK(regs.sp() == 0x8000);
+    CHECK(t.z80.cycle_count() == 10);
+  }
+  SECTION("rst is a call to a constant the opcode names") {
+    t.run(0xff); // rst 0x38
+    CHECK(t.z80.pc() == 0x38);
+    CHECK(t.memory.read16(0x7ffe) == 1);
+    CHECK(t.z80.cycle_count() == 11);
+  }
+  SECTION("jp and jp (hl)") {
+    t.run(0xc3, 0x34, 0x12);
+    CHECK(t.z80.pc() == 0x1234);
+    CHECK(t.z80.cycle_count() == 10);
+
+    regs.set(RegisterFile::R16::HL, 0x4321);
+    t.run(0xe9);
+    CHECK(t.z80.pc() == 0x4321);
+    CHECK(t.z80.cycle_count() == 14);
+  }
+  SECTION("ld sp, hl") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    t.run(0xf9);
+    CHECK(regs.sp() == 0x1234);
+    CHECK(t.z80.cycle_count() == 6);
+  }
+  SECTION("sixteen-bit loads through an immediate address") {
+    regs.set(RegisterFile::R16::HL, 0xbeef);
+    t.run(0x22, 0x00, 0x90); // ld (0x9000), hl
+    CHECK(t.memory.read16(0x9000) == 0xbeef);
+    CHECK(t.z80.cycle_count() == 16);
+
+    t.run(0x2a, 0x00, 0x90); // ld hl, (0x9000)
+    CHECK(regs.get(RegisterFile::R16::HL) == 0xbeef);
+    CHECK(t.z80.cycle_count() == 32);
+  }
+  SECTION("the exchanges") {
+    regs.set(RegisterFile::R16::DE, 0x1111);
+    regs.set(RegisterFile::R16::HL, 0x2222);
+    t.run(0xeb); // ex de, hl
+    CHECK(regs.get(RegisterFile::R16::DE) == 0x2222);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0x1111);
+    CHECK(t.z80.cycle_count() == 4);
+
+    t.run(0xd9); // exx
+    CHECK(regs.get(RegisterFile::R16::HL) == 0xffff);
+    t.run(0xd9);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0x1111);
+  }
+  SECTION("di and ei move both interrupt flip-flops") {
+    t.run(0xfb); // ei
+    CHECK(t.z80.iff1());
+    CHECK(t.z80.iff2());
+    t.run(0xf3); // di
+    CHECK_FALSE(t.z80.iff1());
+    CHECK_FALSE(t.z80.iff2());
+  }
+  SECTION("add hl, bc") {
+    regs.set(RegisterFile::R16::HL, 0x1234);
+    regs.set(RegisterFile::R16::BC, 0x1111);
+    t.run(0x09);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0x2345);
+    CHECK(t.z80.cycle_count() == 11);
+  }
+  SECTION("dd makes add hl, bc into add ix, bc") {
+    regs.set(RegisterFile::R16::IX, 0x1234);
+    regs.set(RegisterFile::R16::BC, 0x1111);
+    t.run(0xdd, 0x09);
+    CHECK(regs.get(RegisterFile::R16::IX) == 0x2345);
+    CHECK(t.z80.cycle_count() == 15);
+  }
+}
 
 TEST_CASE("Rotates and shifts") {
   Tester t;

@@ -60,6 +60,51 @@ struct Ops {
   }
   static Alu::R8 rla8(const std::uint8_t v, const Flags f) { return Alu::fast_rotate8(v, Alu::Direction::Left, f); }
   static Alu::R8 rra8(const std::uint8_t v, const Flags f) { return Alu::fast_rotate8(v, Alu::Direction::Right, f); }
+
+  // Conditions. A vocabulary member binds one of these and appends the flag it
+  // asks about, exactly as `adc` binds `add8` and appends the carry.
+  static bool is_set(const bool flag) { return flag; }
+  static bool is_clear(const bool flag) { return !flag; }
+  static bool nonzero(const std::uint8_t value) { return value != 0; }
+
+  // `djnz` counts without touching the flags, which `dec8` would.
+  static std::uint8_t dec8_quiet(const std::uint8_t value) { return static_cast<std::uint8_t>(value - 1); }
+
+  // A relative jump is measured from the byte after the offset, which is where
+  // the program counter already is.
+  static std::uint16_t relative(const std::uint16_t pc, const std::uint8_t offset) {
+    return static_cast<std::uint16_t>(pc + static_cast<std::int8_t>(offset));
+  }
+
+  // The port is sixteen bits wide even when the encoding writes eight: the Z80
+  // puts the accumulator on the top half.
+  static void out_n(Cpu &cpu, const std::uint8_t port, const std::uint8_t value) {
+    const auto address = static_cast<std::uint16_t>(value << 8 | port);
+    cpu.bus(Bus::io_write, address);
+    cpu.out(address, value);
+  }
+  static std::uint8_t in_n(Cpu &cpu, const std::uint8_t port, const std::uint8_t high) {
+    const auto address = static_cast<std::uint16_t>(high << 8 | port);
+    cpu.bus(Bus::io_read, address);
+    return cpu.in(address);
+  }
+
+  // Three accesses and two idle stretches, none of which an operand can spell.
+  static std::uint16_t ex_sp_hl(Cpu &cpu, const std::uint16_t value) {
+    const auto sp = cpu.get(RegisterFile::R16::SP);
+    const auto low = cpu.read(sp);
+    const auto high = cpu.read(static_cast<std::uint16_t>(sp + 1));
+    specbolt::v4::delay(cpu, 1);
+    cpu.write(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
+    cpu.write(sp, static_cast<std::uint8_t>(value));
+    specbolt::v4::delay(cpu, 2);
+    return static_cast<std::uint16_t>(high << 8 | low);
+  }
+
+  // The exchanges move whole register pairs about, which no operand can name.
+  static void exx(Cpu &cpu) { cpu.regs().exx(); }
+  static void ex_de_hl(Cpu &cpu) { cpu.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }
+  static void ex_af(Cpu &cpu) { cpu.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
 };
 
 // Where the table may name operations from.
@@ -69,7 +114,10 @@ struct Ops {
 enum class Bit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };
 
 // Machine state that is not a register but is still addressable by name.
-enum class State : std::uint8_t { halted };
+enum class State : std::uint8_t { halted, iff1, iff2 };
+
+// A 16-bit machine register that is not in the programmer's register file.
+enum class Pointer : std::uint8_t { pc };
 
 // The high byte of the last address the machine formed -- WZ, as the Z80
 // literature calls it. `bit n, (ix+d)` takes flags 3 and 5 from it.
@@ -80,8 +128,8 @@ enum class Internal : std::uint8_t { wzh };
 enum class Word : std::uint8_t { flags };
 
 // Where the table may name storage locations from.
-[[nodiscard]] consteval std::array<std::meta::info, 6> location_scopes() {
-  return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word, ^^Internal};
+[[nodiscard]] consteval std::array<std::meta::info, 7> location_scopes() {
+  return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word, ^^Internal, ^^Pointer};
 }
 
 [[nodiscard]] inline std::uint8_t fetch_opcode(Cpu &cpu) { return cpu.read_opcode(); }
@@ -107,6 +155,16 @@ enum class Word : std::uint8_t { flags };
 [[nodiscard]] inline std::uint8_t read_memory(Cpu &cpu, const std::uint16_t address) { return cpu.read(address); }
 inline void write_memory(Cpu &cpu, const std::uint16_t address, const std::uint8_t value) { cpu.write(address, value); }
 
+// Two accesses, low byte first, because that is what the bus sees.
+[[nodiscard]] inline std::uint16_t read_memory16(Cpu &cpu, const std::uint16_t address) {
+  const auto low = cpu.read(address);
+  return static_cast<std::uint16_t>(cpu.read(static_cast<std::uint16_t>(address + 1)) << 8 | low);
+}
+inline void write_memory16(Cpu &cpu, const std::uint16_t address, const std::uint16_t value) {
+  cpu.write(address, static_cast<std::uint8_t>(value));
+  cpu.write(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
+}
+
 [[nodiscard]] inline std::uint8_t read(const Cpu &cpu, const RegisterFile::R8 location) { return cpu.get(location); }
 [[nodiscard]] inline std::uint16_t read(const Cpu &cpu, const RegisterFile::R16 location) { return cpu.get(location); }
 inline void write(Cpu &cpu, const RegisterFile::R8 location, const std::uint8_t value) { cpu.set(location, value); }
@@ -117,10 +175,25 @@ inline void write(Cpu &cpu, const RegisterFile::R16 location, const std::uint16_
 }
 [[nodiscard]] inline Flags read(const Cpu &cpu, Word) { return cpu.flags(); }
 inline void write(Cpu &cpu, Word, const Flags value) { cpu.flags(value); }
-[[nodiscard]] inline bool read(const Cpu &cpu, State) { return cpu.halted(); }
+[[nodiscard]] inline bool read(const Cpu &cpu, const State which) {
+  switch (which) {
+    case State::iff1: return cpu.iff1();
+    case State::iff2: return cpu.iff2();
+    case State::halted: break;
+  }
+  return cpu.halted();
+}
+[[nodiscard]] inline std::uint16_t read(const Cpu &cpu, Pointer) { return cpu.pc(); }
+inline void write(Cpu &cpu, Pointer, const std::uint16_t value) { cpu.regs().pc(value); }
 [[nodiscard]] inline std::uint8_t read(const Cpu &cpu, Internal) {
   return static_cast<std::uint8_t>(cpu.bus_address() >> 8);
 }
-inline void write(Cpu &cpu, State, const bool value) { cpu.halted(value); }
+inline void write(Cpu &cpu, const State which, const bool value) {
+  switch (which) {
+    case State::iff1: cpu.iff1(value); return;
+    case State::iff2: cpu.iff2(value); return;
+    case State::halted: cpu.halted(value); return;
+  }
+}
 
 } // namespace specbolt::v4
