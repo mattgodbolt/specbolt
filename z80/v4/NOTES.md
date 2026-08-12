@@ -10,8 +10,9 @@ here.
 
 ## Where the spike is
 
-`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 46 rows in six decoding
-tables — `base`, `cb`, the `ix`/`iy` views, and `ddcb`/`fdcb` — decode 1128 entries:
+`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 106 rows in seven decoding
+tables decode 1596 entries. `base`, `cb`, the `ix`/`iy` views and `ddcb`/`fdcb` are **complete**;
+`ed` has the block moves, `rrd`/`rld` and its two-byte-nop filler still to come:
 
 - **Disassembly.** Walks the row's lowered pieces, following a `goto` through a prefix table.
 - **Execution.** A 256-entry dispatch table per decoding table, built with a `template for`

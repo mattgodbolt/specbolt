@@ -10,14 +10,14 @@ namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
-    STATIC_CHECK(fields.size() == 12);
+    STATIC_CHECK(fields.size() == 13);
     STATIC_CHECK(fields[0].name == 'p');
     STATIC_CHECK(fields[0].values.size() == 4);
     STATIC_CHECK(fields[0].values[0].display == "bc");
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 89);
+    STATIC_CHECK(rows.size() == 106);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].steps[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
@@ -57,15 +57,15 @@ TEST_CASE("Table parsing") {
   SECTION("Reports how much of the instruction set it covers") {
     // Only ever goes up. Rows are checked for precedence at compile time, so
     // there is no way to gain coverage by silently shadowing another row.
-    STATIC_CHECK(tables.size() == 6);
+    STATIC_CHECK(tables.size() == 7);
     STATIC_CHECK(tables[entry_table].name == "base");
-    STATIC_CHECK(decoded_count == 1533);
+    STATIC_CHECK(decoded_count == 1596);
   }
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(entry_table, 0x00) == 0u);
     STATIC_CHECK(find_row(entry_table, 0x76) == 1u);
     STATIC_CHECK(rows[*find_row(entry_table, 0x21)].steps[0].verb == "ld16");
-    STATIC_CHECK(!find_row(entry_table, 0xed)); // the ed table is not described yet
+    STATIC_CHECK(!find_row(6, 0xa0)); // the ed block moves are not described yet
   }
   SECTION("Lowers mnemonics into validated pieces") {
     constexpr auto ld = rows[*find_row(entry_table, 0x21)];

@@ -18,6 +18,8 @@ field t = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
 field c = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry po:is_clear+parity pe:is_set+parity p:is_clear+sign m:is_set+sign
 # the four conditions jr can encode
 field j = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
+# the interrupt modes, as the three-bit field of the ed table spells them
+field i = 0 0 1 2 0 0 1 2
 
 table base
 
@@ -72,6 +74,7 @@ table base
 11010011 n   | out ($nn), a    | out_n n a
 11011011 n   | in a, ($nn)     | in_n a <- n a
 11100011     | ex (sp), hl     | ex_sp_hl hl <- hl
+11101101     | (ed)            | goto ed
 11001011     | (cb)            | goto cb
 11011101     | (dd)            | goto ix
 11111101     | (fd)            | goto iy
@@ -135,3 +138,25 @@ table fdcb
 10bbbzzz     | res {b}, (iy+d), {s:z}   | res8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}
 11bbb110     | set {b}, (iy+d)          | set8 (iy+d)/delay=1 <- (iy+d) {b}
 11bbbzzz     | set {b}, (iy+d), {s:z}   | set8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}
+
+# The ed table: the second instruction set the Z80 grew, and the one place
+# `ld (nn), rr` and `ld rr, (nn)` exist for every pair rather than hl alone.
+
+table ed
+
+01110000     | in (c)          | in_c -, flags <- bc
+01yyy000     | in {r:y}, (c)   | in_c {r:y}, flags <- bc
+01110001     | out (c), 0      | out_c bc 0
+01yyy001     | out (c), {r:y}  | out_c bc {r:y}
+01pp0010     | sbc hl, {p}     | sbc16 hl, flags <- hl {p} carry ; delay 7
+01pp1010     | adc hl, {p}     | adc16 hl, flags <- hl {p} carry ; delay 7
+01pp0011 n n | ld ($nnnn), {p} | ld16 (n) <- {p}
+01pp1011 n n | ld {p}, ($nnnn) | ld16 {p} <- (n)
+01yyy100     | neg             | neg8 a, flags <- a
+01000111     | ld i, a         | ld8 i <- a ; delay 1
+01001111     | ld r, a         | ld8 r <- a ; delay 1
+01010111     | ld a, i         | ld_a_special a, flags <- i flags ; delay 1
+01011111     | ld a, r         | ld_a_special a, flags <- r flags ; delay 1
+01001101     | reti            | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+01yyy101     | retn            | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+01yyy110     | im {i:y}        | ld8 im <- {i:y}

@@ -101,6 +101,28 @@ struct Ops {
     return static_cast<std::uint16_t>(high << 8 | low);
   }
 
+  // `in r,(c)` addresses with the whole of bc and sets flags; `out (c),r` does
+  // not. Neither is expressible as an operand, because the port space is not
+  // memory.
+  static Alu::R8 in_c(Cpu &cpu, const std::uint16_t port) {
+    cpu.bus(Bus::io_read, port);
+    const auto value = cpu.in(port);
+    return {value, Alu::parity_flags_for(value)};
+  }
+  static void out_c(Cpu &cpu, const std::uint16_t port, const std::uint8_t value) {
+    cpu.bus(Bus::io_write, port);
+    cpu.out(port, value);
+  }
+
+  // `ld a,i` and `ld a,r` report iff2 in the parity flag, which is the one way
+  // a program can see the interrupt state.
+  static Alu::R8 ld_a_special(Cpu &cpu, const std::uint8_t value, const Flags flags) {
+    return {value, Alu::iff2_flags_for(value, flags, cpu.iff2())};
+  }
+
+  // `neg` is `0 - a`, which sub8 already is.
+  static Alu::R8 neg8(const std::uint8_t value) { return Alu::sub8(0, value, false); }
+
   // The exchanges move whole register pairs about, which no operand can name.
   static void exx(Cpu &cpu) { cpu.regs().exx(); }
   static void ex_de_hl(Cpu &cpu) { cpu.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }
@@ -123,13 +145,17 @@ enum class Pointer : std::uint8_t { pc };
 // literature calls it. `bit n, (ix+d)` takes flags 3 and 5 from it.
 enum class Internal : std::uint8_t { wzh };
 
+// The interrupt vector and refresh registers, which only the ED table reaches,
+// and the interrupt mode alongside them.
+enum class Special : std::uint8_t { i, r, im };
+
 // The whole flag word, distinct from R8::F so that only a Flags-shaped value
 // can be written to it.
 enum class Word : std::uint8_t { flags };
 
 // Where the table may name storage locations from.
-[[nodiscard]] consteval std::array<std::meta::info, 7> location_scopes() {
-  return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word, ^^Internal, ^^Pointer};
+[[nodiscard]] consteval std::array<std::meta::info, 8> location_scopes() {
+  return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^Bit, ^^State, ^^Word, ^^Internal, ^^Pointer, ^^Special};
 }
 
 [[nodiscard]] inline std::uint8_t fetch_opcode(Cpu &cpu) { return cpu.read_opcode(); }
@@ -182,6 +208,21 @@ inline void write(Cpu &cpu, Word, const Flags value) { cpu.flags(value); }
     case State::halted: break;
   }
   return cpu.halted();
+}
+[[nodiscard]] inline std::uint8_t read(const Cpu &cpu, const Special which) {
+  switch (which) {
+    case Special::i: return cpu.regs().i();
+    case Special::r: return cpu.regs().r();
+    case Special::im: break;
+  }
+  return cpu.irq_mode();
+}
+inline void write(Cpu &cpu, const Special which, const std::uint8_t value) {
+  switch (which) {
+    case Special::i: cpu.regs().i(value); return;
+    case Special::r: cpu.regs().r(value); return;
+    case Special::im: cpu.irq_mode(value); return;
+  }
 }
 [[nodiscard]] inline std::uint16_t read(const Cpu &cpu, Pointer) { return cpu.pc(); }
 inline void write(Cpu &cpu, Pointer, const std::uint16_t value) { cpu.regs().pc(value); }
