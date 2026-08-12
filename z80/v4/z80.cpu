@@ -1,25 +1,58 @@
-# 76543210
-# xxyyyzzz
-#   ppq
+# The vocabularies. Each names one value per bit pattern of the slice that
+# selects it, so a field of eight members belongs to a three-bit slice and a
+# field of four to a two-bit one. A `-` member is a hole: the row does not cover
+# that opcode at all, which is how a general row leaves room for a specific one.
 
+# The sixteen-bit pairs, as most of the opcode space spells them.
 field p = bc de hl sp
+
+# The eight-bit registers. Slot 6 is not a register but an addressing mode, and
+# it carries the idle cycle a read-modify-write through it costs.
 field r = b c d e h l (hl)/delay=1 a
+
+# The arithmetic group. Each member binds the primitive that does the work and
+# appends the carry it wants, so `adc` is `add8` with the carry flag on the end.
 field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
+
+# The logical group. `cp` shares their encoding but returns flags only, so it
+# has its own rows and leaves a hole here.
 field w = and:and8 xor:xor8 or:or8 -
+
+# Which bit `bit`, `res` and `set` work on: the number is the operand.
 field b = 0 1 2 3 4 5 6 7
+
+# The rotates and shifts of the cb table. `rl` and `rr` take the carry in the
+# same way the arithmetic group does.
 field g = rlc:rlc8 rrc:rrc8 rl:rl8+carry rr:rr8+carry sla:sla8 sra:sra8 sll:sll8 srl:srl8
+
+# The accumulator-only rotates, which keep sign, zero and parity where the cb
+# forms above recompute them.
 field f = rlca:rlca8 rrca:rrca8 rla:rla8 rra:rra8
-# never renamed by a view: the register operand of an indexed load stays real
+
+# The real eight-bit registers, which no view renames: in `ld r, (ix+d)` the
+# register half is the true h or l. A rule names the vocabulary it rewrites, and
+# no rule names this one. Slot 6 is a hole so these rows leave `halt` alone.
 field s = b c d e h l - a
-# the stack's view of the pairs: af where sp would be
+
+# The stack's view of the pairs, which puts af where sp would be.
 field k = bc de hl af
+
+# Where each `rst` goes. The member is the constant itself.
 field t = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
-# a condition binds a test and appends the flag it asks about
+
+# The conditions. Each binds a test and appends the flag it asks about, so the
+# vocabulary is the whole of what `nz` means.
 field c = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry po:is_clear+parity pe:is_set+parity p:is_clear+sign m:is_set+sign
-# the four conditions jr can encode
+
+# The four conditions a relative jump has room to encode.
 field j = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
-# the interrupt modes, as the three-bit field of the ed table spells them
+
+# The interrupt modes, as the three-bit slice of the ed table spells them:
+# every mode has two encodings and mode 0 has four.
 field i = 0 0 1 2 0 0 1 2
+
+# Decoding starts in the first table declared; no name is special to the
+# framework. Everything not reached by a prefix lives here.
 
 table base
 
@@ -79,6 +112,9 @@ table base
 11011101     | (dd)            | goto ix
 11111101     | (fd)            | goto iy
 
+# `cb` is a plain table switch: one more opcode fetch, decoded here instead.
+# Bit operations and the rotate family that `rlca` only hints at.
+
 table cb
 
 00yyyzzz     | {g:y} {r:z}     | {g:y} {r:z}, flags <- {r:z}
@@ -87,9 +123,9 @@ table cb
 10bbbzzz     | res {b}, {r:z}  | res8 {r:z} <- {r:z} {b}
 11bbbzzz     | set {b}, {r:z}  | set8 {r:z} <- {r:z} {b}
 
-# `dd`/`fd` re-read the base table with hl renamed. The two override rows are
-# the one case the rename gets wrong: in `ld r, (ix+d)` the register operand is
-# the real h or l, so it names a vocabulary a view does not touch.
+# `dd` and `fd` are not table switches but *views*: they re-read the base table
+# with hl renamed, which is why two thirds of their entries are the base
+# instruction untouched. The rows below are the ones a rename alone gets wrong.
 
 table ix = base with p.hl -> ix, k.hl -> ix, r.h -> ixh, r.l -> ixl, r.(hl) -> (ix+d)/delay=1
 
@@ -114,10 +150,11 @@ table iy = base with p.hl -> iy, k.hl -> iy, r.h -> iyh, r.l -> iyl, r.(hl) -> (
 11001011 d   | (fd cb)          | goto fdcb
 
 # `dd cb d op` is the one encoding whose opcode is not its last byte, so the
-# row above reads the displacement and hands it on. These rows are not `cb`
-# renamed: every one of them works on memory, and the low bits name a register
-# the result is *also* copied into. Reading them as a view is the bug that makes
-# v2 and v3 wrong for 224 of 256 entries.
+# `d` in the row above says the displacement is read here and handed on.
+#
+# These rows are emphatically not `cb` renamed: every one of them works on
+# memory, and the low bits name a register the result is *also* copied into.
+# Reading them as a view is the bug that makes v2 and v3 wrong 224 times.
 
 table ddcb
 
@@ -139,8 +176,11 @@ table fdcb
 11bbb110     | set {b}, (iy+d)          | set8 (iy+d)/delay=1 <- (iy+d) {b}
 11bbbzzz     | set {b}, (iy+d), {s:z}   | set8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}
 
-# The ed table: the second instruction set the Z80 grew, and the one place
-# `ld (nn), rr` and `ld rr, (nn)` exist for every pair rather than hl alone.
+# `ed` is the second instruction set the Z80 grew, and the only place
+# `ld (nn), rr` exists for every pair rather than for hl alone. Its block
+# operations are the one family that repeats: they rewind the program counter
+# so the chip re-executes the opcode, which is what lets an interrupt land in
+# the middle of an `ldir`.
 
 table ed
 
@@ -160,3 +200,25 @@ table ed
 01001101     | reti            | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
 01yyy101     | retn            | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
 01yyy110     | im {i:y}        | ld8 im <- {i:y}
+01100111     | rrd             | rrd8 (hl), flags <- (hl) flags
+01101111     | rld             | rld8 (hl), flags <- (hl) flags
+10100000     | ldi             | block_load flags <- 1 flags
+10101000     | ldd             | block_load flags <- 0 flags
+10110000     | ldir            | block_load flags <- 1 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+10111000     | lddr            | block_load flags <- 0 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+10100001     | cpi             | block_compare flags <- 1 flags
+10101001     | cpd             | block_compare flags <- 0 flags
+10110001     | cpir            | block_compare flags <- 1 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
+10111001     | cpdr            | block_compare flags <- 0 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
+10100010     | ini             | block_in flags <- 1 flags
+10101010     | ind             | block_in flags <- 0 flags
+10110010     | inir            | block_in flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+10111010     | indr            | block_in flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+10100011     | outi            | block_out flags <- 1 flags
+10101011     | outd            | block_out flags <- 0 flags
+10110011     | otir            | block_out flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+10111011     | otdr            | block_out flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+
+# Everything the chip does not define in this table is a two-byte nop, which is
+# a row like any other and has to come last so the rest shadow it.
+xxxxxxxx     | nop             | nop

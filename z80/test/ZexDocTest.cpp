@@ -14,6 +14,9 @@ import z80_common;
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
 #include "z80/v3/Z80.hpp"
+#ifdef SPECBOLT_REFLECTION
+#include "z80/v4/Z80.hpp"
+#endif
 #endif
 
 #ifdef SPECBOLT_MODULES
@@ -144,7 +147,7 @@ struct ZexDocTest {
                      | lyra::help(need_help) //
                      | lyra::opt(dump_instructions, "NUM")["-d"]["--dump-instructions"](
                            "Dump the first NUM instructions, then exit.") //
-                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.").choices(1, 2, 3) //
+                     | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.").choices(1, 2, 3, 4) //
                      | lyra::opt(skip, "NUM")["-s"]["--skip"]("Skip the first NUM tests.");
     if (const auto parse_result = cli.parse({argc, argv}); !parse_result) {
       std::print(std::cerr, "Error in command line: {}\n", parse_result.message());
@@ -158,6 +161,9 @@ struct ZexDocTest {
       case 1: return run_test<v1::Z80>();
       case 2: return run_test<v2::Z80>();
       case 3: return run_test<v3::Z80>();
+#ifdef SPECBOLT_REFLECTION
+      case 4: return run_test<v4::Z80>();
+#endif
       default: break;
     }
     std::print(std::cerr, "Bad implementation {}\n", impl);

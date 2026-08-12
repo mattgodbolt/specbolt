@@ -1,7 +1,3 @@
-if (SPECBOLT_TESTS)
-    add_subdirectory(test)
-endif ()
-
 add_subdirectory(common)
 add_subdirectory(v1)
 add_subdirectory(v2)
@@ -16,4 +12,10 @@ if (NOT SPECBOLT_WASM)
     elseif (SPECBOLT_HAS_REFLECTION)
         add_subdirectory(v4)
     endif ()
+endif ()
+
+# After the implementations, because the shared opcode tests run every one of
+# them that this build has.
+if (SPECBOLT_TESTS)
+    add_subdirectory(test)
 endif ()

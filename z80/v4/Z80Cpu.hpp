@@ -20,6 +20,39 @@ using Cpu = Z80;
 inline void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.idle(cycles); }
 
 struct Ops {
+private:
+  // What every block operation does to the flags it does not otherwise touch:
+  // parity stands in for "bc has not run out", and flags 3 and 5 come from a
+  // value the instruction happens to have to hand, swapped over.
+  [[nodiscard]] static Flags counted(const Flags flags, const std::uint16_t bc, const std::uint8_t noise) {
+    auto result =
+        flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow() | Flags::Flag3() | Flags::Flag5());
+    if (bc != 1)
+      result = result | Flags::Overflow();
+    if (noise & 0x08)
+      result = result | Flags::Flag3();
+    if (noise & 0x02)
+      result = result | Flags::Flag5();
+    return result;
+  }
+  // The in and out block forms count b rather than bc, and their undocumented
+  // flags are not modelled: only zero, sign and parity are trustworthy here.
+  [[nodiscard]] static Flags stepped(Cpu &cpu, const Flags flags) {
+    const auto b = static_cast<std::uint8_t>(cpu.get(RegisterFile::R8::B) - 1);
+    cpu.set(RegisterFile::R8::B, b);
+    return Alu::parity_flags_for(b) | Flags::Subtract() | (flags & Flags::Carry());
+  }
+  [[nodiscard]] static Alu::R8 nibble(Cpu &cpu, const std::uint8_t value, const Flags flags, const bool right) {
+    const auto a = cpu.get(RegisterFile::R8::A);
+    const auto updated =
+        static_cast<std::uint8_t>(right ? (a & 0xf0) | (value & 0x0f) : (a & 0xf0) | (value >> 4 & 0x0f));
+    const auto written = static_cast<std::uint8_t>(right ? value >> 4 | (a & 0x0f) << 4 : value << 4 | (a & 0x0f));
+    delay(cpu, 4);
+    cpu.set(RegisterFile::R8::A, updated);
+    return {written, (flags & Flags::Carry()) | Alu::parity_flags_for(updated)};
+  }
+
+public:
   static void nop() {}
   static std::uint16_t ld16(const std::uint16_t value) { return value; }
   static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
@@ -122,6 +155,73 @@ struct Ops {
 
   // `neg` is `0 - a`, which sub8 already is.
   static Alu::R8 neg8(const std::uint8_t value) { return Alu::sub8(0, value, false); }
+
+  static bool nonzero16(const std::uint16_t value) { return value != 0; }
+
+  // `rrd` and `rld` move a nibble between the accumulator and memory, so both
+  // ends change at once and only one of them can be a destination.
+  static Alu::R8 rrd8(Cpu &cpu, const std::uint8_t value, const Flags flags) { return nibble(cpu, value, flags, true); }
+  static Alu::R8 rld8(Cpu &cpu, const std::uint8_t value, const Flags flags) {
+    return nibble(cpu, value, flags, false);
+  }
+
+  // The block operations move or compare one byte, step hl (and de), and count
+  // bc down. The repeating forms are the same row with a condition and a
+  // rewind: the chip really does re-execute the opcode, which is why an
+  // interrupt can land in the middle of an `ldir`.
+  static Flags block_load(Cpu &cpu, const bool increment, const Flags flags) {
+    const auto step = static_cast<std::uint16_t>(increment ? 1 : 0xffff);
+    const auto hl = cpu.get(RegisterFile::R16::HL);
+    const auto de = cpu.get(RegisterFile::R16::DE);
+    const auto bc = cpu.get(RegisterFile::R16::BC);
+    const auto byte = cpu.read(hl);
+    cpu.write(de, byte);
+    delay(cpu, 2);
+    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
+    cpu.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
+    cpu.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+    // Flags 3 and 5 come from the byte plus the accumulator, and swapped over.
+    return counted(flags, bc, static_cast<std::uint8_t>(byte + cpu.get(RegisterFile::R8::A)));
+  }
+  static Flags block_compare(Cpu &cpu, const bool increment, const Flags flags) {
+    const auto step = static_cast<std::uint16_t>(increment ? 1 : 0xffff);
+    const auto hl = cpu.get(RegisterFile::R16::HL);
+    const auto bc = cpu.get(RegisterFile::R16::BC);
+    const auto byte = cpu.read(hl);
+    delay(cpu, 5);
+    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
+    cpu.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+    const auto compared = Alu::sub8(cpu.get(RegisterFile::R8::A), byte, false);
+    // Flags 3 and 5 come from the difference, less one where it borrowed.
+    const auto noise = static_cast<std::uint8_t>(compared.flags.half_carry() ? compared.result - 1 : compared.result);
+    // The comparison's own sign, zero, half-carry and subtract go on last: the
+    // count clears two of them, and a compare is entitled to say otherwise.
+    constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
+    return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
+  }
+  static Flags block_in(Cpu &cpu, const bool increment, const Flags flags) {
+    delay(cpu, 1);
+    const auto port = cpu.get(RegisterFile::R16::BC);
+    cpu.bus(Bus::io_read, port);
+    const auto value = cpu.in(port);
+    const auto hl = cpu.get(RegisterFile::R16::HL);
+    cpu.write(hl, value);
+    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (increment ? 1 : 0xffff)));
+    return stepped(cpu, flags);
+  }
+  static Flags block_out(Cpu &cpu, const bool increment, const Flags flags) {
+    delay(cpu, 1);
+    const auto hl = cpu.get(RegisterFile::R16::HL);
+    const auto value = cpu.read(hl);
+    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (increment ? 1 : 0xffff)));
+    // B is counted down before the port goes on the bus, so it addresses with
+    // the new value.
+    const auto result = stepped(cpu, flags);
+    const auto port = cpu.get(RegisterFile::R16::BC);
+    cpu.bus(Bus::io_write, port);
+    cpu.out(port, value);
+    return result;
+  }
 
   // The exchanges move whole register pairs about, which no operand can name.
   static void exx(Cpu &cpu) { cpu.regs().exx(); }
