@@ -865,6 +865,34 @@ before the Spectrum needs it. **Profile before believing any of this.**
 Caveats: one run each, no repeats, on a laptop; and zexdoc's instruction mix is ALU-heavy, so this
 under-reports dispatch cost relative to a program doing more loads and jumps.
 
+## Next: draw the line between the library and the Z80
+
+Splitting `Table.hpp` did most of this by accident. Sorting what exists today by whether it knows
+anything about a Z80:
+
+| | |
+|---|---|
+| **CPU-agnostic already** | `Model.hpp`, `Lower.hpp`, `Parse.hpp`, `Coverage.hpp`, `Matched.hpp`, `Parser.hpp`, `Vector.hpp` |
+| **The framework, but coupled** | `Execute.hpp` — generic except that it `#include`s `Z80Cpu.hpp` by name and calls free functions found by unqualified lookup |
+| **The description** | `z80.cpu`, `Z80Cpu.hpp`, `Z80.hpp`/`Z80.cpp` |
+| **Awkward** | `TableError.hpp`, which names `SPECBOLT_CPU_TABLE` — a framework header naming the description file |
+
+Two things stand in the way of a clean `cpu/` library that `z80/v4` merely uses:
+
+1. **`Execute.hpp` includes `Z80Cpu.hpp`.** Everything it needs from a CPU is a fixed set of names —
+   `Cpu`, `primitive_scopes`, `location_scopes`, `fetch_opcode`, `fetch_immediate`, `read_memory`,
+   `write_memory`, `read_memory16`, `write_memory16`, `displaced_address`, `delay`, `read`, `write`.
+   That is a *concept*, and writing it as one would say so, let the error messages be about the
+   contract rather than about a missing overload, and let the include become a template parameter or
+   a single configuration header the consumer provides.
+2. **`SPECBOLT_CPU_TABLE` in `TableError.hpp`.** It is there to prefix diagnostics with the file
+   name. It should be a parameter of the error, or of the parse, not a macro — the same objection
+   that got it out of `Execute.hpp`. Until then one binary cannot hold two descriptions, which is
+   also what would make a second CPU testable alongside the first.
+
+Neither is large. The concept is the interesting one, because writing it down is the moment the
+framework has to say exactly what it needs, which nothing currently states in one place.
+
 ## Idea: could the CPU class *be* the CPU description?
 
 Not done, and worth trying. Today a name in the table travels through three places:

@@ -31,12 +31,12 @@ Parsed parse(const std::string_view description) {
   parsed.rows = parse_rows<max_rows>(description, parsed.fields, parsed.tables);
   const auto row_count = count_matching(description, &is_row);
   const std::span rows{parsed.rows.data(), row_count};
-  check_row_precedence(rows, parsed.fields, parsed.tables.size());
-  static_cast<void>(latched_tables<max_tables>(rows));
-  check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
   std::vector<OpcodeSet> opcodes;
   for (const auto &row: rows)
     opcodes.push_back(opcodes_of(parsed.fields, row));
+  check_row_precedence(rows, opcodes, parsed.tables.size());
+  static_cast<void>(latched_tables<max_tables>(rows));
+  check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
   parsed.decoded = decode_tables<max_tables>(rows, opcodes, parsed.tables);
   check_inherited_literals<max_tables>(rows, parsed.tables, parsed.decoded);
   return parsed;

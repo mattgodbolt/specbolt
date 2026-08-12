@@ -130,12 +130,11 @@ struct OpcodeSet {
 // must win something, and where two rows overlap the earlier must be wholly
 // contained in the later. That is an override. A partial overlap is an accident.
 constexpr bool check_row_precedence(
-    const std::span<const Row> rows, const std::span<const Field> fields, const std::size_t num_tables) {
-  // What each row would cover on its own, and what it actually wins once the
-  // rows before it have taken their share.
-  std::vector<OpcodeSet> covers;
-  for (const auto &row: rows)
-    covers.push_back(opcodes_of(fields, row));
+    const std::span<const Row> rows, const std::span<const OpcodeSet> covers, const std::size_t num_tables) {
+  // What each row wins once the rows before it have taken their share. Walking
+  // the cartesian product of a row's slices is the expensive part of evaluating
+  // this table, so coverage is computed once and passed in: precedence is a
+  // fact about opcode sets, not about vocabularies.
   std::vector<OpcodeSet> claimed(num_tables);
 
   for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {

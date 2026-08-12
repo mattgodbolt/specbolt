@@ -63,7 +63,7 @@ inline constexpr std::size_t decoded_count = [] {
   return count;
 }();
 
-static_assert(check_row_precedence(rows, fields, tables.size()));
+static_assert(check_row_precedence(rows, row_opcodes, tables.size()));
 static_assert(check_tables_used(rows, tables, entry_table));
 static_assert(check_inherited_literals<tables.size()>(rows, tables, decoded));
 static_assert(check_tables_total<tables.size()>(tables, decoded));
