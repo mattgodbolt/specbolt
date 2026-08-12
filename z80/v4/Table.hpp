@@ -614,6 +614,8 @@ template<std::size_t N>
           throw table_error(at, "'if' needs something to test");
       }
       if (step.verb == "goto") {
+        if (step.kind == Step::Kind::If)
+          throw table_error(at, "a goto cannot be conditional; guard it with an earlier `if` step");
         step.kind = Step::Kind::Goto;
         step.target = find_table(tables, action.next_word(), at);
         if (!action.next_word().empty())
@@ -632,7 +634,7 @@ template<std::size_t N>
           writing_destination = false;
           continue;
         }
-        const auto operand = parse_operand(fields, trim_comma(word), row.matched, at, row.immediate_bytes);
+        const auto operand = parse_operand(fields, word, row.matched, at, row.immediate_bytes);
         if (writing_destination) {
           step.destinations.push_back(operand, at, "too many destinations");
         }
@@ -840,6 +842,40 @@ template<std::size_t NumTables>
   return latched;
 }
 
+// A rule rewrites `{field}` references and never literal text, which is what
+// keeps `ex de, hl` right under a view. That silence also hides a mistake: a row
+// that spells a renamed name out, and is inherited unchanged by the table that
+// renames it, is almost certainly wrong. `ex (sp), hl` was, and decoded as
+// `ex (sp), hl` under `dd` where the chip does `ex (sp), ix`.
+//
+// A row written *in* the derived table is exempt: putting it there is how one
+// says the literal was meant.
+template<std::size_t NumTables>
+constexpr bool check_inherited_literals(const std::span<const Row> rows, const std::span<const TableDecl> tables,
+    const std::array<std::array<std::optional<std::size_t>, 256>, NumTables> &decoded) {
+  for (std::size_t which = 0; which < tables.size(); ++which) {
+    if (!tables[which].derived)
+      continue;
+    for (std::size_t opcode = 0; opcode < 256; ++opcode) {
+      const auto index = decoded[which][opcode];
+      if (!index || rows[*index].table == which)
+        continue;
+      const auto &row = rows[*index];
+      for (const auto &step: row.steps)
+        for (const auto *operands: {&step.operands, &step.destinations})
+          for (const auto &operand: *operands)
+            if (operand.kind == Operand::Kind::Named)
+              for (const auto &rule: tables[which].rules)
+                if (rule.from == operand.name.view())
+                  throw table_error(row.line,
+                      "table '" + std::string(tables[which].name) + "' renames '" + std::string(rule.from) +
+                          "', and this row names it literally where a rule cannot reach it; give that table its own "
+                          "row, or name a vocabulary");
+    }
+  }
+  return true;
+}
+
 // A table nothing reaches is never instantiated, so nothing in it is ever
 // type-checked. An empty one is a typo.
 constexpr bool check_tables_used(
@@ -900,5 +936,6 @@ inline constexpr std::size_t decoded_count = [] {
 
 static_assert(check_row_precedence(rows, fields, tables.size()));
 static_assert(check_tables_used(rows, tables, entry_table));
+static_assert(check_inherited_literals<tables.size()>(rows, tables, decoded));
 
 } // namespace specbolt::v4

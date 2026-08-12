@@ -66,7 +66,7 @@ table base
 00011010     | ld a, (de)        | ld8 a <- (de)
 00pp0011     | inc {p}           | inc16 {p} <- {p} ; delay 2
 00pp1011     | dec {p}           | dec16 {p} <- {p} ; delay 2
-000ff111     | {f:f}             | {f:f} a, flags <- a flags
+000ff111     | {f}               | {f} a, flags <- a flags
 00100111     | daa               | daa a, flags <- a flags
 00101111     | cpl               | cpl a, flags <- a flags
 00110111     | scf               | scf -, flags <- a flags
@@ -134,6 +134,7 @@ table ix = base with p.hl -> ix, k.hl -> ix, r.h -> ixh, r.l -> ixl, r.(hl) -> (
 00101010 n n | ld ix, ($nnnn)   | ld16 ix <- (n)
 11101001     | jp (ix)          | ld16 pc <- ix
 11111001     | ld sp, ix        | ld16 sp <- ix ; delay 2
+11100011     | ex (sp), ix      | ex_sp_ix ix <- ix
 01yyy110     | ld {s:y}, (ix+d) | ld8 {s:y} <- (ix+d)
 01110zzz     | ld (ix+d), {s:z} | ld8 (ix+d) <- {s:z}
 11001011 d   | (dd cb)          | goto ddcb
@@ -145,6 +146,7 @@ table iy = base with p.hl -> iy, k.hl -> iy, r.h -> iyh, r.l -> iyl, r.(hl) -> (
 00101010 n n | ld iy, ($nnnn)   | ld16 iy <- (n)
 11101001     | jp (iy)          | ld16 pc <- iy
 11111001     | ld sp, iy        | ld16 sp <- iy ; delay 2
+11100011     | ex (sp), iy      | ex_sp_iy iy <- iy
 01yyy110     | ld {s:y}, (iy+d) | ld8 {s:y} <- (iy+d)
 01110zzz     | ld (iy+d), {s:z} | ld8 (iy+d) <- {s:z}
 11001011 d   | (fd cb)          | goto fdcb

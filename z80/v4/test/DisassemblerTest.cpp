@@ -1,7 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
-#include <iostream>
-#include <ranges>
 
 #ifdef SPECBOLT_MODULES
 import z80_v4;

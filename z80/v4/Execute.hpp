@@ -14,6 +14,7 @@
 #include <ranges>
 #include <span>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -50,7 +51,10 @@ namespace specbolt::v4 {
   std::vector<std::meta::info> candidates;
   for (const auto scope: primitive_scopes())
     for (const auto member: std::meta::members_of(scope, std::meta::access_context::current()))
-      if (std::meta::is_function(member) && std::meta::has_identifier(member) &&
+      // `has_identifier` excludes the implicitly-declared special members, which
+      // have no name to compare. `is_static_member` excludes ordinary member
+      // functions, which cannot be called without an object.
+      if (std::meta::is_function(member) && std::meta::is_static_member(member) && std::meta::has_identifier(member) &&
           same_ignoring_case(std::meta::identifier_of(member), name))
         candidates.push_back(member);
   return only_match(candidates, name, line);
@@ -62,16 +66,17 @@ inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
-// A primitive may ask for the machine itself, which is the one type the
-// framework is parameterised on and so the one it can always supply.
-// What a result destructures into. A class with nothing accessible -- `Flags`
-// has private members -- is one value, not none.
-[[nodiscard]] consteval std::span<const std::meta::info> data_members_of(const std::meta::info type) {
+// What a result destructures into. A class with nothing *accessible* -- `Flags`
+// keeps its byte private -- is one value, not none: `access_context::current()`
+// is this namespace, so a private member is not visible here and is not counted.
+[[nodiscard]] consteval std::span<const std::meta::info> destructures_into(const std::meta::info type) {
   if (!std::meta::is_class_type(type))
     return {};
   return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
 }
 
+// A primitive may ask for the machine itself, which is the one type the
+// framework is parameterised on and so the one it can always supply.
 template<std::meta::info Fn>
 [[nodiscard]] consteval bool takes_cpu() {
   if constexpr (arity_of<Fn> == 0)
@@ -92,6 +97,8 @@ struct Call {
 // 8-bit parameter is a diagnosable narrowing rather than a silent truncation.
 template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter direct_value_of(Cpu &cpu, const std::uint16_t immediate) {
+  static_assert(!std::is_reference_v<Parameter>,
+      "a primitive takes its operands by value; there is nothing here for a reference to bind to");
   if constexpr (Op.kind == Operand::Kind::Constant) {
     if constexpr (std::integral<Parameter>)
       static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
@@ -154,6 +161,24 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
   }
 }
 
+// Resolving an operand is not a pure act: it can read memory, advance the clock
+// and move the address bus. So the order matters, and the order a function's
+// arguments are evaluated in is *unspecified* -- gcc evaluates them right to
+// left. Braced initialisation is sequenced left to right ([dcl.init.list]/4),
+// so the values are materialised into a tuple first and the call made from
+// that.
+//
+// `bit n, (ix+d)` is the row that proves this is not pedantry: it reads memory
+// and then asks for the address that read left on the bus, and getting those
+// two the wrong way round takes the undocumented flags from the wrong place.
+template<std::meta::info Fn, Call C>
+[[nodiscard]] auto operands_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
+  constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
+  return [&]<std::size_t... I>(std::index_sequence<I...>) {
+    return std::tuple{value_of<C.operands[I], C.line, parameter_type<Fn, I + supplied>>(cpu, immediate, indexed)...};
+  }(std::make_index_sequence<C.operands.size()>{});
+}
+
 // Arguments are supplied positionally; destinations destructure the result in
 // declaration order. Nothing here has an opinion on what an operand means.
 template<std::meta::info Fn, Call C>
@@ -161,24 +186,31 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
   static_assert(
       C.operands.size() + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
-  constexpr auto arguments = std::make_index_sequence<C.operands.size()>{};
-  const auto call = [&]<std::size_t... I>(std::index_sequence<I...>) {
-    if constexpr (takes_cpu<Fn>())
-      return [:Fn:](cpu, value_of<C.operands[I], C.line, parameter_type<Fn, I + 1>>(cpu, immediate, indexed)...);
-    else
-      return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate, indexed)...);
+  const auto call = [&](const auto &arguments) {
+    return std::apply(
+        [&cpu](const auto &...values) {
+          if constexpr (takes_cpu<Fn>())
+            return [:Fn:](cpu, values...);
+          else
+            return [:Fn:](values...);
+        },
+        arguments);
   };
 
-  using Result = decltype(call(arguments));
-  static constexpr auto members = data_members_of(^^Result);
+  using Result = decltype(call(operands_of<Fn, C>(cpu, immediate, indexed)));
+  static constexpr auto members = destructures_into(^^Result);
+  static_assert(members.size() != 1,
+      "a result with exactly one accessible member is ambiguous: it is neither a value nor a pair");
   if constexpr (std::is_void_v<Result>) {
     static_assert(C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
-    call(arguments);
+    call(operands_of<Fn, C>(cpu, immediate, indexed));
   }
   else if constexpr (members.size() > 1) {
+    // Two is `Alu`'s `{result, flags}`, which is what almost every arithmetic
+    // primitive returns. One accessible member is caught above as ambiguous.
     static_assert(
         C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
-    const auto result = call(arguments);
+    const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed));
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
         store<C.destinations[at], C.line>(cpu, immediate, indexed, result.[:members[at]:]);
   }
@@ -186,7 +218,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
     static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
     // More than one is how `dd cb d op` writes its result back through the
     // addressing mode *and* into the register the low bits name.
-    const auto result = call(arguments);
+    const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed));
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
         store<C.destinations[at], C.line>(cpu, immediate, indexed, result);
   }
@@ -198,10 +230,10 @@ template<std::meta::info Fn, Call C>
 [[nodiscard]] bool evaluate(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
   static_assert(C.operands.size() == arity_of<Fn>, "the row supplies the wrong number of operands for this condition");
   static_assert(C.destinations.size() == 0, "a condition names no destination; it decides whether the rest happens");
-  constexpr auto arguments = std::make_index_sequence<C.operands.size()>{};
-  return [&]<std::size_t... I>(std::index_sequence<I...>) {
-    return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate, indexed)...);
-  }(arguments);
+  static_assert(!takes_cpu<Fn>(), "a condition may not ask for the machine; it only reads what the row hands it");
+  static_assert(std::is_same_v<typename[:std::meta::return_type_of(Fn):], bool>, "a condition must answer yes or no");
+  return std::apply(
+      [](const auto &...values) { return [:Fn:](values...); }, operands_of<Fn, C>(cpu, immediate, indexed));
 }
 
 // A vocabulary member may bind the verb late, and may append an operand the
@@ -270,11 +302,20 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   // machine is told what else was read first, because on a Z80 those reads
   // happen *inside* the window that forms the address rather than before it.
   const std::uint16_t indexed = [&] -> std::uint16_t {
-    if constexpr (displaced)
+    if constexpr (displaced) {
       // A table entered latched read its opcode inside the same window, so that
       // byte counts too: it is why `dd cb d op` spends five cycles and not eight.
+      //
+      // The machine is told the count and works out what is left of the window
+      // from it, so a count the window cannot hold asks it for a negative delay.
+      // Caught here, where the number is a constant, rather than at run time as
+      // an enormous unsigned one.
+      constexpr auto read_inside = row.immediate_bytes + (inherits ? 1 : 0);
+      static_assert(
+          read_inside <= 1, "this row reads more inside the window that forms its address than the window can hold");
       return displaced_address(cpu, direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate), displacement,
-          static_cast<std::uint8_t>(row.immediate_bytes + (inherits ? 1 : 0)));
+          static_cast<std::uint8_t>(read_inside));
+    }
     else
       return 0;
   }();

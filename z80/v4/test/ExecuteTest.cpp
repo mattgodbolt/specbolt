@@ -413,6 +413,19 @@ TEST_CASE("Indexed addressing") {
     CHECK(t.z80.cycle_count() == 23);
   }
 
+  SECTION("bit n, (ix+d) reads wzh after the memory access, not before") {
+    // `bit8 flags <- (ix+d) {b} flags wzh` has two operands that touch the bus:
+    // the memory read sets the address wzh then reports. If the arguments were
+    // evaluated in the other order, wzh would report the *previous* address --
+    // the opcode fetch, near zero, whose bits 3 and 5 are clear. So choose an
+    // index whose high byte has both set, and the two orders differ.
+    t.z80.flags(Flags());
+    regs.set(RegisterFile::R16::IX, 0x2834); // +2 -> 0x2836, high byte 0b0010'1000
+    t.memory.write(0x2836, 0xff);
+    t.run(0xdd, 0xcb, 0x02, 0x46); // bit 0, (ix+2)
+    CHECK(t.z80.flags() == (Flags::HalfCarry() | Flags::Flag3() | Flags::Flag5()));
+  }
+
   SECTION("bit n, (ix+d) takes flags 3 and 5 from the address, not a register") {
     t.z80.flags(Flags());
     regs.set(RegisterFile::R8::H, 0xff); // would set both if the row named h
@@ -444,6 +457,18 @@ TEST_CASE("Indexed addressing") {
     t.memory.write(0x1234, 0xff);
     t.run(0xfd, 0xcb, 0xfe, 0x86); // res 0, (iy-2)
     CHECK(t.memory.read(0x1234) == 0xfe);
+    CHECK(t.z80.cycle_count() == 23);
+  }
+
+  SECTION("ex (sp), ix is not ex (sp), hl") {
+    regs.sp(0x9000);
+    t.memory.write16(0x9000, 0x1234);
+    regs.set(RegisterFile::R16::IX, 0xbeef);
+    regs.set(RegisterFile::R16::HL, 0x1111);
+    t.run(0xdd, 0xe3);
+    CHECK(regs.get(RegisterFile::R16::IX) == 0x1234);
+    CHECK(regs.get(RegisterFile::R16::HL) == 0x1111);
+    CHECK(t.memory.read16(0x9000) == 0xbeef);
     CHECK(t.z80.cycle_count() == 23);
   }
 

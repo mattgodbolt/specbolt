@@ -31,8 +31,6 @@ Parsed parse(const std::string_view description) {
   parsed.rows = parse_rows<max_rows>(description, parsed.fields, parsed.tables);
   const auto row_count = count_matching(description, &is_row);
   const std::span rows{parsed.rows.data(), row_count};
-  for (const auto &row: rows)
-    check_immediates(row);
   check_row_precedence(rows, parsed.fields, parsed.tables.size());
   static_cast<void>(latched_tables<max_tables>(rows));
   check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
@@ -40,6 +38,7 @@ Parsed parse(const std::string_view description) {
   for (const auto &row: rows)
     opcodes.push_back(opcodes_of(parsed.fields, row));
   parsed.decoded = decode_tables<max_tables>(rows, opcodes, parsed.tables);
+  check_inherited_literals<max_tables>(rows, parsed.tables, parsed.decoded);
   return parsed;
 }
 
@@ -127,6 +126,15 @@ TEST_CASE("Table diagnostics") {
         Equals("z80.cpu:5: a table substitution needs a name on each side of '->'"));
     CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> n\n"),
         Equals("z80.cpu:5: a vocabulary member must name something the CPU can resolve"));
+  }
+  SECTION("A view must not silently inherit a row that spells the renamed name out") {
+    constexpr std::string_view shared = "field p = bc hl\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | ";
+    // Naming the vocabulary is fine: a rule reaches it.
+    CHECK_NOTHROW(parse(std::string(shared) + "ld16 {p:y} <- {p:y}\ntable u = t with p.hl -> ix\n"));
+    // Spelling it out is not, because a rule never rewrites literal text.
+    CHECK_THROWS_WITH(parse(std::string(shared) + "ld16 {p:y} <- hl\ntable u = t with p.hl -> ix\n"),
+        Equals("z80.cpu:4: table 'u' renames 'hl', and this row names it literally where a rule cannot reach it; "
+               "give that table its own row, or name a vocabulary"));
   }
   SECTION("A derived table decodes its parent's rows, renamed") {
     const auto parsed = parse("field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"
