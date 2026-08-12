@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 
 #include "peripherals/Memory.hpp"
 #endif
@@ -32,9 +33,33 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 // one of these picks the matching `read` or `write` below by ordinary overload
 // resolution, which is why the framework needs no idea what kind of location it
 // is holding. `Locations.hpp` lists them as the places a name may come from.
+//
+// They are enums even where there is only one of a thing, because a name is
+// looked up by walking `enumerators_of` over each scope: a tag struct would be
+// invisible to that search, and an enumerator is what carries the spelling a
+// row writes.
 
 // Individually addressable flag bits, so `carry` is a location like any other.
+// The ordinal is the bit position, which is what `read` shifts by; the
+// static_asserts below hold that to what `Flags` actually says.
 SPECBOLT_EXPORT enum class FlagBit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };
+
+// Reordering the enumerators above would silently retarget every condition in
+// the description -- `jr nz` would test the wrong bit, with nothing to fail but
+// the exerciser. These say so at compile time instead.
+namespace detail {
+constexpr bool flag_bit_is(const Flags flag, const FlagBit bit) {
+  return flag.to_u8() == 1u << static_cast<unsigned>(bit);
+}
+} // namespace detail
+static_assert(detail::flag_bit_is(Flags::Carry(), FlagBit::carry));
+static_assert(detail::flag_bit_is(Flags::Subtract(), FlagBit::subtract));
+static_assert(detail::flag_bit_is(Flags::Parity(), FlagBit::parity));
+static_assert(detail::flag_bit_is(Flags::Flag3(), FlagBit::flag3));
+static_assert(detail::flag_bit_is(Flags::HalfCarry(), FlagBit::half_carry));
+static_assert(detail::flag_bit_is(Flags::Flag5(), FlagBit::flag5));
+static_assert(detail::flag_bit_is(Flags::Zero(), FlagBit::zero));
+static_assert(detail::flag_bit_is(Flags::Sign(), FlagBit::sign));
 
 // The same register taken whole, distinct from R8::F so that only a
 // Flags-shaped value can be written to it.
@@ -96,7 +121,7 @@ public:
   void write(const RegisterFile::R16 location, const std::uint16_t value) { set(location, value); }
 
   [[nodiscard]] bool read(const FlagBit which) const {
-    return (flags().to_u8() >> static_cast<unsigned>(which) & 1u) != 0;
+    return ((flags().to_u8() >> static_cast<unsigned>(which)) & 1u) != 0;
   }
 
   [[nodiscard]] Flags read(FlagWord) const { return flags(); }
@@ -104,12 +129,12 @@ public:
 
   [[nodiscard]] bool read(const FlipFlop which) const {
     switch (which) {
+      case FlipFlop::halted: return halted();
       case FlipFlop::iff1: return iff1();
       case FlipFlop::iff2: return iff2();
       case FlipFlop::deferred: return interrupts_deferred();
-      case FlipFlop::halted: break;
     }
-    return halted();
+    std::unreachable();
   }
   void write(const FlipFlop which, const bool value) {
     switch (which) {

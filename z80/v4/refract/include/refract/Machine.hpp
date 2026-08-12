@@ -6,8 +6,12 @@
 // framework fetches, accesses memory, forms an indexed address and spends time.
 // Where the *names* are resolved is a separate question, answered by the
 // `operation_scopes()` and `location_scopes()` the target supplies -- they take
-// no argument, so no concept can reach them by lookup. A description plus a type
-// satisfying `Machine` is a complete emulator; neither alone is anything.
+// no argument, so no concept can reach them by lookup.
+//
+// This is what the *framework* calls, not everything the machine is asked for:
+// an operation is free to use whatever the machine offers, and the Z80's use
+// `bus`, `in`, `out` and the register file besides. Those are between the
+// description and its own chip, and a concept here would only get in the way.
 //
 // These are member functions, called directly on the machine. Nothing sits
 // between the framework and the chip: no adapter, no traits class, no free

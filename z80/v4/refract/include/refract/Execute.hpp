@@ -165,18 +165,19 @@ static_assert(
   return only_match(candidates, name, line);
 }
 
-// Reflection stays in template arguments and alias templates, never in a local
-// variable. Two separate reasons, and the first bites first:
+// Arity and parameter types live in the template system rather than in a local
+// `constexpr`, and the reason is narrower than "reflection cannot go in a
+// local" -- `takes_cpu` and `destructures_into` are both called into locals
+// further down, and both are fine.
 //
-//   * a `constexpr auto x = parameters_of(Fn);` in a function body makes that
-//     function *immediately* evaluated -- the standard calls the initialiser an
-//     immediate-escalating expression -- so the enclosing function becomes
-//     `consteval` and can no longer be called with a running CPU;
-//   * `parameters_of` returns a `std::vector`, whose storage cannot outlive the
-//     constant evaluation that made it, so it could not be kept anyway.
+// What is not fine is `parameters_of` specifically: it returns a `std::vector`,
+// whose storage cannot outlive the evaluation that made it, so the initialiser
+// is not a constant expression. A `consteval` call that is *not* a constant
+// expression escalates: the standard promotes the enclosing templated function
+// to `consteval` too, and it can then no longer be called with a running CPU.
+// The vector is the cause and the escalation is the symptom.
 //
-// Written this way the values live in the template system, which also memoises
-// them for free.
+// A variable template dodges it, and memoises the answer for free.
 template<std::meta::info Fn>
 inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
@@ -196,7 +197,7 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
   return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
 }
 
-// A operation may ask for the machine itself, and if it does it must ask first:
+// An operation may ask for the machine itself, and if it does it must ask first:
 // the framework supplies argument zero and the row supplies the rest, so which
 // argument is which stays a property of the signature rather than of the row.
 template<std::meta::info Fn>
@@ -207,7 +208,7 @@ template<std::meta::info Fn>
     return std::is_same_v<parameter_type<Fn, 0>, Cpu &>;
 }
 
-// Everything one step needs, with its field references already resolved. This
+// Everything one step needs, with its vocabulary references already resolved. This
 // is a non-type template parameter, so every member of it — and of everything
 // it contains — has to be public. See the note on structural types above.
 struct Call {
@@ -224,7 +225,7 @@ struct Call {
 template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter direct_value_of(Cpu &cpu, const std::uint16_t immediate) {
   static_assert(!std::is_reference_v<Parameter>,
-      "a operation takes its operands by value; there is nothing here for a reference to bind to");
+      "an operation takes its operands by value; there is nothing here for a reference to bind to");
   if constexpr (Op.kind == Operand::Kind::Constant) {
     if constexpr (std::integral<Parameter>)
       static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
@@ -341,8 +342,9 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
   // Unevaluated, despite everything just said about operands having effects:
   // `decltype` asks for the type and calls nothing.
   using Result = decltype(call(operands_of<Fn, C>(cpu, immediate, indexed)));
-  // `static` so the span's referent outlives this instantiation, which is what
-  // lets `members[at]` below be a constant expression inside a splice.
+  // A `std::span`, and safe to hold: `destructures_into` promotes its contents
+  // with `define_static_array`, so what this points at has static storage and
+  // `members[at]` is a constant expression a splice can use.
   static constexpr auto members = destructures_into(^^Result);
   static_assert(members.size() != 1,
       "a result with exactly one accessible member is ambiguous: it is neither a value nor a pair");
@@ -398,11 +400,13 @@ template<std::meta::info Fn, Call C>
   for (const auto &operand: step.operands)
     result.operands.push_back(
         resolve(target::vocabularies, operand, matched, opcode, rules), line, "too many operands");
-  for (const auto &target: step.destinations) {
-    auto destination = resolve(target::vocabularies, target, matched, opcode, rules);
-    // The idle cycle belongs to a write-back, so only to something also read.
-    const auto was_read = std::ranges::any_of(
-        result.operands, [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
+  for (auto destination: step.destinations) {
+    destination = resolve(target::vocabularies, destination, matched, opcode, rules);
+    // The idle cycle belongs to a write-back, so only to something read through
+    // the same address it will be written through.
+    const auto was_read = destination.indirect && std::ranges::any_of(result.operands, [&](const Operand &operand) {
+      return operand.indirect && operand.name == destination.name;
+    });
     if (!was_read)
       destination.write_back_delay = 0;
     result.destinations.push_back(destination, line, "too many destinations");
@@ -438,7 +442,7 @@ template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   constexpr auto row = target::rows[Index];
   // A renaming applies to every row this table decodes, inherited or its own: a
-  // rule names the vocabulary it rewrites, so `ld {s:y}, (ix+d)` keeps the real
+  // rule names the vocabulary it rewrites, so `ld {real:y}, (ix+d)` keeps the real
   // h by naming a vocabulary no rule mentions.
   constexpr auto rules = target::tables[Table].rules;
   // The displacement is read before any immediate, which is the order the bytes
@@ -462,8 +466,8 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   // happen *inside* the window that forms the address rather than before it.
   const std::uint16_t indexed = [&] -> std::uint16_t {
     if constexpr (displaced) {
-      // A table entered target::latched read its opcode inside the same window, so that
-      // byte counts too: it is why `dd cb d op` spends five cycles and not eight.
+      // A latched table read its opcode inside the same window, so that byte
+      // counts too: it is why `dd cb d op` spends five cycles and not eight.
       //
       // The machine is told the count and works out what is left of the window
       // from it, so a count the window cannot hold asks it for a negative delay.
@@ -538,7 +542,7 @@ inline void execute_instruction(Cpu &cpu) {
   auto table = target::entry_table;
   std::uint8_t latch = 0;
   while (true) {
-    // A target::latched table's opcode is not the instruction's first unknown byte, so
+    // A latched table's opcode is not the instruction's first unknown byte, so
     // it arrives as an operand read: three cycles, and no refresh.
     const auto opcode = target::latched[table] ? static_cast<std::uint8_t>(cpu.fetch_immediate(1)) : cpu.fetch_opcode();
     const auto next = dispatches[table][opcode](cpu, latch);

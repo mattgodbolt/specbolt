@@ -14,10 +14,11 @@ void Z80::execute_one() {
   if (const auto deferred = std::exchange(interrupts_deferred_, false); irq_pending_ && !deferred) [[unlikely]]
     handle_interrupt();
   if (halted_) [[unlikely]] {
-    // A halted Z80 is executing internal NOPs, not stopped: it still fetches,
-    // so it still refreshes.
+    // A halted Z80 is executing internal NOPs, not stopped: it still fetches
+    // -- at the address it parked on, without advancing -- so it still spends
+    // an opcode cycle on the bus and still refreshes.
+    bus(Bus::opcode, pc());
     refresh();
-    pass_time(4);
     return;
   }
   execute_instruction(*this);
@@ -123,11 +124,18 @@ std::uint16_t Z80::read_memory16(const std::uint16_t address) {
   return static_cast<std::uint16_t>(read_memory(static_cast<std::uint16_t>(address + 1)) << 8 | low);
 }
 
+// Low byte first, which is what `ld (nn), hl` does. A push does the opposite --
+// high byte to sp-1, then low to sp-2 -- and gets this order instead. The bytes
+// land in the same places either way, so nothing can see the difference until
+// `bus` starts contending or a watchpoint watches. Recorded in NOTES.
 void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {
   write_memory(address, static_cast<std::uint8_t>(value));
   write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
 }
 
+// The window is five cycles, less the three each already-read immediate spent
+// inside it, so at most one byte can have been read: two would underflow. The
+// generator proves that with a `static_assert` before it ever calls this.
 std::uint16_t Z80::displaced_address(
     const std::uint16_t base, const std::uint8_t offset, const std::uint8_t immediate_bytes) {
   delay(static_cast<std::uint8_t>(5 - 3 * immediate_bytes));

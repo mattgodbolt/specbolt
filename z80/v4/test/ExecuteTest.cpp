@@ -293,6 +293,27 @@ TEST_CASE("Interrupts") {
     CHECK_FALSE(t.z80.halted());
   }
 
+  SECTION("a halted cycle is a real opcode fetch, so the bus keeps following it") {
+    // The halted path once spent its four cycles directly rather than through
+    // `bus`, which left the address bus holding whatever the last instruction
+    // put there for as long as the machine idled -- and idling in `halt` until
+    // the frame interrupt is the commonest thing a Spectrum program does. It
+    // also meant the one place contention would matter most was the one place
+    // the seam did not reach.
+    t.regs.pc(0x1234);
+    t.run(0x00); // a nop, to leave the bus somewhere known
+    REQUIRE(t.z80.bus_address() == 0x1234);
+
+    // Halted at a different address than the bus last saw, which is what tells
+    // a fetch apart from four cycles of nothing.
+    t.z80.halted(true);
+    t.regs.pc(0x4321);
+    const auto before = t.z80.cycle_count();
+    t.z80.execute_one();
+    CHECK(t.z80.bus_address() == 0x4321);
+    CHECK(t.z80.cycle_count() == before + 4); // an opcode cycle, as before
+  }
+
   SECTION("the refresh register's top bit is not counted") {
     t.regs.r(0xff);
     t.run(0x00);
