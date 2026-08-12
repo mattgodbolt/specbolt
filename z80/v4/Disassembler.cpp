@@ -11,6 +11,9 @@
 
 namespace specbolt::v4 {
 
+// The compile-time library this is a description for.
+using namespace refract;
+
 Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
   const auto byte_at = [&](const std::size_t offset) {
     return memory.read(static_cast<std::uint16_t>(address + offset));

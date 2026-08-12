@@ -8,6 +8,8 @@
 
 namespace specbolt::v4 {
 
+using namespace refract;
+
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
     STATIC_CHECK(vocabularies[0].name == "pair");

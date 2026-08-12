@@ -4,8 +4,8 @@
 // value type: several are non-type template parameters later, so they are
 // *structural* -- literal, with every member public, recursively.
 
-#include "z80/v4/Pattern.hpp"
-#include "z80/v4/Vector.hpp"
+#include "refract/Pattern.hpp"
+#include "refract/Vector.hpp"
 
 #include <algorithm>
 #include <array>
@@ -15,7 +15,7 @@
 #include <stdexcept>
 #include <string_view>
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 // Structural, so it can be a template argument. v2 has its own for the same
 // reason; this one is v4's.
@@ -178,4 +178,4 @@ struct TableDecl {
   Rules rules{};
 };
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

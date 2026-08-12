@@ -6,10 +6,12 @@
 #ifdef SPECBOLT_MODULES
 import z80_v4;
 #else
-#include "z80/v4/Pattern.hpp"
+#include "refract/Pattern.hpp"
 #endif
 
 namespace specbolt::v4 {
+
+using namespace refract;
 
 TEST_CASE("Opcode bit parsing") {
   SECTION("LD xx, IMM16") {

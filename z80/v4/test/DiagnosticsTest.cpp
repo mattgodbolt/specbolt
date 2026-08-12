@@ -8,6 +8,8 @@
 // message a malformed table can produce should have a case here.
 
 namespace specbolt::v4 {
+
+using namespace refract;
 namespace {
 
 // Generous fixed capacities: the descriptions below are a few lines each.

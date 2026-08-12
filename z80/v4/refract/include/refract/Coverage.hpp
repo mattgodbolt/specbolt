@@ -10,11 +10,11 @@
 #include <span>
 #include <string>
 #include <vector>
-#include "z80/v4/Model.hpp"
-#include "z80/v4/Pattern.hpp"
-#include "z80/v4/TableError.hpp"
+#include "refract/Model.hpp"
+#include "refract/Pattern.hpp"
+#include "refract/TableError.hpp"
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 // What this opcode, decoded here, is displaced through -- nothing if it is not.
 // Nothing declares this: a row says `{r:z}`, a view says that member is now
@@ -345,4 +345,4 @@ constexpr bool check_tables_used(
   return true;
 }
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

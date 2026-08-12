@@ -5,14 +5,14 @@
 // vocabulary member says. Each takes a string and a line number and returns a
 // value, so each is testable a line at a time.
 
-#include "z80/v4/Model.hpp"
-#include "z80/v4/Parser.hpp"
-#include "z80/v4/TableError.hpp"
+#include "refract/Model.hpp"
+#include "refract/Parser.hpp"
+#include "refract/TableError.hpp"
 
 #include <string>
 #include <string_view>
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 [[nodiscard]] constexpr std::string_view trim_comma(std::string_view text) {
   if (text.ends_with(','))
@@ -188,4 +188,4 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
   return member;
 }
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

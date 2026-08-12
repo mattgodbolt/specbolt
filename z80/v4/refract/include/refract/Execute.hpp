@@ -1,8 +1,11 @@
 #pragma once
 
 #ifndef SPECBOLT_MODULES
-#include "Table.hpp"
-#include "Z80Cpu.hpp"
+// The consumer provides this: it must define `Cpu`, the scope functions, and
+// the table constants this generates from. See Machine.hpp for the contract.
+#include "refract_binding.hpp"
+
+#include "refract/Machine.hpp"
 
 #include <algorithm>
 #include <array>
@@ -19,7 +22,13 @@
 #include <vector>
 #endif
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
+
+// The machine this build generates for. `Cpu` and the functions below come from
+// the CPU description the consumer includes; checking the contract here means a
+// machine missing one of them is told which, rather than finding out inside a
+// generated instruction three hundred lines away.
+static_assert(Machine<Cpu>, "this CPU does not supply everything the framework needs; see Machine.hpp");
 
 // This file turns a parsed instruction table into an interpreter. `Table.hpp`
 // has already read `z80.cpu` and lowered it to `constexpr` data; nothing here
@@ -530,4 +539,4 @@ inline void execute_instruction(Cpu &cpu) {
   }
 }
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

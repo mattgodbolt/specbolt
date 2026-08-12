@@ -3,11 +3,11 @@
 // The three kinds of declaration a description contains, each reading the whole
 // text and returning a fixed-size array of what it found.
 
-#include "z80/v4/Lower.hpp"
-#include "z80/v4/Model.hpp"
-#include "z80/v4/Parser.hpp"
-#include "z80/v4/Pattern.hpp"
-#include "z80/v4/TableError.hpp"
+#include "refract/Lower.hpp"
+#include "refract/Model.hpp"
+#include "refract/Parser.hpp"
+#include "refract/Pattern.hpp"
+#include "refract/TableError.hpp"
 
 #include <algorithm>
 #include <array>
@@ -16,7 +16,7 @@
 #include <string>
 #include <string_view>
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 template<std::size_t N>
 [[nodiscard]] constexpr std::array<Vocabulary, N> parse_vocabularies(const std::string_view description) {
@@ -364,4 +364,4 @@ template<std::size_t N>
   return result;
 }
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

@@ -1,15 +1,15 @@
 #pragma once
 
 #ifndef SPECBOLT_MODULES
-#include "z80/v4/TableError.hpp"
-#include "z80/v4/Vector.hpp"
+#include "refract/TableError.hpp"
+#include "refract/Vector.hpp"
 
 #include <array>
 #include <cstdint>
 #include <string_view>
 #endif
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 SPECBOLT_EXPORT struct BitSlice {
   char name{};
@@ -73,4 +73,4 @@ SPECBOLT_EXPORT [[nodiscard]] constexpr Pattern parse_pattern(const std::string_
   return result;
 }
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

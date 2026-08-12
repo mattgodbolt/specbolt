@@ -3,10 +3,12 @@
 #ifdef SPECBOLT_MODULES
 import z80_v4;
 #else
-#include "z80/v4/Parser.hpp"
+#include "refract/Parser.hpp"
 #endif
 
 namespace specbolt::v4 {
+
+using namespace refract;
 
 TEST_CASE("Parser tests") {
   Parser parser(R"(# I am a comment

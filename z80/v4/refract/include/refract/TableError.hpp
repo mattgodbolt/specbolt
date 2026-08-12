@@ -6,9 +6,14 @@
 #include <string_view>
 #endif
 
-#define SPECBOLT_CPU_TABLE "z80.cpu"
+// The description this build compiles, named by whoever is compiling one. The
+// library never names a particular machine's file; diagnostics quote whatever
+// the consumer set.
+#ifndef SPECBOLT_CPU_TABLE
+#define SPECBOLT_CPU_TABLE "cpu"
+#endif
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 [[nodiscard]] constexpr std::string decimal(std::size_t value) {
   if (value == 0)
@@ -25,4 +30,4 @@ namespace specbolt::v4 {
   return std::runtime_error(SPECBOLT_CPU_TABLE ":" + decimal(line) + ": " + std::string(what));
 }
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

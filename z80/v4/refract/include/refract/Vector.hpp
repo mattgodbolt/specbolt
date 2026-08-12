@@ -1,13 +1,13 @@
 #pragma once
 
 #ifndef SPECBOLT_MODULES
-#include "z80/v4/TableError.hpp"
+#include "refract/TableError.hpp"
 
 #include <array>
 #include <cstddef>
 #endif
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 // A fixed-capacity vector that works during constant evaluation and stays
 // structural, so one can be a template argument. `std::inplace_vector` is the
@@ -42,4 +42,4 @@ struct Vector {
   constexpr bool operator==(const Vector &) const = default;
 };
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract

@@ -1,12 +1,14 @@
 #ifndef SPECBOLT_MODULES
 #include "z80/v4/Z80.hpp"
 
-#include "Execute.hpp"
+#include "refract/Execute.hpp"
 
 #include <utility>
 #endif
 
 namespace specbolt::v4 {
+
+using refract::execute_instruction;
 
 void Z80::execute_one() {
   if (const auto deferred = std::exchange(interrupts_deferred_, false); irq_pending_ && !deferred) [[unlikely]]

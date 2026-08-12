@@ -4,7 +4,7 @@
 #include <string_view>
 #endif
 
-namespace specbolt::v4 {
+namespace specbolt::refract {
 
 SPECBOLT_EXPORT class Parser {
 public:
@@ -70,4 +70,4 @@ private:
   std::string_view buf_;
 };
 
-} // namespace specbolt::v4
+} // namespace specbolt::refract
