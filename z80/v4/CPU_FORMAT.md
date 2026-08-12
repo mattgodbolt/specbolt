@@ -69,16 +69,19 @@ match a longer instruction than its own encoding column describes.
 **The table names things; it does not define them.** Every operation it names
 (`inc8`, `add16`, `is_set`) and every location it names (`a`, `hl`, `carry`,
 `pc`) is looked up by reflection in the CPU description — for the Z80 that is
-`Z80Cpu.hpp`. A name the CPU does not supply is a compile error naming the line
+`Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`. A name the CPU does not supply is a compile error naming the line
 that asked for it.
 
 ### What the CPU description must supply
 
 This document describes the table. The other half of the contract lives in the
 CPU description, and a `.cpu` file is meaningless without it, so here is its
-shape. (For the details, read `Z80Cpu.hpp`. Be warned that it is not small: the
-easy majority of an instruction set becomes rows, and what stays behind is the
-awkward remainder -- the block moves, the exchanges, the flag minutiae.)
+shape. It is three files, one per column of the table below: `Operations.hpp`
+is what a row's verbs mean, `Locations.hpp` what its names mean, and
+`Z80Machine.hpp` how the framework drives the chip. Be warned that the first is
+not small — the easy majority of an instruction set becomes rows, and what stays
+behind is the awkward remainder: the block moves, the exchanges, the flag
+minutiae.
 
 | the table writes | the CPU supplies |
 |---|---|

@@ -12,7 +12,7 @@
 // parameters. That is the honest limit of this arrangement.
 
 #include "Table.hpp"
-#include "Z80Cpu.hpp"
+#include "Z80Machine.hpp"
 
 namespace specbolt::refract {
 

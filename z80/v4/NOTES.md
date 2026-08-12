@@ -899,13 +899,13 @@ anything about a Z80:
 | | |
 |---|---|
 | **CPU-agnostic already** | `Model.hpp`, `Lower.hpp`, `Parse.hpp`, `Coverage.hpp`, `Matched.hpp`, `Parser.hpp`, `Vector.hpp` |
-| **The framework, but coupled** | `Execute.hpp` — generic except that it `#include`s `Z80Cpu.hpp` by name and calls free functions found by unqualified lookup |
-| **The description** | `z80.cpu`, `Z80Cpu.hpp`, `Z80.hpp`/`Z80.cpp` |
+| **The framework, but coupled** | `Execute.hpp` — generic except that it `#include`s `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` by name and calls free functions found by unqualified lookup |
+| **The description** | `z80.cpu`, `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`, `Z80.hpp`/`Z80.cpp` |
 | **Awkward** | `TableError.hpp`, which names `SPECBOLT_CPU_TABLE` — a framework header naming the description file |
 
 Two things stand in the way of a clean `cpu/` library that `z80/v4` merely uses:
 
-1. **`Execute.hpp` includes `Z80Cpu.hpp`.** Everything it needs from a CPU is a fixed set of names —
+1. **`Execute.hpp` includes `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`.** Everything it needs from a CPU is a fixed set of names —
    `Cpu`, `primitive_scopes`, `location_scopes`, `fetch_opcode`, `fetch_immediate`, `read_memory`,
    `write_memory`, `read_memory16`, `write_memory16`, `displaced_address`, `delay`, `read`, `write`.
    That is a *concept*, and writing it as one would say so, let the error messages be about the
@@ -928,12 +928,12 @@ Not done, and worth trying. Today a name in the table travels through three plac
 3. Most of those static functions turn straight round and call a member of `v4::Z80`.
 
 `Ops::delay` is `cpu.idle(cycles)`. `read_memory` is `cpu.read(address)`. `write_memory` is
-`cpu.write(...)`. `ex_sp_ix` is `ex_sp_hl`. A good half of `Z80Cpu.hpp` is shims, and the shim's only
+`cpu.write(...)`. `ex_sp_ix` is `ex_sp_hl`. A good half of `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` is shims, and the shim's only
 real job is to give the CPU's method a name the table can use — which is worth something, since
 several of the underlying names are poor, but not obviously worth a third place to define things.
 
 The idea: teach the framework to reflect over **member** functions, so `Z80` itself is the
-description and `Z80Cpu.hpp` mostly disappears. `find_primitive` already rejects non-static members
+description and `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` mostly disappears. `find_primitive` already rejects non-static members
 because a splice of one cannot be called without an object; the framework always *has* the object.
 
 Things to work out before committing to it:
@@ -1041,9 +1041,9 @@ are deferred rather than forgotten.
   `next_word` splits on spaces only, so a tab-indented `field` is not recognised at all — `trim`
   handles tabs, which shows they were meant to be whitespace.
 - **`SPECBOLT_CPU_TABLE` lives in `TableError.hpp`**, so a framework header names the CPU
-  description; `Execute.hpp` includes `Z80Cpu.hpp` by name for the same reason. Both should be
+  description; `Execute.hpp` includes `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` by name for the same reason. Both should be
   `target_compile_definitions`, which is also what would let one binary hold two CPUs. Until then,
-  "retargeting means writing one `Z80Cpu.hpp`" needs an asterisk.
+  "retargeting means writing one `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`" needs an asterisk.
 - ~~**`Operand` carries jobs that already have types.**~~ **Done.** `Reference` is a type, and
   `write_back_delay` now lives only on `Operand` — `parse_member` writes it there directly, so
   `resolve` is a one-liner and there is nothing to keep in step.
@@ -1119,7 +1119,7 @@ debugger view can ask questions of the table at runtime.
 
 ## What the real Z80 buys, measured
 
-`Z80Cpu.hpp` targets `v4::Z80 : Z80Base` rather than a stand-in struct, so v4 can be dropped
+`Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` targets `v4::Z80 : Z80Base` rather than a stand-in struct, so v4 can be dropped
 straight into `z80/test/OpcodeTests.cpp` — that suite is already a template over the
 implementation, which makes it the scoreboard. Two measurements, before and after memory operands:
 
@@ -1280,7 +1280,7 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 
 ## Where the framework/CPU boundary sits
 
-`Z80Cpu.hpp` is the whole customisation surface — 82 lines. Retargeting means writing one of these
+`Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` is the whole customisation surface — 82 lines. Retargeting means writing one of these
 and nothing else:
 
 - `Cpu` and `Ops` — the machine state and its non-ALU primitives
