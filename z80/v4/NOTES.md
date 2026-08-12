@@ -614,11 +614,11 @@ Verified in `ExecuteTest.cpp` against the counts `OpcodeTests.cpp` asserts of v1
 renames nothing; and `dd dd dd 23` at 4 T-states a prefix byte. Generated code forms the address once
 with `add`, reuses it for the read and the write, and folds both idles into constant clones.
 
-**Still missing: the disassembler.** It renders a member's `display` as text, so an indexed row reads
-`inc (ix+d)` literally rather than `inc (ix-0x01)`, and the length it reports omits the displacement
-byte. Emulation is unaffected — the `dd` cases in `DisassemblerTest` are still commented out. The fix
-is to lower `Member::display` into pieces the way `lower_mnemonic` already lowers a row's, which is
-the same machinery rather than new machinery.
+**The disassembler followed.** A member's text is now lowered into `Piece`s at parse time exactly as
+a row's mnemonic is — `lower_text` does both — with `Piece::Kind::Displacement` for the hole `+d`
+leaves. A row renders its pieces, and a member renders its own, so `inc (ix-0x01)` falls out without
+the disassembler parsing anything at runtime. The displacement is taken before the pieces are walked,
+because it precedes any immediate, which also makes the reported length right.
 5. ~~**Capacity.**~~ **Checked; nothing to change.** `Field::max_values` is 8 and the `ix` view's
    register vocabulary is exactly 8 (`b c d e ixh ixl (ix+d) a`) — it fits, with no headroom.
    `Rules` holds 6 and `ix` needs 4. `Row::max_steps` is 6, which DDCB might exceed, but bumping a

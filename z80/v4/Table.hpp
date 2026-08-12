@@ -75,8 +75,24 @@ struct Operand {
   constexpr bool operator==(const Operand &) const = default;
 };
 
+// Text with the values it carries taken out of it. A piece is a literal chunk,
+// a vocabulary member to look up, a value read from the encoding, or the
+// displacement an indexed addressing mode carries.
+struct Piece {
+  enum class Kind : std::uint8_t { Literal, Field, Imm8, Imm16, Displacement };
+  Kind kind{};
+  std::string_view text{};
+  Reference reference{};
+  constexpr bool operator==(const Piece &) const = default;
+};
+
 struct Member {
+  static constexpr std::size_t max_pieces = 3;
   std::string_view display{};
+  // The display, split around whatever it renders from the instruction: an
+  // indexed mode writes its displacement inline, so the disassembler renders
+  // rather than parses.
+  Vector<Piece, max_pieces> pieces{};
   std::string_view primitive{};
   std::optional<Operand> appended{};
   // The text is an operand, parsed once here rather than per opcode at splice time.
@@ -120,14 +136,6 @@ inline constexpr Rules no_rules{};
       return rule.to;
   return member;
 }
-
-struct Piece {
-  enum class Kind : std::uint8_t { Literal, Field, Imm8, Imm16 };
-  Kind kind{};
-  std::string_view text{};
-  Reference reference{};
-  constexpr bool operator==(const Piece &) const = default;
-};
 
 inline constexpr std::size_t max_operands = 4;
 
@@ -234,6 +242,42 @@ struct Row {
   return {.kind = Operand::Kind::Named, .name = Name{word}};
 }
 
+// Splits display text around the values it renders rather than spells: `$nn`
+// and `$nnnn` come from the encoding, `+d` is the displacement an indexed mode
+// carries. Both a row's mnemonic and a vocabulary member's text are lowered
+// with this, so neither is parsed at runtime.
+constexpr void lower_text(Parser text, const auto &push, const std::size_t line) {
+  const auto push_immediates = [&](Parser chunk) {
+    while (!chunk.eof()) {
+      if (!chunk.data().contains('$')) {
+        if (!chunk.data().empty())
+          push(Piece{.kind = Piece::Kind::Literal, .text = chunk.data()});
+        return;
+      }
+      if (const auto literal = chunk.split_to('$').data(); !literal.empty())
+        push(Piece{.kind = Piece::Kind::Literal, .text = literal});
+      const auto remaining = chunk.data().size();
+      chunk.skip_any("n");
+      switch (remaining - chunk.data().size()) {
+        case 2: push(Piece{.kind = Piece::Kind::Imm8}); break;
+        case 4: push(Piece{.kind = Piece::Kind::Imm16}); break;
+        default: throw table_error(line, "expected $nn or $nnnn in mnemonic");
+      }
+    }
+  };
+
+  while (!text.eof()) {
+    const auto at = text.data().find("+d");
+    if (at == std::string_view::npos) {
+      push_immediates(text);
+      return;
+    }
+    push_immediates(Parser(text.data().substr(0, at)));
+    push(Piece{.kind = Piece::Kind::Displacement});
+    text = Parser(text.data().substr(at + 2));
+  }
+}
+
 // `bc` is display only; `adc:add8+carry` binds a primitive and appends an
 // operand; `(hl)/delay=1` states the access sequence of an addressing mode.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
@@ -256,6 +300,9 @@ struct Row {
     member.hole = true;
     return member;
   }
+  lower_text(
+      Parser(member.display),
+      [&](const Piece piece) { member.pieces.push_back(piece, line, "member text is too complicated"); }, line);
   member.operand = parse_simple_operand(member.display, line, 0);
   if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
     throw table_error(line, "a vocabulary member must name something the CPU can resolve");
@@ -429,23 +476,7 @@ template<std::size_t N>
 
 constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
   const auto push = [&row](const Piece piece) { row.pieces.push_back(piece, row.line, "mnemonic is too complicated"); };
-  const auto push_text = [&](Parser text) {
-    while (!text.eof()) {
-      if (!text.data().contains('$')) {
-        push({.kind = Piece::Kind::Literal, .text = text.data()});
-        return;
-      }
-      if (const auto literal = text.split_to('$').data(); !literal.empty())
-        push({.kind = Piece::Kind::Literal, .text = literal});
-      const auto remaining = text.data().size();
-      text.skip_any("n");
-      switch (remaining - text.data().size()) {
-        case 2: push({.kind = Piece::Kind::Imm8}); break;
-        case 4: push({.kind = Piece::Kind::Imm16}); break;
-        default: throw table_error(row.line, "expected $nn or $nnnn in mnemonic");
-      }
-    }
-  };
+  const auto push_text = [&](const Parser text) { lower_text(text, push, row.line); };
 
   Parser parser(row.mnemonic);
   while (!parser.eof()) {

@@ -35,21 +35,41 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
   const auto opcode = byte_at(offset - 1);
   // Only an inherited row is renamed; see the note in Execute.hpp.
   const auto &rules = row->table == table ? no_rules : tables[table].rules;
-  for (std::size_t piece = 0; piece < row->pieces.size(); ++piece) {
-    const auto &part = row->pieces[piece];
+  // The displacement precedes any immediate, so it is taken before the pieces
+  // are walked and whatever they read follows it.
+  const auto displaced = displaced_through(fields, *row, opcode, rules);
+  const unsigned displacement = displaced ? byte_at(offset) : 0;
+  if (displaced)
+    ++offset;
+
+  const auto render = [&](const Piece &part) {
     switch (part.kind) {
       case Piece::Kind::Literal: result += part.text; break;
-      case Piece::Kind::Field: result += member_of(fields, part.reference, row->matched, opcode, rules).display; break;
+      case Piece::Kind::Field: break; // only the caller can follow one
+      case Piece::Kind::Displacement:
+        result += displacement < 0x80 ? std::format("+0x{:02x}", displacement)
+                                      : std::format("-0x{:02x}", 0x100 - displacement);
+        break;
       case Piece::Kind::Imm8:
         result += std::format("0x{:02x}", byte_at(offset));
         offset += 1;
         break;
-      case Piece::Kind::Imm16: {
+      case Piece::Kind::Imm16:
         result += std::format("0x{:04x}", static_cast<std::uint16_t>(byte_at(offset) | byte_at(offset + 1) << 8));
         offset += 2;
         break;
-      }
     }
+  };
+
+  for (const auto &part: row->pieces) {
+    if (part.kind != Piece::Kind::Field) {
+      render(part);
+      continue;
+    }
+    // A member renders itself, because an indexed mode writes its displacement
+    // in the middle of its own text.
+    for (const auto &inner: member_of(fields, part.reference, row->matched, opcode, rules).pieces)
+      render(inner);
   }
   return {result, offset};
 }
