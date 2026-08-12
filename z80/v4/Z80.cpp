@@ -12,7 +12,10 @@ void Z80::execute_one() {
   if (const auto deferred = std::exchange(interrupts_deferred_, false); irq_pending_ && !deferred) [[unlikely]]
     handle_interrupt();
   if (halted_) [[unlikely]] {
-    pass_time(1);
+    // A halted Z80 is executing internal NOPs, not stopped: it still fetches,
+    // so it still refreshes.
+    refresh();
+    pass_time(4);
     return;
   }
   execute_instruction(*this);
@@ -37,6 +40,8 @@ void Z80::handle_interrupt() {
   // which the device would put a vector on the bus. Seven, then two writes,
   // makes the documented thirteen for modes 0 and 1 and nineteen for mode 2.
   idle(7);
+  // The acknowledge is an M1 cycle, and every M1 refreshes.
+  refresh();
   const auto return_to = regs_.pc();
   regs_.sp(static_cast<std::uint16_t>(regs_.sp() - 2));
   write(regs_.sp(), static_cast<std::uint8_t>(return_to));
@@ -82,11 +87,15 @@ void Z80::bus(const Bus kind, const std::uint16_t address) {
   bus_address_ = address;
 }
 
+// The refresh counter is seven bits; the top bit is whatever was last written
+// to it and does not count.
+void Z80::refresh() { regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f))); }
+
 std::uint8_t Z80::read_opcode() {
   const auto address = regs_.pc();
   regs_.pc(static_cast<std::uint16_t>(address + 1));
   bus(Bus::opcode, address);
-  regs_.r((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f));
+  refresh();
   return memory_.read(address);
 }
 

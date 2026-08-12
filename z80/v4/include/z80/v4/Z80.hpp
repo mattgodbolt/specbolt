@@ -61,6 +61,7 @@ private:
   // Accepting an interrupt is not an instruction: no encoding matches it, so it
   // cannot be a row. It belongs to the machine that drives the decoder.
   void handle_interrupt();
+  void refresh();
 
   // What the address bus last held, which is what an internal cycle presents.
   std::uint16_t bus_address_{};

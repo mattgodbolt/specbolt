@@ -163,6 +163,8 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
   }
   if (member.display.empty())
     throw table_error(line, "field member has no name");
+  if (member.display.contains('$'))
+    throw table_error(line, "a vocabulary member cannot render an immediate; only the encoding fetches those");
   if (member.display == "-") {
     member.hole = true;
     return member;

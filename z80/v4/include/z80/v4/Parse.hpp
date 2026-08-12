@@ -29,6 +29,8 @@ template<std::size_t N>
       continue;
     Parser parser(text);
     static_cast<void>(parser.next_word());
+    if (index == N)
+      throw table_error(at, "more field declarations than the count that sized this array");
     auto &field = result[index++];
     const auto name = parser.next_word();
     if (name.size() != 1)
@@ -111,6 +113,8 @@ template<std::size_t N>
     for (std::size_t other = 0; other < index; ++other)
       if (result[other].name == name)
         throw table_error(at, "duplicate table name");
+    if (index == N)
+      throw table_error(at, "more table declarations than the count that sized this array");
     auto &table = result[index++];
     table = {.name = name, .line = at};
     if (const auto equals = parser.next_word(); equals.empty())
@@ -205,12 +209,28 @@ constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
 // The encoding says what is fetched. The mnemonic must render exactly that, and
 // the action must use it: otherwise one of the three columns is lying.
 constexpr void check_immediates(const Row &row) {
+  // A row fetches one immediate, of `immediate_bytes` bytes -- so the mnemonic
+  // must render exactly one, of exactly that width. Summing widths would let
+  // `$nn $nn` pass against `n n` and then disassemble as two bytes where the
+  // machine read one sixteen-bit value.
   std::size_t rendered = 0;
+  std::size_t width = 0;
   for (const auto &piece: row.pieces)
-    rendered += piece.kind == Piece::Kind::Imm8 || piece.kind == Piece::Kind::Relative ? 1u
-                : piece.kind == Piece::Kind::Imm16                                     ? 2u
-                                                                                       : 0u;
-  if (rendered != row.immediate_bytes)
+    switch (piece.kind) {
+      case Piece::Kind::Imm8:
+      case Piece::Kind::Relative:
+        ++rendered;
+        width = 1;
+        break;
+      case Piece::Kind::Imm16:
+        ++rendered;
+        width = 2;
+        break;
+      default: break;
+    }
+  if (rendered > 1)
+    throw table_error(row.line, "a row renders at most one immediate; the encoding only fetches one");
+  if (width != row.immediate_bytes)
     throw table_error(row.line, "the mnemonic renders a different number of immediate bytes than the encoding fetches");
 
   const auto immediate = [](const Operand &operand) { return operand.kind == Operand::Kind::Immediate; };
@@ -241,6 +261,8 @@ template<std::size_t N>
     if (!current)
       throw table_error(at, "this row is not in any table; declare one with `table <name>` first");
     Parser parser(text, at);
+    if (index == N)
+      throw table_error(at, "more rows than the count that sized this array");
     auto &row = result[index++];
     row.line = at;
     row.table = *current;

@@ -273,6 +273,32 @@ TEST_CASE("Interrupts") {
     CHECK(regs.sp() == 0x7ffe);
   }
 
+  SECTION("the refresh register counts the acknowledge, and counts through a halt") {
+    t.z80.iff1(true);
+    t.z80.iff2(true);
+    t.regs.r(0);
+    t.run(0x76); // halt
+    CHECK(t.regs.r() == 1);
+    CHECK(t.z80.cycle_count() == 4);
+
+    t.z80.execute_one(); // halted: an internal nop, which still refreshes
+    CHECK(t.regs.r() == 2);
+    CHECK(t.z80.cycle_count() == 8);
+
+    t.z80.interrupt();
+    t.z80.execute_one();
+    // Two more: the acknowledge is an M1, and the handler's first instruction
+    // is fetched in the same call.
+    CHECK(t.regs.r() == 4);
+    CHECK_FALSE(t.z80.halted());
+  }
+
+  SECTION("the refresh register's top bit is not counted") {
+    t.regs.r(0xff);
+    t.run(0x00);
+    CHECK(t.regs.r() == 0x80); // seven bits wrapped, the eighth kept
+  }
+
   SECTION("an interrupt raised while disabled is held, not dropped") {
     // /INT is a level the device holds, not an edge, so arriving during a
     // di/ei window does not lose it.
