@@ -147,12 +147,18 @@ namespace specbolt::v4 {
   return only_match(candidates, name, line);
 }
 
-// Reflection must stay in template arguments and alias templates, never in a
-// local variable. A `constexpr auto x = parameters_of(Fn);` inside a function
-// body is an immediate-escalating expression: it would promote the enclosing
-// function to `consteval`, which could then no longer be called with a running
-// CPU. Written this way, the values live in the template system instead — and
-// get memoised by it for free.
+// Reflection stays in template arguments and alias templates, never in a local
+// variable. Two separate reasons, and the first bites first:
+//
+//   * a `constexpr auto x = parameters_of(Fn);` in a function body makes that
+//     function *immediately* evaluated -- the standard calls the initialiser an
+//     immediate-escalating expression -- so the enclosing function becomes
+//     `consteval` and can no longer be called with a running CPU;
+//   * `parameters_of` returns a `std::vector`, whose storage cannot outlive the
+//     constant evaluation that made it, so it could not be kept anyway.
+//
+// Written this way the values live in the template system, which also memoises
+// them for free.
 template<std::meta::info Fn>
 inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
@@ -161,17 +167,20 @@ inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
-// What a result destructures into. A class with nothing *accessible* -- `Flags`
-// keeps its byte private -- is one value, not none: `access_context::current()`
-// is this namespace, so a private member is not visible here and is not counted.
+// What a result destructures into. Returns nothing for a non-class type, and
+// also for a class whose members are all inaccessible from here --
+// `access_context::current()` is this namespace, so a type keeping its state
+// private looks empty. `apply` reads an empty answer as "one value, stored
+// whole", which is what makes such a type a value rather than a pair.
 [[nodiscard]] consteval std::span<const std::meta::info> destructures_into(const std::meta::info type) {
   if (!std::meta::is_class_type(type))
     return {};
   return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
 }
 
-// A primitive may ask for the machine itself, which is the one type the
-// framework is parameterised on and so the one it can always supply.
+// A primitive may ask for the machine itself, and if it does it must ask first:
+// the framework supplies argument zero and the row supplies the rest, so which
+// argument is which stays a property of the signature rather than of the row.
 template<std::meta::info Fn>
 [[nodiscard]] consteval bool takes_cpu() {
   if constexpr (arity_of<Fn> == 0)
@@ -189,9 +198,11 @@ struct Call {
   std::size_t line{};
 };
 
-// Only a literal written in the table is narrowed on the author's say-so;
-// everything else converts implicitly, so handing a 16-bit location to an
-// 8-bit parameter is a diagnosable narrowing rather than a silent truncation.
+// An operand becomes the type the parameter it feeds asks for. A constant is
+// checked here, because the table wrote it and a value too big for its
+// parameter is a mistake worth naming. A location converts the ordinary way, so
+// whether a 16-bit register reaching an 8-bit parameter is diagnosed depends on
+// the build's warnings rather than on anything this file does.
 template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter direct_value_of(Cpu &cpu, const std::uint16_t immediate) {
   static_assert(!std::is_reference_v<Parameter>,
@@ -274,10 +285,11 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
 // and then asks for the address that read left on the bus, and getting those
 // two the wrong way round takes the undocumented flags from the wrong place.
 //
-// The guarantee survives CTAD and constructor selection — [dcl.init.list] says
-// so explicitly, and it is the case a sceptical reader will doubt. Storing
-// needs no such rescue: `template for` sequences its iterations, so the
-// destination side was never at risk.
+// [dcl.init.list] says the guarantee survives CTAD and constructor selection,
+// which is the part worth checking rather than assuming. Storing needs no such
+// rescue: `template for` sequences its iterations, so destinations were never
+// at risk.
+
 // The generic-lambda-plus-`index_sequence` dance is here because this is the
 // one job `template for` cannot do: expanding into a *call's argument list*
 // needs a pack, and an expansion statement produces statements, not pack
@@ -291,7 +303,7 @@ template<std::meta::info Fn, Call C>
 }
 
 // Arguments are supplied positionally; destinations destructure the result in
-// declaration order. Nothing here has an opinion on what an operand means.
+// declaration order.
 template<std::meta::info Fn, Call C>
 void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
@@ -308,7 +320,11 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
         arguments);
   };
 
+  // Unevaluated, despite everything just said about operands having effects:
+  // `decltype` asks for the type and calls nothing.
   using Result = decltype(call(operands_of<Fn, C>(cpu, immediate, indexed)));
+  // `static` so the span's referent outlives this instantiation, which is what
+  // lets `members[at]` below be a constant expression inside a splice.
   static constexpr auto members = destructures_into(^^Result);
   static_assert(members.size() != 1,
       "a result with exactly one accessible member is ambiguous: it is neither a value nor a pair");
@@ -327,8 +343,9 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
   }
   else {
     static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
-    // More than one is how `dd cb d op` writes its result back through the
-    // addressing mode *and* into the register the low bits name.
+    // More than one *destination* is how an instruction writes one result to
+    // two places -- `dd cb d op` puts it through the addressing mode and into
+    // the register its low bits name.
     const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed));
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
         store<C.destinations[at], C.line>(cpu, immediate, indexed, result);
@@ -413,9 +430,10 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   // by `if constexpr`, and then dereferenced to give a template argument. Both
   // work because `optional`'s members are `constexpr`.
   constexpr auto displaced = displaced_through(fields, row, Opcode, rules);
-  constexpr bool inherits = latched[Table];
-  const std::uint8_t displacement =
-      row.reads_displacement || (displaced && !inherits) ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : latch;
+  constexpr bool entered_latched = latched[Table];
+  const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
+                                        ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1))
+                                        : latch;
   // The encoding column says what is fetched, and it is fetched once before any
   // step: argument order within a call is unspecified, and a later step may
   // store through an address an earlier one read.
@@ -432,7 +450,7 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
       // from it, so a count the window cannot hold asks it for a negative delay.
       // Caught here, where the number is a constant, rather than at run time as
       // an enormous unsigned one.
-      constexpr auto read_inside = row.immediate_bytes + (inherits ? 1 : 0);
+      constexpr auto read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
       static_assert(
           read_inside <= 1, "this row reads more inside the window that forms its address than the window can hold");
       return displaced_address(cpu, direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate), displacement,
@@ -467,14 +485,14 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   return std::nullopt;
 }
 
-// The lambda deduces `Handler` in one branch and `std::nullptr_t` in the other;
-// that is legal because the discarded branch of an `if constexpr` does not
-// participate in return-type deduction. Both convert to `Handler`.
-// Every table is total -- `check_tables_total` insists -- so there is always a
-// row, and this is a lookup rather than a search.
+// Every table is total -- `check_tables_total` insists on it -- so there is
+// always a row here, which is why this dereferences without asking.
 template<std::uint8_t Table, std::uint8_t Opcode>
 inline constexpr Handler handler_for = &execute_one<Table, Opcode, *find_row(Table, Opcode)>;
 
+// The clearest demonstration in the file of what an expansion statement buys:
+// `handler_for<Table, opcode>` needs `opcode` as a *template argument*, so an
+// ordinary loop cannot build this table and a `template for` can.
 template<std::uint8_t Table>
 inline constexpr auto dispatch = [] {
   std::array<Handler, 256> handlers{};

@@ -88,9 +88,6 @@ struct Member {
   // The text is an operand, parsed once here rather than per opcode at splice time.
   Operand operand{};
   bool hole{};
-  // An addressing mode carries its own access sequence. This one says how long
-  // the machine idles between reading through it and writing back.
-  std::uint8_t write_back_delay{};
   constexpr bool operator==(const Member &) const = default;
 };
 

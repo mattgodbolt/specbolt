@@ -154,13 +154,14 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
   Parser whole(text);
   Parser parser(whole.split_to('/').data());
   Member member{.display = parser.split_to(':').data(), .primitive = parser.data()};
+  std::uint8_t delay_attribute = 0;
   if (const auto attributes = whole.data(); !attributes.empty()) {
     Parser attribute(attributes);
     const auto key = attribute.split_to('=').data();
     const auto value = attribute.data();
     if (key != "delay")
       throw table_error(line, "'" + std::string(key) + "' is not a member attribute; expected 'delay'");
-    member.write_back_delay = parse_delay(value, line);
+    delay_attribute = parse_delay(value, line);
   }
   if (member.display.empty())
     throw table_error(line, "field member has no name");
@@ -172,6 +173,7 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
       Parser(member.display),
       [&](const Piece piece) { member.pieces.push_back(piece, line, "member text is too complicated"); }, line);
   member.operand = parse_simple_operand(member.display, line, 0);
+  member.operand.write_back_delay = delay_attribute;
   if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
     throw table_error(line, "a vocabulary member must name something the CPU can resolve");
   Parser primitive(member.primitive);

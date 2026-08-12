@@ -21,10 +21,7 @@ namespace specbolt::v4 {
     const Matched &matched, const std::uint8_t opcode, const Rules &rules = {}) {
   if (operand.kind != Operand::Kind::Field)
     return operand;
-  const auto member = member_of(fields, operand.reference, matched, opcode, rules);
-  auto result = member.operand;
-  result.write_back_delay = member.write_back_delay;
-  return result;
+  return member_of(fields, operand.reference, matched, opcode, rules).operand;
 }
 
 // What this opcode, decoded here, is displaced through -- nothing if it is not.
