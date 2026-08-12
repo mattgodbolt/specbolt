@@ -2,8 +2,9 @@ ensure_catch2()
 
 add_executable(
         z80_test
-        OpcodeTests.cpp)
-target_link_libraries(z80_test z80_v1 z80_v2 z80_v3 Catch2::Catch2WithMain)
+        OpcodeTests.cpp
+        BootTest.cpp)
+target_link_libraries(z80_test z80_v1 z80_v2 z80_v3 spectrum peripherals Catch2::Catch2WithMain)
 # Reflection being available is not the same as v4 being built: v4 is excluded
 # when modules are on, and gcc 16 has both.
 if (TARGET z80_v4)

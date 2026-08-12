@@ -34,6 +34,10 @@ import z80_v3;
 #include "z80/v3/Z80.hpp"
 #endif
 
+#ifdef SPECBOLT_HAS_V4
+#include "z80/v4/Z80.hpp"
+#endif
+
 namespace {
 
 int parse_num(const std::string &number) {
@@ -312,7 +316,7 @@ int main(int argc, const char **argv) try {
   const auto cli = lyra::cli() | //
                    lyra::help(need_help) //
                    | lyra::opt(spec128)["--128"]("Use the 128K Spectrum") //
-                   | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.").choices(1, 2, 3) //
+                   | lyra::opt(impl, "impl")["--impl"]("Use the specified implementation.").choices(1, 2, 3, 4) //
                    | lyra::opt(exec_on_startup, "cmd")["-x"]["--execute-on-startup"]("Execute command on startup") |
                    lyra::arg(snapshot, "SNAPSHOT")("Snapshot to load");
 
@@ -331,6 +335,9 @@ int main(int argc, const char **argv) try {
     case 1: app = std::make_unique<App<specbolt::v1::Z80>>(variant); break;
     case 2: app = std::make_unique<App<specbolt::v2::Z80>>(variant); break;
     case 3: app = std::make_unique<App<specbolt::v3::Z80>>(variant); break;
+#ifdef SPECBOLT_HAS_V4
+    case 4: app = std::make_unique<App<specbolt::v4::Z80>>(variant); break;
+#endif
     default: {
       std::print(std::cerr, "Bad implementation {}\n", impl);
       return 1;

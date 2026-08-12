@@ -91,16 +91,19 @@ endif ()
 specbolt_dependency(Lyra "gh:bfgroup/Lyra@1.8.0#4186a07f52392aaac31726c64c574d3496cdc13a")
 include_directories(${PROJECT_SOURCE_DIR})
 
+add_subdirectory(peripherals)
+add_subdirectory(spectrum)
+
+# Before the front ends: which CPU implementations exist is decided here, and
+# they ask with `if (TARGET ...)`, which is answered when the line is read.
+add_subdirectory(z80)
+
 if (SPECBOLT_CONSOLE)
     add_subdirectory(console)
 endif ()
-
-add_subdirectory(peripherals)
 if (NOT SPECBOLT_WASM)
     add_subdirectory(sdl)
 endif ()
-add_subdirectory(spectrum)
-add_subdirectory(z80)
 
 if (SPECBOLT_WASM)
     add_subdirectory(web)

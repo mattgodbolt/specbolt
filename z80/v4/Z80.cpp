@@ -7,11 +7,48 @@
 namespace specbolt::v4 {
 
 void Z80::execute_one() {
+  if (irq_pending_) [[unlikely]]
+    handle_interrupt();
   if (halted_) [[unlikely]] {
     pass_time(1);
     return;
   }
   execute_instruction(*this);
+}
+
+// The one sequence the table cannot describe: no opcode encodes it, and the
+// byte it reads in mode 0 comes from the interrupting device rather than from
+// memory. It is the machine's, not the instruction set's.
+void Z80::handle_interrupt() {
+  irq_pending_ = false;
+  if (!iff1_)
+    return;
+  if (halted_) {
+    halted_ = false;
+    // `halt` parks the program counter on itself; step off it.
+    regs_.pc(static_cast<std::uint16_t>(regs_.pc() + 1));
+  }
+  iff1_ = iff2_ = false;
+  // The acknowledge cycle: an opcode fetch stretched by two wait states, during
+  // which the device would put a vector on the bus. Seven, then two writes,
+  // makes the documented thirteen for modes 0 and 1 and nineteen for mode 2.
+  idle(7);
+  const auto return_to = regs_.pc();
+  regs_.sp(static_cast<std::uint16_t>(regs_.sp() - 2));
+  write(regs_.sp(), static_cast<std::uint8_t>(return_to));
+  write(static_cast<std::uint16_t>(regs_.sp() + 1), static_cast<std::uint8_t>(return_to >> 8));
+  switch (irq_mode_) {
+    case 0: // Nothing drives the bus, so the byte reads as 0xff: `rst 0x38`.
+    case 1: regs_.pc(0x38); break;
+    case 2: {
+      const auto vector = static_cast<std::uint16_t>(0xff | regs_.i() << 8);
+      const auto low = read(vector);
+      const auto high = read(static_cast<std::uint16_t>(vector + 1));
+      regs_.pc(static_cast<std::uint16_t>(high << 8 | low));
+      break;
+    }
+    default: break;
+  }
 }
 
 namespace {

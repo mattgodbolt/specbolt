@@ -9,3 +9,7 @@ add_executable(specbolt_sdl
     heatmap/heatmap_memory_listener.hpp
 )
 target_link_libraries(specbolt_sdl PRIVATE z80_v1 z80_v2 z80_v3 peripherals spectrum SDL2::SDL2 lyra)
+if (TARGET z80_v4)
+    target_link_libraries(specbolt_sdl PRIVATE z80_v4)
+    target_compile_definitions(specbolt_sdl PRIVATE SPECBOLT_HAS_V4)
+endif ()
