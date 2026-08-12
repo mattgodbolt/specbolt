@@ -865,6 +865,32 @@ before the Spectrum needs it. **Profile before believing any of this.**
 Caveats: one run each, no repeats, on a laptop; and zexdoc's instruction mix is ALU-heavy, so this
 under-reports dispatch cost relative to a program doing more loads and jumps.
 
+## Open: /INT is a level, and v4 has no way to release it
+
+v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it — which is
+right for the case that motivated it, a request arriving inside a one-instruction `di`/`ei` window.
+It is wrong for the case it created.
+
+`Z80Base` offers `interrupt()` and nothing else: there is no deassert. `Spectrum::video_line()`
+raises the request once a frame, and on real hardware /INT is held for about 32 T-states and then
+released. So a routine running under `di` across a frame boundary — loaders, multicolour, border
+effects all do this — leaves a request latched, and v4 takes it on the eventual `ei` where hardware,
+and v1/v2/v3, take nothing.
+
+Two ways out, both out of scope for the change that found it:
+
+1. **Give the request a release.** `Z80Base` grows a deassert, and `Spectrum` drops the line after
+   the documented window. Correct, and it fixes all four cores at once — but it changes shared
+   framework and every front end that raises an interrupt.
+2. **Give the request a lifetime inside v4.** Record the cycle it was raised at, and expire it after
+   ~32 T-states. Keeps the fix's benefit, needs no shared change, and puts a machine-specific number
+   inside the CPU where the machine cannot see it — which is the wrong place for it, but a small
+   wrong place.
+
+Until one of them lands, v4 differs from the other three in a way real software could notice, and
+the difference is *more* wrong than what it replaced for long `di` regions, and *less* wrong for
+short ones.
+
 ## Next: draw the line between the library and the Z80
 
 Splitting `Table.hpp` did most of this by accident. Sorting what exists today by whether it knows

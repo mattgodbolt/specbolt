@@ -274,6 +274,53 @@ constexpr bool check_derived_rows_override(
   return true;
 }
 
+// Does this row's mnemonic render a displacement? It may say so itself -- an
+// override row writing `(ix+d)` in full -- or through a vocabulary member that
+// a view renamed to one.
+[[nodiscard]] constexpr bool renders_displacement(
+    const std::span<const Field> fields, const Row &row, const std::uint8_t opcode, const Rules &rules) {
+  return std::ranges::any_of(row.pieces, [&](const Piece &piece) {
+    if (piece.kind == Piece::Kind::Displacement)
+      return true;
+    if (piece.kind != Piece::Kind::Field)
+      return false;
+    const auto member = member_of(fields, piece.reference, row.matched, opcode, rules);
+    return std::ranges::any_of(
+        member.pieces, [](const Piece &inner) { return inner.kind == Piece::Kind::Displacement; });
+  });
+}
+
+// `check_immediates` cross-checks the three columns about `n`; this is the same
+// question for a displacement. It needs an opcode -- whether a row is displaced
+// depends on which vocabulary member the opcode picks, and on the renaming of
+// the table it was decoded in -- so it belongs here rather than beside the row.
+//
+// A mismatch is not a length error: both the interpreter and the disassembler
+// take the length from `displaced_through`, so they agree about how many bytes
+// to read and disagree only about what to print. The disassembler would quietly
+// name an addressing mode the machine did not use, or omit the one it did.
+template<std::size_t NumTables>
+constexpr bool check_displacement_rendered(const std::span<const Field> fields, const std::span<const Row> rows,
+    const std::span<const TableDecl> tables,
+    const std::array<std::array<std::optional<std::size_t>, 256>, NumTables> &decoded) {
+  for (std::size_t which = 0; which < tables.size(); ++which)
+    for (std::size_t opcode = 0; opcode < 256; ++opcode) {
+      const auto index = decoded[which][opcode];
+      if (!index)
+        continue;
+      const auto &row = rows[*index];
+      const auto &rules = tables[which].rules;
+      const auto byte = static_cast<std::uint8_t>(opcode);
+      const auto displaced = displaced_through(fields, row, byte, rules).has_value();
+      if (displaced != renders_displacement(fields, row, byte, rules))
+        throw table_error(
+            row.line, displaced ? "this row is displaced but its mnemonic does not say so; write `+d` where the "
+                                  "displacement belongs"
+                                : "this row's mnemonic renders a displacement that no operand of it uses");
+    }
+  return true;
+}
+
 // A table nothing reaches is a typo: nothing can ever decode in it. It is still
 // generated -- every table's dispatch is instantiated regardless of whether a
 // goto names it -- so this catches the mistake rather than un-checked code.
