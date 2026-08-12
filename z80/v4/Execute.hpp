@@ -28,7 +28,7 @@ namespace specbolt::v4 {
 //
 // Reading order, roughly top to bottom:
 //
-//   find_location / find_primitive   a name in the table -> an entity in C++
+//   find_location / find_operation   a name in the table -> an entity in C++
 //   direct_value_of / value_of       an operand -> a value, reading if it must
 //   store                            a value -> an operand, writing if it must
 //   operands_of / apply / evaluate   one step
@@ -41,7 +41,7 @@ namespace specbolt::v4 {
 //
 // **Reflection (P2996).** `^^X` yields a `std::meta::info`: one type that can
 // denote *any* entity — a type, a function, an enumerator, a data member. That
-// one-type-for-everything is why `find_location` and `find_primitive` have the
+// one-type-for-everything is why `find_location` and `find_operation` have the
 // same shape despite looking for very different things. `info` is a structural
 // type, so it can be a non-type template parameter, which is the hinge the
 // whole file turns on: `template<std::meta::info Fn>` makes "which function"
@@ -133,10 +133,10 @@ namespace specbolt::v4 {
 }
 
 // `inc8`, `add16`, `is_set`: a static member function of one of the CPU's
-// primitive scopes.
-[[nodiscard]] consteval std::meta::info find_primitive(const std::string_view name, const std::size_t line) {
+// operation scopes.
+[[nodiscard]] consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
-  for (const auto scope: primitive_scopes())
+  for (const auto scope: operation_scopes())
     for (const auto member: std::meta::members_of(scope, std::meta::access_context::current()))
       // `has_identifier` excludes the implicitly-declared special members, which
       // have no name to compare. `is_static_member` excludes ordinary member
@@ -178,7 +178,7 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
   return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
 }
 
-// A primitive may ask for the machine itself, and if it does it must ask first:
+// A operation may ask for the machine itself, and if it does it must ask first:
 // the framework supplies argument zero and the row supplies the rest, so which
 // argument is which stays a property of the signature rather than of the row.
 template<std::meta::info Fn>
@@ -206,7 +206,7 @@ struct Call {
 template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter direct_value_of(Cpu &cpu, const std::uint16_t immediate) {
   static_assert(!std::is_reference_v<Parameter>,
-      "a primitive takes its operands by value; there is nothing here for a reference to bind to");
+      "a operation takes its operands by value; there is nothing here for a reference to bind to");
   if constexpr (Op.kind == Operand::Kind::Constant) {
     if constexpr (std::integral<Parameter>)
       static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
@@ -334,7 +334,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
   }
   else if constexpr (members.size() > 1) {
     // Two is `Alu`'s `{result, flags}`, which is what almost every arithmetic
-    // primitive returns. One accessible member is caught above as ambiguous.
+    // operation returns. One accessible member is caught above as ambiguous.
     static_assert(
         C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
     const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed));
@@ -352,7 +352,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
   }
 }
 
-// A condition is applied like any other primitive; only what is done with the
+// A condition is applied like any other operation; only what is done with the
 // answer differs.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] bool evaluate(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
@@ -364,23 +364,23 @@ template<std::meta::info Fn, Call C>
       [](const auto &...values) { return [:Fn:](values...); }, operands_of<Fn, C>(cpu, immediate, indexed));
 }
 
-// A vocabulary member may bind the verb late, and may append an operand the
+// A vocabulary member may bind the operation late, and may append an operand the
 // encoding does not carry.
 [[nodiscard]] consteval Member member_for(
-    const Step &step, const Matched &matched, const std::uint8_t opcode, const Rules &rules) {
-  if (!step.verb_reference)
+    const Step &step, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
+  if (!step.operation_reference)
     return {};
-  return member_of(fields, *step.verb_reference, matched, opcode, rules);
+  return member_of(vocabularies, *step.operation_reference, matched, opcode, rules);
 }
 
 [[nodiscard]] consteval Call call_for(
-    const Step &step, const Matched &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
+    const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
   const auto member = member_for(step, matched, opcode, rules);
   Call result{.line = line};
   for (const auto &operand: step.operands)
-    result.operands.push_back(resolve(fields, operand, matched, opcode, rules), line, "too many operands");
+    result.operands.push_back(resolve(vocabularies, operand, matched, opcode, rules), line, "too many operands");
   for (const auto &target: step.destinations) {
-    auto destination = resolve(fields, target, matched, opcode, rules);
+    auto destination = resolve(vocabularies, target, matched, opcode, rules);
     // The idle cycle belongs to a write-back, so only to something also read.
     const auto was_read = std::ranges::any_of(
         result.operands, [&](const Operand &operand) { return operand.indirect && operand.name == destination.name; });
@@ -429,7 +429,7 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   // A `constexpr std::optional` used two ways: contextually converted to `bool`
   // by `if constexpr`, and then dereferenced to give a template argument. Both
   // work because `optional`'s members are `constexpr`.
-  constexpr auto displaced = displaced_through(fields, row, Opcode, rules);
+  constexpr auto displaced = displaced_through(vocabularies, row, Opcode, rules);
   constexpr bool entered_latched = latched[Table];
   const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
                                         ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1))
@@ -470,16 +470,16 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
       return Transfer{step.target, displacement};
     else {
       constexpr auto member = member_for(step, row.matched, Opcode, rules);
-      constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
+      constexpr auto operation = step.operation_reference ? member.operation : step.operation;
       constexpr auto call = call_for(step, row.matched, Opcode, row.line, rules);
       if constexpr (step.kind == Step::Kind::If) {
         // The rest of the row is the conditional half, which is where the
         // extra cycles of a taken branch come from too.
-        if (!evaluate<find_primitive(primitive, row.line), call>(cpu, immediate, indexed))
+        if (!evaluate<find_operation(operation, row.line), call>(cpu, immediate, indexed))
           return std::nullopt;
       }
       else
-        apply<find_primitive(primitive, row.line), call>(cpu, immediate, indexed);
+        apply<find_operation(operation, row.line), call>(cpu, immediate, indexed);
     }
   }
   return std::nullopt;

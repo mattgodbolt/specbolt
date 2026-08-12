@@ -10,8 +10,8 @@
 #include <span>
 #include <string>
 #include <vector>
-#include "z80/v4/Matched.hpp"
 #include "z80/v4/Model.hpp"
+#include "z80/v4/Pattern.hpp"
 #include "z80/v4/TableError.hpp"
 
 namespace specbolt::v4 {
@@ -24,10 +24,10 @@ namespace specbolt::v4 {
 // through the same address, and the chip reads one displacement and forms one
 // sum; forming it per operand would pay for it twice.
 [[nodiscard]] constexpr std::optional<Operand> displaced_through(
-    const std::span<const Field> fields, const Row &row, const std::uint8_t opcode, const Rules &rules) {
+    const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   std::optional<Operand> found;
   const auto consider = [&](const Operand &operand) {
-    const auto resolved = resolve(fields, operand, row.matched, opcode, rules);
+    const auto resolved = resolve(vocabularies, operand, row.matched, opcode, rules);
     if (!resolved.displaced)
       return;
     if (found && found->name != resolved.name)
@@ -46,17 +46,19 @@ namespace specbolt::v4 {
 // Every vocabulary member the row names must be live: a `-` member is a hole,
 // so the row does not cover that opcode even though the bits fit.
 [[nodiscard]] constexpr bool members_live(
-    const std::span<const Field> fields, const Row &row, const std::uint8_t opcode) {
-  const auto live = [&](const Reference reference) { return !member_of(fields, reference, row.matched, opcode).hole; };
+    const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode) {
+  const auto live = [&](const Reference reference) {
+    return !member_of(vocabularies, reference, row.matched, opcode).hole;
+  };
   const auto operands_live = [&](const auto &operands) {
     return std::ranges::all_of(operands,
-        [&](const Operand &operand) { return operand.kind != Operand::Kind::Field || live(operand.reference); });
+        [&](const Operand &operand) { return operand.kind != Operand::Kind::Vocabulary || live(operand.reference); });
   };
   return std::ranges::all_of(row.pieces, [&](const Piece &piece) {
-    return piece.kind != Piece::Kind::Field || live(piece.reference);
+    return piece.kind != Piece::Kind::Vocabulary || live(piece.reference);
   }) && std::ranges::all_of(row.steps, [&](const Step &step) {
     return operands_live(step.operands) && operands_live(step.destinations) &&
-           (!step.verb_reference || live(*step.verb_reference));
+           (!step.operation_reference || live(*step.operation_reference));
   });
 }
 
@@ -94,9 +96,9 @@ struct OpcodeSet {
 };
 
 // A pattern *generates* its opcodes -- walk the cartesian product of its
-// variable fields and place each combination -- rather than being tested
+// variable vocabularies and place each combination -- rather than being tested
 // against all 256. `BitSlice::place` exists for exactly this.
-[[nodiscard]] constexpr OpcodeSet opcodes_of(const std::span<const Field> fields, const Row &row) {
+[[nodiscard]] constexpr OpcodeSet opcodes_of(const std::span<const Vocabulary> vocabularies, const Row &row) {
   OpcodeSet result;
   std::size_t combinations = 1;
   for (const auto &slice: row.matched.slices)
@@ -109,7 +111,7 @@ struct OpcodeSet {
       opcode = static_cast<std::uint8_t>(opcode | slice.place(static_cast<std::uint8_t>(remaining % values)));
       remaining /= values;
     }
-    if (members_live(fields, row, opcode))
+    if (members_live(vocabularies, row, opcode))
       result.add(opcode);
   }
   return result;
@@ -278,13 +280,13 @@ constexpr bool check_derived_rows_override(
 // override row writing `(ix+d)` in full -- or through a vocabulary member that
 // a view renamed to one.
 [[nodiscard]] constexpr bool renders_displacement(
-    const std::span<const Field> fields, const Row &row, const std::uint8_t opcode, const Rules &rules) {
+    const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   return std::ranges::any_of(row.pieces, [&](const Piece &piece) {
     if (piece.kind == Piece::Kind::Displacement)
       return true;
-    if (piece.kind != Piece::Kind::Field)
+    if (piece.kind != Piece::Kind::Vocabulary)
       return false;
-    const auto member = member_of(fields, piece.reference, row.matched, opcode, rules);
+    const auto member = member_of(vocabularies, piece.reference, row.matched, opcode, rules);
     return std::ranges::any_of(
         member.pieces, [](const Piece &inner) { return inner.kind == Piece::Kind::Displacement; });
   });
@@ -300,8 +302,8 @@ constexpr bool check_derived_rows_override(
 // to read and disagree only about what to print. The disassembler would quietly
 // name an addressing mode the machine did not use, or omit the one it did.
 template<std::size_t NumTables>
-constexpr bool check_displacement_rendered(const std::span<const Field> fields, const std::span<const Row> rows,
-    const std::span<const TableDecl> tables,
+constexpr bool check_displacement_rendered(const std::span<const Vocabulary> vocabularies,
+    const std::span<const Row> rows, const std::span<const TableDecl> tables,
     const std::array<std::array<std::optional<std::size_t>, 256>, NumTables> &decoded) {
   for (std::size_t which = 0; which < tables.size(); ++which)
     for (std::size_t opcode = 0; opcode < 256; ++opcode) {
@@ -311,8 +313,8 @@ constexpr bool check_displacement_rendered(const std::span<const Field> fields, 
       const auto &row = rows[*index];
       const auto &rules = tables[which].rules;
       const auto byte = static_cast<std::uint8_t>(opcode);
-      const auto displaced = displaced_through(fields, row, byte, rules).has_value();
-      if (displaced != renders_displacement(fields, row, byte, rules))
+      const auto displaced = displaced_through(vocabularies, row, byte, rules).has_value();
+      if (displaced != renders_displacement(vocabularies, row, byte, rules))
         throw table_error(
             row.line, displaced ? "this row is displaced but its mnemonic does not say so; write `+d` where the "
                                   "displacement belongs"

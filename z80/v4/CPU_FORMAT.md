@@ -35,7 +35,7 @@ design intent that has been half-tested, not as a promise.
 The file has three kinds of line, in any order except that a name must be
 declared before it is used:
 
-- **`field`** declares a *vocabulary*: the list of things a group of opcode bits
+- **`vocab`** declares a *vocabulary*: the list of things a group of opcode bits
   can select between.
 - **`table`** declares a *decoding table*: 256 opcodes' worth of rows. A table
   may be *derived* from another, re-reading its rows with some vocabulary
@@ -82,7 +82,7 @@ awkward remainder -- the block moves, the exchanges, the flag minutiae.)
 
 | the table writes | the CPU supplies |
 |---|---|
-| a **verb** — `inc8`, `add16` | a function of that name, found by reflection |
+| a **operation** — `inc8`, `add16` | a function of that name, found by reflection |
 | a **location** — `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` overloads for it |
 | an **indirect operand** — `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
 | an **immediate** — `n` | `fetch_immediate` |
@@ -90,7 +90,7 @@ awkward remainder -- the block moves, the exchanges, the flag minutiae.)
 | `delay`, and any `/delay=` | `delay` |
 | a **displacement** — `(ix+d)` | `displaced_address` |
 
-A primitive's signature is the interface:
+A operation's signature is the interface:
 
 - it may take the machine itself as its **first** parameter, by mutable
   reference, when it needs machine state or needs to charge time. The framework
@@ -116,7 +116,7 @@ carriage return. After trimming:
 |---|---|
 | empty | ignored |
 | begins with `#` | a comment, ignored |
-| begins with `field ` | a vocabulary declaration |
+| begins with `vocab ` | a vocabulary declaration |
 | begins with `table ` | a table declaration |
 | contains `\|` | a row |
 | anything else | ignored — see the warning below |
@@ -135,10 +135,10 @@ carriage return. After trimming:
 
 ```ebnf
 file            = { line } ;
-line            = comment | field-decl | table-decl | row | empty ;
+line            = comment | vocab-decl | table-decl | row | empty ;
 comment         = "#" , { any } ;
 
-field-decl      = "field" , name-char , "=" , member , { member } ;
+vocab-decl      = "vocab" , name , "=" , member , { member } ;
 member          = hole | ( operand , [ ":" , identifier , [ "+" , operand ] ] ) ;
 hole            = "-" ;
 
@@ -154,14 +154,14 @@ pattern-bit     = "0" | "1" | slice-char ;
 encoding-byte   = "n" | "d" ;
 
 mnemonic        = { literal | reference | "$nn" | "$nnnn" | "$e" | "+d" } ;
-reference       = "{" , name-char , [ ":" , slice-char ] , "}" ;
+reference       = "{" , name , ":" , slice-char , "}" ;
 
 steps           = step , { ";" , step } ;
 step            = goto-step | if-step | apply-step ;
 goto-step       = "goto" , table-name ;
-if-step         = "if" , verb , { operand } ;
-apply-step      = verb , [ { operand } , "<-" ] , { operand } ;
-verb            = identifier | reference ;
+if-step         = "if" , operation , { operand } ;
+apply-step      = operation , [ { operand } , "<-" ] , { operand } ;
+operation            = identifier | reference ;
 
 operand         = operand-body , [ "/" , attribute ] ;
 operand-body    = "-" | "n" | number | reference | indirect | name ;
@@ -170,12 +170,12 @@ attribute       = "delay" , "=" , digit ;
 number          = digit , { digit } | "0x" , hex-digit , { hex-digit } ;
 
 (* terminals *)
-name-char       = ? one character, not a space. Compared exactly: `p` and `P`
-                    are different vocabularies ? ;
+name            = ? a word, no space. Compared exactly, so `reg` and `Reg`
+                    would be different vocabularies ? ;
 slice-char      = ? one character other than "0" or "1", compared exactly ? ;
 name            = ? up to 15 characters, no space. Resolved against the CPU's
                     locations, ignoring case ? ;
-identifier      = ? no space. Resolved against the CPU's primitives, ignoring
+identifier      = ? no space. Resolved against the CPU's operations, ignoring
                     case ? ;
 table-name      = ? no space ? ;
 display-text    = ? a member's text as the vocabulary writes it, up to the ":"
@@ -185,11 +185,11 @@ literal         = ? mnemonic text containing no "{", "$" or "+d" ? ;
 
 Three things the grammar is stricter about than it may look:
 
-- **A reference must be a whole operand.** `{r:z}` is fine and `({r:z})` is not;
+- **A reference must be a whole operand.** `{reg:z}` is fine and `({reg:z})` is not;
   indirection through a vocabulary comes from the *member* being written `(hl)`,
   not from parenthesising the reference.
 - **Numbers are unsigned.** There is no `-2`. Where a row means a signed value
-  it writes the byte — `relative pc <- pc 0xfe` — and the primitive it feeds
+  it writes the byte — `relative pc <- pc 0xfe` — and the operation it feeds
   decides how to read it. A constant is checked against the parameter's type, so
   `0xfe` fits an 8-bit parameter and `0x1ff` does not.
 - **`n` is the row's whole immediate**, not one byte of it. A row that fetches
@@ -197,34 +197,34 @@ Three things the grammar is stricter about than it may look:
   no instruction on either target CPU needs to.
 
 **Commas are decoration.** A trailing comma is stripped from any word in a step,
-so `inc8 {r:y}, flags` and `inc8 {r:y} flags` mean the same thing. They are
+so `inc8 {reg:y}, flags` and `inc8 {reg:y} flags` mean the same thing. They are
 there so a row can be punctuated the way assembly is, and they carry no meaning:
 in particular a comma does *not* separate destinations from operands — `<-` does
 — and it does not separate steps — `;` does.
 
 ---
 
-## Vocabularies (`field`)
+## Vocabularies (`vocab`)
 
 ```
-field p = bc de hl sp
+vocab pair = bc de hl sp
 ```
 
-A vocabulary's name is **one character**. Its members are listed in the order
+A vocabulary's name is a word. Its members are listed in the order
 the opcode bits select them, so a vocabulary of four members belongs to a
 two-bit slice and one of eight members to a three-bit slice. A mismatch is a
 compile error.
 
 ### Members
 
-A member is written `display[:primitive[+operand]][/delay=N]`. The `display` is
+A member is written `display[:operation[+operand]][/delay=N]`. The `display` is
 also the member's operand, so it must be something an operand may be: a name the
 CPU resolves, a constant, or either of those as an address.
 
 | form | example | means |
 |---|---|---|
 | plain | `bc` | the member is that operand |
-| bound primitive | `and:and8` | naming this member as a *verb* applies `and8` |
+| bound operation | `and:and8` | naming this member as a *operation* applies `and8` |
 | with appended operand | `adc:add8+carry` | …and passes `carry` as a final argument |
 | with an access cost | `(hl)/delay=1` | reading through it and writing back idles one cycle |
 | hole | `-` | **the row does not cover that opcode at all** |
@@ -232,9 +232,9 @@ CPU resolves, a constant, or either of those as an address.
 A hole is how a general row leaves room for a specific one:
 
 ```
-field w = and:and8 xor:xor8 or:or8 -      # slot 3 is `cp`, which returns flags only
-101wwzzz | {w} {r:z}  | {w} a, flags <- a {r:z}
-10111zzz | cp {r:z}   | cmp8 -, flags <- a {r:z}
+vocab logic = and:and8 xor:xor8 or:or8 -      # slot 3 is `cp`, which returns flags only
+101wwzzz | {logic:w} {reg:z}  | {logic:w} a, flags <- a {reg:z}
+10111zzz | cp {reg:z}   | cmp8 -, flags <- a {reg:z}
 ```
 
 **A member may not be an immediate**: only the encoding column fetches those.
@@ -268,7 +268,7 @@ read rather than an instruction fetch.)
 ### Derived tables (views)
 
 ```
-table ix = base with p.hl -> ix, k.hl -> ix, r.h -> ixh, r.l -> ixl, r.(hl) -> (ix+d)/delay=1
+table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, r.(hl) -> (ix+d)/delay=1
 ```
 
 A derived table decodes its parent's rows with some vocabulary members renamed,
@@ -283,7 +283,7 @@ untouched.
 A rule is written `vocabulary.member -> replacement`. **It names the vocabulary
 it rewrites**, because the same spelling can mean different things in different
 vocabularies and only some of them should change. The replacement is a whole
-member, so it may bring its own primitive and its own `/delay=`.
+member, so it may bring its own operation and its own `/delay=`.
 
 (In `z80.cpu`, `r.h` is renamed by a view and the `s.h` of an indexed load is
 not, even though both are written `h`.)
@@ -353,8 +353,8 @@ Literal text, plus:
 
 | form | renders |
 |---|---|
-| `{r:z}` | the vocabulary member the slice selects |
-| `{p}` | shorthand when the vocabulary and the slice share a letter |
+| `{reg:z}` | the vocabulary member the slice selects |
+| `{pair:p}` | shorthand when the vocabulary and the slice share a letter |
 | `$nn` | an 8-bit immediate, as `0x3f` |
 | `$nnnn` | a 16-bit immediate, as `0x1234` |
 | `$e` | a **relative** target: the address the jump lands on, not the offset. Measured from the end of the instruction, so it must be the last byte the row reads — which is not checked |
@@ -369,7 +369,7 @@ An ordered list of steps separated by `;`. Cost lives here: an idle cycle is a
 step like any other.
 
 ```
-verb  destination... <- operand...
+operation  destination... <- operand...
 ```
 
 Three pieces of punctuation, and only two of them mean anything:
@@ -377,27 +377,27 @@ Three pieces of punctuation, and only two of them mean anything:
 | | |
 |---|---|
 | `;` | separates one step from the next |
-| `<-` | separates destinations from operands. Without it, everything after the verb is an operand |
+| `<-` | separates destinations from operands. Without it, everything after the operation is an operand |
 | `,` | **nothing at all** — stripped from the end of a word, so a row can be punctuated like assembly |
 
-So `inc8 {r:y}, flags <- {r:y} flags` has one step, two destinations
-(`{r:y}` and `flags`) and two operands (`{r:y}` and `flags`); the comma could be
+So `inc8 {reg:y}, flags <- {reg:y} flags` has one step, two destinations
+(`{reg:y}` and `flags`) and two operands (`{reg:y}` and `flags`); the comma could be
 left out and the meaning would not change.
 
 | step | example |
 |---|---|
-| apply | `inc8 {r:y}, flags <- {r:y} flags` |
-| apply with no destination | `out_c bc {r:y}` |
+| apply | `inc8 {reg:y}, flags <- {reg:y} flags` |
+| apply with no destination | `out_c bc {reg:y}` |
 | apply with no operands | `exx` |
 | transfer | `goto cb` |
-| condition | `if {c:y}` |
+| condition | `if {cond:y}` |
 | idle | `delay 2` |
 
-`delay` is an ordinary verb — a primitive the CPU supplies — and takes a whole
+`delay` is an ordinary operation — a operation the CPU supplies — and takes a whole
 number. The `/delay=` attribute on an addressing mode is a different thing that
 happens to charge the same way, and it takes a single digit.
 
-**How destinations are filled** depends on what the primitive returns:
+**How destinations are filled** depends on what the operation returns:
 
 - returns nothing → the row may name no destination;
 - returns one value → every destination named receives it (which is how the
@@ -408,11 +408,11 @@ happens to charge the same way, and it takes a single digit.
 
 `-` discards a result and may only be a destination.
 
-**A verb may be a reference.** `{q} a, flags <- a {r:z}` takes its operation
+**A operation may be a reference.** `{arith:q} a, flags <- a {reg:z}` takes its operation
 from the vocabulary member the opcode selects, so one row is the whole
 `add/adc/sub/sbc` group.
 
-**`if` guards the rest of the row.** It applies a primitive that yields a bool
+**`if` guards the rest of the row.** It applies a operation that yields a bool
 and abandons the remaining steps when it is false. There is no `else`, and none
 is needed for a conditional whose conditional part comes last — which is every
 conditional on the Z80.
@@ -421,7 +421,7 @@ The pay-off is that the extra cycles of a taken branch come from the steps the
 condition guards, so no row states two cycle counts:
 
 ```
-11yyy000 | ret {c:y} | delay 1 ; if {c:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11yyy000 | ret {cond:y} | delay 1 ; if {cond:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
 ```
 
 Five T-states when not taken, eleven when taken, with neither number written
@@ -469,8 +469,8 @@ destination of the same step. That is the difference between these two rows,
 which share a vocabulary:
 
 ```
-01yyyzzz | ld {r:y}, {r:z} | ld8 {r:y} <- {r:z}                     # ld (hl), b is 7
-00yyy100 | inc {r:y}       | inc8 {r:y}, flags <- {r:y} flags       # inc (hl) is 11
+01yyyzzz | ld {reg:y}, {reg:z} | ld8 {reg:y} <- {reg:z}                     # ld (hl), b is 7
+00yyy100 | inc {reg:y}       | inc8 {reg:y}, flags <- {reg:y} flags       # inc (hl) is 11
 ```
 
 `ld (hl), b` writes through `(hl)` without having read through it, so it pays
@@ -484,7 +484,7 @@ follow, and both matter to anyone building a cycle-exact core:
 - **A multi-byte access is indivisible.** `ld16 pc <- (sp)` is one operand, and
   its two bus cycles happen back to back; no step can be scheduled between them.
 - **Nothing below a step can be reordered or observed.** A step's own reads and
-  writes happen in the order the primitive performs them, and the table has no
+  writes happen in the order the operation performs them, and the table has no
   say in it.
 
 For total cycle counts, and for a machine that contends on the address bus at
@@ -512,7 +512,7 @@ interrupt has somewhere to land.
 | name | `a`, `hl`, `carry`, `pc` | a location the CPU supplies |
 | constant | `7`, `0x38` | a literal, checked to fit the parameter |
 | immediate | `n` | the bytes the encoding fetched |
-| reference | `{r:z}` | whichever member the opcode selects |
+| reference | `{reg:z}` | whichever member the opcode selects |
 | indirect | `(hl)`, `(n)` | *the address*: read or written through |
 | displaced | `(ix+d)` | …offset by the displacement byte |
 | discard | `-` | destination only |
@@ -527,7 +527,7 @@ addressing mode written out in a row rather than named by one.
 ### Displacement
 
 `(ix+d)` is an address formed from a base and a signed byte. **Nothing declares
-that the byte is fetched**: the row says `{r:z}`, a view says that member is now
+that the byte is fetched**: the row says `{reg:z}`, a view says that member is now
 `(ix+d)`, and the framework asks what the operands resolve to. One displacement
 per instruction, shared by every operand that uses it — `inc (ix+d)` reads and
 writes through one address, formed once.
@@ -582,13 +582,13 @@ the line in the `.cpu` file:
   encoding fetches, and the action must use them. This is about `n`; a
   displacement is not part of it.
 - **Vocabulary size** against the slice that selects it.
-- **Names.** Every primitive and every location must resolve to exactly one
+- **Names.** Every operation and every location must resolve to exactly one
   thing the CPU supplies. That lookup ignores case, because a table is written
   the way assembly is written. Names *inside* the format — vocabularies, slice
-  letters, table names — are compared exactly, so `field p` and `field P` would
+  letters, table names — are compared exactly, so `vocab pair` and `field P` would
   be two different vocabularies.
-- **Arity and shape.** The operands a row supplies must match the primitive's
-  parameters, and its destinations must match what the primitive returns.
+- **Arity and shape.** The operands a row supplies must match the operation's
+  parameters, and its destinations must match what the operation returns.
   Constants must fit the parameter they are passed to.
 - **Reachability.** A table no `goto` reaches would never be generated, and so
   would never be checked at all; that is rejected, as is a non-derived table
@@ -662,35 +662,35 @@ are byte-opcode machines, so this has never been tested against anything else.
 immediate; the mnemonic renders it.
 
 ```
-00pp0001 n n | ld {p}, $nnnn | ld16 {p} <- n
+00pp0001 n n | ld {pair:p}, $nnnn | ld16 {pair:p} <- n
 ```
 
 **One row, sixty-four instructions.** Both operands come from the same
 vocabulary, selected by different slices.
 
 ```
-01yyyzzz | ld {r:y}, {r:z} | ld8 {r:y} <- {r:z}
+01yyyzzz | ld {reg:y}, {reg:z} | ld8 {reg:y} <- {reg:z}
 ```
 
 Slot 6 of `r` is `(hl)`, so this row also covers `ld b,(hl)` and `ld (hl),b`,
 with their memory access and its timing, and nothing says so twice. `01110110`
 would be `ld (hl),(hl)`, which is really `halt` — declared earlier, so it wins.
 
-**The verb from the vocabulary.**
+**The operation from the vocabulary.**
 
 ```
-field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
-100qqzzz | {q} a, {r:z} | {q} a, flags <- a {r:z}
+vocab arith = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
+100qqzzz | {arith:q} a, {reg:z} | {arith:q} a, flags <- a {reg:z}
 ```
 
-`add` and `adc` are the same primitive with a different final argument, which is
+`add` and `adc` are the same operation with a different final argument, which is
 what the chip does too.
 
 **Cost that belongs to the addressing mode.**
 
 ```
-field r = b c d e h l (hl)/delay=1 a
-00yyy100 | inc {r:y} | inc8 {r:y}, flags <- {r:y} flags
+vocab reg = b c d e h l (hl)/delay=1 a
+00yyy100 | inc {reg:y} | inc8 {reg:y}, flags <- {reg:y} flags
 ```
 
 `inc b` is 4 T-states and `inc (hl)` is 11 — four to fetch, three to read, one
@@ -699,7 +699,7 @@ idle, three to write — with the row mentioning no numbers at all.
 **A conditional, and where its extra cycles come from.**
 
 ```
-001jj000 n | jr {j}, $e | if {j} ; delay 5 ; relative pc <- pc n
+001jj000 n | jr {jcond:j}, $e | if {jcond:j} ; delay 5 ; relative pc <- pc n
 ```
 
 Seven T-states not taken, twelve taken.
@@ -707,9 +707,9 @@ Seven T-states not taken, twelve taken.
 **A view.**
 
 ```
-table ix = base with p.hl -> ix, k.hl -> ix, r.h -> ixh, r.l -> ixl, r.(hl) -> (ix+d)/delay=1
+table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, r.(hl) -> (ix+d)/delay=1
 
-01yyy110 | ld {s:y}, (ix+d) | ld8 {s:y} <- (ix+d)
+01yyy110 | ld {real:y}, (ix+d) | ld8 {real:y} <- (ix+d)
 ```
 
 The override row exists because `ld h,(ix+d)` uses the *real* `h`. It says so by

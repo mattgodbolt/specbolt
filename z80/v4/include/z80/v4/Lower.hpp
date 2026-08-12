@@ -25,10 +25,10 @@ namespace specbolt::v4 {
 [[nodiscard]] constexpr bool is_directive(const std::string_view line, const std::string_view keyword) {
   return line.starts_with(keyword) && (line.size() == keyword.size() || line[keyword.size()] == ' ');
 }
-[[nodiscard]] constexpr bool is_field(const std::string_view line) { return is_directive(line, "field"); }
+[[nodiscard]] constexpr bool is_vocabulary(const std::string_view line) { return is_directive(line, "vocab"); }
 [[nodiscard]] constexpr bool is_table(const std::string_view line) { return is_directive(line, "table"); }
 [[nodiscard]] constexpr bool is_row(const std::string_view line) {
-  return !line.empty() && line.front() != '#' && !is_field(line) && !is_table(line) && line.contains('|');
+  return !line.empty() && line.front() != '#' && !is_vocabulary(line) && !is_table(line) && line.contains('|');
 }
 
 [[nodiscard]] constexpr std::size_t count_matching(
@@ -148,12 +148,12 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
   }
 }
 
-// `bc` is display only; `adc:add8+carry` binds a primitive and appends an
+// `bc` is display only; `adc:add8+carry` binds a operation and appends an
 // operand; `(hl)/delay=1` states the access sequence of an addressing mode.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);
   Parser parser(whole.split_to('/').data());
-  Member member{.display = parser.split_to(':').data(), .primitive = parser.data()};
+  Member member{.display = parser.split_to(':').data(), .operation = parser.data()};
   std::uint8_t delay_attribute = 0;
   if (const auto attributes = whole.data(); !attributes.empty()) {
     Parser attribute(attributes);
@@ -164,7 +164,7 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
     delay_attribute = parse_delay(value, line);
   }
   if (member.display.empty())
-    throw table_error(line, "field member has no name");
+    throw table_error(line, "a vocabulary member has no name");
   if (member.display.contains('$'))
     throw table_error(line, "a vocabulary member cannot render an immediate; only the encoding fetches those");
   if (member.display == "-") {
@@ -178,9 +178,9 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
   member.operand.write_back_delay = delay_attribute;
   if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
     throw table_error(line, "a vocabulary member must name something the CPU can resolve");
-  Parser primitive(member.primitive);
-  member.primitive = primitive.split_to('+').data();
-  if (const auto appended = primitive.data(); !appended.empty()) {
+  Parser operation(member.operation);
+  member.operation = operation.split_to('+').data();
+  if (const auto appended = operation.data(); !appended.empty()) {
     member.appended = parse_simple_operand(appended, line, 0);
     if (member.appended->kind == Operand::Kind::Immediate)
       throw table_error(line, "a vocabulary member cannot append an immediate; only the encoding fetches those");

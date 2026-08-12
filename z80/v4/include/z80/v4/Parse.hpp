@@ -4,9 +4,9 @@
 // text and returning a fixed-size array of what it found.
 
 #include "z80/v4/Lower.hpp"
-#include "z80/v4/Matched.hpp"
 #include "z80/v4/Model.hpp"
 #include "z80/v4/Parser.hpp"
+#include "z80/v4/Pattern.hpp"
 #include "z80/v4/TableError.hpp"
 
 #include <algorithm>
@@ -19,36 +19,36 @@
 namespace specbolt::v4 {
 
 template<std::size_t N>
-[[nodiscard]] constexpr std::array<Field, N> parse_fields(const std::string_view description) {
-  std::array<Field, N> result{};
+[[nodiscard]] constexpr std::array<Vocabulary, N> parse_vocabularies(const std::string_view description) {
+  std::array<Vocabulary, N> result{};
   Parser lines(description);
   std::size_t index = 0;
   while (!lines.eof()) {
     const auto [at, text] = lines.next_line();
-    if (!is_field(text))
+    if (!is_vocabulary(text))
       continue;
     Parser parser(text);
     static_cast<void>(parser.next_word());
     if (index == N)
-      throw table_error(at, "more field declarations than the count that sized this array");
-    auto &field = result[index++];
+      throw table_error(at, "more vocabulary declarations than the count that sized this array");
+    auto &vocabulary = result[index++];
     const auto name = parser.next_word();
-    if (name.size() != 1)
-      throw table_error(at, "field name must be a single character");
-    field.name = name.front();
+    if (name.empty())
+      throw table_error(at, "vocabulary declaration has no name");
+    vocabulary.name = name;
     if (parser.next_word() != "=")
-      throw table_error(at, "expected '=' in field declaration");
+      throw table_error(at, "expected '=' in vocabulary declaration");
     while (!parser.eof()) {
       const auto value = parser.next_word();
       if (value.empty())
         continue;
-      field.values.push_back(parse_member(value, at), at, "too many values in field");
+      vocabulary.members.push_back(parse_member(value, at), at, "too many members in vocabulary");
     }
-    if (field.values.empty())
-      throw table_error(at, "field declares no values");
+    if (vocabulary.members.empty())
+      throw table_error(at, "vocabulary declares no members");
     for (std::size_t other = 0; other + 1 < index; ++other)
-      if (result[other].name == field.name)
-        throw table_error(at, "duplicate field name");
+      if (result[other].name == vocabulary.name)
+        throw table_error(at, "duplicate vocabulary name");
   }
   return result;
 }
@@ -56,29 +56,30 @@ template<std::size_t N>
 
 // After blanks and comments, every line is a declaration or a row. A line that
 // is neither is a mistyped one of them -- a row that lost its separators, or
-// `fields` for `field` -- and would otherwise be skipped in silence, surfacing
+// `vocabularies` for `field` -- and would otherwise be skipped in silence, surfacing
 // much later as an opcode nothing decodes.
 constexpr bool check_every_line_means_something(const std::string_view description) {
   Parser lines(description);
   while (!lines.eof()) {
     const auto [at, text] = lines.next_line();
-    if (text.empty() || text.front() == '#' || is_field(text) || is_table(text) || is_row(text))
+    if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
       continue;
     throw table_error(at, "this is not a comment, a declaration, or a row; a row needs its '|' separators");
   }
   return true;
 }
 
-[[nodiscard]] constexpr std::optional<std::size_t> find_field(const std::span<const Field> fields, const char name) {
-  for (std::size_t index = 0; index < fields.size(); ++index)
-    if (fields[index].name == name)
+[[nodiscard]] constexpr std::optional<std::size_t> find_vocabulary(
+    const std::span<const Vocabulary> vocabularies, const std::string_view name) {
+  for (std::size_t index = 0; index < vocabularies.size(); ++index)
+    if (vocabularies[index].name == name)
       return index;
   return std::nullopt;
 }
 
 // `p.hl->ix, r.h -> ixh`: either spacing, because both read naturally.
-constexpr void parse_substitutions(
-    const std::string_view text, const std::span<const Field> fields, TableDecl &table, const std::size_t line) {
+constexpr void parse_substitutions(const std::string_view text, const std::span<const Vocabulary> vocabularies,
+    TableDecl &table, const std::size_t line) {
   Parser list(text);
   while (!list.eof()) {
     const auto rule = Parser::trim(list.split_to(',').data());
@@ -93,17 +94,15 @@ constexpr void parse_substitutions(
       throw table_error(line, "a table substitution needs a name on each side of '->'");
     const auto dot = left.find('.');
     if (dot == std::string_view::npos)
-      throw table_error(line, "a table substitution names the vocabulary it rewrites, as in 'r.h -> ixh'");
+      throw table_error(line, "a table substitution names the vocabulary it rewrites, as in 'reg.h -> ixh'");
     const auto vocabulary = left.substr(0, dot);
-    if (vocabulary.size() != 1)
-      throw table_error(line, "vocabulary name must be a single character");
-    const auto field = find_field(fields, vocabulary.front());
-    if (!field)
+    const auto named = find_vocabulary(vocabularies, vocabulary);
+    if (!named)
       throw table_error(line, "substitution names a vocabulary that does not exist");
     const auto from = left.substr(dot + 1);
     if (from.empty())
       throw table_error(line, "a table substitution needs a name on each side of '->'");
-    if (std::ranges::none_of(fields[*field].values, [&](const Member &m) { return m.display == from; }))
+    if (std::ranges::none_of(vocabularies[*named].members, [&](const Member &m) { return m.display == from; }))
       throw table_error(line, "vocabulary '" + std::string(vocabulary) + "' has no member '" + std::string(from) + "'");
     // Coverage is worked out before any rule is applied, so a row renamed to
     // nothing would still claim its opcodes and then resolve to a default zero.
@@ -111,13 +110,13 @@ constexpr void parse_substitutions(
     if (replacement.hole)
       throw table_error(line, "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
     table.rules.push_back(
-        {static_cast<std::uint8_t>(*field), from, replacement}, line, "too many substitutions in table");
+        {static_cast<std::uint8_t>(*named), from, replacement}, line, "too many substitutions in table");
   }
 }
 
 template<std::size_t N>
 [[nodiscard]] constexpr std::array<TableDecl, N> parse_tables(
-    const std::string_view description, const std::span<const Field> fields) {
+    const std::string_view description, const std::span<const Vocabulary> vocabularies) {
   std::array<TableDecl, N> result{};
   Parser lines(description);
   std::size_t index = 0;
@@ -153,7 +152,7 @@ template<std::size_t N>
       throw table_error(at, "no table named '" + std::string(parent) + "' is declared above this one");
     if (parser.next_word() != "with")
       throw table_error(at, "expected 'with' after the parent table name");
-    parse_substitutions(parser.data(), fields, table, at);
+    parse_substitutions(parser.data(), vocabularies, table, at);
     if (table.rules.empty())
       throw table_error(at, "a derived table declares no substitutions, so it is its parent");
   }
@@ -168,7 +167,7 @@ template<std::size_t N>
   throw table_error(line, "no table named '" + std::string(name) + "'");
 }
 
-[[nodiscard]] constexpr std::optional<std::size_t> find_slice(const Matched &matched, const char name) {
+[[nodiscard]] constexpr std::optional<std::size_t> find_slice(const Pattern &matched, const char name) {
   const auto found = std::ranges::find(matched.slices, name, &BitSlice::name);
   if (found == matched.slices.end())
     return std::nullopt;
@@ -176,39 +175,39 @@ template<std::size_t N>
 }
 
 // `{p}` names one letter for both; `{r:z}` binds vocabulary r to slice z.
-[[nodiscard]] constexpr Reference parse_reference(
-    const std::span<const Field> fields, const std::string_view inner, const Matched &matched, const std::size_t line) {
+[[nodiscard]] constexpr Reference parse_reference(const std::span<const Vocabulary> vocabularies,
+    const std::string_view inner, const Pattern &matched, const std::size_t line) {
   Parser parser(inner);
-  const auto vocabulary = parser.split_to(':').data();
-  const auto slice = parser.eof() ? vocabulary : parser.data();
-  if (vocabulary.size() != 1 || slice.size() != 1)
-    throw table_error(line, "reference must be {x} or {vocabulary:slice}");
-  const auto field = find_field(fields, vocabulary.front());
+  const auto name = parser.split_to(':').data();
+  const auto slice = parser.data();
+  if (name.empty() || slice.size() != 1)
+    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
+  const auto field = find_vocabulary(vocabularies, name);
   if (!field)
     throw table_error(line, "reference names a vocabulary that does not exist");
   const auto found = find_slice(matched, slice.front());
   if (!found)
-    throw table_error(line, "reference names a field the opcode pattern does not define");
-  if (fields[*field].values.size() != std::size_t{matched.slices[*found].mask} + 1)
-    throw table_error(line, "vocabulary has the wrong number of values for its opcode bits");
+    throw table_error(line, "reference names a slice the opcode pattern does not define");
+  if (vocabularies[*field].members.size() != std::size_t{matched.slices[*found].mask} + 1)
+    throw table_error(line, "vocabulary has the wrong number of members for its opcode bits");
   return {static_cast<std::uint8_t>(*field), static_cast<std::uint8_t>(*found)};
 }
 
-[[nodiscard]] constexpr Reference reference_from_braces(
-    const std::span<const Field> fields, const std::string_view text, const Matched &matched, const std::size_t line) {
+[[nodiscard]] constexpr Reference reference_from_braces(const std::span<const Vocabulary> vocabularies,
+    const std::string_view text, const Pattern &matched, const std::size_t line) {
   if (!text.starts_with('{') || !text.ends_with('}'))
-    throw table_error(line, "reference must be {x} or {vocabulary:slice}");
-  return parse_reference(fields, text.substr(1, text.size() - 2), matched, line);
+    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
+  return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, line);
 }
 
-[[nodiscard]] constexpr Operand parse_operand(const std::span<const Field> fields, const std::string_view word,
-    const Matched &matched, const std::size_t line, const std::uint8_t immediate_bytes) {
+[[nodiscard]] constexpr Operand parse_operand(const std::span<const Vocabulary> vocabularies,
+    const std::string_view word, const Pattern &matched, const std::size_t line, const std::uint8_t immediate_bytes) {
   if (!word.starts_with('{'))
     return parse_simple_operand(word, line, immediate_bytes);
-  return {.kind = Operand::Kind::Field, .reference = reference_from_braces(fields, word, matched, line)};
+  return {.kind = Operand::Kind::Vocabulary, .reference = reference_from_braces(vocabularies, word, matched, line)};
 }
 
-constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
+constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Row &row) {
   const auto push = [&row](const Piece piece) { row.pieces.push_back(piece, row.line, "mnemonic is too complicated"); };
   const auto push_text = [&](const Parser text) { lower_text(text, push, row.line); };
 
@@ -220,9 +219,9 @@ constexpr void lower_mnemonic(const std::span<const Field> fields, Row &row) {
     }
     push_text(Parser(parser.split_to('{').data()));
     if (!parser.data().contains('}'))
-      throw table_error(row.line, "unterminated field reference in mnemonic");
-    push({.kind = Piece::Kind::Field,
-        .reference = parse_reference(fields, parser.split_to('}').data(), row.matched, row.line)});
+      throw table_error(row.line, "unterminated vocabulary reference in mnemonic");
+    push({.kind = Piece::Kind::Vocabulary,
+        .reference = parse_reference(vocabularies, parser.split_to('}').data(), row.matched, row.line)});
   }
 }
 
@@ -262,8 +261,8 @@ constexpr void check_immediates(const Row &row) {
 }
 
 template<std::size_t N>
-[[nodiscard]] constexpr std::array<Row, N> parse_rows(
-    const std::string_view description, const std::span<const Field> fields, const std::span<const TableDecl> tables) {
+[[nodiscard]] constexpr std::array<Row, N> parse_rows(const std::string_view description,
+    const std::span<const Vocabulary> vocabularies, const std::span<const TableDecl> tables) {
   std::array<Row, N> result{};
   Parser lines(description);
   std::size_t index = 0;
@@ -287,7 +286,7 @@ template<std::size_t N>
     row.line = at;
     row.table = *current;
     Parser encoding(Parser::trim(parser.split_to('|').data()), at);
-    row.matched = parse_opcode_bits(encoding.next_word(), at);
+    row.matched = parse_pattern(encoding.next_word(), at);
     while (!encoding.eof()) {
       const auto token = encoding.next_word();
       if (token.empty())
@@ -313,14 +312,14 @@ template<std::size_t N>
         continue;
       row.steps.push_back({}, at, "row has too many steps");
       auto &step = row.steps[row.steps.size() - 1];
-      step.verb = action.next_word();
-      if (step.verb == "if") {
+      step.operation = action.next_word();
+      if (step.operation == "if") {
         step.kind = Step::Kind::If;
-        step.verb = action.next_word();
-        if (step.verb.empty())
+        step.operation = action.next_word();
+        if (step.operation.empty())
           throw table_error(at, "'if' needs something to test");
       }
-      if (step.verb == "goto") {
+      if (step.operation == "goto") {
         if (step.kind == Step::Kind::If)
           throw table_error(at, "a goto cannot be conditional; guard it with an earlier `if` step");
         step.kind = Step::Kind::Goto;
@@ -329,9 +328,9 @@ template<std::size_t N>
           throw table_error(at, "goto takes a single table name");
         continue;
       }
-      if (step.verb.starts_with('{'))
-        step.verb_reference = reference_from_braces(fields, step.verb, row.matched, at);
-      // `verb dest <- args...`; the destination is optional
+      if (step.operation.starts_with('{'))
+        step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, at);
+      // `operation dest <- args...`; the destination is optional
       auto writing_destination = action.data().contains("<-");
       while (!action.eof()) {
         const auto word = trim_comma(action.next_word());
@@ -341,7 +340,7 @@ template<std::size_t N>
           writing_destination = false;
           continue;
         }
-        const auto operand = parse_operand(fields, word, row.matched, at, row.immediate_bytes);
+        const auto operand = parse_operand(vocabularies, word, row.matched, at, row.immediate_bytes);
         if (writing_destination) {
           step.destinations.push_back(operand, at, "too many destinations");
         }
@@ -359,7 +358,7 @@ template<std::size_t N>
     if (std::ranges::any_of(row.steps, [](const Step &step) { return step.kind == Step::Kind::Goto; }) &&
         row.steps.size() != 1) // NOLINT
       throw table_error(at, "a goto must be the row's only step");
-    lower_mnemonic(fields, row);
+    lower_mnemonic(vocabularies, row);
     check_immediates(row);
   }
   return result;

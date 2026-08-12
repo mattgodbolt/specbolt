@@ -4,152 +4,152 @@
 # that opcode at all, which is how a general row leaves room for a specific one.
 
 # The sixteen-bit pairs, as most of the opcode space spells them.
-field p = bc de hl sp
+vocab pair = bc de hl sp
 
 # The eight-bit registers. Slot 6 is not a register but an addressing mode, and
 # it carries the idle cycle a read-modify-write through it costs.
-field r = b c d e h l (hl)/delay=1 a
+vocab reg = b c d e h l (hl)/delay=1 a
 
 # The arithmetic group. Each member binds the primitive that does the work and
 # appends the carry it wants, so `adc` is `add8` with the carry flag on the end.
-field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
+vocab arith = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
 
 # The logical group. `cp` shares their encoding but returns flags only, so it
 # has its own rows and leaves a hole here.
-field w = and:and8 xor:xor8 or:or8 -
+vocab logic = and:and8 xor:xor8 or:or8 -
 
 # Which bit `bit`, `res` and `set` work on: the number is the operand.
-field b = 0 1 2 3 4 5 6 7
+vocab bit = 0 1 2 3 4 5 6 7
 
 # The rotates and shifts of the cb table. `rl` and `rr` take the carry in the
 # same way the arithmetic group does.
-field g = rlc:rlc8 rrc:rrc8 rl:rl8+carry rr:rr8+carry sla:sla8 sra:sra8 sll:sll8 srl:srl8
+vocab shift = rlc:rlc8 rrc:rrc8 rl:rl8+carry rr:rr8+carry sla:sla8 sra:sra8 sll:sll8 srl:srl8
 
 # The accumulator-only rotates, which keep sign, zero and parity where the cb
 # forms above recompute them.
-field f = rlca:rlca8 rrca:rrca8 rla:rla8 rra:rra8
+vocab arot = rlca:rlca8 rrca:rrca8 rla:rla8 rra:rra8
 
 # The real eight-bit registers, which no view renames: in `ld r, (ix+d)` the
 # register half is the true h or l. A rule names the vocabulary it rewrites, and
 # no rule names this one. Slot 6 is a hole so these rows leave `halt` alone.
-field s = b c d e h l - a
+vocab real = b c d e h l - a
 
 # The stack's view of the pairs, which puts af where sp would be.
-field k = bc de hl af
+vocab spair = bc de hl af
 
 # Where each `rst` goes. The member is the constant itself.
-field t = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
+vocab rst = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
 
 # The conditions. Each binds a test and appends the flag it asks about, so the
 # vocabulary is the whole of what `nz` means.
-field c = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry po:is_clear+parity pe:is_set+parity p:is_clear+sign m:is_set+sign
+vocab cond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry po:is_clear+parity pe:is_set+parity p:is_clear+sign m:is_set+sign
 
 # The four conditions a relative jump has room to encode.
-field j = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
+vocab jcond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
 
 # The interrupt modes, as the three-bit slice of the ed table spells them:
 # every mode has two encodings and mode 0 has four.
-field i = 0 0 1 2 0 0 1 2
+vocab imode = 0 0 1 2 0 0 1 2
 
 # Decoding starts in the first table declared; no name is special to the
 # framework. Everything not reached by a prefix lives here.
 
 table base
 
-00000000     | nop               | nop
-01110110     | halt              | ld8 halted <- 1
-00pp0001 n n | ld {p}, $nnnn     | ld16 {p} <- n
-00yyy110 n   | ld {r:y}, $nn     | ld8 {r:y} <- n
-00000010     | ld (bc), a        | ld8 (bc) <- a
-00010010     | ld (de), a        | ld8 (de) <- a
-00001010     | ld a, (bc)        | ld8 a <- (bc)
-00011010     | ld a, (de)        | ld8 a <- (de)
-00pp0011     | inc {p}           | inc16 {p} <- {p} ; delay 2
-00pp1011     | dec {p}           | dec16 {p} <- {p} ; delay 2
-000ff111     | {f}               | {f} a, flags <- a flags
-00100111     | daa               | daa a, flags <- a flags
-00101111     | cpl               | cpl a, flags <- a flags
-00110111     | scf               | scf -, flags <- a flags
-00111111     | ccf               | ccf -, flags <- a flags
-00yyy100     | inc {r:y}         | inc8 {r:y}, flags <- {r:y} flags
-00yyy101     | dec {r:y}         | dec8 {r:y}, flags <- {r:y} flags
-01yyyzzz     | ld {r:y}, {r:z}   | ld8 {r:y} <- {r:z}
-100qqzzz     | {q} a, {r:z}      | {q} a, flags <- a {r:z}
-101wwzzz     | {w} {r:z}         | {w} a, flags <- a {r:z}
-10111zzz     | cp {r:z}          | cmp8 -, flags <- a {r:z}
-110qq110 n   | {q} a, $nn        | {q} a, flags <- a n
-111ww110 n   | {w} $nn           | {w} a, flags <- a n
-11111110 n   | cp $nn            | cmp8 -, flags <- a n
-00100010 n n | ld ($nnnn), hl    | ld16 (n) <- hl
-00101010 n n | ld hl, ($nnnn)    | ld16 hl <- (n)
-00110010 n n | ld ($nnnn), a     | ld8 (n) <- a
-00111010 n n | ld a, ($nnnn)     | ld8 a <- (n)
-00pp1001     | add hl, {p}       | add16 hl, flags <- hl {p} flags ; delay 7
-00001000     | ex af, af'        | ex_af
-11011001     | exx               | exx
-11101011     | ex de, hl         | ex_de_hl
-11101001     | jp (hl)           | ld16 pc <- hl
-11111001     | ld sp, hl         | ld16 sp <- hl ; delay 2
-11110011     | di                | ld8 iff1 <- 0 ; ld8 iff2 <- 0
-11111011     | ei                | ld8 iff1 <- 1 ; ld8 iff2 <- 1 ; ld8 deferred <- 1
-11000011 n n | jp $nnnn          | ld16 pc <- n
-11kk0101     | push {k}          | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- {k}
-11kk0001     | pop {k}           | ld16 {k} <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
-11001101 n n | call $nnnn        | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
-11001001     | ret               | ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
-11yyy111     | rst {t:y}         | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- {t:y}
-00010000 n   | djnz $e           | delay 1 ; dec8_quiet b <- b ; if nonzero b ; delay 5 ; relative pc <- pc n
-00011000 n   | jr $e             | delay 5 ; relative pc <- pc n
-001jj000 n   | jr {j}, $e        | if {j} ; delay 5 ; relative pc <- pc n
-11yyy010 n n | jp {c:y}, $nnnn   | if {c:y} ; ld16 pc <- n
-11yyy100 n n | call {c:y}, $nnnn | if {c:y} ; delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
-11yyy000     | ret {c:y}         | delay 1 ; if {c:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
-11010011 n   | out ($nn), a      | out_n n a
-11011011 n   | in a, ($nn)       | in_n a <- n a
-11100011     | ex (sp), hl       | ex_sp_hl hl <- hl
-11101101     | (ed)              | goto ed
-11001011     | (cb)              | goto cb
-11011101     | (dd)              | goto ix
-11111101     | (fd)              | goto iy
+00000000     | nop                  | nop
+01110110     | halt                 | ld8 halted <- 1
+00pp0001 n n | ld {pair:p}, $nnnn   | ld16 {pair:p} <- n
+00yyy110 n   | ld {reg:y}, $nn      | ld8 {reg:y} <- n
+00000010     | ld (bc), a           | ld8 (bc) <- a
+00010010     | ld (de), a           | ld8 (de) <- a
+00001010     | ld a, (bc)           | ld8 a <- (bc)
+00011010     | ld a, (de)           | ld8 a <- (de)
+00pp0011     | inc {pair:p}         | inc16 {pair:p} <- {pair:p} ; delay 2
+00pp1011     | dec {pair:p}         | dec16 {pair:p} <- {pair:p} ; delay 2
+000ff111     | {arot:f}             | {arot:f} a, flags <- a flags
+00100111     | daa                  | daa a, flags <- a flags
+00101111     | cpl                  | cpl a, flags <- a flags
+00110111     | scf                  | scf -, flags <- a flags
+00111111     | ccf                  | ccf -, flags <- a flags
+00yyy100     | inc {reg:y}          | inc8 {reg:y}, flags <- {reg:y} flags
+00yyy101     | dec {reg:y}          | dec8 {reg:y}, flags <- {reg:y} flags
+01yyyzzz     | ld {reg:y}, {reg:z}  | ld8 {reg:y} <- {reg:z}
+100qqzzz     | {arith:q} a, {reg:z} | {arith:q} a, flags <- a {reg:z}
+101wwzzz     | {logic:w} {reg:z}    | {logic:w} a, flags <- a {reg:z}
+10111zzz     | cp {reg:z}           | cmp8 -, flags <- a {reg:z}
+110qq110 n   | {arith:q} a, $nn     | {arith:q} a, flags <- a n
+111ww110 n   | {logic:w} $nn        | {logic:w} a, flags <- a n
+11111110 n   | cp $nn               | cmp8 -, flags <- a n
+00100010 n n | ld ($nnnn), hl       | ld16 (n) <- hl
+00101010 n n | ld hl, ($nnnn)       | ld16 hl <- (n)
+00110010 n n | ld ($nnnn), a        | ld8 (n) <- a
+00111010 n n | ld a, ($nnnn)        | ld8 a <- (n)
+00pp1001     | add hl, {pair:p}     | add16 hl, flags <- hl {pair:p} flags ; delay 7
+00001000     | ex af, af'           | ex_af
+11011001     | exx                  | exx
+11101011     | ex de, hl            | ex_de_hl
+11101001     | jp (hl)              | ld16 pc <- hl
+11111001     | ld sp, hl            | ld16 sp <- hl ; delay 2
+11110011     | di                   | ld8 iff1 <- 0 ; ld8 iff2 <- 0
+11111011     | ei                   | ld8 iff1 <- 1 ; ld8 iff2 <- 1 ; ld8 deferred <- 1
+11000011 n n | jp $nnnn             | ld16 pc <- n
+11kk0101     | push {spair:k}       | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- {spair:k}
+11kk0001     | pop {spair:k}        | ld16 {spair:k} <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11001101 n n | call $nnnn           | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
+11001001     | ret                  | ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11yyy111     | rst {rst:y}          | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- {rst:y}
+00010000 n   | djnz $e              | delay 1 ; dec8_quiet b <- b ; if nonzero b ; delay 5 ; relative pc <- pc n
+00011000 n   | jr $e                | delay 5 ; relative pc <- pc n
+001jj000 n   | jr {jcond:j}, $e     | if {jcond:j} ; delay 5 ; relative pc <- pc n
+11yyy010 n n | jp {cond:y}, $nnnn   | if {cond:y} ; ld16 pc <- n
+11yyy100 n n | call {cond:y}, $nnnn | if {cond:y} ; delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
+11yyy000     | ret {cond:y}         | delay 1 ; if {cond:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11010011 n   | out ($nn), a         | out_n n a
+11011011 n   | in a, ($nn)          | in_n a <- n a
+11100011     | ex (sp), hl          | ex_sp_hl hl <- hl
+11101101     | (ed)                 | goto ed
+11001011     | (cb)                 | goto cb
+11011101     | (dd)                 | goto ix
+11111101     | (fd)                 | goto iy
 
 # `cb` is a plain table switch: one more opcode fetch, decoded here instead.
 # Bit operations and the rotate family that `rlca` only hints at.
 
 table cb
 
-00yyyzzz | {g:y} {r:z}    | {g:y} {r:z}, flags <- {r:z}
-01bbb110 | bit {b}, (hl)  | bit8 flags <- (hl) {b} flags h ; delay 1
-01bbbzzz | bit {b}, {r:z} | bit8 flags <- {r:z} {b} flags {r:z}
-10bbbzzz | res {b}, {r:z} | res8 {r:z} <- {r:z} {b}
-11bbbzzz | set {b}, {r:z} | set8 {r:z} <- {r:z} {b}
+00yyyzzz | {shift:y} {reg:z}    | {shift:y} {reg:z}, flags <- {reg:z}
+01bbb110 | bit {bit:b}, (hl)    | bit8 flags <- (hl) {bit:b} flags h ; delay 1
+01bbbzzz | bit {bit:b}, {reg:z} | bit8 flags <- {reg:z} {bit:b} flags {reg:z}
+10bbbzzz | res {bit:b}, {reg:z} | res8 {reg:z} <- {reg:z} {bit:b}
+11bbbzzz | set {bit:b}, {reg:z} | set8 {reg:z} <- {reg:z} {bit:b}
 
 # `dd` and `fd` are not table switches but *views*: they re-read the base table
 # with hl renamed, which is why two thirds of their entries are the base
 # instruction untouched. The rows below are the ones a rename alone gets wrong.
 
-table ix = base with p.hl -> ix, k.hl -> ix, r.h -> ixh, r.l -> ixl, r.(hl) -> (ix+d)/delay=1
+table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
 
-00pp1001     | add ix, {p}      | add16 ix, flags <- ix {p} flags ; delay 7
-00100010 n n | ld ($nnnn), ix   | ld16 (n) <- ix
-00101010 n n | ld ix, ($nnnn)   | ld16 ix <- (n)
-11101001     | jp (ix)          | ld16 pc <- ix
-11111001     | ld sp, ix        | ld16 sp <- ix ; delay 2
-11100011     | ex (sp), ix      | ex_sp_ix ix <- ix
-01yyy110     | ld {s:y}, (ix+d) | ld8 {s:y} <- (ix+d)
-01110zzz     | ld (ix+d), {s:z} | ld8 (ix+d) <- {s:z}
-11001011 d   | (dd cb)          | goto ddcb
+00pp1001     | add ix, {pair:p}    | add16 ix, flags <- ix {pair:p} flags ; delay 7
+00100010 n n | ld ($nnnn), ix      | ld16 (n) <- ix
+00101010 n n | ld ix, ($nnnn)      | ld16 ix <- (n)
+11101001     | jp (ix)             | ld16 pc <- ix
+11111001     | ld sp, ix           | ld16 sp <- ix ; delay 2
+11100011     | ex (sp), ix         | ex_sp_ix ix <- ix
+01yyy110     | ld {real:y}, (ix+d) | ld8 {real:y} <- (ix+d)
+01110zzz     | ld (ix+d), {real:z} | ld8 (ix+d) <- {real:z}
+11001011 d   | (dd cb)             | goto ddcb
 
-table iy = base with p.hl -> iy, k.hl -> iy, r.h -> iyh, r.l -> iyl, r.(hl) -> (iy+d)/delay=1
+table iy = base with pair.hl -> iy, spair.hl -> iy, reg.h -> iyh, reg.l -> iyl, reg.(hl) -> (iy+d)/delay=1
 
-00pp1001     | add iy, {p}      | add16 iy, flags <- iy {p} flags ; delay 7
-00100010 n n | ld ($nnnn), iy   | ld16 (n) <- iy
-00101010 n n | ld iy, ($nnnn)   | ld16 iy <- (n)
-11101001     | jp (iy)          | ld16 pc <- iy
-11111001     | ld sp, iy        | ld16 sp <- iy ; delay 2
-11100011     | ex (sp), iy      | ex_sp_iy iy <- iy
-01yyy110     | ld {s:y}, (iy+d) | ld8 {s:y} <- (iy+d)
-01110zzz     | ld (iy+d), {s:z} | ld8 (iy+d) <- {s:z}
-11001011 d   | (fd cb)          | goto fdcb
+00pp1001     | add iy, {pair:p}    | add16 iy, flags <- iy {pair:p} flags ; delay 7
+00100010 n n | ld ($nnnn), iy      | ld16 (n) <- iy
+00101010 n n | ld iy, ($nnnn)      | ld16 iy <- (n)
+11101001     | jp (iy)             | ld16 pc <- iy
+11111001     | ld sp, iy           | ld16 sp <- iy ; delay 2
+11100011     | ex (sp), iy         | ex_sp_iy iy <- iy
+01yyy110     | ld {real:y}, (iy+d) | ld8 {real:y} <- (iy+d)
+01110zzz     | ld (iy+d), {real:z} | ld8 (iy+d) <- {real:z}
+11001011 d   | (fd cb)             | goto fdcb
 
 # `dd cb d op` is the one encoding whose opcode is not its last byte, so the
 # `d` in the row above says the displacement is read here and handed on.
@@ -160,23 +160,23 @@ table iy = base with p.hl -> iy, k.hl -> iy, r.h -> iyh, r.l -> iyl, r.(hl) -> (
 
 table ddcb
 
-00yyy110 | {g:y} (ix+d)           | {g:y} (ix+d)/delay=1, flags <- (ix+d)
-00yyyzzz | {g:y} (ix+d), {s:z}    | {g:y} {s:z}, flags <- (ix+d) ; delay 1 ; ld8 (ix+d) <- {s:z}
-01bbbzzz | bit {b}, (ix+d)        | bit8 flags <- (ix+d) {b} flags wzh ; delay 1
-10bbb110 | res {b}, (ix+d)        | res8 (ix+d)/delay=1 <- (ix+d) {b}
-10bbbzzz | res {b}, (ix+d), {s:z} | res8 (ix+d)/delay=1 {s:z} <- (ix+d) {b}
-11bbb110 | set {b}, (ix+d)        | set8 (ix+d)/delay=1 <- (ix+d) {b}
-11bbbzzz | set {b}, (ix+d), {s:z} | set8 (ix+d)/delay=1 {s:z} <- (ix+d) {b}
+00yyy110 | {shift:y} (ix+d)              | {shift:y} (ix+d)/delay=1, flags <- (ix+d)
+00yyyzzz | {shift:y} (ix+d), {real:z}    | {shift:y} {real:z}, flags <- (ix+d) ; delay 1 ; ld8 (ix+d) <- {real:z}
+01bbbzzz | bit {bit:b}, (ix+d)           | bit8 flags <- (ix+d) {bit:b} flags wzh ; delay 1
+10bbb110 | res {bit:b}, (ix+d)           | res8 (ix+d)/delay=1 <- (ix+d) {bit:b}
+10bbbzzz | res {bit:b}, (ix+d), {real:z} | res8 (ix+d)/delay=1 {real:z} <- (ix+d) {bit:b}
+11bbb110 | set {bit:b}, (ix+d)           | set8 (ix+d)/delay=1 <- (ix+d) {bit:b}
+11bbbzzz | set {bit:b}, (ix+d), {real:z} | set8 (ix+d)/delay=1 {real:z} <- (ix+d) {bit:b}
 
 table fdcb
 
-00yyy110 | {g:y} (iy+d)           | {g:y} (iy+d)/delay=1, flags <- (iy+d)
-00yyyzzz | {g:y} (iy+d), {s:z}    | {g:y} {s:z}, flags <- (iy+d) ; delay 1 ; ld8 (iy+d) <- {s:z}
-01bbbzzz | bit {b}, (iy+d)        | bit8 flags <- (iy+d) {b} flags wzh ; delay 1
-10bbb110 | res {b}, (iy+d)        | res8 (iy+d)/delay=1 <- (iy+d) {b}
-10bbbzzz | res {b}, (iy+d), {s:z} | res8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}
-11bbb110 | set {b}, (iy+d)        | set8 (iy+d)/delay=1 <- (iy+d) {b}
-11bbbzzz | set {b}, (iy+d), {s:z} | set8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}
+00yyy110 | {shift:y} (iy+d)              | {shift:y} (iy+d)/delay=1, flags <- (iy+d)
+00yyyzzz | {shift:y} (iy+d), {real:z}    | {shift:y} {real:z}, flags <- (iy+d) ; delay 1 ; ld8 (iy+d) <- {real:z}
+01bbbzzz | bit {bit:b}, (iy+d)           | bit8 flags <- (iy+d) {bit:b} flags wzh ; delay 1
+10bbb110 | res {bit:b}, (iy+d)           | res8 (iy+d)/delay=1 <- (iy+d) {bit:b}
+10bbbzzz | res {bit:b}, (iy+d), {real:z} | res8 (iy+d)/delay=1 {real:z} <- (iy+d) {bit:b}
+11bbb110 | set {bit:b}, (iy+d)           | set8 (iy+d)/delay=1 <- (iy+d) {bit:b}
+11bbbzzz | set {bit:b}, (iy+d), {real:z} | set8 (iy+d)/delay=1 {real:z} <- (iy+d) {bit:b}
 
 # `ed` is the second instruction set the Z80 grew, and the only place
 # `ld (nn), rr` exists for every pair rather than for hl alone. Its block
@@ -186,41 +186,41 @@ table fdcb
 
 table ed
 
-01110000     | in (c)          | in_c -, flags <- bc flags
-01yyy000     | in {r:y}, (c)   | in_c {r:y}, flags <- bc flags
-01110001     | out (c), 0      | out_c bc 0
-01yyy001     | out (c), {r:y}  | out_c bc {r:y}
-01pp0010     | sbc hl, {p}     | sbc16 hl, flags <- hl {p} carry ; delay 7
-01pp1010     | adc hl, {p}     | adc16 hl, flags <- hl {p} carry ; delay 7
-01pp0011 n n | ld ($nnnn), {p} | ld16 (n) <- {p}
-01pp1011 n n | ld {p}, ($nnnn) | ld16 {p} <- (n)
-01yyy100     | neg             | neg8 a, flags <- a
-01000111     | ld i, a         | ld8 i <- a ; delay 1
-01001111     | ld r, a         | ld8 r <- a ; delay 1
-01010111     | ld a, i         | ld_a_special a, flags <- i flags ; delay 1
-01011111     | ld a, r         | ld_a_special a, flags <- r flags ; delay 1
-01001101     | reti            | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
-01yyy101     | retn            | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
-01yyy110     | im {i:y}        | ld8 im <- {i:y}
-01100111     | rrd             | rrd8 (hl), flags <- (hl) flags
-01101111     | rld             | rld8 (hl), flags <- (hl) flags
-10100000     | ldi             | block_load flags <- 1 flags
-10101000     | ldd             | block_load flags <- 0 flags
-10110000     | ldir            | block_load flags <- 1 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
-10111000     | lddr            | block_load flags <- 0 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
-10100001     | cpi             | block_compare flags <- 1 flags
-10101001     | cpd             | block_compare flags <- 0 flags
-10110001     | cpir            | block_compare flags <- 1 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
-10111001     | cpdr            | block_compare flags <- 0 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
-10100010     | ini             | block_in flags <- 1 flags
-10101010     | ind             | block_in flags <- 0 flags
-10110010     | inir            | block_in flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
-10111010     | indr            | block_in flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
-10100011     | outi            | block_out flags <- 1 flags
-10101011     | outd            | block_out flags <- 0 flags
-10110011     | otir            | block_out flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
-10111011     | otdr            | block_out flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+01110000     | in (c)               | in_c -, flags <- bc flags
+01yyy000     | in {reg:y}, (c)      | in_c {reg:y}, flags <- bc flags
+01110001     | out (c), 0           | out_c bc 0
+01yyy001     | out (c), {reg:y}     | out_c bc {reg:y}
+01pp0010     | sbc hl, {pair:p}     | sbc16 hl, flags <- hl {pair:p} carry ; delay 7
+01pp1010     | adc hl, {pair:p}     | adc16 hl, flags <- hl {pair:p} carry ; delay 7
+01pp0011 n n | ld ($nnnn), {pair:p} | ld16 (n) <- {pair:p}
+01pp1011 n n | ld {pair:p}, ($nnnn) | ld16 {pair:p} <- (n)
+01yyy100     | neg                  | neg8 a, flags <- a
+01000111     | ld i, a              | ld8 i <- a ; delay 1
+01001111     | ld r, a              | ld8 r <- a ; delay 1
+01010111     | ld a, i              | ld_a_special a, flags <- i flags ; delay 1
+01011111     | ld a, r              | ld_a_special a, flags <- r flags ; delay 1
+01001101     | reti                 | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+01yyy101     | retn                 | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+01yyy110     | im {imode:y}         | ld8 im <- {imode:y}
+01100111     | rrd                  | rrd8 (hl), flags <- (hl) flags
+01101111     | rld                  | rld8 (hl), flags <- (hl) flags
+10100000     | ldi                  | block_load flags <- 1 flags
+10101000     | ldd                  | block_load flags <- 0 flags
+10110000     | ldir                 | block_load flags <- 1 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+10111000     | lddr                 | block_load flags <- 0 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+10100001     | cpi                  | block_compare flags <- 1 flags
+10101001     | cpd                  | block_compare flags <- 0 flags
+10110001     | cpir                 | block_compare flags <- 1 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
+10111001     | cpdr                 | block_compare flags <- 0 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
+10100010     | ini                  | block_in flags <- 1 flags
+10101010     | ind                  | block_in flags <- 0 flags
+10110010     | inir                 | block_in flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+10111010     | indr                 | block_in flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+10100011     | outi                 | block_out flags <- 1 flags
+10101011     | outd                 | block_out flags <- 0 flags
+10110011     | otir                 | block_out flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+10111011     | otdr                 | block_out flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
 
 # Everything the chip does not define in this table is a two-byte nop, which is
 # a row like any other and has to come last so the rest shadow it.
-xxxxxxxx     | nop             | nop
+xxxxxxxx     | nop                  | nop

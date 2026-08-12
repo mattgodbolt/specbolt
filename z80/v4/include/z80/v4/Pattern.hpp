@@ -25,7 +25,7 @@ SPECBOLT_EXPORT struct BitSlice {
   constexpr bool operator==(const BitSlice &) const = default;
 };
 
-SPECBOLT_EXPORT struct Matched {
+SPECBOLT_EXPORT struct Pattern {
   static constexpr std::size_t max_slices = 4;
   static constexpr std::size_t num_bits = 8;
 
@@ -44,12 +44,12 @@ SPECBOLT_EXPORT struct Matched {
   }
 };
 
-SPECBOLT_EXPORT [[nodiscard]] constexpr Matched parse_opcode_bits(const std::string_view bits, const std::size_t line) {
-  if (bits.size() != Matched::num_bits)
+SPECBOLT_EXPORT [[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
+  if (bits.size() != Pattern::num_bits)
     throw table_error(line, "opcode pattern must be 8 characters");
-  Matched result;
+  Pattern result;
   for (std::size_t index = 0; index < bits.size(); ++index) {
-    const auto bit = static_cast<std::uint8_t>(Matched::num_bits - 1 - index);
+    const auto bit = static_cast<std::uint8_t>(Pattern::num_bits - 1 - index);
     const auto character = bits[index];
     if (character == '0' || character == '1') {
       if (character == '1')
@@ -68,7 +68,7 @@ SPECBOLT_EXPORT [[nodiscard]] constexpr Matched parse_opcode_bits(const std::str
       break;
     }
     if (!extended)
-      result.slices.push_back({character, bit, 1}, line, "opcode pattern has too many fields");
+      result.slices.push_back({character, bit, 1}, line, "opcode pattern has too many vocabularies");
   }
   return result;
 }

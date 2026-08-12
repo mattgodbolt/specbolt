@@ -10,42 +10,42 @@ namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
-    STATIC_CHECK(fields[0].name == 'p');
-    STATIC_CHECK(fields[0].values.size() == 4);
-    STATIC_CHECK(fields[0].values[0].display == "bc");
-    STATIC_CHECK(fields[0].values[3].display == "sp");
+    STATIC_CHECK(vocabularies[0].name == "pair");
+    STATIC_CHECK(vocabularies[0].members.size() == 4);
+    STATIC_CHECK(vocabularies[0].members[0].display == "bc");
+    STATIC_CHECK(vocabularies[0].members[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
     STATIC_CHECK(rows[0].mnemonic == "nop");
-    STATIC_CHECK(rows[0].steps[0].verb == "nop");
+    STATIC_CHECK(rows[0].steps[0].operation == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
   }
   SECTION("A hole means the row does not cover that opcode") {
-    STATIC_CHECK(fields[3].name == 'w');
-    STATIC_CHECK(fields[3].values[3].hole); // cp has its own rows
-    STATIC_CHECK(!fields[3].values[2].hole);
+    STATIC_CHECK(vocabularies[3].name == "logic");
+    STATIC_CHECK(vocabularies[3].members[3].hole); // cp has its own rows
+    STATIC_CHECK(!vocabularies[3].members[2].hole);
   }
   SECTION("Parentheses make an operand an address") {
-    STATIC_CHECK(fields[1].name == 'r');
-    STATIC_CHECK(fields[1].values[6].display == "(hl)");
+    STATIC_CHECK(vocabularies[1].name == "reg");
+    STATIC_CHECK(vocabularies[1].members[6].display == "(hl)");
     constexpr auto ld = rows[*find_row(entry_table, 0x46)]; // ld b, (hl)
-    STATIC_CHECK(resolve(fields, ld.steps[0].operands[0], ld.matched, 0x46).indirect);
-    STATIC_CHECK(!resolve(fields, ld.steps[0].destinations[0], ld.matched, 0x46).indirect);
-    STATIC_CHECK(resolve(fields, ld.steps[0].destinations[0], ld.matched, 0x70).indirect); // ld (hl), b
+    STATIC_CHECK(resolve(vocabularies, ld.steps[0].operands[0], ld.matched, 0x46).indirect);
+    STATIC_CHECK(!resolve(vocabularies, ld.steps[0].destinations[0], ld.matched, 0x46).indirect);
+    STATIC_CHECK(resolve(vocabularies, ld.steps[0].destinations[0], ld.matched, 0x70).indirect); // ld (hl), b
     STATIC_CHECK(find_row(entry_table, 0x86)); // add a, (hl)
     STATIC_CHECK(find_row(entry_table, 0x70)); // ld (hl), b
   }
-  SECTION("Members bind to primitives and a carry policy") {
-    constexpr auto alu = fields[2];
-    STATIC_CHECK(alu.name == 'q');
-    STATIC_CHECK(alu.values[0].display == "add");
-    STATIC_CHECK(alu.values[0].primitive == "add8");
-    STATIC_CHECK(alu.values[0].appended->kind == Operand::Kind::Constant);
-    STATIC_CHECK(alu.values[1].display == "adc");
-    STATIC_CHECK(alu.values[1].primitive == "add8");
-    STATIC_CHECK(alu.values[1].appended->name == Name{"carry"});
-    STATIC_CHECK(fields[3].values[3].hole);
-    STATIC_CHECK(fields[0].values[0].primitive.empty());
+  SECTION("Members bind to operations and a carry policy") {
+    constexpr auto alu = vocabularies[2];
+    STATIC_CHECK(alu.name == "arith");
+    STATIC_CHECK(alu.members[0].display == "add");
+    STATIC_CHECK(alu.members[0].operation == "add8");
+    STATIC_CHECK(alu.members[0].appended->kind == Operand::Kind::Constant);
+    STATIC_CHECK(alu.members[1].display == "adc");
+    STATIC_CHECK(alu.members[1].operation == "add8");
+    STATIC_CHECK(alu.members[1].appended->name == Name{"carry"});
+    STATIC_CHECK(vocabularies[3].members[3].hole);
+    STATIC_CHECK(vocabularies[0].members[0].operation.empty());
   }
   SECTION("Every opcode of every table decodes") {
     // Not a high-water mark: the table is complete, and precedence is checked
@@ -56,7 +56,7 @@ TEST_CASE("Table parsing") {
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(entry_table, 0x00) == 0u);
     STATIC_CHECK(find_row(entry_table, 0x76) == 1u);
-    STATIC_CHECK(rows[*find_row(entry_table, 0x21)].steps[0].verb == "ld16");
+    STATIC_CHECK(rows[*find_row(entry_table, 0x21)].steps[0].operation == "ld16");
   }
   SECTION("Lowers mnemonics into validated pieces") {
     constexpr auto ld = rows[*find_row(entry_table, 0x21)];
@@ -64,7 +64,7 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(ld.pieces.size() == 4);
     STATIC_CHECK(ld.pieces[0].kind == Piece::Kind::Literal);
     STATIC_CHECK(ld.pieces[0].text == "ld ");
-    STATIC_CHECK(ld.pieces[1].kind == Piece::Kind::Field);
+    STATIC_CHECK(ld.pieces[1].kind == Piece::Kind::Vocabulary);
     STATIC_CHECK(ld.pieces[2].text == ", ");
     STATIC_CHECK(ld.pieces[3].kind == Piece::Kind::Imm16);
     STATIC_CHECK(rows[*find_row(entry_table, 0x00)].immediate_bytes == 0);

@@ -26,14 +26,16 @@ inline constexpr std::string_view cpu_description{cpu_raw};
 // whatever it is handed; these are where the embedded file enters. (Diagnostics
 // name it too, through `SPECBOLT_CPU_TABLE` in TableError.hpp -- which is why
 // one build can hold only one description.)
-inline constexpr auto fields = parse_fields<count_matching(cpu_description, &is_field)>(cpu_description);
-inline constexpr auto tables = parse_tables<count_matching(cpu_description, &is_table)>(cpu_description, fields);
-inline constexpr auto rows = parse_rows<count_matching(cpu_description, &is_row)>(cpu_description, fields, tables);
+inline constexpr auto vocabularies =
+    parse_vocabularies<count_matching(cpu_description, &is_vocabulary)>(cpu_description);
+inline constexpr auto tables = parse_tables<count_matching(cpu_description, &is_table)>(cpu_description, vocabularies);
+inline constexpr auto rows =
+    parse_rows<count_matching(cpu_description, &is_row)>(cpu_description, vocabularies, tables);
 
 inline constexpr auto row_opcodes = [] {
   std::array<OpcodeSet, rows.size()> all{};
   for (std::size_t index = 0; index < rows.size(); ++index)
-    all[index] = opcodes_of(fields, rows[index]);
+    all[index] = opcodes_of(vocabularies, rows[index]);
   return all;
 }();
 
@@ -65,7 +67,7 @@ static_assert(check_every_line_means_something(cpu_description));
 static_assert(check_row_precedence(rows, row_opcodes, tables.size()));
 static_assert(check_tables_used(rows, tables, entry_table));
 static_assert(check_derived_rows_override(rows, row_opcodes, tables));
-static_assert(check_displacement_rendered<tables.size()>(fields, rows, tables, decoded));
+static_assert(check_displacement_rendered<tables.size()>(vocabularies, rows, tables, decoded));
 static_assert(check_inherited_literals<tables.size()>(rows, tables, decoded));
 static_assert(check_tables_total<tables.size()>(tables, decoded));
 

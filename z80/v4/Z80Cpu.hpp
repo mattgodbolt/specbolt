@@ -20,7 +20,7 @@ using Cpu = Z80;
 
 inline void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.idle(cycles); }
 
-struct Ops {
+struct Operations {
 private:
   // What every block operation does to the flags it does not otherwise touch:
   // parity stands in for "bc has not run out", and flags 3 and 5 come from a
@@ -241,7 +241,7 @@ public:
 };
 
 // Where the table may name operations from.
-[[nodiscard]] consteval std::array<std::meta::info, 2> primitive_scopes() { return {^^Ops, ^^Alu}; }
+[[nodiscard]] consteval std::array<std::meta::info, 2> operation_scopes() { return {^^Operations, ^^Alu}; }
 
 // Individually addressable flag bits, so `carry` is a location like any other.
 enum class Bit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };

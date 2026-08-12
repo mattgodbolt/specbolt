@@ -11,12 +11,12 @@ namespace specbolt::v4 {
 namespace {
 
 // Generous fixed capacities: the descriptions below are a few lines each.
-constexpr std::size_t max_fields = 4;
+constexpr std::size_t max_vocabularies = 4;
 constexpr std::size_t max_tables = 4;
 constexpr std::size_t max_rows = 8;
 
 struct Parsed {
-  std::array<Field, max_fields> fields{};
+  std::array<Vocabulary, max_vocabularies> vocabularies{};
   std::array<TableDecl, max_tables> tables{};
   std::array<Row, max_rows> rows{};
   std::array<std::array<std::optional<std::size_t>, 256>, max_tables> decoded{};
@@ -27,14 +27,14 @@ struct Parsed {
 Parsed parse(const std::string_view description) {
   Parsed parsed;
   check_every_line_means_something(description);
-  parsed.fields = parse_fields<max_fields>(description);
-  parsed.tables = parse_tables<max_tables>(description, parsed.fields);
-  parsed.rows = parse_rows<max_rows>(description, parsed.fields, parsed.tables);
+  parsed.vocabularies = parse_vocabularies<max_vocabularies>(description);
+  parsed.tables = parse_tables<max_tables>(description, parsed.vocabularies);
+  parsed.rows = parse_rows<max_rows>(description, parsed.vocabularies, parsed.tables);
   const auto row_count = count_matching(description, &is_row);
   const std::span rows{parsed.rows.data(), row_count};
   std::vector<OpcodeSet> opcodes;
   for (const auto &row: rows)
-    opcodes.push_back(opcodes_of(parsed.fields, row));
+    opcodes.push_back(opcodes_of(parsed.vocabularies, row));
   check_row_precedence(rows, opcodes, parsed.tables.size());
   check_derived_rows_override(rows, opcodes, {parsed.tables.data(), count_matching(description, &is_table)});
   static_cast<void>(latched_tables<max_tables>(rows));
@@ -52,7 +52,7 @@ TEST_CASE("Table diagnostics") {
   SECTION("A line that is not a comment, a declaration or a row is a mistake") {
     CHECK_THROWS_WITH(parse("table t\n00000000 nop nop\n"),
         Equals("z80.cpu:2: this is not a comment, a declaration, or a row; a row needs its '|' separators"));
-    CHECK_THROWS_WITH(parse("fields r = a b\ntable t\n"),
+    CHECK_THROWS_WITH(parse("vocabularies r = a b\ntable t\n"),
         Equals("z80.cpu:1: this is not a comment, a declaration, or a row; a row needs its '|' separators"));
   }
   SECTION("Rows must live in a table") {
@@ -64,7 +64,7 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("table t\n00pp0p01 | nop | nop\n"),
         Equals("z80.cpu:2: opcode pattern has non-contiguous bits for a field"));
     CHECK_THROWS_WITH(
-        parse("table t\nabcde001 | nop | nop\n"), Equals("z80.cpu:2: opcode pattern has too many fields"));
+        parse("table t\nabcde001 | nop | nop\n"), Equals("z80.cpu:2: opcode pattern has too many vocabularies"));
   }
   SECTION("The three columns must agree about immediates") {
     CHECK_THROWS_WITH(parse("table t\n00000000 n | ld a, $nnnn | ld8 a <- n\n"),
@@ -81,32 +81,33 @@ TEST_CASE("Table diagnostics") {
   SECTION("Row precedence") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\n00000000 | also nop | nop\n"),
         Equals("z80.cpu:3: an earlier row shadows this one completely"));
-    CHECK_THROWS_WITH(parse("field r = b c d e h l m a\ntable t\n001101xx | frob | nop\n00yyy100 | inc {r:y} | nop\n"),
+    CHECK_THROWS_WITH(parse("vocab r = b c d e h l m a\ntable t\n001101xx | frob | nop\n00yyy100 | inc {r:y} | nop\n"),
         Equals("z80.cpu:3: this row overlaps a later one without being contained by it"));
-    CHECK_THROWS_WITH(parse("field w = - - - -\ntable t\n101wwzzz | {w} | nop\n"),
+    CHECK_THROWS_WITH(parse("vocab w = - - - -\ntable t\n101wwzzz | {w:w} | nop\n"),
         Equals("z80.cpu:3: this row matches no opcode at all"));
   }
   SECTION("Vocabularies") {
-    CHECK_THROWS_WITH(parse("field rr = a b\ntable t\n"), Equals("z80.cpu:1: field name must be a single character"));
-    CHECK_THROWS_WITH(parse("field r\ntable t\n"), Equals("z80.cpu:1: expected '=' in field declaration"));
-    CHECK_THROWS_WITH(parse("field r =\ntable t\n"), Equals("z80.cpu:1: field declares no values"));
-    CHECK_THROWS_WITH(parse("field r = a b\nfield r = c d\ntable t\n"), Equals("z80.cpu:2: duplicate field name"));
-    CHECK_THROWS_WITH(parse("field r = a b c d e f g h i\ntable t\n"), Equals("z80.cpu:1: too many values in field"));
-    CHECK_THROWS_WITH(parse("field r = a/wat=1 b\ntable t\n"),
+    CHECK_THROWS_WITH(parse("vocab\ntable t\n"), Equals("z80.cpu:1: vocabulary declaration has no name"));
+    CHECK_THROWS_WITH(parse("vocab r\ntable t\n"), Equals("z80.cpu:1: expected '=' in vocabulary declaration"));
+    CHECK_THROWS_WITH(parse("vocab r =\ntable t\n"), Equals("z80.cpu:1: vocabulary declares no members"));
+    CHECK_THROWS_WITH(parse("vocab r = a b\nvocab r = c d\ntable t\n"), Equals("z80.cpu:2: duplicate vocabulary name"));
+    CHECK_THROWS_WITH(
+        parse("vocab r = a b c d e f g h i\ntable t\n"), Equals("z80.cpu:1: too many members in vocabulary"));
+    CHECK_THROWS_WITH(parse("vocab r = a/wat=1 b\ntable t\n"),
         Equals("z80.cpu:1: 'wat' is not a member attribute; expected 'delay'"));
-    CHECK_THROWS_WITH(parse("field r = a/delay=xx b\ntable t\n"), Equals("z80.cpu:1: delay must be a single digit"));
-    CHECK_THROWS_WITH(parse("field r = a:add8+n b\ntable t\n"),
+    CHECK_THROWS_WITH(parse("vocab r = a/delay=xx b\ntable t\n"), Equals("z80.cpu:1: delay must be a single digit"));
+    CHECK_THROWS_WITH(parse("vocab r = a:add8+n b\ntable t\n"),
         Equals("z80.cpu:1: a vocabulary member cannot append an immediate; only the encoding fetches those"));
   }
   SECTION("References") {
     CHECK_THROWS_WITH(parse("table t\n00yyy000 | inc {q:y} | nop\n"),
         Equals("z80.cpu:2: reference names a vocabulary that does not exist"));
-    CHECK_THROWS_WITH(parse("field r = a b\ntable t\n00000000 | inc {r:y} | nop\n"),
-        Equals("z80.cpu:3: reference names a field the opcode pattern does not define"));
-    CHECK_THROWS_WITH(parse("field r = a b\ntable t\n00yyy000 | inc {r:y} | nop\n"),
-        Equals("z80.cpu:3: vocabulary has the wrong number of values for its opcode bits"));
-    CHECK_THROWS_WITH(parse("field r = a b\ntable t\n00000000 | inc {r | nop\n"),
-        Equals("z80.cpu:3: unterminated field reference in mnemonic"));
+    CHECK_THROWS_WITH(parse("vocab r = a b\ntable t\n00000000 | inc {r:y} | nop\n"),
+        Equals("z80.cpu:3: reference names a slice the opcode pattern does not define"));
+    CHECK_THROWS_WITH(parse("vocab r = a b\ntable t\n00yyy000 | inc {r:y} | nop\n"),
+        Equals("z80.cpu:3: vocabulary has the wrong number of members for its opcode bits"));
+    CHECK_THROWS_WITH(parse("vocab r = a b\ntable t\n00000000 | inc {r | nop\n"),
+        Equals("z80.cpu:3: unterminated vocabulary reference in mnemonic"));
   }
   SECTION("Tables") {
     CHECK_THROWS_WITH(parse("table\n"), Equals("z80.cpu:1: table declaration has no name"));
@@ -117,7 +118,7 @@ TEST_CASE("Table diagnostics") {
         parse("table t\n00000000 | nop | goto elsewhere\n"), Equals("z80.cpu:2: no table named 'elsewhere'"));
   }
   SECTION("Derived tables") {
-    constexpr std::string_view base = "field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n";
+    constexpr std::string_view base = "vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n";
     CHECK_NOTHROW(parse(std::string(base) + "table u = t with r.b -> c\n"));
     CHECK_THROWS_WITH(parse(std::string(base) + "table u = nowhere with r.b -> c\n"),
         Equals("z80.cpu:5: no table named 'nowhere' is declared above this one"));
@@ -140,7 +141,7 @@ TEST_CASE("Table diagnostics") {
   SECTION("A view's own row must fit inside the row it displaces") {
     // The row in `u` claims both opcodes; the parent keeps one for itself, and
     // swallowing it would take that instruction off the prefixed page entirely.
-    constexpr std::string_view shared = "field r = b c\ntable t\n11011101 | (dd) | goto u\n";
+    constexpr std::string_view shared = "vocab r = b c\ntable t\n11011101 | (dd) | goto u\n";
     CHECK_NOTHROW(parse(std::string(shared) + "0000000y | ld {r:y} | ld8 {r:y} <- a\n"
                                               "table u = t with r.b -> ixh\n0000000y | frob | nop\n"));
     CHECK_THROWS_WITH(parse(std::string(shared) + "00000000 | special | nop\n0000000y | ld {r:y} | nop\n"
@@ -149,11 +150,11 @@ TEST_CASE("Table diagnostics") {
                "so it takes opcodes that row meant to keep"));
   }
   SECTION("A view must not silently inherit a row that spells the renamed name out") {
-    constexpr std::string_view shared = "field p = bc hl\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | ";
+    constexpr std::string_view shared = "vocab p = bc hl\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | ";
     // Naming the vocabulary is fine: a rule reaches it.
     CHECK_NOTHROW(parse(std::string(shared) + "ld16 {p:y} <- {p:y}\ntable u = t with p.hl -> ix\n"));
     // A rule whose left side is parenthesised has to match the same way.
-    CHECK_THROWS_WITH(parse("field p = bc (hl)\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | "
+    CHECK_THROWS_WITH(parse("vocab p = bc (hl)\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | "
                             "ld16 {p:y} <- (hl)\ntable u = t with p.(hl) -> (ix+d)\n"),
         Equals("z80.cpu:4: table 'u' renames '(hl)', and this row names it literally where a rule cannot reach it; "
                "give that table its own row, or name a vocabulary"));
@@ -163,17 +164,18 @@ TEST_CASE("Table diagnostics") {
                "give that table its own row, or name a vocabulary"));
   }
   SECTION("A derived table decodes its parent's rows, renamed") {
-    const auto parsed = parse("field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"
+    const auto parsed = parse("vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"
                               "table u = t with r.b -> ixh\n00000000 | frob | nop\n");
     const auto &derived = parsed.tables[1];
     const auto &row = parsed.rows[1];
     const auto reference = row.pieces[1].reference;
 
     // The substitution reaches whatever the row names, and only that member.
-    CHECK(member_of(parsed.fields, reference, row.matched, 0x00).display == "b");
-    CHECK(member_of(parsed.fields, reference, row.matched, 0x00, derived.rules).display == "ixh");
-    CHECK(member_of(parsed.fields, reference, row.matched, 0x01, derived.rules).display == "c");
-    CHECK(resolve(parsed.fields, row.steps[0].destinations[0], row.matched, 0x00, derived.rules).name == Name{"ixh"});
+    CHECK(member_of(parsed.vocabularies, reference, row.matched, 0x00).display == "b");
+    CHECK(member_of(parsed.vocabularies, reference, row.matched, 0x00, derived.rules).display == "ixh");
+    CHECK(member_of(parsed.vocabularies, reference, row.matched, 0x01, derived.rules).display == "c");
+    CHECK(resolve(parsed.vocabularies, row.steps[0].destinations[0], row.matched, 0x00, derived.rules).name ==
+          Name{"ixh"});
 
     // Opcode 0 is the derived table's own row; 1 it inherits; 0xdd it inherits,
     // which is what makes `dd dd` re-enter.
@@ -202,7 +204,7 @@ TEST_CASE("Table diagnostics") {
         Equals("z80.cpu:2: the action and the encoding disagree about whether there is an immediate"));
   }
   SECTION("A vocabulary member must name something resolvable") {
-    CHECK_THROWS_WITH(parse("field s = bc de hl n\ntable t\n"),
+    CHECK_THROWS_WITH(parse("vocab s = bc de hl n\ntable t\n"),
         Equals("z80.cpu:1: a vocabulary member must name something the CPU can resolve"));
   }
   SECTION("Tables must be reachable and non-empty") {
@@ -233,14 +235,14 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- a a a a a\n"), Equals("z80.cpu:2: too many operands"));
     CHECK_THROWS_WITH(
         parse("table t\n00000000 | nop | ld8 a a a a a <- a\n"), Equals("z80.cpu:2: too many destinations"));
-    CHECK_THROWS_WITH(parse("field r = b c\ntable t\n0000000y | {r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x | nop\n"),
+    CHECK_THROWS_WITH(parse("vocab r = b c\ntable t\n0000000y | {r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x | nop\n"),
         Equals("z80.cpu:3: mnemonic is too complicated"));
-    CHECK_THROWS_WITH(parse("field r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n"
+    CHECK_THROWS_WITH(parse("vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n"
                             "table u = t with r.b->c, r.c->b, r.b->c, r.c->b, r.b->c, r.c->b, r.b->c\n"),
         Equals("z80.cpu:5: too many substitutions in table"));
   }
   SECTION("A well-formed table raises nothing") {
-    CHECK_NOTHROW(parse("field r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
+    CHECK_NOTHROW(parse("vocab r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
   }
 }
 
