@@ -1,7 +1,8 @@
 #pragma once
 
-// Which opcodes each row claims, and the checks that answer from those sets:
-// precedence, reachability, totality.
+// What a row means once an opcode has chosen among its vocabularies: which
+// operands it resolves to, which opcodes it claims, and the checks that answer
+// from those sets -- precedence, reachability, totality.
 
 #include <algorithm>
 #include <array>

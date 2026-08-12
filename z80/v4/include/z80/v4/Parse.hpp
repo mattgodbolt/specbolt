@@ -54,6 +54,21 @@ template<std::size_t N>
 }
 
 
+// After blanks and comments, every line is a declaration or a row. A line that
+// is neither is a mistyped one of them -- a row that lost its separators, or
+// `fields` for `field` -- and would otherwise be skipped in silence, surfacing
+// much later as an opcode nothing decodes.
+constexpr bool check_every_line_means_something(const std::string_view description) {
+  Parser lines(description);
+  while (!lines.eof()) {
+    const auto [at, text] = lines.next_line();
+    if (text.empty() || text.front() == '#' || is_field(text) || is_table(text) || is_row(text))
+      continue;
+    throw table_error(at, "this is not a comment, a declaration, or a row; a row needs its '|' separators");
+  }
+  return true;
+}
+
 [[nodiscard]] constexpr std::optional<std::size_t> find_field(const std::span<const Field> fields, const char name) {
   for (std::size_t index = 0; index < fields.size(); ++index)
     if (fields[index].name == name)

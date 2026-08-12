@@ -1,7 +1,9 @@
 #pragma once
 
-// Text in, values out. Nothing here knows what a vocabulary or a row is, which
-// is what makes it testable a line at a time.
+// Everything that parses a fragment of text without needing the whole
+// description: which kind of line this is, what an operand says, what a
+// vocabulary member says. Each takes a string and a line number and returns a
+// value, so each is testable a line at a time.
 
 #include "z80/v4/Model.hpp"
 #include "z80/v4/Parser.hpp"

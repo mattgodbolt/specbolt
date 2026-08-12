@@ -1,8 +1,11 @@
 # The `.cpu` format
 
 A reference for the instruction-set description that v4 compiles. The file this
-describes is [`z80.cpu`](z80.cpu); the parser that reads it is `Table.hpp`, and
-the code generator that consumes the result is `Execute.hpp`. For why the format
+describes is [`z80.cpu`](z80.cpu). The parser is `Lower.hpp` (a fragment of text
+at a time) and `Parse.hpp` (the declarations); `Coverage.hpp` works out what each
+row claims and checks it; `Table.hpp` embeds the description and builds the
+constants; `Execute.hpp` generates the interpreter and `Disassembler.cpp` the
+disassembler. For why the format
 is shaped this way rather than some other way, see [NOTES.md](NOTES.md).
 
 ---
@@ -73,8 +76,9 @@ that asked for it.
 
 This document describes the table. The other half of the contract lives in the
 CPU description, and a `.cpu` file is meaningless without it, so here is its
-shape. (For the details, read `Z80Cpu.hpp`: it is about a hundred lines, and is
-the whole of what retargeting means.)
+shape. (For the details, read `Z80Cpu.hpp`. Be warned that it is not small: the
+easy majority of an instruction set becomes rows, and what stays behind is the
+awkward remainder -- the block moves, the exchanges, the flag minutiae.)
 
 | the table writes | the CPU supplies |
 |---|---|
@@ -214,7 +218,8 @@ compile error.
 ### Members
 
 A member is written `display[:primitive[+operand]][/delay=N]`. The `display` is
-also the member's operand, so it must be something the CPU can resolve.
+also the member's operand, so it must be something an operand may be: a name the
+CPU resolves, a constant, or either of those as an address.
 
 | form | example | means |
 |---|---|---|
@@ -352,7 +357,7 @@ Literal text, plus:
 | `{p}` | shorthand when the vocabulary and the slice share a letter |
 | `$nn` | an 8-bit immediate, as `0x3f` |
 | `$nnnn` | a 16-bit immediate, as `0x1234` |
-| `$e` | a **relative** target: the address the jump lands on, not the offset. The disassembler is given the instruction's address, and measures from the end of the instruction, so `$e` must be the last byte |
+| `$e` | a **relative** target: the address the jump lands on, not the offset. Measured from the end of the instruction, so it must be the last byte the row reads — which is not checked |
 | `+d` | an index displacement, as `+0x02` or `-0x01` |
 
 The mnemonic is lowered into a fixed array of pieces at parse time, so the
@@ -565,8 +570,8 @@ A table reached both with and without a displacement is a compile error.
 
 ## What is checked
 
-All of this happens during constant evaluation, and every failure names the line
-in the `.cpu` file:
+All of this happens during constant evaluation, and each of these failures names
+the line in the `.cpu` file:
 
 - **Precedence.** Where two rows in a table overlap, the earlier must be wholly
   contained in the later — that is an override. A partial overlap is an
@@ -589,7 +594,21 @@ in the `.cpu` file:
   would never be checked at all; that is rejected, as is a non-derived table
   with no rows.
 - **Latch consistency**, as above.
+- **Renamed names spelled out.** A derived table renames vocabulary members and
+  never literal text. A row that spells a renamed name out, and is inherited
+  unchanged by the table that renames it, is rejected — writing that row *in*
+  the derived table is how one says the literal was meant. This is what forces
+  the override rows in `z80.cpu`'s `ix` and `iy` tables, and it was added after
+  a missing one made `dd e3` do `ex (sp), hl` where the chip does `ex (sp), ix`.
+- **Every line means something.** After blanks and comments, a line is a
+  declaration or a row; anything else is a mistyped one of them.
 - **Capacity.** Every fixed limit reports itself rather than overflowing.
+
+One phase is less well-mannered. Types are checked when the interpreter is
+generated, so a row handing a 16-bit location to an 8-bit parameter is caught by
+the compiler's own narrowing diagnostics, and a row whose operands do not fit its
+operation by a `static_assert` — both correct, neither carrying the `.cpu` line
+number that everything above does.
 
 ### How rows are ordered
 

@@ -23,7 +23,9 @@ inline constexpr char cpu_raw[] = {
 inline constexpr std::string_view cpu_description{cpu_raw};
 
 // The description this build was compiled against. Everything above parses
-// whatever it is given; only these three name the embedded file.
+// whatever it is handed; these are where the embedded file enters. (Diagnostics
+// name it too, through `SPECBOLT_CPU_TABLE` in TableError.hpp -- which is why
+// one build can hold only one description.)
 inline constexpr auto fields = parse_fields<count_matching(cpu_description, &is_field)>(cpu_description);
 inline constexpr auto tables = parse_tables<count_matching(cpu_description, &is_table)>(cpu_description, fields);
 inline constexpr auto rows = parse_rows<count_matching(cpu_description, &is_row)>(cpu_description, fields, tables);
@@ -59,6 +61,7 @@ inline constexpr std::size_t decoded_count = [] {
   return count;
 }();
 
+static_assert(check_every_line_means_something(cpu_description));
 static_assert(check_row_precedence(rows, row_opcodes, tables.size()));
 static_assert(check_tables_used(rows, tables, entry_table));
 static_assert(check_inherited_literals<tables.size()>(rows, tables, decoded));

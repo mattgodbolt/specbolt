@@ -46,7 +46,8 @@ struct Reference {
 };
 
 // An operand is a constant, a name the CPU can resolve, or a field reference.
-// `a`, `hl`, `carry` and `f` are all just names. Wrapping one in parentheses
+// `a`, `hl` and `carry` are all just names, whatever they denote on the
+// machine -- a register, a register pair, a single flag bit. Wrapping one in parentheses
 // says to use it as an address rather than as a value, which is orthogonal to
 // all of the above.
 struct Operand {

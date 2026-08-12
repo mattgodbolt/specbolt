@@ -26,6 +26,7 @@ struct Parsed {
 // against the real description.
 Parsed parse(const std::string_view description) {
   Parsed parsed;
+  check_every_line_means_something(description);
   parsed.fields = parse_fields<max_fields>(description);
   parsed.tables = parse_tables<max_tables>(description, parsed.fields);
   parsed.rows = parse_rows<max_rows>(description, parsed.fields, parsed.tables);
@@ -47,6 +48,12 @@ using Catch::Matchers::Equals;
 } // namespace
 
 TEST_CASE("Table diagnostics") {
+  SECTION("A line that is not a comment, a declaration or a row is a mistake") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 nop nop\n"),
+        Equals("z80.cpu:2: this is not a comment, a declaration, or a row; a row needs its '|' separators"));
+    CHECK_THROWS_WITH(parse("fields r = a b\ntable t\n"),
+        Equals("z80.cpu:1: this is not a comment, a declaration, or a row; a row needs its '|' separators"));
+  }
   SECTION("Rows must live in a table") {
     CHECK_THROWS_WITH(parse("00000000 | nop | nop\n"),
         Equals("z80.cpu:1: this row is not in any table; declare one with `table <name>` first"));

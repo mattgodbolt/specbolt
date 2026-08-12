@@ -11,9 +11,9 @@ here.
 
 ## Where the spike is
 
-`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 106 rows in seven decoding
-tables decode 1596 entries. `base`, `cb`, the `ix`/`iy` views and `ddcb`/`fdcb` are **complete**;
-`ed` has the block moves, `rrd`/`rld` and its two-byte-nop filler still to come:
+`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 127 rows in seven decoding
+tables decode **every one of 1792 entries**: `base`, `cb`, the `ix`/`iy` views, `ddcb`/`fdcb` and `ed`
+are all complete, and the instruction set is finished.
 
 - **Disassembly.** Walks the row's lowered pieces, following a `goto` through a prefix table.
 - **Execution.** A 256-entry dispatch table per decoding table, built with a `template for`
@@ -1006,22 +1006,21 @@ A review of the whole spike found eighteen things. The correctness ones are fixe
 case in `DiagnosticsTest.cpp` where it can be tested at all; these are the rest, kept here so they
 are deferred rather than forgotten.
 
-- **Argument evaluation order.** `value_of` is not pure — it can advance the clock and set the
-  address bus — and pack-expansion argument order is unspecified. No row today has two bus-touching
-  operands, so nothing is observably wrong, but that is a property of `z80.cpu` rather than of the
-  framework. Fix: materialise into a braced `std::tuple{…}`, which is sequenced, and `std::apply`.
-- **A mistyped line vanishes.** `is_row` needs a `|`, so `00000000 nop nop` parses as nothing and
-  fails at *runtime* with "no row decodes opcode 0x00"; `feild r = …` is reported much later, at
-  whatever references `r`. Fix: after blanks and `#`, every line is a directive or a row, so let the
-  missing `|` be the diagnostic. Related: `next_word` splits on spaces only, so a tab-indented
-  `field` is not recognised at all.
+- ~~**Argument evaluation order.**~~ **Fixed, and it was not theoretical.** `bit n, (ix+d)` has two
+  bus-touching operands: it reads memory and then asks for the address that read left on the bus.
+  gcc evaluates right to left, so the undocumented flags came from the opcode fetch. Operands are
+  materialised into a braced `std::tuple` first, whose initialisation is sequenced.
+- ~~**A mistyped line vanishes.**~~ **Fixed.** After blanks and `#`, every line must be a
+  declaration or a row; `check_every_line_means_something` says so. Still true and unfixed:
+  `next_word` splits on spaces only, so a tab-indented `field` is not recognised at all — `trim`
+  handles tabs, which shows they were meant to be whitespace.
 - **`SPECBOLT_CPU_TABLE` lives in `TableError.hpp`**, so a framework header names the CPU
   description; `Execute.hpp` includes `Z80Cpu.hpp` by name for the same reason. Both should be
   `target_compile_definitions`, which is also what would let one binary hold two CPUs. Until then,
   "retargeting means writing one `Z80Cpu.hpp`" needs an asterisk.
-- **`Operand` carries jobs that already have types.** The `Reference` half is done. What remains:
-  `write_back_delay` exists on both `Member` and `Operand`, copied down by `resolve` with nothing
-  saying so.
+- ~~**`Operand` carries jobs that already have types.**~~ **Done.** `Reference` is a type, and
+  `write_back_delay` now lives only on `Operand` — `parse_member` writes it there directly, so
+  `resolve` is a one-liner and there is nothing to keep in step.
 - **The write-back-delay rule compares only the name**, not that both ends are indirect, and two
   nameless indirect operands compare equal. Nothing exercises it today; the rule meant is "the
   destination is the same addressing mode as one of the operands".
@@ -1061,12 +1060,9 @@ Parallel, not blocking: make `RegisterFile` header-only and `constexpr` so execu
 `STATIC_CHECK`. `static_assert(run(0x21, 0x4000).get(R16::HL) == 0x4000)` is the slide the talk
 wants, and it is currently impossible only because the accessors are defined in a `.cpp`.
 
-Also parallel: **write a small compile-time vector and use it everywhere instead of
-`std::array` plus a separate count member.** The idiom appears three times already —
-`Field::values`/`num_values`, `Matched::slices`/`num_slices`, `Row::pieces`/`num_pieces` — and each
-site hand-rolls its own bounds check and denies itself range-`for` and algorithms. One
-`constexpr`-friendly fixed-capacity vector with `push_back` (throwing on overflow, which is a compile
-error during constant evaluation), `size()`, `begin()`/`end()` and `operator[]` removes all of that.
+Also parallel: ~~**write a small compile-time vector**~~ — done, `Vector.hpp`, and it is used by
+`Field::values`, `Matched::slices`, `Row::pieces` and `Row::steps`. It carries its own count, throws
+its caller's message on overflow, and is structural so it can be a template argument.
 
 Worth considering a structural fixed-capacity **string** at the same time. `string_view` being
 non-structural has now blocked three separate things — `Row` as an NTTP, `Piece` in an
