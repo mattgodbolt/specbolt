@@ -1,6 +1,6 @@
 # The vocabularies. Each names one value per bit pattern of the slice that
-# selects it, so a field of eight members belongs to a three-bit slice and a
-# field of four to a two-bit one. A `-` member is a hole: the row does not cover
+# selects it, so a vocabulary of eight members belongs to a three-bit slice and
+# one of four to a two-bit slice. A `-` member is a hole: the row does not cover
 # that opcode at all, which is how a general row leaves room for a specific one.
 
 # The sixteen-bit pairs, as most of the opcode space spells them.

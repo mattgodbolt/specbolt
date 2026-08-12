@@ -1,12 +1,14 @@
 # The `.cpu` format
 
 A reference for the instruction-set description that v4 compiles. The file this
-describes is [`z80.cpu`](z80.cpu). The parser is `Lower.hpp` (a fragment of text
-at a time) and `Parse.hpp` (the declarations); `Coverage.hpp` works out what each
-row claims and checks it; `Table.hpp` embeds the description and builds the
-constants; `Execute.hpp` generates the interpreter and `Disassembler.cpp` the
-disassembler. For why the format
-is shaped this way rather than some other way, see [NOTES.md](NOTES.md).
+describes is [`z80.cpu`](z80.cpu). The code that reads it is the `refract`
+library, in `refract/`: the parser is `Lower.hpp` (a fragment of text at a time)
+and `Parse.hpp` (the declarations); `Coverage.hpp` works out what each row claims
+and checks it; `Machine.hpp` states what a machine must provide; `Execute.hpp`
+generates the interpreter. `Table.hpp` embeds the description and builds the
+constants, and `Disassembler.cpp` renders the mnemonics; both belong to the Z80
+rather than to the library. For why the format is shaped this way rather than
+some other way, see [NOTES.md](NOTES.md).
 
 ---
 
@@ -32,8 +34,12 @@ vocabulary. Those are limits of what has been needed, not of the approach; they
 are recorded as work in [NOTES.md](NOTES.md). Treat "not Z80-specific" as a
 design intent that has been half-tested, not as a promise.
 
-The file has three kinds of line, in any order except that a name must be
-declared before it is used:
+The file has three kinds of line. Vocabularies and tables are collected in
+whole-file passes before any row is read, so a row may name either before its
+declaration appears; `z80.cpu` does exactly that, jumping to a table declared
+further down. What order *does* decide is which table a row lands in — a row
+belongs to the nearest `table` line above it, and a row above the first one is
+an error — and, within a table, which of two overlapping rows wins.
 
 - **`vocab`** declares a *vocabulary*: the list of things a group of opcode bits
   can select between.
@@ -68,32 +74,32 @@ match a longer instruction than its own encoding column describes.
 
 **The table names things; it does not define them.** Every operation it names
 (`inc8`, `add16`, `is_set`) and every location it names (`a`, `hl`, `carry`,
-`pc`) is looked up by reflection in the CPU description — for the Z80 that is
-`Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`. A name the CPU does not supply is a compile error naming the line
-that asked for it.
+`pc`) is looked up by reflection in the CPU description. A name the CPU does not
+supply is a compile error naming the line that asked for it.
 
 ### What the CPU description must supply
 
 This document describes the table. The other half of the contract lives in the
 CPU description, and a `.cpu` file is meaningless without it, so here is its
-shape. It is three files, one per column of the table below: `Operations.hpp`
-is what a row's verbs mean, `Locations.hpp` what its names mean, and
-`Z80Machine.hpp` how the framework drives the chip. Be warned that the first is
-not small — the easy majority of an instruction set becomes rows, and what stays
-behind is the awkward remainder: the block moves, the exchanges, the flag
-minutiae.
+shape. It comes in three parts: what a row's verbs mean, what its names mean,
+and how the framework drives the chip. For the Z80 the verbs are in
+`Operations.hpp`, the names are listed by `Locations.hpp`, and the machine
+itself supplies the rest as member functions — `Machine.hpp` states that half of
+the contract as a concept. Be warned that the verbs are not a small file: the
+easy majority of an instruction set becomes rows, and what stays behind is the
+awkward remainder: the block moves, the exchanges, the flag minutiae.
 
 | the table writes | the CPU supplies |
 |---|---|
-| a **operation** — `inc8`, `add16` | a function of that name, found by reflection |
-| a **location** — `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` overloads for it |
+| an **operation** — `inc8`, `add16` | a function of that name, found by reflection |
+| a **location** — `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` members taking it |
 | an **indirect operand** — `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
 | an **immediate** — `n` | `fetch_immediate` |
 | any **opcode fetch** | `fetch_opcode` |
 | `delay`, and any `/delay=` | `delay` |
 | a **displacement** — `(ix+d)` | `displaced_address` |
 
-A operation's signature is the interface:
+An operation's signature is the interface:
 
 - it may take the machine itself as its **first** parameter, by mutable
   reference, when it needs machine state or needs to charge time. The framework
@@ -122,15 +128,16 @@ carriage return. After trimming:
 | begins with `vocab ` | a vocabulary declaration |
 | begins with `table ` | a table declaration |
 | contains `\|` | a row |
-| anything else | ignored — see the warning below |
+| anything else | a compile error |
 
 > **Comments must be on their own line.** `#` is only special at the start of a
 > line, so a trailing comment on a row becomes part of the action column and
 > will fail to parse as one.
 
-> **A line with no `\|` is silently ignored.** A mistyped row that loses its
-> separators does not become a diagnostic; it becomes an opcode that fails to
-> decode at run time. This is a known sharp edge, recorded in NOTES.
+> **Every line must mean something.** A line that is none of the above is a
+> mistyped one of them, so it is rejected rather than skipped: *this is not a
+> comment, a declaration, or a row; a row needs its `|` separators*. A row that
+> loses its separators is the case this is for.
 
 ---
 
@@ -141,13 +148,13 @@ file            = { line } ;
 line            = comment | vocab-decl | table-decl | row | empty ;
 comment         = "#" , { any } ;
 
-vocab-decl      = "vocab" , name , "=" , member , { member } ;
+vocab-decl      = "vocab" , vocab-name , "=" , member , { member } ;
 member          = hole | ( operand , [ ":" , identifier , [ "+" , operand ] ] ) ;
 hole            = "-" ;
 
 table-decl      = "table" , table-name , [ "=" , table-name , "with" , rules ] ;
 rules           = rule , { "," , rule } ;
-rule            = name-char , "." , display-text , "->" , member ;
+rule            = vocab-name , "." , display-text , "->" , member ;
 
 row             = encoding , "|" , mnemonic , "|" , steps ;
 
@@ -157,7 +164,7 @@ pattern-bit     = "0" | "1" | slice-char ;
 encoding-byte   = "n" | "d" ;
 
 mnemonic        = { literal | reference | "$nn" | "$nnnn" | "$e" | "+d" } ;
-reference       = "{" , name , ":" , slice-char , "}" ;
+reference       = "{" , vocab-name , ":" , slice-char , "}" ;
 
 steps           = step , { ";" , step } ;
 step            = goto-step | if-step | apply-step ;
@@ -173,7 +180,7 @@ attribute       = "delay" , "=" , digit ;
 number          = digit , { digit } | "0x" , hex-digit , { hex-digit } ;
 
 (* terminals *)
-name            = ? a word, no space. Compared exactly, so `reg` and `Reg`
+vocab-name      = ? a word, no space. Compared exactly, so `reg` and `Reg`
                     would be different vocabularies ? ;
 slice-char      = ? one character other than "0" or "1", compared exactly ? ;
 name            = ? up to 15 characters, no space. Resolved against the CPU's
@@ -197,7 +204,7 @@ Three things the grammar is stricter about than it may look:
   `0xfe` fits an 8-bit parameter and `0x1ff` does not.
 - **`n` is the row's whole immediate**, not one byte of it. A row that fetches
   `n n` has a 16-bit `n`; there is no way to name the two bytes separately, and
-  no instruction on either target CPU needs to.
+  no Z80 instruction needs to.
 
 **Commas are decoration.** A trailing comma is stripped from any word in a step,
 so `inc8 {reg:y}, flags` and `inc8 {reg:y} flags` mean the same thing. They are
@@ -271,7 +278,7 @@ read rather than an instruction fetch.)
 ### Derived tables (views)
 
 ```
-table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, r.(hl) -> (ix+d)/delay=1
+table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
 ```
 
 A derived table decodes its parent's rows with some vocabulary members renamed,
@@ -288,7 +295,7 @@ it rewrites**, because the same spelling can mean different things in different
 vocabularies and only some of them should change. The replacement is a whole
 member, so it may bring its own operation and its own `/delay=`.
 
-(In `z80.cpu`, `r.h` is renamed by a view and the `s.h` of an indexed load is
+(In `z80.cpu`, `reg.h` is renamed by a view and the `real.h` of an indexed load is
 not, even though both are written `h`.)
 
 Rules apply to every row the table decodes, inherited or its own. A row escapes
@@ -357,7 +364,6 @@ Literal text, plus:
 | form | renders |
 |---|---|
 | `{reg:z}` | the vocabulary member the slice selects |
-| `{pair:p}` | shorthand when the vocabulary and the slice share a letter |
 | `$nn` | an 8-bit immediate, as `0x3f` |
 | `$nnnn` | a 16-bit immediate, as `0x1234` |
 | `$e` | a **relative** target: the address the jump lands on, not the offset. Measured from the end of the instruction, so it must be the last byte the row reads — which is not checked |
@@ -396,7 +402,7 @@ left out and the meaning would not change.
 | condition | `if {cond:y}` |
 | idle | `delay 2` |
 
-`delay` is an ordinary operation — a operation the CPU supplies — and takes a whole
+`delay` is an ordinary operation — an operation the CPU supplies — and takes a whole
 number. The `/delay=` attribute on an addressing mode is a different thing that
 happens to charge the same way, and it takes a single digit.
 
@@ -411,11 +417,11 @@ happens to charge the same way, and it takes a single digit.
 
 `-` discards a result and may only be a destination.
 
-**A operation may be a reference.** `{arith:q} a, flags <- a {reg:z}` takes its operation
+**An operation may be a reference.** `{arith:q} a, flags <- a {reg:z}` takes its operation
 from the vocabulary member the opcode selects, so one row is the whole
 `add/adc/sub/sbc` group.
 
-**`if` guards the rest of the row.** It applies a operation that yields a bool
+**`if` guards the rest of the row.** It applies an operation that yields a bool
 and abandons the remaining steps when it is false. There is no `else`, and none
 is needed for a conditional whose conditional part comes last — which is every
 conditional on the Z80.
@@ -542,6 +548,15 @@ bytes the instruction has already read, because on some machines those reads
 happen inside the same window. (That is why the Z80's `ld (ix+d), n` is 19
 T-states and not 22.)
 
+What the CPU description does *not* decide is the offset's width or sign. One
+signed byte is baked into the format: it is what the encoding column's `d`
+fetches, and the disassembler renders `+d` as `+0x02` or `-0x01` and `$e` as a
+target measured from the end of the instruction, with no way for a machine to
+say otherwise. So an index register scaled by a word, or an unsigned offset,
+cannot be described today. This is the one place a Z80 assumption reaches into
+the format rather than sitting in the CPU description, and it is the same
+assumption [NOTES.md](NOTES.md) records as the first thing a 6502 would break.
+
 ---
 
 ## Latched tables
@@ -582,20 +597,29 @@ the line in the `.cpu` file:
   matches no opcode at all — which can only happen through holes, since every
   eight-bit pattern matches something otherwise.
 - **Column agreement.** The mnemonic must render exactly the immediate bytes the
-  encoding fetches, and the action must use them. This is about `n`; a
-  displacement is not part of it.
+  encoding fetches, and the action must use them. The displacement is checked
+  separately and per opcode: a mnemonic must write `+d` exactly when the opcode
+  it renders is reached through a displaced member, so neither a missing nor a
+  spurious `+d` survives.
 - **Vocabulary size** against the slice that selects it.
 - **Names.** Every operation and every location must resolve to exactly one
   thing the CPU supplies. That lookup ignores case, because a table is written
   the way assembly is written. Names *inside* the format — vocabularies, slice
-  letters, table names — are compared exactly, so `vocab pair` and `field P` would
+  letters, table names — are compared exactly, so `vocab pair` and `vocab P` would
   be two different vocabularies.
 - **Arity and shape.** The operands a row supplies must match the operation's
   parameters, and its destinations must match what the operation returns.
   Constants must fit the parameter they are passed to.
-- **Reachability.** A table no `goto` reaches would never be generated, and so
-  would never be checked at all; that is rejected, as is a non-derived table
-  with no rows.
+- **Totality.** Every opcode of every table must decode to some row. A table
+  with a gap is rejected naming the opcode that has none, which is what the
+  catch-all row is for.
+- **Reachability.** A table no `goto` reaches is still generated, and still
+  checked; it is rejected because it can only be a mistake, as is a non-derived
+  table with no rows.
+- **Override containment.** A derived table's own row that overlaps a row it
+  inherits must be wholly contained in it. A derived row that took opcodes the
+  parent row meant to keep would silently change instructions nobody was
+  looking at.
 - **Latch consistency**, as above.
 - **Renamed names spelled out.** A derived table renames vocabulary members and
   never literal text. A row that spells a renamed name out, and is inherited
@@ -622,7 +646,7 @@ makes it an override.
 
 Which raises a question the `ix` example does not answer on its own: `DD 76` is
 `halt` on real hardware, so how does the parent's `01110110` survive the derived
-`01yyy110`? Not by precedence — it would lose. It survives because `s`, the
+`01yyy110`? Not by precedence — it would lose. It survives because `real`, the
 vocabulary that row selects with, has a **hole** at slot 6, so `01yyy110` does
 not match `0x76` at all and the opcode falls through to the inherited row. Holes
 are what make a match set non-rectangular, and containment is computed over the
@@ -648,8 +672,8 @@ response to a message rather than a guess.
 | characters in a name | 15 |
 
 One limit is not a capacity but a shape: **an opcode is eight bits**. A pattern
-is always eight characters and a table always has 256 entries. Both target CPUs
-are byte-opcode machines, so this has never been tested against anything else.
+is always eight characters and a table always has 256 entries. The Z80 is a
+byte-opcode machine, so this has never been tested against anything else.
 
 ---
 
@@ -675,7 +699,7 @@ vocabulary, selected by different slices.
 01yyyzzz | ld {reg:y}, {reg:z} | ld8 {reg:y} <- {reg:z}
 ```
 
-Slot 6 of `r` is `(hl)`, so this row also covers `ld b,(hl)` and `ld (hl),b`,
+Slot 6 of `reg` is `(hl)`, so this row also covers `ld b,(hl)` and `ld (hl),b`,
 with their memory access and its timing, and nothing says so twice. `01110110`
 would be `ld (hl),(hl)`, which is really `halt` — declared earlier, so it wins.
 
@@ -710,13 +734,13 @@ Seven T-states not taken, twelve taken.
 **A view.**
 
 ```
-table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, r.(hl) -> (ix+d)/delay=1
+table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
 
 01yyy110 | ld {real:y}, (ix+d) | ld8 {real:y} <- (ix+d)
 ```
 
 The override row exists because `ld h,(ix+d)` uses the *real* `h`. It says so by
-naming `s`, the vocabulary of true registers, which no rule rewrites.
+naming `real`, the vocabulary of true registers, which no rule rewrites.
 
 **A repeat.**
 

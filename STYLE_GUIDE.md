@@ -173,6 +173,11 @@ import peripherals;
   };
   ```
 
+  The exception is an enumerator a `.cpu` description names. `FlagBit::carry`
+  and `FlipFlop::iff1` are lowercase because reflection matches them against the
+  text of a row, and a row is written the way assembly is written. The
+  identifier is data there, not just a name.
+
 ### Class Members
 
 - Use trailing underscores for private/protected class member variables:

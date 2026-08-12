@@ -61,14 +61,14 @@ SPECBOLT_EXPORT [[nodiscard]] constexpr Pattern parse_pattern(const std::string_
       if (slice.name != character)
         continue;
       if (slice.shift != bit + 1)
-        throw table_error(line, "opcode pattern has non-contiguous bits for a field");
+        throw table_error(line, "opcode pattern has non-contiguous bits for a slice");
       slice.shift = bit;
       slice.mask = static_cast<std::uint8_t>((slice.mask << 1) | 1);
       extended = true;
       break;
     }
     if (!extended)
-      result.slices.push_back({character, bit, 1}, line, "opcode pattern has too many vocabularies");
+      result.slices.push_back({character, bit, 1}, line, "opcode pattern has too many slices");
   }
   return result;
 }

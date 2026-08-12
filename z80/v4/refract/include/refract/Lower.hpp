@@ -148,7 +148,7 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
   }
 }
 
-// `bc` is display only; `adc:add8+carry` binds a operation and appends an
+// `bc` is display only; `adc:add8+carry` binds an operation and appends an
 // operand; `(hl)/delay=1` states the access sequence of an addressing mode.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);

@@ -492,8 +492,16 @@ the things the suites do *not* catch, or catch only because we match an approxim
   approximation: flags 3 and 5 genuinely come from the operand, which the row now says.
 - **Interrupts are not handled at all.** v3 checks `irq_pending_` at the top of `execute_one`; v4
   does not. Not a papered-over difference so much as a missing feature, but it is missing.
+  *(Since fixed: `Z80::handle_interrupt` does all three modes, `ei` defers acceptance by one
+  instruction, and `ExecuteTest` covers it. What remains open is that nothing ever releases /INT --
+  see the section on it below.)*
 - **The immediate is fetched once, before any step**, rather than at the token that names it. Fine
   for every row that exists; wrong for `ld (ix+d), n`.
+- **A push writes its two bytes in the wrong order.** `write_memory16` goes low byte first, which is
+  what `ld (nn), hl` does; hardware pushes high to sp-1 and then low to sp-2. The bytes end up in the
+  same places, so nothing can see it until `Z80::bus` starts contending or something watches writes.
+  One function cannot serve both orders -- the fix is either a second one, or letting the description
+  spell the two writes out, which `push`'s two `dec16 sp` steps already half do.
 
 Found by this audit and fixed rather than recorded: `scf` and `ccf` had `a` as a destination, but
 `Alu::scf`/`ccf` return the accumulator unchanged, so the rows claimed a write that never happened.
@@ -593,11 +601,11 @@ Three things the exploration got wrong first, each caught by a test rather than 
   *inside* the five-T-state window that forms the address, not before it. So the machine is told how
   many bytes were already read. floooh handles this with `if (cpu->opcode == 0x36)`; deriving it
   needs no special case.
-- **A rule must not touch rows written in the derived table itself.** Rules match on a member's text,
-  so `h -> ixh` reached the `{s:y}` in `ld {s:y}, (ix+d)` and wrote IXH instead of H — exactly the bug
-  this row exists to avoid. Naming a different vocabulary is *not* enough, contrary to what this
-  section said before. A row written in `table ix` is written knowing it is there, so it means what
-  it says; only inherited rows are renamed.
+- **A rule names the vocabulary it rewrites.** It did not always: rules once matched on a member's
+  text alone, so `h -> ixh` reached the `{real:y}` in `ld {real:y}, (ix+d)` and wrote IXH instead of
+  H — exactly the bug that row exists to avoid. A `Rule` now carries a vocabulary index and
+  `member_of` compares it, so `reg.h -> ixh` leaves `real.h` alone. Rules still apply to every row
+  the table decodes, its own as well as inherited ones.
 
 **The customisation point is one function.** Not a DSL attribute, and not framework arithmetic:
 
@@ -690,11 +698,12 @@ written literally is therefore immune by construction. Substitution-by-default w
 exact bug v2 and v3 both have. This is now structural rather than a rule to remember: `member_of` is
 the only place a rule is consulted, and it is only reachable through a `{field}`.
 
-An override row is exempt outright: a rule rewrites *inherited* rows only. Naming a different
-vocabulary is not enough on its own, because a rule matches a member's text and `h` is `h` whichever
-vocabulary it came from — a mistake this section used to recommend, and one `ExecuteTest` caught.
-The rows above still name `{s:y}` rather than `{r:y}`, but for the other reason: `s` has a hole where
-`r` has `(hl)`, so `01yyy110` does not claim `0x76` and `dd 76` stays `halt`.
+Naming a different vocabulary *is* enough, now that a rule carries the vocabulary it rewrites; it
+was not when rules matched on member text alone, and `ExecuteTest` caught the difference. What stays
+exempt is only the diagnostic: `check_inherited_literals` does not ask an override row to spell out
+what its parent spelled literally. The rows above name `{real:y}` rather than `{reg:y}` for a second
+reason as well: `real` has a hole where `reg` has `(hl)`, so `01yyy110` does not claim `0x76` and
+`dd 76` stays `halt`.
 
 ### How DDCB was actually done
 
@@ -891,33 +900,28 @@ Until one of them lands, v4 differs from the other three in a way real software 
 the difference is *more* wrong than what it replaced for long `di` regions, and *less* wrong for
 short ones.
 
-## Next: draw the line between the library and the Z80
+## Done: the line between the library and the Z80
 
-Splitting `Table.hpp` did most of this by accident. Sorting what exists today by whether it knows
-anything about a Z80:
+The CPU-agnostic half is now `refract/`, in `namespace specbolt::refract`: `Model.hpp`,
+`Lower.hpp`, `Parse.hpp`, `Coverage.hpp`, `Pattern.hpp`, `Parser.hpp`, `Vector.hpp`,
+`TableError.hpp`, `Machine.hpp` and `Execute.hpp`. The Z80 half is `z80.cpu`, `Operations.hpp`,
+`Locations.hpp`, `Table.hpp`, `Disassembler.cpp` and `Z80.hpp`/`Z80.cpp`.
 
-| | |
-|---|---|
-| **CPU-agnostic already** | `Model.hpp`, `Lower.hpp`, `Parse.hpp`, `Coverage.hpp`, `Matched.hpp`, `Parser.hpp`, `Vector.hpp` |
-| **The framework, but coupled** | `Execute.hpp` — generic except that it `#include`s `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` by name and calls free functions found by unqualified lookup |
-| **The description** | `z80.cpu`, `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`, `Z80.hpp`/`Z80.cpp` |
-| **Awkward** | `TableError.hpp`, which names `SPECBOLT_CPU_TABLE` — a framework header naming the description file |
+The two things that stood in the way both went:
 
-Two things stand in the way of a clean `cpu/` library that `z80/v4` merely uses:
+1. **`Execute.hpp` no longer includes any Z80 header by name.** It includes `refract_binding.hpp`,
+   which is the whole of the coupling in that direction: it points a namespace alias `target` at
+   `specbolt::v4` and includes what lives there. What the framework needs is written down as the
+   `Machine` concept, so a machine missing a piece is told which piece rather than finding out
+   inside a generated instruction. The one thing the concept cannot state is `read`/`write` for
+   locations — the shape of that overload set depends on the machine's own `location_scopes()` —
+   so a bad location name is diagnosed at the splice in `find_location` instead.
+2. **`SPECBOLT_CPU_TABLE` is a compile definition**, set by `z80/v4/CMakeLists.txt`, with a neutral
+   default in `TableError.hpp`. The framework no longer names the description file.
 
-1. **`Execute.hpp` includes `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`.** Everything it needs from a CPU is a fixed set of names —
-   `Cpu`, `primitive_scopes`, `location_scopes`, `fetch_opcode`, `fetch_immediate`, `read_memory`,
-   `write_memory`, `read_memory16`, `write_memory16`, `displaced_address`, `delay`, `read`, `write`.
-   That is a *concept*, and writing it as one would say so, let the error messages be about the
-   contract rather than about a missing overload, and let the include become a template parameter or
-   a single configuration header the consumer provides.
-2. **`SPECBOLT_CPU_TABLE` in `TableError.hpp`.** It is there to prefix diagnostics with the file
-   name. It should be a parameter of the error, or of the parse, not a macro — the same objection
-   that got it out of `Execute.hpp`. Until then one binary cannot hold two descriptions, which is
-   also what would make a second CPU testable alongside the first.
-
-Neither is large. The concept is the interesting one, because writing it down is the moment the
-framework has to say exactly what it needs, which nothing currently states in one place.
+What did *not* go: one binary still cannot hold two descriptions, because `Cpu` and the table
+constants are definitions rather than parameters. A second `.cpu` file means a second binary. That
+is the honest limit, and it is what would have to change to test a second CPU alongside the first.
 
 ## Idea: could the CPU class *be* the CPU description?
 

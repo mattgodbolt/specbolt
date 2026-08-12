@@ -38,14 +38,14 @@ struct Name {
 };
 
 // Which vocabulary to look a value up in, and which slice of the opcode says
-// which of its members to take. Anything a row can write `{r:z}` in holds one.
+// which of its members to take. Anything a row can write `{reg:z}` in holds one.
 struct Reference {
   std::uint8_t vocabulary_index{};
   std::uint8_t slice_index{};
   constexpr bool operator==(const Reference &) const = default;
 };
 
-// An operand is a constant, a name the CPU can resolve, or a field reference.
+// An operand is a constant, a name the CPU can resolve, or a vocabulary reference.
 // `a`, `hl` and `carry` are all just names, whatever they denote on the
 // machine -- a register, a register pair, a single flag bit. Wrapping one in parentheses
 // says to use it as an address rather than as a value, which is orthogonal to
@@ -98,10 +98,10 @@ struct Vocabulary {
 };
 
 // A derived table re-reads its parent's rows with some vocabulary members
-// renamed: `dd` is `base` read with `p.hl -> ix`. A rule names the vocabulary
+// renamed: `dd` is `base` read with `pair.hl -> ix`. A rule names the vocabulary
 // it rewrites as well as the member, because the same text means different
-// things in different vocabularies -- `r.h` is renamed by a view and the `s.h`
-// of an indexed load is not. The right side is a whole member, so a substitute
+// things in different vocabularies -- `reg.h` is renamed by a view and the
+// `real.h` of an indexed load is not. The right side is a whole member, so a substitute
 // may bring its own operation and its own access sequence.
 struct Rule {
   std::uint8_t vocabulary_index{};
@@ -125,7 +125,7 @@ using Rules = Vector<Rule, 6>;
   return member;
 }
 
-// A field operand names whichever vocabulary member its slice selects, and that
+// A reference operand names whichever vocabulary member its slice selects, and that
 // member is written the same way an operand is written in a row.
 [[nodiscard]] constexpr Operand resolve(const std::span<const Vocabulary> vocabularies, const Operand operand,
     const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}) {
@@ -140,7 +140,7 @@ inline constexpr std::size_t max_operands = 4;
 // A row is an ordered list of these, which is where cost lives: an internal
 // delay is a step like any other.
 struct Step {
-  // `If` applies a operation that yields a bool and abandons the rest of the
+  // `If` applies an operation that yields a bool and abandons the rest of the
   // row when it is false. Every Z80 conditional puts its conditional half last,
   // so guarding the remainder is all a condition ever has to do.
   enum class Kind : std::uint8_t { Apply, Goto, If };

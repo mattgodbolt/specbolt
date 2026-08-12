@@ -17,7 +17,7 @@
 namespace specbolt::refract {
 
 // What this opcode, decoded here, is displaced through -- nothing if it is not.
-// Nothing declares this: a row says `{r:z}`, a view says that member is now
+// Nothing declares this: a row says `{reg:z}`, a view says that member is now
 // `(ix+d)`, and the answer is whatever the operands resolve to.
 //
 // One per instruction, not one per operand. `inc (ix+d)` reads and writes
@@ -63,7 +63,7 @@ namespace specbolt::refract {
 }
 
 // Earlier rows win, so a specific encoding must precede the general one that
-// would otherwise swallow it: `halt` before `ld {r:y}, {r:z}`.
+// would otherwise swallow it: `halt` before `ld {reg:y}, {reg:z}`.
 // A set of opcodes, as bits, so containment and overlap are four operations
 // rather than 256.
 struct OpcodeSet {
@@ -212,7 +212,7 @@ constexpr bool check_tables_total(const std::span<const TableDecl> tables,
 // it?
 [[nodiscard]] constexpr bool names_literally(const Row &row, std::string_view what) {
   // A rule's left side is written as the vocabulary writes it, so it may carry
-  // parentheses -- `r.(hl) -> (ix+d)`. An operand keeps the name and the
+  // parentheses -- `reg.(hl) -> (ix+d)`. An operand keeps the name and the
   // indirection apart, so compare both halves rather than the text.
   auto indirect = false;
   if (what.starts_with('(') && what.ends_with(')')) {
@@ -227,7 +227,7 @@ constexpr bool check_tables_total(const std::span<const TableDecl> tables,
   });
 }
 
-// A rule rewrites `{field}` references and never literal text, which is what
+// A rule rewrites vocabulary references and never literal text, which is what
 // lets a row that means what it says mean it. The same silence hides a mistake:
 // a row spelling a renamed name out, inherited unchanged by the table that
 // renames it, is almost certainly wrong.
@@ -257,7 +257,7 @@ constexpr bool check_inherited_literals(const std::span<const Row> rows, const s
 // row that overlaps a parent row without being contained in it is silently
 // taking opcodes the parent meant to keep.
 //
-// This is the check that would have caught writing `{r:y}` for `{s:y}` in the
+// This is the check that would have caught writing `{reg:y}` for `{real:y}` in the
 // `ix` table: `r` has no hole at slot 6, so the row would claim `0x76` and
 // `halt` would quietly vanish from the prefixed pages.
 constexpr bool check_derived_rows_override(

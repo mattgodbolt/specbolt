@@ -64,9 +64,9 @@ TEST_CASE("Table diagnostics") {
   SECTION("Opcode patterns") {
     CHECK_THROWS_WITH(parse("table t\n0101 | nop | nop\n"), Equals("z80.cpu:2: opcode pattern must be 8 characters"));
     CHECK_THROWS_WITH(parse("table t\n00pp0p01 | nop | nop\n"),
-        Equals("z80.cpu:2: opcode pattern has non-contiguous bits for a field"));
+        Equals("z80.cpu:2: opcode pattern has non-contiguous bits for a slice"));
     CHECK_THROWS_WITH(
-        parse("table t\nabcde001 | nop | nop\n"), Equals("z80.cpu:2: opcode pattern has too many vocabularies"));
+        parse("table t\nabcde001 | nop | nop\n"), Equals("z80.cpu:2: opcode pattern has too many slices"));
   }
   SECTION("The three columns must agree about immediates") {
     CHECK_THROWS_WITH(parse("table t\n00000000 n | ld a, $nnnn | ld8 a <- n\n"),

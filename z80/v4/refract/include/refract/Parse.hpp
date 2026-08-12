@@ -56,7 +56,7 @@ template<std::size_t N>
 
 // After blanks and comments, every line is a declaration or a row. A line that
 // is neither is a mistyped one of them -- a row that lost its separators, or
-// `vocabularies` for `field` -- and would otherwise be skipped in silence, surfacing
+// `vocabularies` for `vocab` -- and would otherwise be skipped in silence, surfacing
 // much later as an opcode nothing decodes.
 constexpr bool check_every_line_means_something(const std::string_view description) {
   Parser lines(description);
@@ -77,7 +77,7 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
   return std::nullopt;
 }
 
-// `p.hl->ix, r.h -> ixh`: either spacing, because both read naturally.
+// `pair.hl->ix, reg.h -> ixh`: either spacing, because both read naturally.
 constexpr void parse_substitutions(const std::string_view text, const std::span<const Vocabulary> vocabularies,
     TableDecl &table, const std::size_t line) {
   Parser list(text);
@@ -174,7 +174,7 @@ template<std::size_t N>
   return static_cast<std::size_t>(found - matched.slices.begin());
 }
 
-// `{p}` names one letter for both; `{r:z}` binds vocabulary r to slice z.
+// `{reg:z}` binds the vocabulary `reg` to the slice `z`.
 [[nodiscard]] constexpr Reference parse_reference(const std::span<const Vocabulary> vocabularies,
     const std::string_view inner, const Pattern &matched, const std::size_t line) {
   Parser parser(inner);
