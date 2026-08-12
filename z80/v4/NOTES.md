@@ -10,8 +10,8 @@ here.
 
 ## Where the spike is
 
-`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 28 rows in two decoding
-tables cover 182 of 256 base opcodes and 192 of 256 CB opcodes:
+`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 46 rows in six decoding
+tables — `base`, `cb`, the `ix`/`iy` views, and `ddcb`/`fdcb` — decode 1128 entries:
 
 - **Disassembly.** Walks the row's lowered pieces, following a `goto` through a prefix table.
 - **Execution.** A 256-entry dispatch table per decoding table, built with a `template for`
@@ -447,7 +447,7 @@ failures showed up, and both are now fixed.
 
 ## Prefixes
 
-### Status: table switch, views and indexed addressing all work; DDCB does not
+### Status: table switches, views, indexed addressing and DDCB all work
 
 `table <name>` declares a decoding table, and `goto <table>` is a step. A prefix is an ordinary row:
 
