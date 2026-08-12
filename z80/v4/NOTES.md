@@ -833,6 +833,77 @@ rather than reporting that it has no name.
 The same change is what a second CPU needs, since nothing about the parser now says `z80.cpu` except
 the one line that embeds it.
 
+## What a second CPU would need
+
+The format has described exactly one processor, and an outside reader given only
+[CPU_FORMAT.md](CPU_FORMAT.md) — told to know 6502 and Z80 but not to look at the code — went
+looking for the seams and found them. Recorded here because "not Z80-specific" is currently a design
+intent that has been half-tested, and it should either become true or stop being claimed.
+
+Each of these is a concrete 6502 instruction that cannot be written today.
+
+### 1. An addressing mode must be able to fetch its own operand
+
+The 6502's `aaabbbcc` puts the addressing mode in `bbb` — which is exactly what a vocabulary is
+for — but its members are different *lengths*: `#` and `zp` fetch one byte, `abs` two, accumulator
+mode none. The encoding column is per-row and fixed, and `parse_member` explicitly refuses:
+
+```
+a vocabulary member cannot append an immediate; only the encoding fetches those
+```
+
+So the one thing that makes the 6502 compressible is unusable, and every operation group becomes
+eight rows instead of one. This is the finding that matters most: it is the difference between the
+format's headline claim ("one row, sixty-four instructions") transferring or not.
+
+**The machinery half exists.** `(ix+d)` already causes a fetch that no encoding column declares, and
+`displaced_through` already derives per (row, table, opcode) whether that fetch happens. What is
+missing is generalising it from *one signed displacement byte* to *an arbitrary operand of a width
+the member states*, and making `immediate_bytes` a property of the decoded state rather than of the
+row. `check_immediates` would move with it.
+
+That diagnostic was written when a member could not have an access sequence at all. It is now the
+main thing standing in the way, and it should probably go.
+
+### 2. Indirection cannot nest
+
+`indirect = "(" , ( "n" | number | name ) , [ "+d" ] , ")"` is one level deep, so `LDA ($20),Y`
+(`B1`) — read a pointer from a fetched zero-page address, then index it — has nowhere to go. The
+escape is a CPU-supplied `lda_indirect_y` primitive, at which point the table has stopped naming
+general operations and the whole argument collapses for that CPU.
+
+### 3. Indexing is hard-wired to a displacement byte
+
+`(ix+d)` means "base plus one signed byte read from the instruction". `LDA $1234,X` (`BD`) is
+"16-bit immediate base plus the contents of a register", and there is no syntax for it. The two are
+the same idea — a base and an offset — with the offset coming from different places.
+
+### 4. Cost that depends on the data
+
+The 6502 charges one extra cycle on `abs,X`, `abs,Y` and `(zp),Y` **when the index crosses a page
+boundary, and only on reads**: `LDA $1234,X` is 4 or 5 cycles, `STA $1234,X` is always 5.
+
+`displaced_address` takes the machine by reference, so it *can* charge conditionally — but it is not
+told whether the access it is forming will be a read or a write, so it cannot tell those two apart.
+That is a small signature change. The harder half is that we form the address **once per
+instruction** (§ *indexed addressing*), which is right for the Z80 and wrong for a machine where the
+cost belongs to each access.
+
+### 5. Bus timing is ordered at step granularity
+
+Not a 6502 issue, but the same review raised it and it belongs here. Cost is a total per instruction,
+ordered by step; a multi-byte access is indivisible and nothing below a step can be scheduled. Good
+enough for totals and for contention at instruction granularity, not enough for a *schedule* of bus
+cycles at known offsets. The Spectrum's contention will decide whether this matters — see
+*Time passes in exactly one place*.
+
+### What is already fine
+
+Worth saying, so the list above is not read as worse than it is: eight-bit opcodes, no prefixes
+needed, conditions, relative jumps, the stack, and page-zero addressing all work today, and the
+6502's flag model is no harder than the Z80's. The gaps are addressing modes and their cost, not the
+shape of the thing.
+
 ## Review findings still open
 
 A review of the whole spike found eighteen things. The correctness ones are fixed and each has a

@@ -14,10 +14,20 @@ build, parsed during constant evaluation, and used to generate two things: a
 disassembler and an interpreter. Nothing in it is read at run time — by the time
 the program starts, the file has become code.
 
-The format is not specific to any one processor. Every example here is drawn
-from `z80.cpu` because that is the description this repository has, and where a
-passage explains *why* a feature exists it usually cites the Z80 for the same
-reason — but the feature is the general one, and the paragraph will say so.
+Every example here is drawn from `z80.cpu`, the only description this repository
+has. Where a passage explains *why* a feature exists it usually cites the Z80,
+but the feature itself is stated generally and the paragraph will say which is
+which.
+
+**How general is it really?** Nothing in the format names the Z80, and the
+framework knows no Z80 instruction. But the format has so far only ever had to
+describe one processor, and it shows: indexed addressing is fixed at *base plus
+one signed displacement byte*, indirection cannot nest, and an addressing mode
+cannot fetch its own operand — so a 6502's `LDA ($20),Y` and `LDA $1234,X`
+cannot be written today, and its `bbb` addressing-mode field cannot be a
+vocabulary. Those are limits of what has been needed, not of the approach; they
+are recorded as work in [NOTES.md](NOTES.md). Treat "not Z80-specific" as a
+design intent that has been half-tested, not as a promise.
 
 The file has three kinds of line, in any order except that a name must be
 declared before it is used:
@@ -41,18 +51,55 @@ encoding       mnemonic          action
 - The **mnemonic** says how to print it.
 - The **action** says what it does, as an ordered list of steps.
 
-The three are cross-checked against each other at compile time. The encoding is
-the authority on length: if the mnemonic renders a different number of immediate
-bytes than the encoding fetches, or the action uses an immediate the encoding
-never read, the build fails with the line number.
+The three are cross-checked against each other at compile time: if the mnemonic
+renders a different number of immediate bytes than the encoding fetches, or the
+action uses an immediate the encoding never read, the build fails with the line
+number.
+
+That check covers *immediates* — the `n` bytes. It is not a check on total
+instruction length, because a displacement is not declared by the encoding at
+all (see [Displacement](#displacement)): under a view, an inherited row can
+match a longer instruction than its own encoding column describes.
 
 ### The guiding rule
 
 **The table names things; it does not define them.** Every operation it names
 (`inc8`, `add16`, `is_set`) and every location it names (`a`, `hl`, `carry`,
 `pc`) is looked up by reflection in the CPU description — for the Z80 that is
-`Z80Cpu.hpp`, and it is the whole of what retargeting means. A name the CPU does
-not supply is a compile error naming the line that asked for it.
+`Z80Cpu.hpp`. A name the CPU does not supply is a compile error naming the line
+that asked for it.
+
+### What the CPU description must supply
+
+This document describes the table. The other half of the contract lives in the
+CPU description, and a `.cpu` file is meaningless without it, so here is its
+shape. (For the details, read `Z80Cpu.hpp`: it is about a hundred lines, and is
+the whole of what retargeting means.)
+
+| the table writes | the CPU supplies |
+|---|---|
+| a **verb** — `inc8`, `add16` | a function of that name, found by reflection |
+| a **location** — `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` overloads for it |
+| an **indirect operand** — `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
+| an **immediate** — `n` | `fetch_immediate` |
+| any **opcode fetch** | `fetch_opcode` |
+| `delay`, and any `/delay=` | `delay` |
+| a **displacement** — `(ix+d)` | `displaced_address` |
+
+A primitive's signature is the interface:
+
+- it may take the machine itself as its **first** parameter, by mutable
+  reference, when it needs machine state or needs to charge time. The framework
+  supplies that argument; the row does not mention it.
+- its remaining parameters are filled from the row's operands, **positionally**.
+  The parameter's type is what decides how wide an access is and whether a
+  constant fits.
+- its **return type decides destinations**, as described under
+  [the action column](#the-action-column).
+
+Everything the format leaves unsaid is settled there: how wide a location is,
+what endianness a 16-bit memory access uses, what a "cycle" counts in, and how
+an addressing mode is formed and paid for.
 
 ---
 
@@ -88,14 +135,12 @@ line            = comment | field-decl | table-decl | row | empty ;
 comment         = "#" , { any } ;
 
 field-decl      = "field" , name-char , "=" , member , { member } ;
-member          = hole | ( operand-text , [ ":" , primitive , [ "+" , operand-text ] ] ,
-                           [ "/" , attribute ] ) ;
+member          = hole | ( operand , [ ":" , identifier , [ "+" , operand ] ] ) ;
 hole            = "-" ;
-attribute       = "delay" , "=" , digit ;
 
 table-decl      = "table" , table-name , [ "=" , table-name , "with" , rules ] ;
 rules           = rule , { "," , rule } ;
-rule            = name-char , "." , member-text , "->" , member ;
+rule            = name-char , "." , display-text , "->" , member ;
 
 row             = encoding , "|" , mnemonic , "|" , steps ;
 
@@ -114,10 +159,38 @@ if-step         = "if" , verb , { operand } ;
 apply-step      = verb , [ { operand } , "<-" ] , { operand } ;
 verb            = identifier | reference ;
 
-operand         = "-" | "n" | number | reference | indirect | name , [ "/" , attribute ] ;
-indirect        = "(" , ( name | reference ) , [ "+d" ] , ")" ;
+operand         = operand-body , [ "/" , attribute ] ;
+operand-body    = "-" | "n" | number | reference | indirect | name ;
+indirect        = "(" , ( "n" | number | name ) , [ "+d" ] , ")" ;
+attribute       = "delay" , "=" , digit ;
 number          = digit , { digit } | "0x" , hex-digit , { hex-digit } ;
+
+(* terminals *)
+name-char       = ? one character, not a space. Compared exactly: `p` and `P`
+                    are different vocabularies ? ;
+slice-char      = ? one character other than "0" or "1", compared exactly ? ;
+name            = ? up to 15 characters, no space. Resolved against the CPU's
+                    locations, ignoring case ? ;
+identifier      = ? no space. Resolved against the CPU's primitives, ignoring
+                    case ? ;
+table-name      = ? no space ? ;
+display-text    = ? a member's text as the vocabulary writes it, up to the ":"
+                    or "/" — so a rule matches `q.adc`, not `q.adc:add8+carry` ? ;
+literal         = ? mnemonic text containing no "{", "$" or "+d" ? ;
 ```
+
+Three things the grammar is stricter about than it may look:
+
+- **A reference must be a whole operand.** `{r:z}` is fine and `({r:z})` is not;
+  indirection through a vocabulary comes from the *member* being written `(hl)`,
+  not from parenthesising the reference.
+- **Numbers are unsigned.** There is no `-2`. Where a row means a signed value
+  it writes the byte — `relative pc <- pc 0xfe` — and the primitive it feeds
+  decides how to read it. A constant is checked against the parameter's type, so
+  `0xfe` fits an 8-bit parameter and `0x1ff` does not.
+- **`n` is the row's whole immediate**, not one byte of it. A row that fetches
+  `n n` has a 16-bit `n`; there is no way to name the two bytes separately, and
+  no instruction on either target CPU needs to.
 
 **Commas are decoration.** A trailing comma is stripped from any word in a step,
 so `inc8 {r:y}, flags` and `inc8 {r:y} flags` mean the same thing. They are
@@ -140,7 +213,8 @@ compile error.
 
 ### Members
 
-A member is written `display[:primitive[+operand]][/delay=N]`.
+A member is written `display[:primitive[+operand]][/delay=N]`. The `display` is
+also the member's operand, so it must be something the CPU can resolve.
 
 | form | example | means |
 |---|---|---|
@@ -158,9 +232,10 @@ field w = and:and8 xor:xor8 or:or8 -      # slot 3 is `cp`, which returns flags 
 10111zzz | cp {r:z}   | cmp8 -, flags <- a {r:z}
 ```
 
-A member's display text is also parsed as an operand, so it must name something
-the CPU can resolve. A member may not be an immediate: only the encoding column
-fetches those.
+**A member may not be an immediate**: only the encoding column fetches those.
+This is the rule that stops an addressing mode from carrying its own operand,
+and it is the one that a 6502 would want lifted — see the note on generality in
+the overview.
 
 ---
 
@@ -253,9 +328,19 @@ Trailing tokens say what follows the opcode:
 | token | meaning |
 |---|---|
 | `n` | one immediate byte; two of them make a 16-bit immediate |
-| `d` | a displacement this row reads but hands on — see *latched tables* |
+| `d` | a displacement byte this row reads but does not use — see *latched tables* |
 
 At most two `n` and one `d`.
+
+`d` in the encoding column and `+d` in an operand both concern a displacement,
+but they are not the same statement and rarely appear together:
+
+- `+d` in `(ix+d)` says **this operand is displaced**. Whether a byte is fetched
+  for it is worked out from the operands, not declared — see below.
+- `d` in the encoding column says **this row reads a displacement it will not
+  use itself**, and hands it to the table it transfers to. Only a prefix row
+  needs it, and `check_immediates` ignores it: the "the action must use them"
+  rule is about `n`.
 
 ### The mnemonic column
 
@@ -267,7 +352,7 @@ Literal text, plus:
 | `{p}` | shorthand when the vocabulary and the slice share a letter |
 | `$nn` | an 8-bit immediate, as `0x3f` |
 | `$nnnn` | a 16-bit immediate, as `0x1234` |
-| `$e` | a **relative** target: the address the jump lands on, not the offset |
+| `$e` | a **relative** target: the address the jump lands on, not the offset. The disassembler is given the instruction's address, and measures from the end of the instruction, so `$e` must be the last byte |
 | `+d` | an index displacement, as `+0x02` or `-0x01` |
 
 The mnemonic is lowered into a fixed array of pieces at parse time, so the
@@ -303,14 +388,18 @@ left out and the meaning would not change.
 | condition | `if {c:y}` |
 | idle | `delay 2` |
 
+`delay` is an ordinary verb — a primitive the CPU supplies — and takes a whole
+number. The `/delay=` attribute on an addressing mode is a different thing that
+happens to charge the same way, and it takes a single digit.
+
 **How destinations are filled** depends on what the primitive returns:
 
 - returns nothing → the row may name no destination;
 - returns one value → every destination named receives it (which is how the
   undocumented `DD CB` register copy is written);
-- returns a struct of *n* members → the row must name *n* destinations, filled
-  positionally. `Alu` returns `{result, flags}`, which is why so many rows read
-  `something dest, flags <- …`.
+- returns a struct of *n* accessible members → the row must name *n*
+  destinations, filled positionally. Most Z80 arithmetic returns
+  `{result, flags}`, which is why so many rows read `something dest, flags <- …`.
 
 `-` discards a result and may only be a destination.
 
@@ -335,6 +424,79 @@ down. Two `if` steps in a row are an "and".
 
 **`goto` must be the row's only step.** A row that transfers renders nothing, so
 allowing it to do anything else would make the two columns disagree.
+
+Such a row still has to have a mnemonic column, because a row has three columns.
+It is never printed: the disassembler follows the transfer and renders whatever
+the destination row says. `z80.cpu` writes `(cb)`, `(dd)` and so on there, purely
+so a human reading the table can see what the prefix is.
+
+---
+
+## Where time goes
+
+No row states a cycle count. Every number in the timings quoted throughout this
+document comes from the same five places, and it is worth having them in one
+list because nothing else here says so.
+
+| what | charged by |
+|---|---|
+| the opcode fetch, including every prefix byte | the CPU's `fetch_opcode` |
+| each immediate byte, and any displacement | the CPU's `fetch_immediate` |
+| each read or write through an indirect operand | the CPU's `read_memory` / `write_memory` |
+| forming an indexed address | the CPU's `displaced_address` |
+| an explicit `delay` step, or a `/delay=` on an addressing mode | the CPU's `delay` |
+
+**The unit is whatever the CPU counts in.** The format has none of its own:
+`delay 2` passes 2 to the CPU's `delay`, and what that buys is the CPU's
+business. For the Z80 it is T-states, which is why this document says both
+"cycles" and "T-states" and means the same thing.
+
+**Everything the encoding names is fetched before any step runs**, in the order
+the bytes appear: displacement first, then immediates. A step list can therefore
+never make a fetch cheaper — which is correct, since the machine has to read the
+bytes before it can know it did not need them. This is why `jr nz` costs seven
+T-states even when not taken: the displacement was read before the `if`.
+
+**A write-back delay is charged only for a read-modify-write.** A `/delay=1` on
+an addressing mode is the idle *between* reading through it and writing back, so
+it applies only where the same addressing mode is both an operand and a
+destination of the same step. That is the difference between these two rows,
+which share a vocabulary:
+
+```
+01yyyzzz | ld {r:y}, {r:z} | ld8 {r:y} <- {r:z}                     # ld (hl), b is 7
+00yyy100 | inc {r:y}       | inc8 {r:y}, flags <- {r:y} flags       # inc (hl) is 11
+```
+
+`ld (hl), b` writes through `(hl)` without having read through it, so it pays
+4 + 3. `inc (hl)` names `(hl)` on both sides, so it pays 4 + 3 + 1 + 3.
+
+### What this model cannot say
+
+Cost is a total per instruction, ordered at **step granularity**. Two things
+follow, and both matter to anyone building a cycle-exact core:
+
+- **A multi-byte access is indivisible.** `ld16 pc <- (sp)` is one operand, and
+  its two bus cycles happen back to back; no step can be scheduled between them.
+- **Nothing below a step can be reordered or observed.** A step's own reads and
+  writes happen in the order the primitive performs them, and the table has no
+  say in it.
+
+For total cycle counts, and for a machine that contends on the address bus at
+instruction granularity, that is enough. For one that needs a *schedule* of bus
+cycles — every access placed at a known offset within the instruction — it is
+not, and the format would need to grow. See NOTES for where that stands.
+
+### What this model does not cover at all
+
+Interrupts, reset, wait states and bus arbitration are **outside the format**.
+There is no way to write a row for an interrupt-acknowledge sequence, no way to
+say that an instruction affects whether the *next* one can be interrupted (the
+Z80's `EI`), and no "wait here until something external happens" step. All of it
+belongs to the machine that drives the decoder, not to the table. The one thing
+the table does contribute is that a repeating instruction is written as a rewind
+rather than a loop, so it re-enters the decoder between iterations and an
+interrupt has somewhere to land.
 
 ---
 
@@ -408,20 +570,41 @@ in the `.cpu` file:
 
 - **Precedence.** Where two rows in a table overlap, the earlier must be wholly
   contained in the later — that is an override. A partial overlap is an
-  accident. A row that would be completely shadowed, or that matches no opcode
-  at all, is rejected.
+  accident. A row that would be completely shadowed is rejected, as is one that
+  matches no opcode at all — which can only happen through holes, since every
+  eight-bit pattern matches something otherwise.
 - **Column agreement.** The mnemonic must render exactly the immediate bytes the
-  encoding fetches, and the action must use them.
+  encoding fetches, and the action must use them. This is about `n`; a
+  displacement is not part of it.
 - **Vocabulary size** against the slice that selects it.
 - **Names.** Every primitive and every location must resolve to exactly one
-  thing the CPU supplies. Matching is case-insensitive.
+  thing the CPU supplies. That lookup ignores case, because a table is written
+  the way assembly is written. Names *inside* the format — vocabularies, slice
+  letters, table names — are compared exactly, so `field p` and `field P` would
+  be two different vocabularies.
 - **Arity and shape.** The operands a row supplies must match the primitive's
   parameters, and its destinations must match what the primitive returns.
   Constants must fit the parameter they are passed to.
-- **Reachability.** A table nothing reaches is never instantiated and so is
-  never type-checked; that is rejected, as is a non-derived table with no rows.
+- **Reachability.** A table no `goto` reaches would never be generated, and so
+  would never be checked at all; that is rejected, as is a non-derived table
+  with no rows.
 - **Latch consistency**, as above.
 - **Capacity.** Every fixed limit reports itself rather than overflowing.
+
+### How rows are ordered
+
+Precedence is by position in the file, and a derived table's own rows all come
+**before** everything it inherits, whatever line they are written on. So a
+derived table's row always wins over the parent row it overlaps — that is what
+makes it an override.
+
+Which raises a question the `ix` example does not answer on its own: `DD 76` is
+`halt` on real hardware, so how does the parent's `01110110` survive the derived
+`01yyy110`? Not by precedence — it would lose. It survives because `s`, the
+vocabulary that row selects with, has a **hole** at slot 6, so `01yyy110` does
+not match `0x76` at all and the opcode falls through to the inherited row. Holes
+are what make a match set non-rectangular, and containment is computed over the
+actual match sets, so a row with holes is compared by what it really covers.
 
 ---
 
@@ -441,6 +624,10 @@ response to a message rather than a guess.
 | pieces per vocabulary member | 3 |
 | immediate bytes per row | 2 |
 | characters in a name | 15 |
+
+One limit is not a capacity but a shape: **an opcode is eight bits**. A pattern
+is always eight characters and a table always has 256 entries. Both target CPUs
+are byte-opcode machines, so this has never been tested against anything else.
 
 ---
 
