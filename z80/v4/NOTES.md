@@ -865,6 +865,42 @@ before the Spectrum needs it. **Profile before believing any of this.**
 Caveats: one run each, no repeats, on a laptop; and zexdoc's instruction mix is ALU-heavy, so this
 under-reports dispatch cost relative to a program doing more loads and jumps.
 
+## Idea: could the CPU class *be* the CPU description?
+
+Not done, and worth trying. Today a name in the table travels through three places:
+
+1. `z80.cpu` names something — `idle`, `read_memory`, `ld8`.
+2. `find_primitive` looks it up in `^^Ops`, a struct of static functions.
+3. Most of those static functions turn straight round and call a member of `v4::Z80`.
+
+`Ops::delay` is `cpu.idle(cycles)`. `read_memory` is `cpu.read(address)`. `write_memory` is
+`cpu.write(...)`. `ex_sp_ix` is `ex_sp_hl`. A good half of `Z80Cpu.hpp` is shims, and the shim's only
+real job is to give the CPU's method a name the table can use — which is worth something, since
+several of the underlying names are poor, but not obviously worth a third place to define things.
+
+The idea: teach the framework to reflect over **member** functions, so `Z80` itself is the
+description and `Z80Cpu.hpp` mostly disappears. `find_primitive` already rejects non-static members
+because a splice of one cannot be called without an object; the framework always *has* the object.
+
+Things to work out before committing to it:
+
+- Splicing a member function needs the object: `(cpu.*[:Fn:])(args...)`, or `[:Fn:](cpu, args...)` if
+  a reflection of a member function can be called with an explicit object argument. Check what P2996
+  and gcc actually allow.
+- `takes_cpu` disappears, or inverts: a member has the machine implicitly, so the distinction between
+  "wants the CPU" and "does not" stops being visible in the signature.
+- Access control does useful work today — `access_context::current()` at namespace scope hides the
+  private helpers in `Ops`, so a table cannot name them. The same trick should still work on a class,
+  but it decides what a table may call, so check it.
+- The naming problem does not go away, it moves: `read`/`write` are overloaded on `Z80` for
+  registers *and* memory, and the table needs to tell them apart. Some renaming on `Z80` is probably
+  the price, and might be an improvement in its own right.
+- `Alu` is a second scope of free functions and would stay as it is, so the mechanism has to keep
+  supporting both.
+
+Worth a spike rather than a rewrite: pick `idle`, `read` and `write`, see whether a member splice
+works at all, and judge from there.
+
 ## What a second CPU would need
 
 The format has described exactly one processor, and an outside reader given only
