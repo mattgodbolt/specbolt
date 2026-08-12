@@ -28,7 +28,6 @@ else ()
     target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
             Locations.hpp
             Operations.hpp
-            Z80Machine.hpp
             include/z80/v4/Disassembler.hpp
             include/z80/v4/Z80.hpp
             refract/include/refract/Coverage.hpp

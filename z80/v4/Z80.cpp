@@ -41,20 +41,20 @@ void Z80::handle_interrupt() {
   // The acknowledge cycle: an opcode fetch stretched by two wait states, during
   // which the device would put a vector on the bus. Seven, then two writes,
   // makes the documented thirteen for modes 0 and 1 and nineteen for mode 2.
-  idle(7);
+  delay(7);
   // The acknowledge is an M1 cycle, and every M1 refreshes.
   refresh();
   const auto return_to = regs_.pc();
   regs_.sp(static_cast<std::uint16_t>(regs_.sp() - 2));
-  write(regs_.sp(), static_cast<std::uint8_t>(return_to));
-  write(static_cast<std::uint16_t>(regs_.sp() + 1), static_cast<std::uint8_t>(return_to >> 8));
+  write_memory(regs_.sp(), static_cast<std::uint8_t>(return_to));
+  write_memory(static_cast<std::uint16_t>(regs_.sp() + 1), static_cast<std::uint8_t>(return_to >> 8));
   switch (irq_mode_) {
     case 0: // Nothing drives the bus, so the byte reads as 0xff: `rst 0x38`.
     case 1: regs_.pc(0x38); break;
     case 2: {
       const auto vector = static_cast<std::uint16_t>(0xff | regs_.i() << 8);
-      const auto low = read(vector);
-      const auto high = read(static_cast<std::uint16_t>(vector + 1));
+      const auto low = read_memory(vector);
+      const auto high = read_memory(static_cast<std::uint16_t>(vector + 1));
       regs_.pc(static_cast<std::uint16_t>(high << 8 | low));
       break;
     }
@@ -93,12 +93,16 @@ void Z80::bus(const Bus kind, const std::uint16_t address) {
 // to it and does not count.
 void Z80::refresh() { regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f))); }
 
-std::uint8_t Z80::read_opcode() {
+std::uint8_t Z80::fetch_opcode() {
   const auto address = regs_.pc();
   regs_.pc(static_cast<std::uint16_t>(address + 1));
   bus(Bus::opcode, address);
   refresh();
   return memory_.read(address);
+}
+
+std::uint16_t Z80::fetch_immediate(const std::uint8_t width) {
+  return width == 1 ? read_immediate() : read_immediate16();
 }
 
 std::uint8_t Z80::read_immediate() {
@@ -108,9 +112,26 @@ std::uint8_t Z80::read_immediate() {
   return memory_.read(address);
 }
 
-void Z80::idle(const std::uint8_t cycles) {
+void Z80::delay(const std::uint8_t cycles) {
   for (std::uint8_t at = 0; at < cycles; ++at)
     bus(Bus::internal, bus_address_);
+}
+
+std::uint16_t Z80::read_memory16(const std::uint16_t address) {
+  // Two accesses, low byte first, because that is what the bus sees.
+  const auto low = read_memory(address);
+  return static_cast<std::uint16_t>(read_memory(static_cast<std::uint16_t>(address + 1)) << 8 | low);
+}
+
+void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {
+  write_memory(address, static_cast<std::uint8_t>(value));
+  write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
+}
+
+std::uint16_t Z80::displaced_address(
+    const std::uint16_t base, const std::uint8_t offset, const std::uint8_t immediate_bytes) {
+  delay(static_cast<std::uint8_t>(5 - 3 * immediate_bytes));
+  return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
 }
 
 std::uint16_t Z80::read_immediate16() {
@@ -119,12 +140,12 @@ std::uint16_t Z80::read_immediate16() {
   return static_cast<std::uint16_t>(high << 8 | low);
 }
 
-std::uint8_t Z80::read(const std::uint16_t address) {
+std::uint8_t Z80::read_memory(const std::uint16_t address) {
   bus(Bus::read, address);
   return memory_.read(address);
 }
 
-void Z80::write(const std::uint16_t address, const std::uint8_t value) {
+void Z80::write_memory(const std::uint16_t address, const std::uint8_t value) {
   bus(Bus::write, address);
   memory_.write(address, value);
 }

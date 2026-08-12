@@ -9,11 +9,16 @@
 // no argument, so no concept can reach them by lookup. A description plus a type
 // satisfying `Machine` is a complete emulator; neither alone is anything.
 //
-// The functions are found by ordinary unqualified lookup, so a machine supplies
-// them as free functions in its own namespace and argument-dependent lookup
-// does the rest. Stating the set as a concept means a machine that is missing
-// one, or has one with the wrong shape, is told so here rather than through a
-// failure deep inside a generated instruction.
+// These are member functions, called directly on the machine. Nothing sits
+// between the framework and the chip: no adapter, no traits class, no free
+// function found by lookup. Stating the set as a concept means a machine that
+// is missing one, or has one with the wrong shape, is told so here rather than
+// through a failure deep inside a generated instruction.
+//
+// Locations are the exception, and deliberately: `read` and `write` on a
+// location stay free functions, because splicing an enumerator and letting
+// overload resolution choose is how the framework avoids knowing what kind of
+// location it is holding. See Locations.hpp.
 
 #include <concepts>
 #include <cstdint>
@@ -27,21 +32,21 @@ namespace specbolt::refract {
 template<typename M>
 concept Machine = requires(M &machine, const std::uint16_t address, const std::uint8_t byte) {
   // Reading the instruction stream.
-  { fetch_opcode(machine) } -> std::same_as<std::uint8_t>;
-  { fetch_immediate(machine, byte) } -> std::convertible_to<std::uint16_t>;
+  { machine.fetch_opcode() } -> std::same_as<std::uint8_t>;
+  { machine.fetch_immediate(byte) } -> std::convertible_to<std::uint16_t>;
 
   // Reading and writing memory, in both widths a row can ask for.
-  { read_memory(machine, address) } -> std::same_as<std::uint8_t>;
-  { read_memory16(machine, address) } -> std::same_as<std::uint16_t>;
-  { write_memory(machine, address, byte) };
-  { write_memory16(machine, address, address) };
+  { machine.read_memory(address) } -> std::same_as<std::uint8_t>;
+  { machine.read_memory16(address) } -> std::same_as<std::uint16_t>;
+  { machine.write_memory(address, byte) };
+  { machine.write_memory16(address, address) };
 
   // Forming an indexed address, told how many bytes were already read inside
   // whatever window the machine spends doing it.
-  { displaced_address(machine, address, byte, byte) } -> std::same_as<std::uint16_t>;
+  { machine.displaced_address(address, byte, byte) } -> std::same_as<std::uint16_t>;
 
   // Spending time on nothing.
-  { delay(machine, byte) };
+  { machine.delay(byte) };
 };
 
 } // namespace specbolt::refract

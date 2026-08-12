@@ -11,8 +11,8 @@
 // binary, because the table constants and `Cpu` are definitions rather than
 // parameters. That is the honest limit of this arrangement.
 
+#include "Locations.hpp"
 #include "Table.hpp"
-#include "Z80Machine.hpp"
 
 namespace specbolt::refract {
 

@@ -19,8 +19,6 @@ namespace specbolt::v4 {
 
 using Cpu = Z80;
 
-inline void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.idle(cycles); }
-
 struct Operations {
 private:
   // What every block operation does to the flags it does not otherwise touch:
@@ -51,7 +49,7 @@ private:
     const auto updated =
         static_cast<std::uint8_t>(right ? (a & 0xf0) | (value & 0x0f) : (a & 0xf0) | (value >> 4 & 0x0f));
     const auto written = static_cast<std::uint8_t>(right ? value >> 4 | (a & 0x0f) << 4 : value << 4 | (a & 0x0f));
-    delay(cpu, 4);
+    cpu.delay(4);
     cpu.set(RegisterFile::R8::A, updated);
     return {written, (flags & Flags::Carry()) | Alu::parity_flags_for(updated)};
   }
@@ -62,7 +60,7 @@ public:
   static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
   static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
   static std::uint8_t ld8(const std::uint8_t value) { return value; }
-  static void delay(Cpu &cpu, const std::uint8_t cycles) { specbolt::v4::delay(cpu, cycles); }
+  static void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.delay(cycles); }
   // Alu::bit takes a mask; the encoding carries an index, as res and set do.
   // Flags 3 and 5 come from whatever was last on the bus, which the row names.
   static Flags bit8(const std::uint8_t value, const std::uint8_t bit, const Flags flags, const std::uint8_t bus) {
@@ -135,12 +133,12 @@ public:
   // Three accesses and two idle stretches, none of which an operand can spell.
   static std::uint16_t ex_sp_hl(Cpu &cpu, const std::uint16_t value) {
     const auto sp = cpu.get(RegisterFile::R16::SP);
-    const auto low = cpu.read(sp);
-    const auto high = cpu.read(static_cast<std::uint16_t>(sp + 1));
-    specbolt::v4::delay(cpu, 1);
-    cpu.write(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
-    cpu.write(sp, static_cast<std::uint8_t>(value));
-    specbolt::v4::delay(cpu, 2);
+    const auto low = cpu.read_memory(sp);
+    const auto high = cpu.read_memory(static_cast<std::uint16_t>(sp + 1));
+    cpu.delay(1);
+    cpu.write_memory(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
+    cpu.write_memory(sp, static_cast<std::uint8_t>(value));
+    cpu.delay(2);
     return static_cast<std::uint16_t>(high << 8 | low);
   }
 
@@ -186,9 +184,9 @@ public:
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto de = cpu.get(RegisterFile::R16::DE);
     const auto bc = cpu.get(RegisterFile::R16::BC);
-    const auto byte = cpu.read(hl);
-    cpu.write(de, byte);
-    delay(cpu, 2);
+    const auto byte = cpu.read_memory(hl);
+    cpu.write_memory(de, byte);
+    cpu.delay(2);
     cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
     cpu.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
     cpu.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
@@ -199,8 +197,8 @@ public:
     const auto step = static_cast<std::uint16_t>(increment ? 1 : 0xffff);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto bc = cpu.get(RegisterFile::R16::BC);
-    const auto byte = cpu.read(hl);
-    delay(cpu, 5);
+    const auto byte = cpu.read_memory(hl);
+    cpu.delay(5);
     cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
     cpu.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
     const auto compared = Alu::sub8(cpu.get(RegisterFile::R8::A), byte, false);
@@ -212,19 +210,19 @@ public:
     return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
   }
   static Flags block_in(Cpu &cpu, const bool increment, const Flags flags) {
-    delay(cpu, 1);
+    cpu.delay(1);
     const auto port = cpu.get(RegisterFile::R16::BC);
     cpu.bus(Bus::io_read, port);
     const auto value = cpu.in(port);
     const auto hl = cpu.get(RegisterFile::R16::HL);
-    cpu.write(hl, value);
+    cpu.write_memory(hl, value);
     cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (increment ? 1 : 0xffff)));
     return stepped(cpu, flags);
   }
   static Flags block_out(Cpu &cpu, const bool increment, const Flags flags) {
-    delay(cpu, 1);
+    cpu.delay(1);
     const auto hl = cpu.get(RegisterFile::R16::HL);
-    const auto value = cpu.read(hl);
+    const auto value = cpu.read_memory(hl);
     cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (increment ? 1 : 0xffff)));
     // B is counted down before the port goes on the bus, so it addresses with
     // the new value.

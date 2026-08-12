@@ -32,13 +32,23 @@ public:
 
   void execute_one();
 
-  std::uint8_t read_opcode();
-  std::uint8_t read_immediate();
-  std::uint16_t read_immediate16();
+  // What the framework asks of a machine -- see refract/Machine.hpp. These are
+  // the chip's own names for what it does; the framework calls them directly
+  // rather than through anything in between.
+  std::uint8_t fetch_opcode();
+  std::uint16_t fetch_immediate(std::uint8_t width);
+  [[nodiscard]] std::uint8_t read_memory(std::uint16_t address);
+  [[nodiscard]] std::uint16_t read_memory16(std::uint16_t address);
+  void write_memory(std::uint16_t address, std::uint8_t value);
+  void write_memory16(std::uint16_t address, std::uint16_t value);
+  void delay(std::uint8_t cycles);
 
-  [[nodiscard]] std::uint8_t read(std::uint16_t address);
-  void write(std::uint16_t address, std::uint8_t value);
-  void idle(std::uint8_t cycles);
+  // How a displacement offsets a base, and what forming that address costs.
+  // The Z80 sign-extends and spends a five-T-state window doing it -- but any
+  // immediate the instruction also carries is read *inside* that window, which
+  // is why `ld (ix+d), n` is 19 T-states and not 22, and why the framework says
+  // how many bytes it already read.
+  [[nodiscard]] std::uint16_t displaced_address(std::uint16_t base, std::uint8_t offset, std::uint8_t immediate_bytes);
 
   // Advances time for one access, before the transfer happens, so anything
   // scheduled sees the machine as it was at that moment.
@@ -58,6 +68,9 @@ public:
   void interrupts_deferred(const bool value) { interrupts_deferred_ = value; }
 
 private:
+  std::uint8_t read_immediate();
+  std::uint16_t read_immediate16();
+
   // Accepting an interrupt is not an instruction: no encoding matches it, so it
   // cannot be a row. It belongs to the machine that drives the decoder.
   void handle_interrupt();

@@ -264,9 +264,9 @@ template<Operand Op, std::size_t Line, typename Parameter>
   if constexpr (Op.indirect) {
     const auto address = address_of<Op, Line>(cpu, immediate, indexed);
     if constexpr (std::same_as<Parameter, std::uint16_t>)
-      return read_memory16(cpu, address);
+      return cpu.read_memory16(address);
     else
-      return read_memory(cpu, address);
+      return cpu.read_memory(address);
   }
   else
     return direct_value_of<Op, Line, Parameter>(cpu, immediate);
@@ -279,12 +279,12 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
   else if constexpr (Op.indirect) {
     // The addressing mode says how long the machine idles before writing back.
     if constexpr (Op.write_back_delay != 0)
-      delay(cpu, Op.write_back_delay);
+      cpu.delay(Op.write_back_delay);
     const auto address = address_of<Op, Line>(cpu, immediate, indexed);
     if constexpr (std::same_as<T, std::uint16_t>)
-      write_memory16(cpu, address, value);
+      cpu.write_memory16(address, value);
     else
-      write_memory(cpu, address, value);
+      cpu.write_memory(address, value);
   }
   else {
     static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
@@ -451,12 +451,12 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   constexpr auto displaced = displaced_through(target::vocabularies, row, Opcode, rules);
   constexpr bool entered_latched = target::latched[Table];
   const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
-                                        ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1))
+                                        ? static_cast<std::uint8_t>(cpu.fetch_immediate(1))
                                         : latch;
   // The encoding column says what is fetched, and it is fetched once before any
   // step: argument order within a call is unspecified, and a later step may
   // store through an address an earlier one read.
-  const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : fetch_immediate(cpu, row.immediate_bytes);
+  const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : cpu.fetch_immediate(row.immediate_bytes);
   // Formed once, after both, and handed to every operand that shares it. The
   // machine is told what else was read first, because on a Z80 those reads
   // happen *inside* the window that forms the address rather than before it.
@@ -472,7 +472,7 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
       constexpr auto read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
       static_assert(
           read_inside <= 1, "this row reads more inside the window that forms its address than the window can hold");
-      return displaced_address(cpu, direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate), displacement,
+      return cpu.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate), displacement,
           static_cast<std::uint8_t>(read_inside));
     }
     else
@@ -540,7 +540,7 @@ inline void execute_instruction(Cpu &cpu) {
   while (true) {
     // A target::latched table's opcode is not the instruction's first unknown byte, so
     // it arrives as an operand read: three cycles, and no refresh.
-    const auto opcode = target::latched[table] ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : fetch_opcode(cpu);
+    const auto opcode = target::latched[table] ? static_cast<std::uint8_t>(cpu.fetch_immediate(1)) : cpu.fetch_opcode();
     const auto next = dispatches[table][opcode](cpu, latch);
     if (!next)
       return;
