@@ -4,9 +4,20 @@
 // nothing else. Fetching, memory in both widths, forming an indexed address,
 // and spending time.
 //
-// Everything here is a thin turn onto `v4::Z80`. The names differ because the
-// framework's vocabulary is not the chip's: `read_memory` rather than `read`,
-// because `read` on a Z80 also means a register.
+// They are free functions because that is how the framework finds them: it
+// calls them unqualified on a `Cpu &`, and argument-dependent lookup reaches
+// this namespace. Nothing here is virtual and nothing is dispatched at run
+// time.
+//
+// Four of the seven carry a real fact about this chip: how wide an immediate
+// is, how a displacement combines with a base and what that costs, and in which
+// order the two halves of a sixteen-bit access reach the bus. Three --
+// `fetch_opcode`, `read_memory`, `write_memory` -- are pure renames of a `Z80`
+// method, and they exist only because this namespace already spells `read` and
+// `write` as "read a location" (see Locations.hpp). That pressure is an
+// artefact of using free functions; if the framework called members, those
+// three could be methods on `Z80` and this file would be only the four that say
+// something. See the note in NOTES.md.
 
 #include "z80/v4/Locations.hpp"
 #include "z80/v4/Operations.hpp"
