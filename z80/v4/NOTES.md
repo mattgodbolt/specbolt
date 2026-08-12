@@ -833,6 +833,38 @@ rather than reporting that it has no name.
 The same change is what a second CPU needs, since nothing about the parser now says `z80.cpu` except
 the one line that embeds it.
 
+## Speed, measured
+
+zexdoc, sequential, same machine, same `release-reflection` build, one run each. All four execute the
+identical program, so the ratio is relative interpreter throughput.
+
+| | | vs v4 |
+|---|---:|---:|
+| v1 | 262.2s | 2.45× slower |
+| v2 | **88.8s** | 1.20× faster |
+| v3 | 108.4s | 1.4% slower |
+| **v4** | **106.9s** | — |
+
+The number that matters: **v4 is level with v3**, the code-generated one. Generating an interpreter
+from a table costs nothing against generating one from a C++ generator. And both are 2.4× faster than
+v1's decode-then-execute.
+
+**v2 is 20% faster than both, and it is not dispatch.** v2 does
+`impl::table<impl::build_execute_hl>[opcode](*this)` — a 256-entry function-pointer table, exactly
+v4's shape — and both keep `read`/`write` out of line. So the `template switch` theory (that
+reflection cannot generate the jump table a hand-written `switch` gets) does not explain this: v2
+does not have one either.
+
+Where the difference actually is has not been established, and guessing is not worth much. The
+hypothesis worth testing first is that v4 routes *every* idle cycle through `Z80::bus`, an
+out-of-line call that switches on the access kind and stores the bus address, where v2 charges its
+internal cycles directly. That would be the price of *Time passes in exactly one place* — a design
+choice made deliberately so contention has somewhere to live, and one worth knowing the cost of
+before the Spectrum needs it. **Profile before believing any of this.**
+
+Caveats: one run each, no repeats, on a laptop; and zexdoc's instruction mix is ALU-heavy, so this
+under-reports dispatch cost relative to a program doing more loads and jumps.
+
 ## What a second CPU would need
 
 The format has described exactly one processor, and an outside reader given only
