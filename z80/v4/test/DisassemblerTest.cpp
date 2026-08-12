@@ -14,8 +14,6 @@ import peripherals;
 #endif
 
 namespace specbolt::v4 {
-// TODO: every commented-out CHECK below is an instruction z80.cpu does not describe yet.
-// Uncomment them as the table grows; none of them should need changing.
 TEST_CASE("Opcode generation tests") {
   constexpr auto base_address = 0x8000u;
   auto dis = [](auto... bytes) {
@@ -341,57 +339,57 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xfd, 0xcb, 0x23, 0xf6) == "set 6, (iy+0x23)");
   }
   SECTION("Test ed prefixes") {
-    // CHECK(dis(0xed, 0x40) == "in b, (c)");
-    // CHECK(dis(0xed, 0x41) == "out (c), b");
-    // CHECK(dis(0xed, 0x42) == "sbc hl, bc");
-    // CHECK(dis(0xed, 0x43, 0x34, 0x12) == "ld (0x1234), bc");
-    // CHECK(dis(0xed, 0x44) == "neg");
-    // CHECK(dis(0xed, 0x45) == "retn");
-    // CHECK(dis(0xed, 0x46) == "im 0");
-    // CHECK(dis(0xed, 0x47) == "ld i, a");
-    // CHECK(dis(0xed, 0x48) == "in c, (c)");
-    // CHECK(dis(0xed, 0x49) == "out (c), c");
-    // CHECK(dis(0xed, 0x4a) == "adc hl, bc");
-    // CHECK(dis(0xed, 0x4b, 0x34, 0x12) == "ld bc, (0x1234)");
-    // CHECK(dis(0xed, 0x4d) == "reti");
-    // CHECK(dis(0xed, 0x4f) == "ld r, a");
-    // CHECK(dis(0xed, 0x50) == "in d, (c)");
-    // CHECK(dis(0xed, 0x51) == "out (c), d");
-    // CHECK(dis(0xed, 0x52) == "sbc hl, de");
-    // CHECK(dis(0xed, 0x53, 0x34, 0x12) == "ld (0x1234), de");
-    // CHECK(dis(0xed, 0x56) == "im 1");
-    // CHECK(dis(0xed, 0x57) == "ld a, i");
-    // CHECK(dis(0xed, 0x58) == "in e, (c)");
-    // CHECK(dis(0xed, 0x59) == "out (c), e");
-    // CHECK(dis(0xed, 0x5a) == "adc hl, de");
-    // CHECK(dis(0xed, 0x5b, 0x34, 0x12) == "ld de, (0x1234)");
-    // CHECK(dis(0xed, 0x5e) == "im 2");
-    // CHECK(dis(0xed, 0x60) == "in h, (c)");
-    // CHECK(dis(0xed, 0x61) == "out (c), h");
-    // CHECK(dis(0xed, 0x62) == "sbc hl, hl");
-    // CHECK(dis(0xed, 0x63, 0x34, 0x12) == "ld (0x1234), hl");
-    // CHECK(dis(0xed, 0x67) == "rrd");
-    // CHECK(dis(0xed, 0x68) == "in l, (c)");
-    // CHECK(dis(0xed, 0x69) == "out (c), l");
-    // CHECK(dis(0xed, 0x6a) == "adc hl, hl");
-    // CHECK(dis(0xed, 0x6b, 0x34, 0x12) == "ld hl, (0x1234)");
-    // CHECK(dis(0xed, 0x6f) == "rld");
-    // CHECK(dis(0xed, 0x70) == "in (c)");
-    // CHECK(dis(0xed, 0x71) == "out (c), 0x00");
-    // CHECK(dis(0xed, 0x72) == "sbc hl, sp");
-    // CHECK(dis(0xed, 0x73, 0x34, 0x12) == "ld (0x1234), sp");
-    // CHECK(dis(0xed, 0x78) == "in a, (c)");
-    // CHECK(dis(0xed, 0x79) == "out (c), a");
-    // CHECK(dis(0xed, 0x7a) == "adc hl, sp");
-    // CHECK(dis(0xed, 0x7b, 0x34, 0x12) == "ld sp, (0x1234)");
-    // CHECK(dis(0xed, 0xa0) == "ldi");
-    // CHECK(dis(0xed, 0xa8) == "ldd");
-    // CHECK(dis(0xed, 0xb0) == "ldir");
-    // CHECK(dis(0xed, 0xb8) == "lddr");
-    // CHECK(dis(0xed, 0xa1) == "cpi");
-    // CHECK(dis(0xed, 0xa9) == "cpd");
-    // CHECK(dis(0xed, 0xb1) == "cpir");
-    // CHECK(dis(0xed, 0xb9) == "cpdr");
+    CHECK(dis(0xed, 0x40) == "in b, (c)");
+    CHECK(dis(0xed, 0x41) == "out (c), b");
+    CHECK(dis(0xed, 0x42) == "sbc hl, bc");
+    CHECK(dis(0xed, 0x43, 0x34, 0x12) == "ld (0x1234), bc");
+    CHECK(dis(0xed, 0x44) == "neg");
+    CHECK(dis(0xed, 0x45) == "retn");
+    CHECK(dis(0xed, 0x46) == "im 0");
+    CHECK(dis(0xed, 0x47) == "ld i, a");
+    CHECK(dis(0xed, 0x48) == "in c, (c)");
+    CHECK(dis(0xed, 0x49) == "out (c), c");
+    CHECK(dis(0xed, 0x4a) == "adc hl, bc");
+    CHECK(dis(0xed, 0x4b, 0x34, 0x12) == "ld bc, (0x1234)");
+    CHECK(dis(0xed, 0x4d) == "reti");
+    CHECK(dis(0xed, 0x4f) == "ld r, a");
+    CHECK(dis(0xed, 0x50) == "in d, (c)");
+    CHECK(dis(0xed, 0x51) == "out (c), d");
+    CHECK(dis(0xed, 0x52) == "sbc hl, de");
+    CHECK(dis(0xed, 0x53, 0x34, 0x12) == "ld (0x1234), de");
+    CHECK(dis(0xed, 0x56) == "im 1");
+    CHECK(dis(0xed, 0x57) == "ld a, i");
+    CHECK(dis(0xed, 0x58) == "in e, (c)");
+    CHECK(dis(0xed, 0x59) == "out (c), e");
+    CHECK(dis(0xed, 0x5a) == "adc hl, de");
+    CHECK(dis(0xed, 0x5b, 0x34, 0x12) == "ld de, (0x1234)");
+    CHECK(dis(0xed, 0x5e) == "im 2");
+    CHECK(dis(0xed, 0x60) == "in h, (c)");
+    CHECK(dis(0xed, 0x61) == "out (c), h");
+    CHECK(dis(0xed, 0x62) == "sbc hl, hl");
+    CHECK(dis(0xed, 0x63, 0x34, 0x12) == "ld (0x1234), hl");
+    CHECK(dis(0xed, 0x67) == "rrd");
+    CHECK(dis(0xed, 0x68) == "in l, (c)");
+    CHECK(dis(0xed, 0x69) == "out (c), l");
+    CHECK(dis(0xed, 0x6a) == "adc hl, hl");
+    CHECK(dis(0xed, 0x6b, 0x34, 0x12) == "ld hl, (0x1234)");
+    CHECK(dis(0xed, 0x6f) == "rld");
+    CHECK(dis(0xed, 0x70) == "in (c)");
+    CHECK(dis(0xed, 0x71) == "out (c), 0");
+    CHECK(dis(0xed, 0x72) == "sbc hl, sp");
+    CHECK(dis(0xed, 0x73, 0x34, 0x12) == "ld (0x1234), sp");
+    CHECK(dis(0xed, 0x78) == "in a, (c)");
+    CHECK(dis(0xed, 0x79) == "out (c), a");
+    CHECK(dis(0xed, 0x7a) == "adc hl, sp");
+    CHECK(dis(0xed, 0x7b, 0x34, 0x12) == "ld sp, (0x1234)");
+    CHECK(dis(0xed, 0xa0) == "ldi");
+    CHECK(dis(0xed, 0xa8) == "ldd");
+    CHECK(dis(0xed, 0xb0) == "ldir");
+    CHECK(dis(0xed, 0xb8) == "lddr");
+    CHECK(dis(0xed, 0xa1) == "cpi");
+    CHECK(dis(0xed, 0xa9) == "cpd");
+    CHECK(dis(0xed, 0xb1) == "cpir");
+    CHECK(dis(0xed, 0xb9) == "cpdr");
   }
 }
 

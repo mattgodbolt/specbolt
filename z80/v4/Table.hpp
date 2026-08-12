@@ -842,6 +842,24 @@ template<std::size_t NumTables>
   return latched;
 }
 
+// Every opcode of every table must decode to something. On real hardware one
+// always does -- an unassigned encoding still has an effect -- so a table that
+// declines to say is an incomplete description rather than a permissive one. A
+// catch-all row is how a table says "and everything else does this".
+//
+// Requiring it here is what lets the dispatch loop call without checking.
+template<std::size_t NumTables>
+constexpr bool check_tables_total(const std::span<const TableDecl> tables,
+    const std::array<std::array<std::optional<std::size_t>, 256>, NumTables> &decoded) {
+  for (std::size_t which = 0; which < tables.size(); ++which)
+    for (std::size_t opcode = 0; opcode < 256; ++opcode)
+      if (!decoded[which][opcode])
+        throw table_error(tables[which].line, "table '" + std::string(tables[which].name) +
+                                                  "' does not say what opcode " + decimal(opcode) +
+                                                  " does; add a row, or `xxxxxxxx` last to catch the rest");
+  return true;
+}
+
 // A rule rewrites `{field}` references and never literal text, which is what
 // keeps `ex de, hl` right under a view. That silence also hides a mistake: a row
 // that spells a renamed name out, and is inherited unchanged by the table that
@@ -937,5 +955,6 @@ inline constexpr std::size_t decoded_count = [] {
 static_assert(check_row_precedence(rows, fields, tables.size()));
 static_assert(check_tables_used(rows, tables, entry_table));
 static_assert(check_inherited_literals<tables.size()>(rows, tables, decoded));
+static_assert(check_tables_total<tables.size()>(tables, decoded));
 
 } // namespace specbolt::v4

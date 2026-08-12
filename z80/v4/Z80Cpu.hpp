@@ -10,8 +10,9 @@
 #include <meta>
 #endif
 
-// Everything the framework needs to know about the Z80, and nothing it needs to
-// know about any other CPU. Retargeting means writing one of these.
+// The Z80 as the framework sees it: the operations a table may name, the
+// locations it may read and write, and how this machine fetches, accesses
+// memory, forms an indexed address and spends time.
 
 namespace specbolt::v4 {
 

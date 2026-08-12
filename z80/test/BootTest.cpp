@@ -90,8 +90,8 @@ TEST_CASE("Booting the 48K ROM") {
     // the ROM happened to be holding at the time.
     //
     // The picture is identical, because nothing here depends on that timing.
-    // Filed rather than fixed: correcting the other three is not this change's
-    // business, and doing it would move their zexdoc-verified behaviour.
+    // See issue #44; fixing it moves behaviour all three have been measured
+    // against, so it wants doing deliberately rather than in passing.
   }
 #endif
 }

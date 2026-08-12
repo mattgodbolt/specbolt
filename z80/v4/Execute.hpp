@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <array>
 #include <concepts>
-#include <format>
 #include <limits>
 #include <meta>
 #include <optional>
@@ -22,6 +21,86 @@
 
 namespace specbolt::v4 {
 
+// This file turns a parsed instruction table into an interpreter. `Table.hpp`
+// has already read `z80.cpu` and lowered it to `constexpr` data; nothing here
+// parses anything. What is left is to look up the names that data holds in the
+// CPU description, and to emit one function per (table, opcode).
+//
+// Reading order, roughly top to bottom:
+//
+//   find_location / find_primitive   a name in the table -> an entity in C++
+//   direct_value_of / value_of       an operand -> a value, reading if it must
+//   store                            a value -> an operand, writing if it must
+//   operands_of / apply / evaluate   one step
+//   execute_one                      one row: every step, unrolled
+//   dispatch / execute_instruction   256 of those per table, and the loop
+//
+// ---------------------------------------------------------------------------
+// The C++26 features, and what each is doing here
+// ---------------------------------------------------------------------------
+//
+// **Reflection (P2996).** `^^X` yields a `std::meta::info`: one type that can
+// denote *any* entity — a type, a function, an enumerator, a data member. That
+// one-type-for-everything is why `find_location` and `find_primitive` have the
+// same shape despite looking for very different things. `info` is a structural
+// type, so it can be a non-type template parameter, which is the hinge the
+// whole file turns on: `template<std::meta::info Fn>` makes "which function"
+// part of a template instantiation's identity.
+//
+// **Splices**, `[: … :]`, turn an `info` back into code. They look like one
+// feature and are four, each with its own grammar:
+//
+//   typename[: type_of(p) :]           a type. The `typename` is mandatory:
+//                                      the parser cannot know what a splice
+//                                      yields until it is instantiated.
+//   [:Fn:](arguments...)               a function, in callee position.
+//   read(cpu, [:find_location(…):])    an enumerator, yielding a prvalue of the
+//                                      enum type — so ordinary overload
+//                                      resolution picks `read(…, R8)` or
+//                                      `read(…, Bit)`. The framework does not
+//                                      dispatch on the kind of location; C++
+//                                      does, because the splice has a type.
+//   result.[:members[at]:]             a data member. The leading `.` is not a
+//                                      typo; it is member-access syntax with a
+//                                      splice where the name would be.
+//
+// **Expansion statements (P1306)**, `template for`. The body is *instantiated
+// once per element*, so it is code size rather than a loop, and the induction
+// variable is `constexpr` inside the body — which is what lets it be used as a
+// template argument. A `return` inside one returns from the enclosing function,
+// not from an iteration. There is deliberately no `template switch`: an
+// expansion statement generates statements, and a `case` label is not one, so a
+// 256-way dispatch cannot be expanded into a `switch`. Hence a table of
+// function pointers.
+//
+// **`consteval` functions that throw.** Nothing catches them. Throwing makes
+// the call not a constant expression, and *that* is the diagnostic: a mistake
+// in `z80.cpu` becomes a compile error carrying its line number. This is the
+// most surprising idiom in the file, and it is used everywhere.
+//
+// **`std::define_static_array`.** `nonstatic_data_members_of` returns a
+// `std::vector`, whose allocation cannot survive constant evaluation. This
+// promotes the contents into an object with static storage duration, so a
+// `span` over it *can* escape into a `constexpr` variable and still be usable
+// as a template argument afterwards.
+//
+// **`std::meta::access_context::current()`** means the context of the function
+// that names it — namespace scope here, not the caller's. Load-bearing twice:
+// it is why `Flags` counts as one value rather than a struct to destructure
+// (its byte is private, so this file cannot see it), and why the private
+// helpers in `Ops` cannot be named by a table.
+//
+// ---------------------------------------------------------------------------
+// Why the data looks the way it does
+// ---------------------------------------------------------------------------
+//
+// `Call` and `Operand` are non-type template parameters, so they must be
+// *structural*: literal types whose members are all public, recursively. That
+// single requirement explains a lot of `Table.hpp` — why `Vector` exposes its
+// `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>`
+// rather than a `std::string_view` (which has private members and is not
+// structural).
+
 // The table is written the way assembler is written, so every name in it is
 // matched without regard to case.
 [[nodiscard]] constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
@@ -29,6 +108,9 @@ namespace specbolt::v4 {
   return std::ranges::equal(lhs, rhs, {}, fold, fold);
 }
 
+// Every name a table uses must resolve to exactly one thing. Throwing from a
+// `consteval` function is how a bad name becomes a compile error naming the
+// line of `z80.cpu` that wrote it.
 [[nodiscard]] consteval std::meta::info only_match(
     const std::span<const std::meta::info> candidates, const std::string_view name, const std::size_t line) {
   if (candidates.empty())
@@ -38,6 +120,9 @@ namespace specbolt::v4 {
   return candidates.front();
 }
 
+// `a`, `hl`, `carry`, `pc`: an enumerator in one of the scopes the CPU offers.
+// The `std::vector` here is fine — it is created and destroyed entirely within
+// one constant evaluation, which is allowed; what it must not do is escape.
 [[nodiscard]] consteval std::meta::info find_location(const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
   for (const auto scope: location_scopes())
@@ -47,6 +132,8 @@ namespace specbolt::v4 {
   return only_match(candidates, name, line);
 }
 
+// `inc8`, `add16`, `is_set`: a static member function of one of the CPU's
+// primitive scopes.
 [[nodiscard]] consteval std::meta::info find_primitive(const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
   for (const auto scope: primitive_scopes())
@@ -60,9 +147,17 @@ namespace specbolt::v4 {
   return only_match(candidates, name, line);
 }
 
+// Reflection must stay in template arguments and alias templates, never in a
+// local variable. A `constexpr auto x = parameters_of(Fn);` inside a function
+// body is an immediate-escalating expression: it would promote the enclosing
+// function to `consteval`, which could then no longer be called with a running
+// CPU. Written this way, the values live in the template system instead — and
+// get memoised by it for free.
 template<std::meta::info Fn>
 inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
+// The `typename` is required: a splice's category is not known until it is
+// instantiated, so the parser has to be told this one names a type.
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
@@ -85,7 +180,9 @@ template<std::meta::info Fn>
     return std::is_same_v<parameter_type<Fn, 0>, Cpu &>;
 }
 
-// Everything one step needs, with its field references already resolved.
+// Everything one step needs, with its field references already resolved. This
+// is a non-type template parameter, so every member of it — and of everything
+// it contains — has to be public. See the note on structural types above.
 struct Call {
   Vector<Operand, max_operands> operands{};
   Vector<Operand, max_operands> destinations{};
@@ -112,6 +209,11 @@ template<Operand Op, std::size_t Line, typename Parameter>
       return immediate;
   }
   else
+    // An *enumerator* splice: this yields a prvalue whose type is the enum the
+    // name was found in, so the CPU's overload set decides what reading it
+    // means. `read(cpu, R8::A)` and `read(cpu, Bit::carry)` are different
+    // functions returning different types, chosen here by nothing more exotic
+    // than overload resolution.
     return read(cpu, [:find_location(Op.name.view(), Line):]);
 }
 
@@ -171,6 +273,15 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
 // `bit n, (ix+d)` is the row that proves this is not pedantry: it reads memory
 // and then asks for the address that read left on the bus, and getting those
 // two the wrong way round takes the undocumented flags from the wrong place.
+//
+// The guarantee survives CTAD and constructor selection — [dcl.init.list] says
+// so explicitly, and it is the case a sceptical reader will doubt. Storing
+// needs no such rescue: `template for` sequences its iterations, so the
+// destination side was never at risk.
+// The generic-lambda-plus-`index_sequence` dance is here because this is the
+// one job `template for` cannot do: expanding into a *call's argument list*
+// needs a pack, and an expansion statement produces statements, not pack
+// elements. The two C++26 features do not substitute for each other here.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] auto operands_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
@@ -279,6 +390,14 @@ struct Transfer {
 using Next = std::optional<Transfer>;
 using Handler = Next (*)(Cpu &, std::uint8_t);
 
+// One row, fully unrolled: every step spliced in, in order, with nothing of the
+// table surviving into the generated code. There is one of these per (table,
+// opcode) — 1792 for a complete Z80 — and each is typically a handful of
+// instructions, because every choice below is made at compile time.
+//
+// `Table` and `Opcode` are template parameters rather than arguments precisely
+// so that `rows[Index]`, the vocabulary lookups, and the renaming rules are all
+// constants here.
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   constexpr auto row = rows[Index];
@@ -290,6 +409,9 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   // appear in: `dd 36 d n` is `ld (ix+d), n`.
   // Unless this table was entered with a displacement already read, in which
   // case it arrived before this row's own opcode did.
+  // A `constexpr std::optional` used two ways: contextually converted to `bool`
+  // by `if constexpr`, and then dereferenced to give a template argument. Both
+  // work because `optional`'s members are `constexpr`.
   constexpr auto displaced = displaced_through(fields, row, Opcode, rules);
   constexpr bool inherits = latched[Table];
   const std::uint8_t displacement =
@@ -319,6 +441,11 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
     else
       return 0;
   }();
+  // Expanded, not looped: the body is instantiated once per step, and `at` is
+  // `constexpr` inside it — which is what lets `step` be a constant and its
+  // contents be template arguments. `iota` rather than `row.steps` directly
+  // because the index is wanted, and a `return` here leaves `execute_one`, not
+  // the expansion.
   template for (constexpr auto at: std::views::iota(0uz, row.steps.size())) {
     constexpr auto step = row.steps[at];
     if constexpr (step.kind == Step::Kind::Goto)
@@ -340,14 +467,13 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
   return std::nullopt;
 }
 
+// The lambda deduces `Handler` in one branch and `std::nullptr_t` in the other;
+// that is legal because the discarded branch of an `if constexpr` does not
+// participate in return-type deduction. Both convert to `Handler`.
+// Every table is total -- `check_tables_total` insists -- so there is always a
+// row, and this is a lookup rather than a search.
 template<std::uint8_t Table, std::uint8_t Opcode>
-inline constexpr Handler handler_for = [] {
-  constexpr auto found = find_row(Table, Opcode);
-  if constexpr (found)
-    return &execute_one<Table, Opcode, *found>;
-  else
-    return nullptr;
-}();
+inline constexpr Handler handler_for = &execute_one<Table, Opcode, *find_row(Table, Opcode)>;
 
 template<std::uint8_t Table>
 inline constexpr auto dispatch = [] {
@@ -378,11 +504,7 @@ inline void execute_instruction(Cpu &cpu) {
     // A latched table's opcode is not the instruction's first unknown byte, so
     // it arrives as an operand read: three cycles, and no refresh.
     const auto opcode = latched[table] ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : fetch_opcode(cpu);
-    const auto handler = dispatches[table][opcode];
-    if (!handler)
-      throw std::runtime_error(std::format(
-          "no row in " SPECBOLT_CPU_TABLE " table '{}' decodes opcode 0x{:02x}", tables[table].name, opcode));
-    const auto next = handler(cpu, latch);
+    const auto next = dispatches[table][opcode](cpu, latch);
     if (!next)
       return;
     table = next->table;
