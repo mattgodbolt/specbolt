@@ -14,3 +14,10 @@ repos:
     rev: v20.1.6
     hooks:
       - id: clang-format
+  - repo: local
+    hooks:
+      - id: format-cpu-table
+        name: align .cpu instruction table columns
+        entry: tools/format_cpu_table.py
+        language: python
+        files: \.cpu$
