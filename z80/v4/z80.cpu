@@ -7,6 +7,8 @@ field r = b c d e h l (hl)/delay=1 a
 field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
 field w = and:and8 xor:xor8 or:or8 -
 field b = 0 1 2 3 4 5 6 7
+# never renamed by a view: the register operand of an indexed load stays real
+field s = b c d e h l - a
 
 table base
 
@@ -34,6 +36,8 @@ table base
 111ww110 n   | {w} $nn         | {w} a, flags <- a n
 11111110 n   | cp $nn          | cmp8 -, flags <- a n
 11001011     | (cb)            | goto cb
+11011101     | (dd)            | goto ix
+11111101     | (fd)            | goto iy
 
 table cb
 
@@ -41,3 +45,17 @@ table cb
 01bbbzzz     | bit {b}, {r:z}  | bit8 flags <- {r:z} {b} flags {r:z}
 10bbbzzz     | res {b}, {r:z}  | res8 {r:z} <- {r:z} {b}
 11bbbzzz     | set {b}, {r:z}  | set8 {r:z} <- {r:z} {b}
+
+# `dd`/`fd` re-read the base table with hl renamed. The two override rows are
+# the one case the rename gets wrong: in `ld r, (ix+d)` the register operand is
+# the real h or l, so it names a vocabulary a view does not touch.
+
+table ix = base with hl -> ix, h -> ixh, l -> ixl, (hl) -> (ix+d)/delay=1
+
+01yyy110     | ld {s:y}, (ix+d) | ld8 {s:y} <- (ix+d)
+01110zzz     | ld (ix+d), {s:z} | ld8 (ix+d) <- {s:z}
+
+table iy = base with hl -> iy, h -> iyh, l -> iyl, (hl) -> (iy+d)/delay=1
+
+01yyy110     | ld {s:y}, (iy+d) | ld8 {s:y} <- (iy+d)
+01110zzz     | ld (iy+d), {s:z} | ld8 (iy+d) <- {s:z}

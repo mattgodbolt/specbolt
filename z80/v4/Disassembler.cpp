@@ -33,13 +33,13 @@ Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
 
   std::string result;
   const auto opcode = byte_at(offset - 1);
+  // Only an inherited row is renamed; see the note in Execute.hpp.
+  const auto &rules = row->table == table ? no_rules : tables[table].rules;
   for (std::size_t piece = 0; piece < row->pieces.size(); ++piece) {
     const auto &part = row->pieces[piece];
     switch (part.kind) {
       case Piece::Kind::Literal: result += part.text; break;
-      case Piece::Kind::Field:
-        result += member_of(fields, part.reference, row->matched, opcode, tables[table].rules).display;
-        break;
+      case Piece::Kind::Field: result += member_of(fields, part.reference, row->matched, opcode, rules).display; break;
       case Piece::Kind::Imm8:
         result += std::format("0x{:02x}", byte_at(offset));
         offset += 1;

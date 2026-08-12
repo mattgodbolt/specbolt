@@ -108,24 +108,34 @@ template<Operand Op, std::size_t Line, typename Parameter>
     return read(cpu, [:find_location(Op.name.view(), Line):]);
 }
 
+// The address an indirect operand addresses through. A displaced one was formed
+// once for the whole instruction, before any operand was touched.
+template<Operand Op, std::size_t Line>
+[[nodiscard]] std::uint16_t address_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
+  if constexpr (Op.displaced)
+    return indexed;
+  else
+    return direct_value_of<Op, Line, std::uint16_t>(cpu, immediate);
+}
+
 // An indirect operand is whatever it would have been, read as an address.
 template<Operand Op, std::size_t Line, typename Parameter>
-[[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate) {
+[[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
   if constexpr (Op.indirect)
-    return read_memory(cpu, direct_value_of<Op, Line, std::uint16_t>(cpu, immediate));
+    return read_memory(cpu, address_of<Op, Line>(cpu, immediate, indexed));
   else
     return direct_value_of<Op, Line, Parameter>(cpu, immediate);
 }
 
 template<Operand Op, std::size_t Line, typename T>
-void store(Cpu &cpu, const std::uint16_t immediate, const T value) {
+void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const T value) {
   if constexpr (Op.kind == Operand::Kind::Discard)
     static_cast<void>(value);
   else if constexpr (Op.indirect) {
     // The addressing mode says how long the machine idles before writing back.
     if constexpr (Op.write_back_delay != 0)
       delay(cpu, Op.write_back_delay);
-    write_memory(cpu, direct_value_of<Op, Line, std::uint16_t>(cpu, immediate), value);
+    write_memory(cpu, address_of<Op, Line>(cpu, immediate, indexed), value);
   }
   else {
     static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
@@ -136,16 +146,16 @@ void store(Cpu &cpu, const std::uint16_t immediate, const T value) {
 // Arguments are supplied positionally; destinations destructure the result in
 // declaration order. Nothing here has an opinion on what an operand means.
 template<std::meta::info Fn, Call C>
-void apply(Cpu &cpu, const std::uint16_t immediate) {
+void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
   static_assert(
       C.operands.size() + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
   constexpr auto arguments = std::make_index_sequence<C.operands.size()>{};
   const auto call = [&]<std::size_t... I>(std::index_sequence<I...>) {
     if constexpr (takes_cpu<Fn>())
-      return [:Fn:](cpu, value_of<C.operands[I], C.line, parameter_type<Fn, I + 1>>(cpu, immediate)...);
+      return [:Fn:](cpu, value_of<C.operands[I], C.line, parameter_type<Fn, I + 1>>(cpu, immediate, indexed)...);
     else
-      return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate)...);
+      return [:Fn:](value_of<C.operands[I], C.line, parameter_type<Fn, I>>(cpu, immediate, indexed)...);
   };
 
   using Result = decltype(call(arguments));
@@ -159,11 +169,11 @@ void apply(Cpu &cpu, const std::uint16_t immediate) {
         C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
     const auto result = call(arguments);
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
-        store<C.destinations[at], C.line>(cpu, immediate, result.[:members[at]:]);
+        store<C.destinations[at], C.line>(cpu, immediate, indexed, result.[:members[at]:]);
   }
   else {
     static_assert(C.destinations.size() == 1, "this operation returns one value, so the row must name one destination");
-    store<C.destinations[0], C.line>(cpu, immediate, call(arguments));
+    store<C.destinations[0], C.line>(cpu, immediate, indexed, call(arguments));
   }
 }
 
@@ -207,13 +217,28 @@ using Handler = Next (*)(Cpu &);
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 Next execute_one(Cpu &cpu) {
   constexpr auto row = rows[Index];
-  // The row may belong to a table this one derives from, so the renaming comes
-  // from where the opcode was decoded rather than from where the row was written.
-  constexpr auto rules = tables[Table].rules;
+  // A renaming applies to rows this table inherited, not to rows written in it:
+  // an override row is written knowing which table it is in, so it means what
+  // it says. That is what lets `ld {s:y}, (ix+d)` keep the real h.
+  constexpr auto rules = row.table == Table ? Rules{} : tables[Table].rules;
+  // The displacement is read before any immediate, which is the order the bytes
+  // appear in: `dd 36 d n` is `ld (ix+d), n`.
+  constexpr auto displaced = displaced_through(fields, row, Opcode, rules);
+  const std::uint8_t displacement = displaced ? static_cast<std::uint8_t>(fetch_immediate(cpu, 1)) : 0;
   // The encoding column says what is fetched, and it is fetched once before any
   // step: argument order within a call is unspecified, and a later step may
   // store through an address an earlier one read.
   const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : fetch_immediate(cpu, row.immediate_bytes);
+  // Formed once, after both, and handed to every operand that shares it. The
+  // machine is told what else was read first, because on a Z80 those reads
+  // happen *inside* the window that forms the address rather than before it.
+  const std::uint16_t indexed = [&] -> std::uint16_t {
+    if constexpr (displaced)
+      return displaced_address(
+          cpu, direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate), displacement, row.immediate_bytes);
+    else
+      return 0;
+  }();
   template for (constexpr auto at: std::views::iota(0uz, row.steps.size())) {
     constexpr auto step = row.steps[at];
     if constexpr (step.kind == Step::Kind::Goto)
@@ -221,7 +246,8 @@ Next execute_one(Cpu &cpu) {
     else {
       constexpr auto member = member_for(step, row.matched, Opcode, rules);
       constexpr auto primitive = step.verb_reference ? member.primitive : step.verb;
-      apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line, rules)>(cpu, immediate);
+      apply<find_primitive(primitive, row.line), call_for(step, row.matched, Opcode, row.line, rules)>(
+          cpu, immediate, indexed);
     }
   }
   return std::nullopt;

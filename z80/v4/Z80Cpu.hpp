@@ -63,6 +63,20 @@ enum class Word : std::uint8_t { flags };
   return width == 1 ? cpu.read_immediate() : cpu.read_immediate16();
 }
 
+// How a displacement offsets a base, and what forming that address costs. Both
+// are facts about the machine: a 6502 would wrap within page zero for one mode
+// and charge for a page crossing in another.
+//
+// The Z80 sign-extends, and spends a five-T-state window doing it -- but any
+// immediate the instruction also carries is read *inside* that window, not
+// before it. That is why `ld (ix+d), n` is 19 T-states and not 22, and why the
+// framework says how many bytes it already read.
+[[nodiscard]] inline std::uint16_t displaced_address(
+    Cpu &cpu, const std::uint16_t base, const std::uint8_t offset, const std::uint8_t immediate_bytes) {
+  delay(cpu, static_cast<std::uint8_t>(5 - 3 * immediate_bytes));
+  return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
+}
+
 [[nodiscard]] inline std::uint8_t read_memory(Cpu &cpu, const std::uint16_t address) { return cpu.read(address); }
 inline void write_memory(Cpu &cpu, const std::uint16_t address, const std::uint8_t value) { cpu.write(address, value); }
 

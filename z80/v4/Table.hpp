@@ -68,6 +68,9 @@ struct Operand {
   std::uint8_t width{};
   Reference reference{};
   bool indirect{};
+  // `(ix+d)`: the address is this operand offset by a displacement byte, which
+  // is the machine's to form because it is the machine's to pay for.
+  bool displaced{};
   std::uint8_t write_back_delay{};
   constexpr bool operator==(const Operand &) const = default;
 };
@@ -102,6 +105,9 @@ struct Rule {
 };
 
 using Rules = Vector<Rule, 6>;
+
+// A table that renames nothing, which is every table but a derived one.
+inline constexpr Rules no_rules{};
 
 // The one place a reference is followed, and therefore the one place a derived
 // table's renaming has to happen. Every column resolves the same way: the slice
@@ -188,12 +194,18 @@ struct Row {
     if (!word.ends_with(')'))
       throw table_error(line, "unterminated '(' in operand '" + std::string(word) + "'");
     word = word.substr(1, word.size() - 2);
+    const auto displaced = word.ends_with("+d");
+    if (displaced)
+      word.remove_suffix(2);
     auto addressed = parse_simple_operand(word, line, immediate_bytes);
     if (addressed.indirect)
       throw table_error(line, "an address cannot itself be indirect");
     addressed.indirect = true;
+    addressed.displaced = displaced;
     return addressed;
   }
+  if (word.ends_with("+d"))
+    throw table_error(line, "a displacement only makes sense inside '(...)'");
   if (word == "n")
     return {.kind = Operand::Kind::Immediate, .width = immediate_bytes};
   if (word == "nn")
@@ -564,6 +576,33 @@ template<std::size_t N>
   auto result = member.operand;
   result.write_back_delay = member.write_back_delay;
   return result;
+}
+
+// What this opcode, decoded here, is displaced through -- nothing if it is not.
+// Nothing declares this: a row says `{r:z}`, a view says that member is now
+// `(ix+d)`, and the answer is whatever the operands resolve to.
+//
+// One per instruction, not one per operand. `inc (ix+d)` reads and writes
+// through the same address, and the chip reads one displacement and forms one
+// sum; forming it per operand would pay for it twice.
+[[nodiscard]] constexpr std::optional<Operand> displaced_through(
+    const std::span<const Field> fields, const Row &row, const std::uint8_t opcode, const Rules &rules) {
+  std::optional<Operand> found;
+  const auto consider = [&](const Operand &operand) {
+    const auto resolved = resolve(fields, operand, row.matched, opcode, rules);
+    if (!resolved.displaced)
+      return;
+    if (found && found->name != resolved.name)
+      throw table_error(row.line, "an instruction may only be displaced through one base");
+    found = resolved;
+  };
+  for (const auto &step: row.steps) {
+    for (const auto &operand: step.operands)
+      consider(operand);
+    for (const auto &operand: step.destinations)
+      consider(operand);
+  }
+  return found;
 }
 
 // Every vocabulary member the row names must be live: a `-` member is a hole,

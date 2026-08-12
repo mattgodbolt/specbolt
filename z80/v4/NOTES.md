@@ -447,7 +447,7 @@ failures showed up, and both are now fixed.
 
 ## Prefixes
 
-### Status: the table switch works; views are built but not yet used by `z80.cpu`
+### Status: table switch, views and indexed addressing all work; DDCB does not
 
 `table <name>` declares a decoding table, and `goto <table>` is a step. A prefix is an ordinary row:
 
@@ -473,6 +473,8 @@ Scored on `z80/test/OpcodeTests.cpp`:
 |---|---|---|---|
 | unprefixed | 139 / 192 | 53 | 0 |
 | cb | 23 / 39 | 16 | 0 |
+
+DD/FD are covered by `ExecuteTest.cpp` instead, against the same expectations.
 
 Every failure in both is an opcode the table does not describe. All three CB timings are right: 8
 for register forms, 12 for `bit n,(hl)`, 15 for `res`/`set` on memory.
@@ -550,9 +552,73 @@ and the groundwork is this, roughly in the order it has to happen:
    loose indices, and four places spelled out the lookup that follows one. Both now hold a
    `Reference`, and `member_of` is the only place one is followed — which is the place a view will
    have to intercept.
-4. **Per-token fetching, and the latch it needs.** `DD CB d op` puts the displacement before the
-   opcode, and `ld (ix+d), n` reads two immediates at different points. The executor fetches one
-   immediate up front. This is also what makes the encoding column carry more than one pattern token.
+4. **Per-token fetching, and the latch it needs.** Half done — see below. `DD CB d op` puts the
+   displacement before the opcode, which still needs the encoding column to carry more than one
+   pattern token.
+
+### The displacement is derived, not declared
+
+`(hl)` becomes `(ix+d)` under a view, and that costs a byte the row never mentioned. Who says so?
+
+**floooh's chips says so by hand.** Its description carries `flags: { indirect: true }` on every row
+that touches `(HL)`, and the generator turns those into a 256-entry `_z80_indirect_table[]` that the
+shared DD/FD fetch consults:
+
+```c
+case Z80_DDFD_M1_T4:
+    cpu->addr = cpu->hlx[cpu->hlx_idx].hl;
+    _goto(_z80_indirect_table[cpu->opcode] ? Z80_DDFD_D_T1 : cpu->opcode);
+```
+
+That flag exists because his description does not resolve operands ahead of time — the generator
+cannot tell that `INC (HL)` touches memory except by being told, on about forty rows, correctly,
+for ever. **We already resolve every operand at compile time, so the same fact is derivable**:
+`displaced_through` asks what the operands resolve to under this table's rules and returns the one
+they are displaced through, or nothing. No annotation, no table, nothing to forget. The flag floooh
+must write is a `consteval` question for us.
+
+(His view is the runtime twin of ours: `hlx[3]` indexed by `hlx_idx`, so every generated case reads
+`cpu->hlx[cpu->hlx_idx].h`. Same idea, opposite trade — he pays an indexed load on every H access
+for ever, we pay compile time and table count.)
+
+Three things the exploration got wrong first, each caught by a test rather than by reasoning:
+
+- **The address must be formed once per instruction, not once per operand.** `inc (ix+d)` reads and
+  writes through the same address; forming it per operand paid for the window twice. So `execute_one`
+  forms it up front and hands it to every operand that shares it — which is the "latch", arriving for
+  a reason that has nothing to do with DDCB. A row may only be displaced through one base, and that
+  is checked.
+- **The window absorbs the immediate.** `ld (ix+d), n` is 19 T-states, not 22: the `n` is read
+  *inside* the five-T-state window that forms the address, not before it. So the machine is told how
+  many bytes were already read. floooh handles this with `if (cpu->opcode == 0x36)`; deriving it
+  needs no special case.
+- **A rule must not touch rows written in the derived table itself.** Rules match on a member's text,
+  so `h -> ixh` reached the `{s:y}` in `ld {s:y}, (ix+d)` and wrote IXH instead of H — exactly the bug
+  this row exists to avoid. Naming a different vocabulary is *not* enough, contrary to what this
+  section said before. A row written in `table ix` is written knowing it is there, so it means what
+  it says; only inherited rows are renamed.
+
+**The customisation point is one function.** Not a DSL attribute, and not framework arithmetic:
+
+```cpp
+[[nodiscard]] std::uint16_t displaced_address(Cpu &, std::uint16_t base, std::uint8_t offset,
+    std::uint8_t immediate_bytes);
+```
+
+It owns both how a base and an offset combine *and* what forming the address costs, because both are
+facts about the machine — a 6502 wraps within page zero for one mode and charges for a page crossing
+in another. Taking `Cpu &` is what lets the cost live there. Everything else the table already said.
+
+Verified in `ExecuteTest.cpp` against the counts `OpcodeTests.cpp` asserts of v1/v2/v3: 19 for
+`ld r,(ix+d)`, `ld (ix+d),r`, `ld (ix+d),n` and `add a,(ix+d)`; 23 for `inc (ix+d)`; 8 for a DD that
+renames nothing; and `dd dd dd 23` at 4 T-states a prefix byte. Generated code forms the address once
+with `add`, reuses it for the read and the write, and folds both idles into constant clones.
+
+**Still missing: the disassembler.** It renders a member's `display` as text, so an indexed row reads
+`inc (ix+d)` literally rather than `inc (ix-0x01)`, and the length it reports omits the displacement
+byte. Emulation is unaffected — the `dd` cases in `DisassemblerTest` are still commented out. The fix
+is to lower `Member::display` into pieces the way `lower_mnemonic` already lowers a row's, which is
+the same machinery rather than new machinery.
 5. ~~**Capacity.**~~ **Checked; nothing to change.** `Field::max_values` is 8 and the `ix` view's
    register vocabulary is exactly 8 (`b c d e ixh ixl (ix+d) a`) — it fits, with no headroom.
    `Rules` holds 6 and `ix` needs 4. `Row::max_steps` is 6, which DDCB might exceed, but bumping a
@@ -621,9 +687,13 @@ out: `ix` inherits base's `goto iy` row, so each byte just re-enters, last wins.
 **One rule to keep: only `{field}` references are rewritten; literal text never is.** `ex de, hl`
 written literally is therefore immune by construction. Substitution-by-default would reproduce the
 exact bug v2 and v3 both have. This is now structural rather than a rule to remember: `member_of` is
-the only place a rule is consulted, and it is only reachable through a `{field}`. An override row
-escapes a rename by naming a different vocabulary, not by being exempt — which is why the rows above
-say `{r8:y}` rather than `{r:y}`.
+the only place a rule is consulted, and it is only reachable through a `{field}`.
+
+An override row is exempt outright: a rule rewrites *inherited* rows only. Naming a different
+vocabulary is not enough on its own, because a rule matches a member's text and `h` is `h` whichever
+vocabulary it came from — a mistake this section used to recommend, and one `ExecuteTest` caught.
+The rows above still name `{s:y}` rather than `{r:y}`, but for the other reason: `s` has a hole where
+`r` has `(hl)`, so `01yyy110` does not claim `0x76` and `dd 76` stays `halt`.
 
 ### DDCB is different in kind, and substitution provably cannot express it
 
