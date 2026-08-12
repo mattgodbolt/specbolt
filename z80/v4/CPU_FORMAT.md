@@ -14,6 +14,11 @@ build, parsed during constant evaluation, and used to generate two things: a
 disassembler and an interpreter. Nothing in it is read at run time — by the time
 the program starts, the file has become code.
 
+The format is not specific to any one processor. Every example here is drawn
+from `z80.cpu` because that is the description this repository has, and where a
+passage explains *why* a feature exists it usually cites the Z80 for the same
+reason — but the feature is the general one, and the paragraph will say so.
+
 The file has three kinds of line, in any order except that a name must be
 declared before it is used:
 
@@ -163,8 +168,20 @@ fetches those.
 table base
 ```
 
-Decoding starts in the **first table declared**; no name is special. A table is
-entered from another by a `goto` step, which is a real opcode fetch.
+Decoding starts in the **first table declared**; no name is special.
+
+A table is entered from another by a `goto` step. This is not a jump inside the
+decoder: it makes the machine *read another byte and decode it as an opcode*,
+paying whatever that machine charges for an opcode fetch. A prefix is therefore
+just an instruction whose entire job is to fetch another opcode, and it costs
+what one costs.
+
+On the Z80 that is four T-states and a refresh-register increment, which is why
+`cb` costs four cycles before the instruction it introduces has been read at
+all, and why `dd dd dd 23` is a legal instruction costing four cycles a byte.
+
+(A *latched* table, below, is the exception: its opcode arrives by an operand
+read rather than an instruction fetch.)
 
 ### Derived tables (views)
 
@@ -173,21 +190,28 @@ table ix = base with p.hl -> ix, k.hl -> ix, r.h -> ixh, r.l -> ixl, r.(hl) -> (
 ```
 
 A derived table decodes its parent's rows with some vocabulary members renamed,
-and may carry rows of its own that override them by first-match-wins. This is
-what `DD` and `FD` are: not a different instruction set, but the same one read
-differently — which is why two thirds of their entries are the base instruction
+and may carry rows of its own that override them by first-match-wins.
+
+This is for the prefix that does not introduce a *new* instruction set but
+re-reads an existing one under different names. Writing it as a derivation says
+so, and costs one line instead of a duplicated table. The Z80's `DD` and `FD`
+are exactly this: two thirds of their entries are the unprefixed instruction,
 untouched.
 
 A rule is written `vocabulary.member -> replacement`. **It names the vocabulary
-it rewrites**, because the same text means different things in different ones:
-`r.h` is renamed by a view, and the `s.h` of an indexed load must not be. The
-replacement is a whole member, so it may bring its own primitive and its own
-`/delay=`.
+it rewrites**, because the same spelling can mean different things in different
+vocabularies and only some of them should change. The replacement is a whole
+member, so it may bring its own primitive and its own `/delay=`.
+
+(In `z80.cpu`, `r.h` is renamed by a view and the `s.h` of an indexed load is
+not, even though both are written `h`.)
 
 Rules apply to every row the table decodes, inherited or its own. A row escapes
 a rename by naming a vocabulary no rule mentions. **Literal operands are never
-rewritten** — `ex de, hl` is immune by construction, which is the bug v2 and v3
-both have.
+rewritten**: a rename reaches `{field}` references only, so anything spelled out
+in a row is immune by construction. (That immunity is what keeps the Z80's
+`ex de, hl` correct under `DD`, which two of the hand-written implementations in
+this repository get wrong.)
 
 A parent must be declared above its children. A derived table with no rows of
 its own is legal: it *is* its parent, renamed.
@@ -206,15 +230,21 @@ Eight characters, then zero or more byte tokens.
 
 - `0` and `1` are fixed bits.
 - Any other character names a **slice**: a run of bits a vocabulary is selected
-  by. Bits sharing a letter must be contiguous. At most four slices per pattern.
+  by. Bits sharing a letter must be contiguous.
 - A slice need not be referenced. `01yyy100 | neg` uses `yyy` only to say those
   bits are ignored — all eight encodings mean `neg`.
-- `xxxxxxxx` is therefore the idiom for a catch-all row, and it must come last:
+- A pattern of nothing but one repeated letter is therefore the idiom for a
+  **catch-all**: it matches every opcode, so it must come last, where it picks
+  up whatever the rows above did not claim.
 
   ```
-  # Everything the chip does not define in this table is a two-byte nop.
   xxxxxxxx | nop | nop
   ```
+
+  This is how a table says what an undefined encoding does. (`z80.cpu` ends its
+  `ed` table with exactly this row, because on real hardware an undefined `ED`
+  encoding behaves as a do-nothing instruction two bytes long — the `ed` prefix
+  having already been fetched by the row that transferred here.)
 
 Trailing tokens say what follows the opcode:
 
@@ -278,10 +308,12 @@ from the vocabulary member the opcode selects, so one row is the whole
 `add/adc/sub/sbc` group.
 
 **`if` guards the rest of the row.** It applies a primitive that yields a bool
-and abandons the remaining steps when it is false. Every Z80 conditional puts
-its conditional half last, so this is all a condition ever has to do — and the
-extra cycles of a taken branch come from the steps it guards, not from a second
-cycle count:
+and abandons the remaining steps when it is false. There is no `else`, and none
+is needed for a conditional whose conditional part comes last — which is every
+conditional on the Z80.
+
+The pay-off is that the extra cycles of a taken branch come from the steps the
+condition guards, so no row states two cycle counts:
 
 ```
 11yyy000 | ret {c:y} | delay 1 ; if {c:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
@@ -322,16 +354,23 @@ that the byte is fetched**: the row says `{r:z}`, a view says that member is now
 per instruction, shared by every operand that uses it — `inc (ix+d)` reads and
 writes through one address, formed once.
 
-The CPU decides how a base and an offset combine *and what forming the address
-costs*, which is why `ld (ix+d), n` is 19 T-states and not 22: the immediate is
-read inside the same window.
+The CPU description decides how a base and an offset combine *and what forming
+the address costs* — a processor that wraps within a page for one mode and
+charges for crossing one in another says so there, not here. It is told how many
+bytes the instruction has already read, because on some machines those reads
+happen inside the same window. (That is why the Z80's `ld (ix+d), n` is 19
+T-states and not 22.)
 
 ---
 
 ## Latched tables
 
-`DD CB d op` is the one Z80 encoding whose opcode is not its last byte. The row
-that meets it reads the displacement and hands it on:
+Most encodings put their opcode first and their operands after. Where an
+encoding interleaves them — a byte that must be read *before* the opcode that
+decides what to do with it — the row that meets that byte reads it and hands it
+on to the table it transfers to.
+
+The Z80 has exactly one such encoding, `DD CB d op`:
 
 ```
 table ix = base with …
@@ -342,9 +381,10 @@ Everything else is derived from that `d`. A table reached by a row that reads a
 displacement is *latched*, and two things follow without being declared:
 
 - its rows use the incoming displacement instead of reading their own;
-- its opcode arrives by an **operand read** rather than an instruction fetch —
-  three cycles and no refresh, which is exactly what the real chip does, and why
-  `R` does not increment for that byte.
+- its opcode arrives by an **operand read** rather than an instruction fetch,
+  because the machine has already committed to an instruction — it is no longer
+  deciding what to run. On the Z80 that is three cycles instead of four, and is
+  why the refresh register does not increment for that byte.
 
 A table reached both with and without a displacement is a compile error.
 
@@ -370,17 +410,19 @@ in the `.cpu` file:
 - **Reachability.** A table nothing reaches is never instantiated and so is
   never type-checked; that is rejected, as is a non-derived table with no rows.
 - **Latch consistency**, as above.
-- **Capacity.** Every fixed limit below reports the limit rather than
-  overflowing.
+- **Capacity.** Every fixed limit reports itself rather than overflowing.
 
 ---
 
 ## Limits
 
+Fixed capacities, chosen to fit what exists rather than on principle. Each one
+reports its own limit when reached, so raising it is a one-line change made in
+response to a message rather than a guess.
+
 | | |
 |---|---:|
 | vocabulary members | 8 |
-| slices per opcode pattern | 4 |
 | substitutions per derived table | 6 |
 | steps per row | 6 |
 | operands, and destinations, per step | 4 |
