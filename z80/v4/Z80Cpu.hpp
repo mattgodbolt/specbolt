@@ -36,8 +36,10 @@ private:
       result = result | Flags::Flag5();
     return result;
   }
-  // The in and out block forms count b rather than bc, and their undocumented
-  // flags are not modelled: only zero, sign and parity are trustworthy here.
+  // The in and out block forms count b rather than bc. Their real parity comes
+  // from `(value + ((c ± 1) & 0xff)) & 7` exclusive-ored with b, and their half
+  // carry and carry from whether that sum passed 255; none of that is modelled,
+  // so only sign, zero and flags 3 and 5 are trustworthy here.
   [[nodiscard]] static Flags stepped(Cpu &cpu, const Flags flags) {
     const auto b = static_cast<std::uint8_t>(cpu.get(RegisterFile::R8::B) - 1);
     cpu.set(RegisterFile::R8::B, b);
@@ -144,10 +146,12 @@ public:
   // `in r,(c)` addresses with the whole of bc and sets flags; `out (c),r` does
   // not. Neither is expressible as an operand, because the port space is not
   // memory.
-  static Alu::R8 in_c(Cpu &cpu, const std::uint16_t port) {
+  // Sign, zero and parity come from the byte; the carry is explicitly *not*
+  // affected, so it has to be carried through rather than recomputed.
+  static Alu::R8 in_c(Cpu &cpu, const std::uint16_t port, const Flags flags) {
     cpu.bus(Bus::io_read, port);
     const auto value = cpu.in(port);
-    return {value, Alu::parity_flags_for(value)};
+    return {value, Alu::parity_flags_for(value) | (flags & Flags::Carry())};
   }
   static void out_c(Cpu &cpu, const std::uint16_t port, const std::uint8_t value) {
     cpu.bus(Bus::io_write, port);
@@ -243,7 +247,7 @@ public:
 enum class Bit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };
 
 // Machine state that is not a register but is still addressable by name.
-enum class State : std::uint8_t { halted, iff1, iff2 };
+enum class State : std::uint8_t { halted, iff1, iff2, deferred };
 
 // A 16-bit machine register that is not in the programmer's register file.
 enum class Pointer : std::uint8_t { pc };
@@ -312,6 +316,7 @@ inline void write(Cpu &cpu, Word, const Flags value) { cpu.flags(value); }
   switch (which) {
     case State::iff1: return cpu.iff1();
     case State::iff2: return cpu.iff2();
+    case State::deferred: return cpu.interrupts_deferred();
     case State::halted: break;
   }
   return cpu.halted();
@@ -340,6 +345,7 @@ inline void write(Cpu &cpu, const State which, const bool value) {
   switch (which) {
     case State::iff1: cpu.iff1(value); return;
     case State::iff2: cpu.iff2(value); return;
+    case State::deferred: cpu.interrupts_deferred(value); return;
     case State::halted: cpu.halted(value); return;
   }
 }

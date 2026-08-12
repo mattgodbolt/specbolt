@@ -3,8 +3,8 @@
 // The three kinds of declaration a description contains, each reading the whole
 // text and returning a fixed-size array of what it found.
 
-#ifndef SPECBOLT_MODULES
 #include "z80/v4/Lower.hpp"
+#include "z80/v4/Matched.hpp"
 #include "z80/v4/Model.hpp"
 #include "z80/v4/Parser.hpp"
 #include "z80/v4/TableError.hpp"
@@ -12,11 +12,9 @@
 #include <algorithm>
 #include <array>
 #include <optional>
-#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
-#endif
 
 namespace specbolt::v4 {
 
@@ -324,7 +322,5 @@ template<std::size_t N>
   }
   return result;
 }
-
-// A field operand names whichever vocabulary member its slice selects, and that
 
 } // namespace specbolt::v4

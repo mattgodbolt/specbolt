@@ -4,17 +4,16 @@
 // value type: several are non-type template parameters later, so they are
 // *structural* -- literal, with every member public, recursively.
 
-#ifndef SPECBOLT_MODULES
 #include "z80/v4/Matched.hpp"
 #include "z80/v4/Vector.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <string_view>
-#endif
 
 namespace specbolt::v4 {
 
@@ -122,6 +121,15 @@ using Rules = Vector<Rule, 6>;
     if (rule.field_index == reference.field_index && rule.from == member.display)
       return rule.to;
   return member;
+}
+
+// A field operand names whichever vocabulary member its slice selects, and that
+// member is written the same way an operand is written in a row.
+[[nodiscard]] constexpr Operand resolve(const std::span<const Field> fields, const Operand operand,
+    const Matched &matched, const std::uint8_t opcode, const Rules &rules = {}) {
+  if (operand.kind != Operand::Kind::Field)
+    return operand;
+  return member_of(fields, operand.reference, matched, opcode, rules).operand;
 }
 
 inline constexpr std::size_t max_operands = 4;

@@ -5,15 +5,10 @@
 #include "z80/v4/Model.hpp"
 #include "z80/v4/Parse.hpp"
 
-#include <algorithm>
 #include <array>
 #include <optional>
-#include <ranges>
 #include <span>
-#include <stdexcept>
-#include <string>
 #include <string_view>
-#include <vector>
 #endif
 
 namespace specbolt::v4 {
@@ -27,6 +22,7 @@ inline constexpr char cpu_raw[] = {
 
 inline constexpr std::string_view cpu_description{cpu_raw};
 
+// The description this build was compiled against. Everything above parses
 // whatever it is given; only these three name the embedded file.
 inline constexpr auto fields = parse_fields<count_matching(cpu_description, &is_field)>(cpu_description);
 inline constexpr auto tables = parse_tables<count_matching(cpu_description, &is_table)>(cpu_description, fields);

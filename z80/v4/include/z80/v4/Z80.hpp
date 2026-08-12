@@ -51,6 +51,12 @@ public:
   using Z80Base::halted;
   void halted(bool value);
 
+  // `ei` takes effect only after the instruction that follows it, so that
+  // `ei ; halt` and `ei ; reti` do what they are written to do. The table says
+  // an instruction defers; what deferring means is the machine's business.
+  [[nodiscard]] bool interrupts_deferred() const { return interrupts_deferred_; }
+  void interrupts_deferred(const bool value) { interrupts_deferred_ = value; }
+
 private:
   // Accepting an interrupt is not an instruction: no encoding matches it, so it
   // cannot be a row. It belongs to the machine that drives the decoder.
@@ -58,6 +64,7 @@ private:
 
   // What the address bus last held, which is what an internal cycle presents.
   std::uint16_t bus_address_{};
+  bool interrupts_deferred_{};
 };
 
 } // namespace specbolt::v4

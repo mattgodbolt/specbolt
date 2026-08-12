@@ -246,6 +246,48 @@ TEST_CASE("Stack, jumps and exchanges") {
   }
 }
 
+TEST_CASE("Interrupts") {
+  Tester t;
+  auto &regs = t.regs;
+  regs.sp(0x8000);
+
+  SECTION("in r, (c) reports the byte without disturbing the carry") {
+    t.z80.add_in_handler([](std::uint16_t) { return std::optional<std::uint8_t>{0x00}; });
+    t.z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::BC, 0x1234);
+    t.run(0xed, 0x48); // in c, (c)
+    CHECK(regs.get(RegisterFile::R8::C) == 0x00);
+    CHECK(t.z80.flags() == (Flags::Carry() | Flags::Zero() | Flags::Parity()));
+    CHECK(t.z80.cycle_count() == 12);
+  }
+
+  SECTION("ei lets one more instruction run before an interrupt is taken") {
+    // `ei ; halt` and `ei ; reti` both depend on this: without it the interrupt
+    // arrives before the instruction that was meant to run under it.
+    t.run(0xfb); // ei
+    t.z80.interrupt();
+    t.run(0x00); // nop -- runs first
+    CHECK(t.z80.pc() == 2);
+    t.run(0x00); // and now the interrupt is taken instead of this
+    CHECK(t.memory.read16(0x7ffe) == 2); // the address it interrupted
+    CHECK(regs.sp() == 0x7ffe);
+  }
+
+  SECTION("an interrupt raised while disabled is held, not dropped") {
+    // /INT is a level the device holds, not an edge, so arriving during a
+    // di/ei window does not lose it.
+    t.z80.iff1(false);
+    t.z80.iff2(false);
+    t.z80.interrupt();
+    t.run(0xfb); // ei
+    t.run(0x00); // nop, deferred by the ei
+    CHECK(t.z80.pc() == 2);
+    t.run(0x00);
+    CHECK(t.memory.read16(0x7ffe) == 2); // held, then taken
+    CHECK(regs.sp() == 0x7ffe);
+  }
+}
+
 TEST_CASE("Rotates and shifts") {
   Tester t;
   auto &regs = t.regs;

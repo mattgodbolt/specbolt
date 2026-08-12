@@ -3,14 +3,12 @@
 // Text in, values out. Nothing here knows what a vocabulary or a row is, which
 // is what makes it testable a line at a time.
 
-#ifndef SPECBOLT_MODULES
 #include "z80/v4/Model.hpp"
 #include "z80/v4/Parser.hpp"
 #include "z80/v4/TableError.hpp"
 
 #include <string>
 #include <string_view>
-#endif
 
 namespace specbolt::v4 {
 

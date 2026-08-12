@@ -91,7 +91,7 @@ table base
 11101001     | jp (hl)           | ld16 pc <- hl
 11111001     | ld sp, hl         | ld16 sp <- hl ; delay 2
 11110011     | di                | ld8 iff1 <- 0 ; ld8 iff2 <- 0
-11111011     | ei                | ld8 iff1 <- 1 ; ld8 iff2 <- 1
+11111011     | ei                | ld8 iff1 <- 1 ; ld8 iff2 <- 1 ; ld8 deferred <- 1
 11000011 n n | jp $nnnn          | ld16 pc <- n
 11kk0101     | push {k}          | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- {k}
 11kk0001     | pop {k}           | ld16 {k} <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
@@ -186,8 +186,8 @@ table fdcb
 
 table ed
 
-01110000     | in (c)          | in_c -, flags <- bc
-01yyy000     | in {r:y}, (c)   | in_c {r:y}, flags <- bc
+01110000     | in (c)          | in_c -, flags <- bc flags
+01yyy000     | in {r:y}, (c)   | in_c {r:y}, flags <- bc flags
 01110001     | out (c), 0      | out_c bc 0
 01yyy001     | out (c), {r:y}  | out_c bc {r:y}
 01pp0010     | sbc hl, {p}     | sbc16 hl, flags <- hl {p} carry ; delay 7

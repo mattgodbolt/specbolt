@@ -131,6 +131,11 @@ TEST_CASE("Table diagnostics") {
     constexpr std::string_view shared = "field p = bc hl\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | ";
     // Naming the vocabulary is fine: a rule reaches it.
     CHECK_NOTHROW(parse(std::string(shared) + "ld16 {p:y} <- {p:y}\ntable u = t with p.hl -> ix\n"));
+    // A rule whose left side is parenthesised has to match the same way.
+    CHECK_THROWS_WITH(parse("field p = bc (hl)\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | "
+                            "ld16 {p:y} <- (hl)\ntable u = t with p.(hl) -> (ix+d)\n"),
+        Equals("z80.cpu:4: table 'u' renames '(hl)', and this row names it literally where a rule cannot reach it; "
+               "give that table its own row, or name a vocabulary"));
     // Spelling it out is not, because a rule never rewrites literal text.
     CHECK_THROWS_WITH(parse(std::string(shared) + "ld16 {p:y} <- hl\ntable u = t with p.hl -> ix\n"),
         Equals("z80.cpu:4: table 'u' renames 'hl', and this row names it literally where a rule cannot reach it; "

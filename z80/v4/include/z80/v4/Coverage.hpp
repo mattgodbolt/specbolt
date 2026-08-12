@@ -3,26 +3,17 @@
 // Which opcodes each row claims, and the checks that answer from those sets:
 // precedence, reachability, totality.
 
-#ifndef SPECBOLT_MODULES
 #include <algorithm>
 #include <array>
 #include <optional>
-#include <ranges>
 #include <span>
 #include <string>
 #include <vector>
+#include "z80/v4/Matched.hpp"
 #include "z80/v4/Model.hpp"
 #include "z80/v4/TableError.hpp"
-#endif
 
 namespace specbolt::v4 {
-
-[[nodiscard]] constexpr Operand resolve(const std::span<const Field> fields, const Operand operand,
-    const Matched &matched, const std::uint8_t opcode, const Rules &rules = {}) {
-  if (operand.kind != Operand::Kind::Field)
-    return operand;
-  return member_of(fields, operand.reference, matched, opcode, rules).operand;
-}
 
 // What this opcode, decoded here, is displaced through -- nothing if it is not.
 // Nothing declares this: a row says `{r:z}`, a view says that member is now
@@ -216,9 +207,17 @@ constexpr bool check_tables_total(const std::span<const TableDecl> tables,
 
 // Does any step of this row name `what` as a literal, where a rule cannot reach
 // it?
-[[nodiscard]] constexpr bool names_literally(const Row &row, const std::string_view what) {
-  const auto matches = [what](const Operand &operand) {
-    return operand.kind == Operand::Kind::Named && operand.name.view() == what;
+[[nodiscard]] constexpr bool names_literally(const Row &row, std::string_view what) {
+  // A rule's left side is written as the vocabulary writes it, so it may carry
+  // parentheses -- `r.(hl) -> (ix+d)`. An operand keeps the name and the
+  // indirection apart, so compare both halves rather than the text.
+  auto indirect = false;
+  if (what.starts_with('(') && what.ends_with(')')) {
+    indirect = true;
+    what = what.substr(1, what.size() - 2);
+  }
+  const auto matches = [what, indirect](const Operand &operand) {
+    return operand.kind == Operand::Kind::Named && operand.indirect == indirect && operand.name.view() == what;
   };
   return std::ranges::any_of(row.steps, [&](const Step &step) {
     return std::ranges::any_of(step.operands, matches) || std::ranges::any_of(step.destinations, matches);
@@ -270,7 +269,5 @@ constexpr bool check_tables_used(
   }
   return true;
 }
-
-// The description this build was compiled against. Everything above parses
 
 } // namespace specbolt::v4
