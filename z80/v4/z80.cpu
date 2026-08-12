@@ -7,6 +7,8 @@ field r = b c d e h l (hl)/delay=1 a
 field q = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
 field w = and:and8 xor:xor8 or:or8 -
 field b = 0 1 2 3 4 5 6 7
+field g = rlc:rlc8 rrc:rrc8 rl:rl8+carry rr:rr8+carry sla:sla8 sra:sra8 sll:sll8 srl:srl8
+field f = rlca:rlca8 rrca:rrca8 rla:rla8 rra:rra8
 # never renamed by a view: the register operand of an indexed load stays real
 field s = b c d e h l - a
 
@@ -22,6 +24,7 @@ table base
 00011010     | ld a, (de)      | ld8 a <- (de)
 00pp0011     | inc {p}         | inc16 {p} <- {p} ; delay 2
 00pp1011     | dec {p}         | dec16 {p} <- {p} ; delay 2
+000ff111     | {f:f}           | {f:f} a, flags <- a flags
 00100111     | daa             | daa a, flags <- a flags
 00101111     | cpl             | cpl a, flags <- a flags
 00110111     | scf             | scf -, flags <- a flags
@@ -41,6 +44,7 @@ table base
 
 table cb
 
+00yyyzzz     | {g:y} {r:z}     | {g:y} {r:z}, flags <- {r:z}
 01bbb110     | bit {b}, (hl)   | bit8 flags <- (hl) {b} flags h ; delay 1
 01bbbzzz     | bit {b}, {r:z}  | bit8 flags <- {r:z} {b} flags {r:z}
 10bbbzzz     | res {b}, {r:z}  | res8 {r:z} <- {r:z} {b}
@@ -70,6 +74,8 @@ table iy = base with hl -> iy, h -> iyh, l -> iyl, (hl) -> (iy+d)/delay=1
 
 table ddcb
 
+00yyy110     | {g:y} (ix+d)          | {g:y} (ix+d)/delay=1, flags <- (ix+d)
+00yyyzzz     | {g:y} (ix+d), {s:z}   | {g:y} {s:z}, flags <- (ix+d) ; delay 1 ; ld8 (ix+d) <- {s:z}
 01bbbzzz     | bit {b}, (ix+d)          | bit8 flags <- (ix+d) {b} flags wzh ; delay 1
 10bbb110     | res {b}, (ix+d)          | res8 (ix+d)/delay=1 <- (ix+d) {b}
 10bbbzzz     | res {b}, (ix+d), {s:z}   | res8 (ix+d)/delay=1 {s:z} <- (ix+d) {b}
@@ -78,6 +84,8 @@ table ddcb
 
 table fdcb
 
+00yyy110     | {g:y} (iy+d)          | {g:y} (iy+d)/delay=1, flags <- (iy+d)
+00yyyzzz     | {g:y} (iy+d), {s:z}   | {g:y} {s:z}, flags <- (iy+d) ; delay 1 ; ld8 (iy+d) <- {s:z}
 01bbbzzz     | bit {b}, (iy+d)          | bit8 flags <- (iy+d) {b} flags wzh ; delay 1
 10bbb110     | res {b}, (iy+d)          | res8 (iy+d)/delay=1 <- (iy+d) {b}
 10bbbzzz     | res {b}, (iy+d), {s:z}   | res8 (iy+d)/delay=1 {s:z} <- (iy+d) {b}

@@ -10,21 +10,21 @@ namespace specbolt::v4 {
 
 TEST_CASE("Table parsing") {
   SECTION("Reads the field vocabulary") {
-    STATIC_CHECK(fields.size() == 6);
+    STATIC_CHECK(fields.size() == 8);
     STATIC_CHECK(fields[0].name == 'p');
     STATIC_CHECK(fields[0].values.size() == 4);
     STATIC_CHECK(fields[0].values[0].display == "bc");
     STATIC_CHECK(fields[0].values[3].display == "sp");
   }
   SECTION("Reads the instruction rows") {
-    STATIC_CHECK(rows.size() == 46);
+    STATIC_CHECK(rows.size() == 52);
     STATIC_CHECK(rows[0].mnemonic == "nop");
     STATIC_CHECK(rows[0].steps[0].verb == "nop");
     STATIC_CHECK(rows[0].matched.opcode_bits == 0x00);
   }
   SECTION("Keeps the line number for diagnostics") {
-    STATIC_CHECK(rows[0].line == 15);
-    STATIC_CHECK(rows[2].line == 17);
+    STATIC_CHECK(rows[0].line == 17);
+    STATIC_CHECK(rows[2].line == 19);
   }
   SECTION("A hole means the row does not cover that opcode") {
     STATIC_CHECK(fields[3].name == 'w');
@@ -58,7 +58,7 @@ TEST_CASE("Table parsing") {
     // there is no way to gain coverage by silently shadowing another row.
     STATIC_CHECK(tables.size() == 6);
     STATIC_CHECK(tables[entry_table].name == "base");
-    STATIC_CHECK(decoded_count == 1128);
+    STATIC_CHECK(decoded_count == 1332);
   }
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(find_row(entry_table, 0x00) == 0u);

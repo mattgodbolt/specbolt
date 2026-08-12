@@ -36,14 +36,14 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0x04) == "inc b");
     CHECK(dis(0x05) == "dec b");
     // CHECK(dis(0x06, 0xce) == "ld b, 0xce");
-    // CHECK(dis(0x07) == "rlca");
+    CHECK(dis(0x07) == "rlca");
     // CHECK(dis(0x08) == "ex af, af'");
     // CHECK(dis(0x0a) == "ld a, (bc)");
     CHECK(dis(0x0b) == "dec bc");
     CHECK(dis(0x0c) == "inc c");
     CHECK(dis(0x0d) == "dec c");
     // CHECK(dis(0x0e, 0x0f) == "ld c, 0x0f");
-    // CHECK(dis(0x0f) == "rrca");
+    CHECK(dis(0x0f) == "rrca");
     // CHECK(dis(0x10, 0xfe) == "djnz 0x8000");
     CHECK(dis(0x11, 0x02, 0x01) == "ld de, 0x0102");
     // CHECK(dis(0x12) == "ld (de), a");
@@ -51,14 +51,14 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0x14) == "inc d");
     CHECK(dis(0x15) == "dec d");
     // CHECK(dis(0x16, 0x00) == "ld d, 0x00");
-    // CHECK(dis(0x17) == "rla");
+    CHECK(dis(0x17) == "rla");
     // CHECK(dis(0x18, 0x40) == "jr 0x8042");
     // CHECK(dis(0x1a) == "ld a, (de)");
     CHECK(dis(0x1b) == "dec de");
     CHECK(dis(0x1c) == "inc e");
     CHECK(dis(0x1d) == "dec e");
     // CHECK(dis(0x1e, 0x00) == "ld e, 0x00");
-    // CHECK(dis(0x1f) == "rra");
+    CHECK(dis(0x1f) == "rra");
     // CHECK(dis(0x20, 0x00) == "jr nz 0x8002");
     CHECK(dis(0x21, 0xff, 0xff) == "ld hl, 0xffff");
     // CHECK(dis(0x22, 0x00, 0x00) == "ld (0x0000), hl");
@@ -282,45 +282,45 @@ TEST_CASE("Opcode generation tests") {
     // CHECK(dis(0xff) == "rst 0x38");
   }
   SECTION("Test CB prefix opcode disassembly") {
-    // CHECK(dis(0xcb, 0x00) == "rlc b");
-    // CHECK(dis(0xcb, 0x06) == "rlc (hl)");
-    // CHECK(dis(0xcb, 0x07) == "rlc a");
-    // CHECK(dis(0xcb, 0x08) == "rrc b");
-    // CHECK(dis(0xcb, 0x0e) == "rrc (hl)");
-    // CHECK(dis(0xcb, 0x0f) == "rrc a");
-    // CHECK(dis(0xcb, 0x10) == "rl b");
-    // CHECK(dis(0xcb, 0x16) == "rl (hl)");
-    // CHECK(dis(0xcb, 0x17) == "rl a");
-    // CHECK(dis(0xcb, 0x18) == "rr b");
-    // CHECK(dis(0xcb, 0x1e) == "rr (hl)");
-    // CHECK(dis(0xcb, 0x1f) == "rr a");
-    // CHECK(dis(0xcb, 0x20) == "sla b");
-    // CHECK(dis(0xcb, 0x26) == "sla (hl)");
-    // CHECK(dis(0xcb, 0x27) == "sla a");
-    // CHECK(dis(0xcb, 0x28) == "sra b");
-    // CHECK(dis(0xcb, 0x2e) == "sra (hl)");
-    // CHECK(dis(0xcb, 0x2f) == "sra a");
-    // CHECK(dis(0xcb, 0x30) == "sll b");
-    // CHECK(dis(0xcb, 0x36) == "sll (hl)");
-    // CHECK(dis(0xcb, 0x37) == "sll a");
-    // CHECK(dis(0xcb, 0x38) == "srl b");
-    // CHECK(dis(0xcb, 0x3e) == "srl (hl)");
-    // CHECK(dis(0xcb, 0x3f) == "srl a");
-    // CHECK(dis(0xcb, 0x40) == "bit 0, b");
-    // CHECK(dis(0xcb, 0x46) == "bit 0, (hl)");
-    // CHECK(dis(0xcb, 0x48) == "bit 1, b");
-    // CHECK(dis(0xcb, 0x4f) == "bit 1, a");
-    // CHECK(dis(0xcb, 0x7f) == "bit 7, a");
-    // CHECK(dis(0xcb, 0x80) == "res 0, b");
-    // CHECK(dis(0xcb, 0x86) == "res 0, (hl)");
-    // CHECK(dis(0xcb, 0x88) == "res 1, b");
-    // CHECK(dis(0xcb, 0x8f) == "res 1, a");
-    // CHECK(dis(0xcb, 0xbf) == "res 7, a");
-    // CHECK(dis(0xcb, 0xc0) == "set 0, b");
-    // CHECK(dis(0xcb, 0xc6) == "set 0, (hl)");
-    // CHECK(dis(0xcb, 0xc8) == "set 1, b");
-    // CHECK(dis(0xcb, 0xcf) == "set 1, a");
-    // CHECK(dis(0xcb, 0xff) == "set 7, a");
+    CHECK(dis(0xcb, 0x00) == "rlc b");
+    CHECK(dis(0xcb, 0x06) == "rlc (hl)");
+    CHECK(dis(0xcb, 0x07) == "rlc a");
+    CHECK(dis(0xcb, 0x08) == "rrc b");
+    CHECK(dis(0xcb, 0x0e) == "rrc (hl)");
+    CHECK(dis(0xcb, 0x0f) == "rrc a");
+    CHECK(dis(0xcb, 0x10) == "rl b");
+    CHECK(dis(0xcb, 0x16) == "rl (hl)");
+    CHECK(dis(0xcb, 0x17) == "rl a");
+    CHECK(dis(0xcb, 0x18) == "rr b");
+    CHECK(dis(0xcb, 0x1e) == "rr (hl)");
+    CHECK(dis(0xcb, 0x1f) == "rr a");
+    CHECK(dis(0xcb, 0x20) == "sla b");
+    CHECK(dis(0xcb, 0x26) == "sla (hl)");
+    CHECK(dis(0xcb, 0x27) == "sla a");
+    CHECK(dis(0xcb, 0x28) == "sra b");
+    CHECK(dis(0xcb, 0x2e) == "sra (hl)");
+    CHECK(dis(0xcb, 0x2f) == "sra a");
+    CHECK(dis(0xcb, 0x30) == "sll b");
+    CHECK(dis(0xcb, 0x36) == "sll (hl)");
+    CHECK(dis(0xcb, 0x37) == "sll a");
+    CHECK(dis(0xcb, 0x38) == "srl b");
+    CHECK(dis(0xcb, 0x3e) == "srl (hl)");
+    CHECK(dis(0xcb, 0x3f) == "srl a");
+    CHECK(dis(0xcb, 0x40) == "bit 0, b");
+    CHECK(dis(0xcb, 0x46) == "bit 0, (hl)");
+    CHECK(dis(0xcb, 0x48) == "bit 1, b");
+    CHECK(dis(0xcb, 0x4f) == "bit 1, a");
+    CHECK(dis(0xcb, 0x7f) == "bit 7, a");
+    CHECK(dis(0xcb, 0x80) == "res 0, b");
+    CHECK(dis(0xcb, 0x86) == "res 0, (hl)");
+    CHECK(dis(0xcb, 0x88) == "res 1, b");
+    CHECK(dis(0xcb, 0x8f) == "res 1, a");
+    CHECK(dis(0xcb, 0xbf) == "res 7, a");
+    CHECK(dis(0xcb, 0xc0) == "set 0, b");
+    CHECK(dis(0xcb, 0xc6) == "set 0, (hl)");
+    CHECK(dis(0xcb, 0xc8) == "set 1, b");
+    CHECK(dis(0xcb, 0xcf) == "set 1, a");
+    CHECK(dis(0xcb, 0xff) == "set 7, a");
   }
   SECTION("Test dd prefixes") {
     CHECK(dis(0xdd, 0x04) == "inc b");
@@ -335,11 +335,11 @@ TEST_CASE("Opcode generation tests") {
     // CHECK(dis(0xdd, 0x22, 0xad, 0xba) == "ld (0xbaad), ix");
   }
   SECTION("Test ddcb prefixes") {
-    // CHECK(dis(0xdd, 0xcb, 0xff, 0x06) == "rlc (ix-0x01)");
+    CHECK(dis(0xdd, 0xcb, 0xff, 0x06) == "rlc (ix-0x01)");
     CHECK(dis(0xdd, 0xcb, 0x23, 0xf6) == "set 6, (ix+0x23)");
   }
   SECTION("Test fdcb prefixes") {
-    // CHECK(dis(0xfd, 0xcb, 0xff, 0x06) == "rlc (iy-0x01)");
+    CHECK(dis(0xfd, 0xcb, 0xff, 0x06) == "rlc (iy-0x01)");
     CHECK(dis(0xfd, 0xcb, 0x23, 0xf6) == "set 6, (iy+0x23)");
   }
   SECTION("Test ed prefixes") {

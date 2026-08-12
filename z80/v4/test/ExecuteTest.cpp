@@ -37,6 +37,57 @@ struct Tester {
 
 } // namespace
 
+TEST_CASE("Rotates and shifts") {
+  Tester t;
+  auto &regs = t.regs;
+  t.z80.flags(Flags());
+  regs.set(RegisterFile::R8::A, 0b1000'0001);
+  regs.set(RegisterFile::R16::HL, 0x1234);
+  t.memory.write(0x1234, 0b1100'0011);
+
+  SECTION("rlca keeps sign, zero and parity where rlc a recomputes them") {
+    t.z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R8::A, 0x59);
+    t.run(0x07); // rlca
+    CHECK(regs.get(RegisterFile::R8::A) == 0xb2);
+    CHECK(t.z80.flags() == Flags::Flag5());
+    CHECK(t.z80.cycle_count() == 4);
+  }
+  SECTION("rlc a") {
+    t.run(0xcb, 0x07);
+    CHECK(regs.get(RegisterFile::R8::A) == 0b0000'0011);
+    CHECK(t.z80.flags() == (Flags::Parity() | Flags::Carry()));
+    CHECK(t.z80.cycle_count() == 8);
+  }
+  SECTION("rlc (hl)") {
+    t.run(0xcb, 0x06);
+    CHECK(t.memory.read(0x1234) == 0b1000'0111);
+    CHECK(t.z80.flags() == (Flags::Sign() | Flags::Parity() | Flags::Carry()));
+    CHECK(t.z80.cycle_count() == 15);
+  }
+  SECTION("rl a takes the carry in") {
+    t.run(0xcb, 0x17);
+    CHECK(regs.get(RegisterFile::R8::A) == 0b0000'0010);
+    CHECK(t.z80.flags() == Flags::Carry());
+    CHECK(t.z80.cycle_count() == 8);
+  }
+  SECTION("rl (ix+d) rotates memory and copies the result out") {
+    regs.set(RegisterFile::R16::IX, 0x1236);
+    t.memory.write(0x1234, 0b1111'0101);
+    t.run(0xdd, 0xcb, 0xfe, 0x12); // rl (ix-2), d
+    CHECK(t.memory.read(0x1234) == 0b1110'1010);
+    CHECK(regs.get(RegisterFile::R8::D) == 0b1110'1010);
+    CHECK(t.z80.cycle_count() == 23);
+  }
+  SECTION("rlc (ix+d) with the low bits 6 copies nowhere") {
+    regs.set(RegisterFile::R16::IX, 0x1236);
+    t.memory.write(0x1234, 0b1111'0101);
+    t.run(0xdd, 0xcb, 0xfe, 0x06); // rlc (ix-2)
+    CHECK(t.memory.read(0x1234) == 0b1110'1011);
+    CHECK(t.z80.cycle_count() == 23);
+  }
+}
+
 TEST_CASE("Indexed addressing") {
   Tester t;
   auto &regs = t.regs;
