@@ -228,10 +228,15 @@ struct Call {
 // whether a 16-bit register reaching an 8-bit parameter is diagnosed depends on
 // the build's warnings rather than on anything this file does.
 template<Operand Op, std::size_t Line, typename Parameter>
-[[nodiscard]] Parameter direct_value_of(Cpu &cpu, const std::uint16_t immediate, const std::uint8_t view) {
+[[nodiscard]] Parameter direct_value_of(
+    Cpu &cpu, const std::uint16_t immediate, const std::uint8_t view, const std::uint8_t opcode) {
   static_assert(!std::is_reference_v<Parameter>,
       "an operation takes its operands by value; there is nothing here for a reference to bind to");
-  if constexpr (Op.kind == Operand::Kind::Constant) {
+  if constexpr (Op.kind == Operand::Kind::Constant && Op.from_opcode)
+    // The instruction carries the number and the slice says where. Nothing to
+    // check against the parameter: the mask already bounds it.
+    return static_cast<Parameter>(Op.slice.extract(opcode));
+  else if constexpr (Op.kind == Operand::Kind::Constant) {
     if constexpr (std::integral<Parameter>)
       static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
           "this constant does not fit the parameter it is passed to");
@@ -260,41 +265,41 @@ template<Operand Op, std::size_t Line, typename Parameter>
 // The address an indirect operand addresses through. A displaced one was formed
 // once for the whole instruction, before any operand was touched.
 template<Operand Op, std::size_t Line>
-[[nodiscard]] std::uint16_t address_of(
-    Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view) {
+[[nodiscard]] std::uint16_t address_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
+    const std::uint8_t view, const std::uint8_t opcode) {
   if constexpr (Op.displaced)
     return indexed;
   else
-    return direct_value_of<Op, Line, std::uint16_t>(cpu, immediate, view);
+    return direct_value_of<Op, Line, std::uint16_t>(cpu, immediate, view, opcode);
 }
 
 // An indirect operand is whatever it would have been, read as an address. How
 // wide the read is comes from the parameter it feeds, so `ld16 hl <- (n)` reads
 // two bytes and `ld8 a <- (n)` one, with the row saying neither.
 template<Operand Op, std::size_t Line, typename Parameter>
-[[nodiscard]] Parameter value_of(
-    Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view) {
+[[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
+    const std::uint8_t view, const std::uint8_t opcode) {
   if constexpr (Op.indirect) {
-    const auto address = address_of<Op, Line>(cpu, immediate, indexed, view);
+    const auto address = address_of<Op, Line>(cpu, immediate, indexed, view, opcode);
     if constexpr (std::same_as<Parameter, std::uint16_t>)
       return cpu.read_memory16(address);
     else
       return cpu.read_memory(address);
   }
   else
-    return direct_value_of<Op, Line, Parameter>(cpu, immediate, view);
+    return direct_value_of<Op, Line, Parameter>(cpu, immediate, view, opcode);
 }
 
 template<Operand Op, std::size_t Line, typename T>
-void store(
-    Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view, const T value) {
+void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view,
+    const std::uint8_t opcode, const T value) {
   if constexpr (Op.kind == Operand::Kind::Discard)
     static_cast<void>(value);
   else if constexpr (Op.indirect) {
     // The addressing mode says how long the machine idles before writing back.
     if constexpr (Op.write_back_delay != 0)
       cpu.delay(Op.write_back_delay);
-    const auto address = address_of<Op, Line>(cpu, immediate, indexed, view);
+    const auto address = address_of<Op, Line>(cpu, immediate, indexed, view, opcode);
     if constexpr (std::same_as<T, std::uint16_t>)
       cpu.write_memory16(address, value);
     else
@@ -330,19 +335,20 @@ void store(
 // needs a pack, and an expansion statement produces statements, not pack
 // elements. The two C++26 features do not substitute for each other here.
 template<std::meta::info Fn, Call C>
-[[nodiscard]] auto operands_of(
-    Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view) {
+[[nodiscard]] auto operands_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
+    const std::uint8_t view, const std::uint8_t opcode) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
   return [&]<std::size_t... I>(std::index_sequence<I...>) {
     return std::tuple{
-        value_of<C.operands[I], C.line, parameter_type<Fn, I + supplied>>(cpu, immediate, indexed, view)...};
+        value_of<C.operands[I], C.line, parameter_type<Fn, I + supplied>>(cpu, immediate, indexed, view, opcode)...};
   }(std::make_index_sequence<C.operands.size()>{});
 }
 
 // Arguments are supplied positionally; destinations destructure the result in
 // declaration order.
 template<std::meta::info Fn, Call C>
-void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view) {
+void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view,
+    const std::uint8_t opcode) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
   static_assert(
       C.operands.size() + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
@@ -362,7 +368,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
 
   // Unevaluated, despite everything just said about operands having effects:
   // `decltype` asks for the type and calls nothing.
-  using Result = decltype(call(operands_of<Fn, C>(cpu, immediate, indexed, view)));
+  using Result = decltype(call(operands_of<Fn, C>(cpu, immediate, indexed, view, opcode)));
   // A `std::span`, and safe to hold: `destructures_into` promotes its contents
   // with `define_static_array`, so what this points at has static storage and
   // `members[at]` is a constant expression a splice can use.
@@ -371,39 +377,39 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
       "a result with exactly one accessible member is ambiguous: it is neither a value nor a pair");
   if constexpr (std::is_void_v<Result>) {
     static_assert(C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
-    call(operands_of<Fn, C>(cpu, immediate, indexed, view));
+    call(operands_of<Fn, C>(cpu, immediate, indexed, view, opcode));
   }
   else if constexpr (members.size() > 1) {
     // Two is `Alu`'s `{result, flags}`, which is what almost every arithmetic
     // operation returns. One accessible member is caught above as ambiguous.
     static_assert(
         C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
-    const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed, view));
+    const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed, view, opcode));
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
-        store<C.destinations[at], C.line>(cpu, immediate, indexed, view, result.[:members[at]:]);
+        store<C.destinations[at], C.line>(cpu, immediate, indexed, view, opcode, result.[:members[at]:]);
   }
   else {
     static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
     // More than one *destination* is how an instruction writes one result to
     // two places -- `dd cb d op` puts it through the addressing mode and into
     // the register its low bits name.
-    const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed, view));
+    const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed, view, opcode));
     template for (constexpr auto destination: C.destinations)
-        store<destination, C.line>(cpu, immediate, indexed, view, result);
+        store<destination, C.line>(cpu, immediate, indexed, view, opcode, result);
   }
 }
 
 // A condition is applied like any other operation; only what is done with the
 // answer differs.
 template<std::meta::info Fn, Call C>
-[[nodiscard]] bool evaluate(
-    Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view) {
+[[nodiscard]] bool evaluate(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
+    const std::uint8_t view, const std::uint8_t opcode) {
   static_assert(C.operands.size() == arity_of<Fn>, "the row supplies the wrong number of operands for this condition");
   static_assert(C.destinations.size() == 0, "a condition names no destination; it decides whether the rest happens");
   static_assert(!takes_cpu<Fn>(), "a condition may not ask for the machine; it only reads what the row hands it");
   static_assert(std::is_same_v<typename[:std::meta::return_type_of(Fn):], bool>, "a condition must answer yes or no");
-  return std::apply(
-      [](const auto &...values) { return [:Fn:](values...); }, operands_of<Fn, C>(cpu, immediate, indexed, view));
+  return std::apply([](const auto &...values) { return [:Fn:](values...); },
+      operands_of<Fn, C>(cpu, immediate, indexed, view, opcode));
 }
 
 // A vocabulary member may bind the operation late, and may append an operand the
@@ -456,7 +462,7 @@ struct Transfer {
   std::uint8_t view{};
 };
 using Next = std::optional<Transfer>;
-using Handler = Next (*)(Cpu &, std::uint8_t, std::uint8_t);
+using Handler = Next (*)(Cpu &, std::uint8_t, std::uint8_t, std::uint8_t);
 
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
 // table surviving into the generated code. There is one of these per (table,
@@ -467,7 +473,7 @@ using Handler = Next (*)(Cpu &, std::uint8_t, std::uint8_t);
 // so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules are all
 // constants here.
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
-Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view) {
+Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
   // `static` is not an optimisation here: the expansion statement below walks
   // this as a range, and a range's *address* has to be a constant. A local
   // `constexpr` has a constant value but not a constant address.
@@ -507,7 +513,7 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view) {
       constexpr auto read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
       static_assert(
           read_inside <= 1, "this row reads more inside the window that forms its address than the window can hold");
-      return cpu.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate, view),
+      return cpu.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate, view, opcode),
           displacement, static_cast<std::uint8_t>(read_inside));
     }
     else
@@ -526,11 +532,11 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view) {
       if constexpr (step.kind == Step::Kind::If) {
         // The rest of the row is the conditional half, which is where the
         // extra cycles of a taken branch come from too.
-        if (!evaluate<find_operation(operation, row.line), call>(cpu, immediate, indexed, view))
+        if (!evaluate<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode))
           return std::nullopt;
       }
       else
-        apply<find_operation(operation, row.line), call>(cpu, immediate, indexed, view);
+        apply<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode);
     }
   }
   return std::nullopt;
@@ -551,21 +557,20 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view) {
 // slices a row reads enumerate its distinct bodies exactly once, and the fill
 // is a direct write rather than a lookup.
 
-// Which of a row's slices anything actually reads. Bits nothing looks at cannot
-// change the generated code.
+// Which of a row's slices change the generated code. Three kinds do not: a
+// view is a run-time value, a numeric vocabulary is read straight out of the
+// opcode, and the mnemonic's own references are the disassembler's business --
+// nothing below this line ever looks at `row.pieces`.
 [[nodiscard]] consteval Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
   Vector<std::uint8_t, Pattern::max_slices> used;
   const auto note = [&used](const Reference reference) {
-    if (reference.from_view)
-      return; // a view is a run-time value; it specialises nothing
+    if (reference.from_view || is_numeric(target::vocabularies[reference.vocabulary_index]))
+      return;
     for (const auto already: used)
       if (already == reference.slice_index)
         return;
     static_cast<void>(used.try_push_back(reference.slice_index));
   };
-  for (const auto &piece: row.pieces)
-    if (piece.kind == Piece::Kind::Vocabulary)
-      note(piece.reference);
   for (const auto &step: row.steps) {
     if (step.operation_reference)
       note(*step.operation_reference);
@@ -665,7 +670,7 @@ inline void execute_instruction(Cpu &cpu) {
     // A latched table's opcode is not the instruction's first unknown byte, so
     // it arrives as an operand read: three cycles, and no refresh.
     const auto opcode = target::latched[table] ? static_cast<std::uint8_t>(cpu.fetch_immediate(1)) : cpu.fetch_opcode();
-    const auto next = dispatches[table][opcode](cpu, latch, view);
+    const auto next = dispatches[table][opcode](cpu, latch, view, opcode);
     if (!next)
       return;
     table = next->table;

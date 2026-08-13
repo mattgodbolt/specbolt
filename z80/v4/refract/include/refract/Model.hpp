@@ -69,6 +69,11 @@ struct Operand {
   // is the machine's to form because it is the machine's to pay for.
   bool displaced{};
   std::uint8_t write_back_delay{};
+  // The value is in the instruction: these bits of the opcode. A vocabulary of
+  // plain numbers needs no code of its own, so choosing between its members is
+  // a run-time read rather than one function per member.
+  bool from_opcode{};
+  BitSlice slice{};
   // Chosen by the table's view, so it cannot be folded away at compile time:
   // `name` is the *vocabulary's* name, which is the family of locations the
   // machine offers, and the machine is handed the selector to pick with.
@@ -127,6 +132,32 @@ struct Rule {
 
 using Rules = Vector<Rule, 6>;
 
+// A vocabulary that *is* its slice: `bit = 0 1 2 3 4 5 6 7`, where member n is
+// the number n. Its members differ in a value and nothing else -- no operation
+// to splice, no location to name, no addressing mode to pay for -- so the
+// choice between them need not be baked into a function, because the opcode
+// already carries it.
+//
+// Identity is the load-bearing half, and it is easy to miss: `rst = 0x00 0x08
+// ... 0x38` and `imode = 0 0 1 2 0 0 1 2` are just as numeric, but their member
+// is a *function* of the slice rather than the slice, so reading the bits would
+// give `rst 3` where `rst 0x18` was meant. Those keep a function each; between
+// them they are worth 21 of 1034 bodies, which is not worth a lookup table.
+[[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
+  auto any = false;
+  for (std::size_t at = 0; at < vocabulary.members.size(); ++at) {
+    const auto &member = vocabulary.members[at];
+    if (member.hole)
+      continue;
+    if (member.operand.kind != Operand::Kind::Constant || !member.operation.empty() || member.appended)
+      return false;
+    if (member.operand.constant != at)
+      return false;
+    any = true;
+  }
+  return any;
+}
+
 // The one place a reference is followed, and therefore the one place a derived
 // table's renaming has to happen. Every column resolves the same way: the slice
 // picks a member, the opcode says which.
@@ -166,6 +197,15 @@ using Rules = Vector<Rule, 6>;
   if (operand.kind != Operand::Kind::Vocabulary)
     return operand;
   auto result = member_of(vocabularies, operand.reference, matched, opcode, rules, view).operand;
+  // A number the opcode already carries: say where, rather than which. Every
+  // member of the vocabulary then resolves to the same operand, so the eight
+  // functions that differed only in a bit index become one.
+  if (!operand.reference.from_view && is_numeric(vocabularies[operand.reference.vocabulary_index])) {
+    result.from_opcode = true;
+    result.slice = matched.slices[operand.reference.slice_index];
+    result.constant = 0;
+    return result;
+  }
   // The member supplies the shape -- indirect, displaced, what a write-back
   // idles for -- but when the view chose it the name must be the vocabulary's,
   // because which member it is will not be known until the prefix has run.

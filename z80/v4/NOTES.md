@@ -1434,6 +1434,61 @@ the `<Fn, Call>` instantiations underneath -- and those only collapse if two ins
 agree about their operands. That is what a parameterised operand would do, and it is why `bit`,
 `res`, `set` and the ALU group are the interesting targets rather than `rst`.
 
+## Done, and it did pay: a vocabulary that *is* its slice
+
+`bit = 0 1 2 3 4 5 6 7` is eight numbers. Its members carry no operation to splice, no location to
+name and no addressing mode to pay for, so `bit 0, b` and `bit 7, b` are the same function given a
+different number -- and the opcode already contains that number. Nothing needs to be specialised on
+it; the handler can read the bits.
+
+Detected rather than declared: a vocabulary qualifies when every live member is a plain constant
+*and* member n is the number n. **Identity is the load-bearing half, and it is easy to miss.**
+`rst = 0x00 0x08 ... 0x38` and `imode = 0 0 1 2 0 0 1 2` are just as numeric, but their member is a
+*function* of the slice rather than the slice, so reading the bits gives `rst 3` where `rst 0x18`
+was meant. The test suite said so immediately. They keep a function each, and between them are worth
+21 bodies of 1034 -- not worth a lookup table.
+
+The cost is that the handler now needs the opcode at run time, which the dispatch loop already has.
+
+**And this one collapses the expensive half:**
+
+| | before | after |
+|---|---:|---:|
+| `execute_one` | 1034 | **747** |
+| `apply` | 895 | **608** |
+| `operands_of` | 934 | **647** |
+| `EvaluateAsConstantExpr` | 332,041 | **230,599** |
+| gcc `Z80.cpp` | 68.9s / 1.17 GB | **52.0s / 0.94 GB** |
+| clang | 129.8s | **100.9s** |
+
+Compare that with the section above, where `apply` and `operands_of` did not move at all. **287
+handlers went, and 287 `apply`s went with them**, because demoting an operand is what makes two
+instructions genuinely agree about their operands. Deduplicating handlers removes shells;
+deduplicating operands removes the substance.
+
+Taken together the two changes are close to free in wall clock -- generating per instruction cost
+16s, demoting `bit` gave 17s back -- and leave 747 handlers where there were 1280, with a third
+fewer constant evaluations and the lowest peak memory yet.
+
+**What this ranks next.** Measured by demoting each vocabulary in turn and counting bodies, from a
+base of 1034:
+
+| vocabulary | kind | bodies it would save |
+|---|---|---:|
+| `reg` | mixed (`b c d e h l (hl) a`) | **−492** |
+| `bit` | numeric | −287 *(done)* |
+| `real` | registers | −156 |
+| `shift`, `arith`, `cond`, `logic` | operations | −112, −54, −42, −36 |
+| `pair`, `rst`, `spair`, `imode` | | −36, −14, −12, −7 |
+
+`reg` is the biggest prize by a distance and the one that needs a decision: member 6 is `(hl)`,
+which is genuinely different code, so it is `mixed` and cannot be demoted as it stands. Splitting the
+memory case into its own row -- which `cb` already does for `01bbb110 | bit {bit:b}, (hl)` -- would
+make the rest uniform registers, and then `add a, b` through `add a, a` become one function given an
+index. That needs indexed register access on the machine, which `RegisterFile` can do cheaply.
+The operation vocabularies (`shift`, `arith`, `cond`, `logic`) can never be demoted: their members
+are different functions to splice, not different values.
+
 ## Open: /INT is a level, and v4 has no way to release it
 
 v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it — which is
