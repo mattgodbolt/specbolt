@@ -36,6 +36,9 @@ struct Disassembly {
   auto table = description.entry;
   const Row *row = nullptr;
   std::optional<unsigned> latch;
+  // The view a prefix chose, carried for the same reason the interpreter
+  // carries it: the row is decoded under it and the text depends on it.
+  std::uint8_t view = 0;
   while (true) {
     row = description.row_for(table, byte_at(offset));
     ++offset;
@@ -46,6 +49,7 @@ struct Disassembly {
     const auto next = transfers_to(*row);
     if (!next)
       break;
+    view = row->steps[0].forwards_view ? view : row->steps[0].target_view;
     table = *next;
   }
 
@@ -100,7 +104,8 @@ struct Disassembly {
     }
     // A member renders itself, because an indexed mode writes its displacement
     // in the middle of its own text.
-    for (const auto &inner: member_of(description.vocabularies, part.reference, row->matched, opcode, rules).pieces)
+    for (const auto &inner:
+        member_of(description.vocabularies, part.reference, row->matched, opcode, rules, view).pieces)
       render(inner);
   }
   return {result, offset};

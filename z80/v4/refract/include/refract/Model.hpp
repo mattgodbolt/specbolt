@@ -17,6 +17,7 @@
 #include <span>
 #include <stdexcept>
 #include <string_view>
+#include <utility>
 
 namespace specbolt::refract {
 
@@ -40,11 +41,14 @@ struct Name {
   constexpr bool operator==(const Name &) const = default;
 };
 
-// Which vocabulary to look a value up in, and which slice of the opcode says
-// which of its members to take. Anything a row can write `{reg:z}` in holds one.
+// Which vocabulary to look a value up in, and what says which of its members to
+// take: a slice of the opcode, or -- when `from_view` is set -- the decoding
+// table's own parameter, which a prefix chose and the instruction does not
+// carry. Anything a row can write `{reg:z}` or `{index:view}` in holds one.
 struct Reference {
   std::uint8_t vocabulary_index{};
   std::uint8_t slice_index{};
+  bool from_view{};
   constexpr bool operator==(const Reference &) const = default;
 };
 
@@ -65,6 +69,10 @@ struct Operand {
   // is the machine's to form because it is the machine's to pay for.
   bool displaced{};
   std::uint8_t write_back_delay{};
+  // Chosen by the table's view, so it cannot be folded away at compile time:
+  // `name` is the *vocabulary's* name, which is the family of locations the
+  // machine offers, and the machine is handed the selector to pick with.
+  bool from_view{};
   constexpr bool operator==(const Operand &) const = default;
 };
 
@@ -110,6 +118,10 @@ struct Rule {
   std::uint8_t vocabulary_index{};
   std::string_view from{};
   Member to{};
+  // `pair.hl -> {index:view}`: the replacement is chosen by the table's view
+  // rather than fixed, which is what lets one table stand for both ix and iy.
+  bool to_is_view{};
+  std::uint8_t to_vocabulary{};
   constexpr bool operator==(const Rule &) const = default;
 };
 
@@ -118,23 +130,51 @@ using Rules = Vector<Rule, 6>;
 // The one place a reference is followed, and therefore the one place a derived
 // table's renaming has to happen. Every column resolves the same way: the slice
 // picks a member, the opcode says which.
+// A parameterised table is decoded once per value its view can take without
+// being generated once per value, so `view` reaches here alongside the opcode.
+// Checks pass the default: every member of a view vocabulary must have the same
+// shape, so anything a check asks is true of all of them or none.
 [[nodiscard]] constexpr Member member_of(const std::span<const Vocabulary> vocabularies, const Reference reference,
-    const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}) {
-  const auto &member =
-      vocabularies[reference.vocabulary_index].members[matched.slices[reference.slice_index].extract(opcode)];
+    const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}, const std::uint8_t view = 0) {
+  const auto which = reference.from_view ? view : matched.slices[reference.slice_index].extract(opcode);
+  const auto &member = vocabularies[reference.vocabulary_index].members[which];
   for (const auto &rule: rules)
     if (rule.vocabulary_index == reference.vocabulary_index && rule.from == member.display)
-      return rule.to;
+      return rule.to_is_view ? vocabularies[rule.to_vocabulary].members[view] : rule.to;
   return member;
+}
+
+// Which vocabulary a reference finally lands in, and whether the view chose the
+// member. Only `resolve` needs this: an operand the view chose must name the
+// vocabulary rather than the member, because the member is not known yet.
+[[nodiscard]] constexpr std::pair<std::uint8_t, bool> source_of(const std::span<const Vocabulary> vocabularies,
+    const Reference reference, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
+  // Member 0 stands for all of them here: this only matches rules by display,
+  // and a view vocabulary's members are required to share a shape.
+  const std::size_t which = reference.from_view ? 0u : matched.slices[reference.slice_index].extract(opcode);
+  const auto &member = vocabularies[reference.vocabulary_index].members[which];
+  for (const auto &rule: rules)
+    if (rule.vocabulary_index == reference.vocabulary_index && rule.from == member.display)
+      return {rule.to_vocabulary, rule.to_is_view};
+  return {reference.vocabulary_index, reference.from_view};
 }
 
 // A reference operand names whichever vocabulary member its slice selects, and that
 // member is written the same way an operand is written in a row.
 [[nodiscard]] constexpr Operand resolve(const std::span<const Vocabulary> vocabularies, const Operand operand,
-    const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}) {
+    const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}, const std::uint8_t view = 0) {
   if (operand.kind != Operand::Kind::Vocabulary)
     return operand;
-  return member_of(vocabularies, operand.reference, matched, opcode, rules).operand;
+  auto result = member_of(vocabularies, operand.reference, matched, opcode, rules, view).operand;
+  // The member supplies the shape -- indirect, displaced, what a write-back
+  // idles for -- but when the view chose it the name must be the vocabulary's,
+  // because which member it is will not be known until the prefix has run.
+  if (const auto [vocabulary, from_view] = source_of(vocabularies, operand.reference, matched, opcode, rules);
+      from_view) {
+    result.from_view = true;
+    result.name = Name{vocabularies[vocabulary].name};
+  }
+  return result;
 }
 
 inline constexpr std::size_t max_operands = 4;
@@ -149,6 +189,10 @@ struct Step {
   enum class Kind : std::uint8_t { Apply, Goto, If };
   Kind kind{};
   std::uint8_t target{};
+  // `goto indexed(ix)` names a member of the target's view vocabulary;
+  // `goto indexed_cb(view)` hands on the view this table was decoded under.
+  std::uint8_t target_view{};
+  bool forwards_view{};
   std::string_view operation{};
   std::optional<Reference> operation_reference{};
   Vector<Operand, max_operands> destinations{};
@@ -179,6 +223,12 @@ struct TableDecl {
   bool derived{};
   std::uint8_t parent{};
   Rules rules{};
+  // `table indexed(view:index)` -- decoded once for each member of `index`
+  // without being generated once for each. The name is what a row writes where
+  // a slice letter would go; empty means the table takes no view.
+  std::string_view view_name{};
+  std::uint8_t view_vocabulary{};
+  [[nodiscard]] constexpr bool takes_view() const { return !view_name.empty(); }
 };
 
 // A row that only transfers elsewhere renders nothing and does nothing: it is a

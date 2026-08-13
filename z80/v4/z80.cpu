@@ -37,6 +37,16 @@ vocab real = b c d e h l - a
 # The stack's view of the pairs, which puts af where sp would be.
 vocab spair = bc de hl af
 
+# The two index registers, as a vocabulary rather than as two tables. A `dd` or
+# `fd` prefix decodes the same rows under a different *view*, and these four
+# parallel vocabularies are what a view selects between: the display text is
+# per-member, and every member of one resolves to the same machine location,
+# which is handed the view at run time. One set of rows, one set of handlers.
+vocab index     = ix              iy
+vocab index_hi  = ixh             iyh
+vocab index_lo  = ixl             iyl
+vocab index_mem = (ix+d)/delay=1  (iy+d)/delay=1
+
 # Where each `rst` goes. The member is the constant itself.
 vocab rst = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
 
@@ -109,8 +119,8 @@ table base
 11100011     | ex (sp), hl          | ex_sp_hl hl <- hl
 11101101     | (ed)                 | goto ed
 11001011     | (cb)                 | goto cb
-11011101     | (dd)                 | goto ix
-11111101     | (fd)                 | goto iy
+11011101     | (dd)                 | goto indexed(ix)
+11111101     | (fd)                 | goto indexed(iy)
 
 # `cb` is a plain table switch: one more opcode fetch, decoded here instead.
 # Bit operations and the rotate family that `rlca` only hints at.
@@ -127,29 +137,17 @@ table cb
 # with hl renamed, which is why two thirds of their entries are the base
 # instruction untouched. The rows below are the ones a rename alone gets wrong.
 
-table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
+table indexed(view:index) = base with pair.hl -> {index:view}, spair.hl -> {index:view}, reg.h -> {index_hi:view}, reg.l -> {index_lo:view}, reg.(hl) -> {index_mem:view}
 
-00pp1001     | add ix, {pair:p}    | add16 ix, flags <- ix {pair:p} flags ; delay 7
-00100010 n n | ld ($nnnn), ix      | ld16 (n) <- ix
-00101010 n n | ld ix, ($nnnn)      | ld16 ix <- (n)
-11101001     | jp (ix)             | ld16 pc <- ix
-11111001     | ld sp, ix           | ld16 sp <- ix ; delay 2
-11100011     | ex (sp), ix         | ex_sp_ix ix <- ix
-01yyy110     | ld {real:y}, (ix+d) | ld8 {real:y} <- (ix+d)
-01110zzz     | ld (ix+d), {real:z} | ld8 (ix+d) <- {real:z}
-11001011 d   | (dd cb)             | goto ddcb
-
-table iy = base with pair.hl -> iy, spair.hl -> iy, reg.h -> iyh, reg.l -> iyl, reg.(hl) -> (iy+d)/delay=1
-
-00pp1001     | add iy, {pair:p}    | add16 iy, flags <- iy {pair:p} flags ; delay 7
-00100010 n n | ld ($nnnn), iy      | ld16 (n) <- iy
-00101010 n n | ld iy, ($nnnn)      | ld16 iy <- (n)
-11101001     | jp (iy)             | ld16 pc <- iy
-11111001     | ld sp, iy           | ld16 sp <- iy ; delay 2
-11100011     | ex (sp), iy         | ex_sp_iy iy <- iy
-01yyy110     | ld {real:y}, (iy+d) | ld8 {real:y} <- (iy+d)
-01110zzz     | ld (iy+d), {real:z} | ld8 (iy+d) <- {real:z}
-11001011 d   | (fd cb)             | goto fdcb
+00pp1001     | add {index:view}, {pair:p}    | add16 {index:view}, flags <- {index:view} {pair:p} flags ; delay 7
+00100010 n n | ld ($nnnn), {index:view}      | ld16 (n) <- {index:view}
+00101010 n n | ld {index:view}, ($nnnn)      | ld16 {index:view} <- (n)
+11101001     | jp ({index:view})             | ld16 pc <- {index:view}
+11111001     | ld sp, {index:view}           | ld16 sp <- {index:view} ; delay 2
+11100011     | ex (sp), {index:view}         | ex_sp_hl {index:view} <- {index:view}
+01yyy110     | ld {real:y}, {index_mem:view} | ld8 {real:y} <- {index_mem:view}
+01110zzz     | ld {index_mem:view}, {real:z} | ld8 {index_mem:view} <- {real:z}
+11001011 d   | (dd cb)                       | goto indexed_cb(view)
 
 # `dd cb d op` is the one encoding whose opcode is not its last byte, so the
 # `d` in the row above says the displacement is read here and handed on.
@@ -158,25 +156,15 @@ table iy = base with pair.hl -> iy, spair.hl -> iy, reg.h -> iyh, reg.l -> iyl, 
 # memory, and the low bits name a register the result is *also* copied into.
 # Reading them as a view is the bug that makes v2 and v3 wrong 224 times.
 
-table ddcb
+table indexed_cb(view:index)
 
-00yyy110 | {shift:y} (ix+d)              | {shift:y} (ix+d)/delay=1, flags <- (ix+d)
-00yyyzzz | {shift:y} (ix+d), {real:z}    | {shift:y} {real:z}, flags <- (ix+d) ; delay 1 ; ld8 (ix+d) <- {real:z}
-01bbbzzz | bit {bit:b}, (ix+d)           | bit8 flags <- (ix+d) {bit:b} flags wzh ; delay 1
-10bbb110 | res {bit:b}, (ix+d)           | res8 (ix+d)/delay=1 <- (ix+d) {bit:b}
-10bbbzzz | res {bit:b}, (ix+d), {real:z} | res8 (ix+d)/delay=1 {real:z} <- (ix+d) {bit:b}
-11bbb110 | set {bit:b}, (ix+d)           | set8 (ix+d)/delay=1 <- (ix+d) {bit:b}
-11bbbzzz | set {bit:b}, (ix+d), {real:z} | set8 (ix+d)/delay=1 {real:z} <- (ix+d) {bit:b}
-
-table fdcb
-
-00yyy110 | {shift:y} (iy+d)              | {shift:y} (iy+d)/delay=1, flags <- (iy+d)
-00yyyzzz | {shift:y} (iy+d), {real:z}    | {shift:y} {real:z}, flags <- (iy+d) ; delay 1 ; ld8 (iy+d) <- {real:z}
-01bbbzzz | bit {bit:b}, (iy+d)           | bit8 flags <- (iy+d) {bit:b} flags wzh ; delay 1
-10bbb110 | res {bit:b}, (iy+d)           | res8 (iy+d)/delay=1 <- (iy+d) {bit:b}
-10bbbzzz | res {bit:b}, (iy+d), {real:z} | res8 (iy+d)/delay=1 {real:z} <- (iy+d) {bit:b}
-11bbb110 | set {bit:b}, (iy+d)           | set8 (iy+d)/delay=1 <- (iy+d) {bit:b}
-11bbbzzz | set {bit:b}, (iy+d), {real:z} | set8 (iy+d)/delay=1 {real:z} <- (iy+d) {bit:b}
+00yyy110 | {shift:y} {index_mem:view}              | {shift:y} {index_mem:view}, flags <- {index_mem:view}
+00yyyzzz | {shift:y} {index_mem:view}, {real:z}    | {shift:y} {real:z}, flags <- {index_mem:view} ; delay 1 ; ld8 {index_mem:view} <- {real:z}
+01bbbzzz | bit {bit:b}, {index_mem:view}           | bit8 flags <- {index_mem:view} {bit:b} flags wzh ; delay 1
+10bbb110 | res {bit:b}, {index_mem:view}           | res8 {index_mem:view} <- {index_mem:view} {bit:b}
+10bbbzzz | res {bit:b}, {index_mem:view}, {real:z} | res8 {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
+11bbb110 | set {bit:b}, {index_mem:view}           | set8 {index_mem:view} <- {index_mem:view} {bit:b}
+11bbbzzz | set {bit:b}, {index_mem:view}, {real:z} | set8 {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
 
 # `ed` is the second instruction set the Z80 grew, and the only place
 # `ld (nn), rr` exists for every pair rather than for hl alone. Its block

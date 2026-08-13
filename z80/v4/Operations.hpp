@@ -124,12 +124,6 @@ public:
     return cpu.in(address);
   }
 
-  // `ex (sp), ix` and `ex (sp), iy` are the same sequence: the row names the
-  // register as a literal destination, and a view rewrites vocabularies rather
-  // than literals, so each spelling needs its own name here.
-  static std::uint16_t ex_sp_ix(Cpu &cpu, const std::uint16_t value) { return ex_sp_hl(cpu, value); }
-  static std::uint16_t ex_sp_iy(Cpu &cpu, const std::uint16_t value) { return ex_sp_hl(cpu, value); }
-
   // Three accesses and two idle stretches, none of which an operand can spell.
   static std::uint16_t ex_sp_hl(Cpu &cpu, const std::uint16_t value) {
     const auto sp = cpu.get(RegisterFile::R16::SP);

@@ -21,7 +21,7 @@ namespace specbolt::v4 {
 // scope means adding a scope, rather than also counting them.
 [[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
   return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^FlagBit, ^^FlagWord, ^^FlipFlop, ^^ProgramCounter, ^^AddressLatch,
-      ^^Interrupt, ^^Refresh};
+      ^^Interrupt, ^^Refresh, ^^Index, ^^IndexHalf};
 }
 
 } // namespace specbolt::v4

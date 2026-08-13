@@ -74,7 +74,20 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
   return static_cast<std::size_t>(found - vocabularies.begin());
 }
 
+// `indexed(view:index)` declares a table called `indexed`; the parenthesised
+// part is its view. Both the declaration and the scan for a table's rows need
+// the bare name.
+[[nodiscard]] constexpr std::string_view table_name_of(const std::string_view word) {
+  const auto open = word.find('(');
+  return open == std::string_view::npos ? word : word.substr(0, open);
+}
+
+[[nodiscard]] constexpr Reference reference_from_braces(std::span<const Vocabulary> vocabularies, std::string_view text,
+    const Pattern &matched, std::size_t line, const TableDecl &table);
+
 // `pair.hl->ix, reg.h -> ixh`: either spacing, because both read naturally.
+// A right side of `{index:view}` substitutes whichever member the table's view
+// selects, which is what lets one table stand for both ix and iy.
 constexpr void parse_substitutions(const std::string_view text, const std::span<const Vocabulary> vocabularies,
     TableDecl &table, const std::size_t line) {
   Parser list(text);
@@ -101,12 +114,24 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       throw table_error(line, "a table substitution needs a name on each side of '->'");
     if (std::ranges::none_of(vocabularies[*named].members, [&](const Member &m) { return m.display == from; }))
       throw table_error(line, "vocabulary '" + std::string(vocabulary) + "' has no member '" + std::string(from) + "'");
-    // Coverage is worked out before any rule is applied, so a row renamed to
-    // nothing would still claim its opcodes and then resolve to a default zero.
-    const auto replacement = parse_member(to, line);
-    if (replacement.hole)
-      throw table_error(line, "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
-    if (!table.rules.try_push_back({static_cast<std::uint8_t>(*named), from, replacement}))
+    Rule substitution{.vocabulary_index = static_cast<std::uint8_t>(*named), .from = from};
+    if (to.starts_with('{')) {
+      if (!table.takes_view())
+        throw table_error(line, "only a table that takes a view may substitute a view reference");
+      const auto reference = reference_from_braces(vocabularies, to, Pattern{}, line, table);
+      if (!reference.from_view)
+        throw table_error(line, "a substitution's reference must be selected by the table's view");
+      substitution.to_is_view = true;
+      substitution.to_vocabulary = reference.vocabulary_index;
+    }
+    else {
+      // Coverage is worked out before any rule is applied, so a row renamed to
+      // nothing would still claim its opcodes and then resolve to a default zero.
+      substitution.to = parse_member(to, line);
+      if (substitution.to.hole)
+        throw table_error(line, "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
+    }
+    if (!table.rules.try_push_back(substitution))
       throw table_error(line, "too many substitutions in table");
   }
 }
@@ -121,12 +146,29 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       continue;
     Parser parser(text);
     parser.skip_word();
-    const auto name = parser.next_word();
+    auto name = parser.next_word();
     if (name.empty())
       throw table_error(at, "table declaration has no name");
+    TableDecl table{.line = at};
+    // `indexed(view:index)`: the table is decoded once per member of `index`,
+    // and a row writes `view` where a slice letter would go.
+    if (const auto open = name.find('('); open != std::string_view::npos) {
+      if (!name.ends_with(')'))
+        throw table_error(at, "unterminated '(' in table view");
+      Parser inner(name.substr(open + 1, name.size() - open - 2));
+      table.view_name = inner.take_until(':');
+      const auto vocabulary = inner.rest();
+      if (table.view_name.empty() || vocabulary.empty())
+        throw table_error(at, "a table view names itself and a vocabulary, as in 'indexed(view:index)'");
+      const auto named = find_vocabulary(vocabularies, vocabulary);
+      if (!named)
+        throw table_error(at, "table view names a vocabulary that does not exist");
+      table.view_vocabulary = static_cast<std::uint8_t>(*named);
+      name = name.substr(0, open);
+    }
+    table.name = name;
     if (std::ranges::contains(result, name, &TableDecl::name))
       throw table_error(at, "duplicate table name");
-    TableDecl table{.name = name, .line = at};
     if (const auto equals = parser.next_word(); !equals.empty()) {
       if (equals != "=")
         throw table_error(at, "expected '= <parent> with <substitutions>' after the table name");
@@ -165,17 +207,26 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   return static_cast<std::size_t>(found - matched.slices.begin());
 }
 
-// `{reg:z}` binds the vocabulary `reg` to the slice `z`.
+// `{reg:z}` binds the vocabulary `reg` to the slice `z`; in a table that takes
+// one, `{index:view}` binds it to the view instead, which the opcode does not
+// carry and a prefix chose.
 [[nodiscard]] constexpr Reference parse_reference(const std::span<const Vocabulary> vocabularies,
-    const std::string_view inner, const Pattern &matched, const std::size_t line) {
+    const std::string_view inner, const Pattern &matched, const std::size_t line, const TableDecl &table) {
   Parser parser(inner);
   const auto name = parser.take_until(':');
   const auto slice = parser.rest();
-  if (name.empty() || slice.size() != 1)
+  if (name.empty() || slice.empty())
     throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
   const auto field = find_vocabulary(vocabularies, name);
   if (!field)
     throw table_error(line, "reference names a vocabulary that does not exist");
+  if (table.takes_view() && slice == table.view_name) {
+    if (vocabularies[*field].members.size() != vocabularies[table.view_vocabulary].members.size())
+      throw table_error(line, "vocabulary has a different number of members than the table's view");
+    return {.vocabulary_index = static_cast<std::uint8_t>(*field), .from_view = true};
+  }
+  if (slice.size() != 1)
+    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
   const auto found = find_slice(matched, slice.front());
   if (!found)
     throw table_error(line, "reference names a slice the opcode pattern does not define");
@@ -185,20 +236,22 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 }
 
 [[nodiscard]] constexpr Reference reference_from_braces(const std::span<const Vocabulary> vocabularies,
-    const std::string_view text, const Pattern &matched, const std::size_t line) {
+    const std::string_view text, const Pattern &matched, const std::size_t line, const TableDecl &table) {
   if (!text.starts_with('{') || !text.ends_with('}'))
     throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
-  return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, line);
+  return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, line, table);
 }
 
 [[nodiscard]] constexpr Operand parse_operand(const std::span<const Vocabulary> vocabularies,
-    const std::string_view word, const Pattern &matched, const std::size_t line, const std::uint8_t immediate_bytes) {
+    const std::string_view word, const Pattern &matched, const std::size_t line, const std::uint8_t immediate_bytes,
+    const TableDecl &table) {
   if (!word.starts_with('{'))
     return parse_simple_operand(word, line, immediate_bytes);
-  return {.kind = Operand::Kind::Vocabulary, .reference = reference_from_braces(vocabularies, word, matched, line)};
+  return {
+      .kind = Operand::Kind::Vocabulary, .reference = reference_from_braces(vocabularies, word, matched, line, table)};
 }
 
-constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Row &row) {
+constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Row &row, const TableDecl &table) {
   const auto add = [&row](const Piece piece) {
     if (!row.pieces.try_push_back(piece))
       throw table_error(row.line, "mnemonic is too complicated");
@@ -218,7 +271,7 @@ constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Ro
     if (!parser.rest().contains('}'))
       throw table_error(row.line, "unterminated vocabulary reference in mnemonic");
     add({.kind = Piece::Kind::Vocabulary,
-        .reference = parse_reference(vocabularies, parser.take_until('}'), row.matched, row.line)});
+        .reference = parse_reference(vocabularies, parser.take_until('}'), row.matched, row.line, table)});
   }
 }
 
@@ -283,7 +336,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
 // `<-`, and the operands after it. `if` guards the rest of the row; `goto`
 // hands decoding to another table and does nothing else.
 [[nodiscard]] constexpr Step parse_step(Parser action, const std::span<const Vocabulary> vocabularies,
-    const std::span<const TableDecl> tables, const Row &row) {
+    const std::span<const TableDecl> tables, const Row &row, const TableDecl &table) {
   Step step{.operation = action.next_word()};
   if (step.operation == "if") {
     step.kind = Step::Kind::If;
@@ -295,13 +348,40 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     if (step.kind == Step::Kind::If)
       throw table_error(row.line, "a goto cannot be conditional; guard it with an earlier `if` step");
     step.kind = Step::Kind::Goto;
-    step.target = find_table(tables, action.next_word(), row.line);
+    auto destination = action.next_word();
+    std::string_view supplied;
+    if (const auto open = destination.find('('); open != std::string_view::npos) {
+      if (!destination.ends_with(')'))
+        throw table_error(row.line, "unterminated '(' in goto");
+      supplied = destination.substr(open + 1, destination.size() - open - 2);
+      destination = destination.substr(0, open);
+    }
+    step.target = find_table(tables, destination, row.line);
     if (!action.next_word().empty())
       throw table_error(row.line, "goto takes a single table name");
+    const auto &target = tables[step.target];
+    if (target.takes_view() && supplied.empty())
+      throw table_error(row.line, "this table takes a view, so the goto must say which");
+    if (!target.takes_view() && !supplied.empty())
+      throw table_error(row.line, "this table takes no view, so the goto may not supply one");
+    if (!supplied.empty()) {
+      if (table.takes_view() && supplied == table.view_name) {
+        if (table.view_vocabulary != target.view_vocabulary)
+          throw table_error(row.line, "the view being handed on is drawn from a different vocabulary");
+        step.forwards_view = true;
+      }
+      else {
+        const auto &members = vocabularies[target.view_vocabulary].members;
+        const auto found = std::ranges::find(members, supplied, &Member::display);
+        if (found == members.end())
+          throw table_error(row.line, "goto names a view that is not a member of that table's view vocabulary");
+        step.target_view = static_cast<std::uint8_t>(found - members.begin());
+      }
+    }
     return step;
   }
   if (step.operation.starts_with('{'))
-    step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, row.line);
+    step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, row.line, table);
   // `operation dest <- args...`; the destination is optional
   auto writing_destination = action.rest().contains("<-");
   while (!action.eof()) {
@@ -312,7 +392,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
       writing_destination = false;
       continue;
     }
-    const auto operand = parse_operand(vocabularies, word, row.matched, row.line, row.immediate_bytes);
+    const auto operand = parse_operand(vocabularies, word, row.matched, row.line, row.immediate_bytes, table);
     if (writing_destination) {
       if (!step.destinations.try_push_back(operand))
         throw table_error(row.line, "too many destinations");
@@ -337,7 +417,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     if (is_table(text)) {
       Parser declaration(text);
       declaration.skip_word();
-      current = find_table(tables, declaration.next_word(), at);
+      current = find_table(tables, table_name_of(declaration.next_word()), at);
       continue;
     }
     if (!is_row(text))
@@ -355,7 +435,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
       Parser action(sequence.next_field(';'));
       if (action.eof())
         continue;
-      if (!row.steps.try_push_back(parse_step(action, vocabularies, tables, row)))
+      if (!row.steps.try_push_back(parse_step(action, vocabularies, tables, row, tables[*current])))
         throw table_error(at, "row has too many steps");
     }
     if (row.steps.empty())
@@ -365,7 +445,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     if (std::ranges::any_of(row.steps, [](const Step &step) { return step.kind == Step::Kind::Goto; }) &&
         row.steps.size() != 1) // NOLINT
       throw table_error(at, "a goto must be the row's only step");
-    lower_mnemonic(vocabularies, row);
+    lower_mnemonic(vocabularies, row, tables[*current]);
     check_immediates(row);
     result.push_back(row);
   }

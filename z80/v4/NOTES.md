@@ -1210,13 +1210,14 @@ To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang buil
   this scaling — a CI box running several of these in parallel runs out of memory long before it
   runs out of patience.
 
-## Proposed: a view should be a parameter, not a copy
+## Done: a view is a parameter, not a copy
 
 The compile-time work above says the cost is the number of functions the compiler is asked to write,
-and that two of the seven decoding tables exist only because the format cannot say "the same table
-again, with a different register". This is what saying it would look like.
+and that two of the seven decoding tables existed only because the format could not say "the same
+table again, with a different register". It can now. **Built, and measured both ways at the end of
+this section.**
 
-### What is duplicated today
+### What used to be duplicated
 
 ```
 table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
@@ -1297,9 +1298,9 @@ all. But a row that names the parameter duplicates its body, so `indexed_cb` —
 — saves nothing, and `indexed` saves only the 169 of 256 opcodes that DD leaves alone. Roughly a
 third of the win for none of the machine changes.
 
-**Recommend (a).** (b) is the tempting one because it changes less, and it is worth writing down
-that it does not pay: the measurement says cost follows *bodies instantiated*, and (b) keeps most of
-them.
+**(a) is what was built.** (b) is the tempting one because it changes less, and it is worth writing
+down that it does not pay: the measurement says cost follows *bodies instantiated*, and (b) keeps
+most of them.
 
 A refinement worth taking with (a): in `indexed_cb` every row addresses through the same `(i+d)`,
 and the prefix already knows both the register and the displacement. If the prefix formed the
@@ -1333,6 +1334,64 @@ if their rows name `{index:view}` rather than spelling the register out — whic
 the same fix as everything else here. And it does not reduce `base`: DD/FD are rare, so the runtime
 cost lands where it is least felt, which is the whole reason the trade is worth making here and
 would not be worth making for `hl` itself.
+
+### What it actually cost and saved
+
+Everything below is the same source, one change, measured both ways.
+
+**The description.** Seven tables became five, 127 rows became 111, and `Operations::ex_sp_ix` and
+`ex_sp_iy` -- two functions that forwarded to a third -- went with them. `ddcb` and `fdcb` are one
+`indexed_cb`, and `ix` and `iy` are one `indexed`.
+
+**Compile time.** Better than predicted, on both compilers:
+
+| | before | after | |
+|---|---:|---:|---:|
+| gcc 16.2, `Z80.cpp`, `-O0` | 85.6s / 1.35 GB | **52.6s / 1.17 GB** | **−38%** |
+| gcc 16.2, `RelWithDebInfo` (36-core box) | 54.0s | 41.4s | −23% |
+| clang 23, traced | 125.8s | 101.1s | −20% |
+
+**And it landed exactly where the design said it would.** clang's per-instantiation trace:
+
+| | before | after |
+|---|---:|---:|
+| `execute_one` | 85.1s over **1792** | 67.9s over **1280** |
+| `apply` | 22.7s over 1191 | 20.5s over 895 |
+| `operands_of` | 4.7s over 1230 | 4.0s over 934 |
+| `EvaluateAsConstantExpr` | 451,161 calls | 348,413 calls |
+
+1280 is exactly 5 × 256. Not one handler more than the two removed tables predicted.
+
+Two second-order effects worth having. Each surviving handler is *dearer* — 53ms against 47ms —
+because it now reads its index register through a selector. And `apply` fell further than the tables
+alone explain (1191 → 895, −25% against −29% for tables), because merging `ix` and `iy` made `Call`
+values that differed only in which register they named identical, so they share one instantiation.
+
+The gcc saving (−38%) is larger than the scaling law's −22s prediction, and larger than clang's
+−20%. Two 256-entry tables is the floor; deduplicating `Call` values is the rest, and gcc collects
+more of it.
+
+**Run time, and here the design note was wrong.** zexdoc, interleaved on an idle 36-core machine,
+minimum of four: **9.07 ns/instruction before, 9.25 after -- about 2% slower**, consistently, in
+three of four pairs. A game benchmark could not resolve it at all (0.083 to 0.176 ms/frame across
+three runs of the same binary).
+
+Two percent is more than expected, and the reason is a real design error rather than the index
+indirection. The note above argued the cost "lands where it is least felt", because only prefixed
+instructions read through the selector. But **the dispatch table's function pointers must all have
+one signature**, so every handler now takes the view whether it uses it or not -- and `nop` pays for
+`ix` existing. The indirection is confined to prefixes; the *parameter* is not.
+
+Fixing that means not having a uniform handler signature, which means not having a function-pointer
+dispatch table, which is the thing expansion statements cannot give us anyway. So it stands as the
+price: **a quarter to a third off the build, for about 2% of run time.** For a talk that is a good
+trade to be able to state in both directions; for a shipping emulator it is a judgement call, and
+the honest framing is that it buys developer time with user time.
+
+**One more thing clang caught.** Two of the new lines had sign-conversion bugs that gcc's
+`-Wconversion` accepted -- a ternary yielding `int` used as an array index, and the earlier
+relative-jump arithmetic. Having a second compiler on the same source paid for itself twice in one
+session.
 
 ## Open: /INT is a level, and v4 has no way to release it
 
