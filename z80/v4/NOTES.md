@@ -1393,6 +1393,47 @@ the honest framing is that it buys developer time with user time.
 relative-jump arithmetic. Having a second compiler on the same source paid for itself twice in one
 session.
 
+## Done, and it did not pay: one function per instruction
+
+`execute_one` used to be generated per (table, opcode) -- 256 per table, always.
+But a row's body is built only from the slices it *reads*. `ed`'s catch-all row claims 218 opcodes
+and reads none of them, so those are one instruction wearing 218 hats; `ld {reg:y}, {reg:z}` reads
+both its slices, so its 64 are genuinely 64. Generating per opcode cannot tell the difference.
+
+Generation now walks rows and splats each body across the opcodes it claims. The combinations of the
+slices a row reads enumerate its distinct bodies exactly once, so **nothing is deduplicated, because
+nothing is generated twice** -- and there is no search anywhere: the fill is a direct write.
+`template for` is left doing only the thing it must, making the functions; filling 256 entries from
+them is an ordinary loop, because by then they are values.
+
+**It is a better shape and it costs 16 seconds.** Measured, on the same TU:
+
+| | gcc `Z80.cpp` | peak | `execute_one` | `apply` | `operands_of` |
+|---|---:|---:|---:|---:|---:|
+| per (table, opcode) | **52.6s** | 1.02 GB | 1280 | 895 | 934 |
+| canonicalised, with a cross-table search | 56.5s | — | **864** | 895 | 934 |
+| per instruction (this) | 68.9s | 1.17 GB | 1034 | 895 | 934 |
+
+Look at the last two columns. **`apply` and `operands_of` do not move.** They are keyed on
+`<Fn, Call>`, so the duplicate handlers were already sharing every expensive instantiation beneath
+them -- thin shells around work the template system had folded all along. Removing 246 of them saves
+nothing, and the analysis that finds them costs. The linker folds the shells too, since gcc runs
+`-fipa-icf` at `-O2`, so they were never in the binary either.
+
+Three attempts, all slower: a cross-table search (+4s), a naive row walk that was `rows × 256` where
+`256` would do (+15s and a doubled peak), and this one (+16s). The conclusion is not "my
+implementation was bad" -- the third is O(256) per table with no search at all -- it is that
+**the instantiations this removes are nearly free, and finding them is not.**
+
+Kept anyway, for the shape: generation follows the description's own grain rather than sweeping an
+opcode space, and the 256-entry `template for` is gone. That is a taste judgement with a price tag
+on it, which is the honest way to have one.
+
+The corollary matters more than the result. If duplicate *handlers* are free, the expensive thing is
+the `<Fn, Call>` instantiations underneath -- and those only collapse if two instructions genuinely
+agree about their operands. That is what a parameterised operand would do, and it is why `bit`,
+`res`, `set` and the ALU group are the interesting targets rather than `rst`.
+
 ## Open: /INT is a level, and v4 has no way to release it
 
 v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it — which is

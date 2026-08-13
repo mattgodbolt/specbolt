@@ -536,19 +536,110 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view) {
   return std::nullopt;
 }
 
-// Every table is total -- `check_tables_total` insists on it -- so there is
-// always a row here, which is why this dereferences without asking.
-template<std::uint8_t Table, std::uint8_t Opcode>
-inline constexpr Handler handler_for = &execute_one<Table, Opcode, *target::find_row(Table, Opcode)>;
+// ---------------------------------------------------------------------------
+// One function per instruction, not one per (table, opcode)
+// ---------------------------------------------------------------------------
+//
+// A row's body is built only from the slices it *reads*. `ed`'s catch-all row
+// claims 218 opcodes and reads none of them, so those 218 are one instruction
+// wearing 218 hats; `ld {reg:y}, {reg:z}` reads both its slices, so its 64 are
+// genuinely 64. Generating per (table, opcode) cannot tell the difference and
+// stamps out 256 either way.
+//
+// So walk rows and splat each body across the opcodes it claims. Nothing is
+// deduplicated because nothing is generated twice: the combinations of the
+// slices a row reads enumerate its distinct bodies exactly once, and the fill
+// is a direct write rather than a lookup.
+
+// Which of a row's slices anything actually reads. Bits nothing looks at cannot
+// change the generated code.
+[[nodiscard]] consteval Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
+  Vector<std::uint8_t, Pattern::max_slices> used;
+  const auto note = [&used](const Reference reference) {
+    if (reference.from_view)
+      return; // a view is a run-time value; it specialises nothing
+    for (const auto already: used)
+      if (already == reference.slice_index)
+        return;
+    static_cast<void>(used.try_push_back(reference.slice_index));
+  };
+  for (const auto &piece: row.pieces)
+    if (piece.kind == Piece::Kind::Vocabulary)
+      note(piece.reference);
+  for (const auto &step: row.steps) {
+    if (step.operation_reference)
+      note(*step.operation_reference);
+    for (const auto &operand: step.operands)
+      if (operand.kind == Operand::Kind::Vocabulary)
+        note(operand.reference);
+    for (const auto &destination: step.destinations)
+      if (destination.kind == Operand::Kind::Vocabulary)
+        note(destination.reference);
+  }
+  return used;
+}
+
+// The encoding with every unread variable bit cleared -- the name of the body
+// this opcode wants. Two opcodes of one row share a body exactly when this
+// agrees.
+[[nodiscard]] consteval std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
+  auto result = row.matched.opcode_bits;
+  for (const auto index: slices_read_by(row)) {
+    const auto &slice = row.matched.slices[index];
+    result = static_cast<std::uint8_t>(result | slice.place(slice.extract(opcode)));
+  }
+  return result;
+}
+
+// One generated function: a row, and an encoding fixing every slice it reads.
+struct Body {
+  std::size_t row{};
+  std::uint8_t opcode{};
+};
+
+// What a table's dispatch is made of, in one pass over its rows.
+struct Decoding {
+  std::vector<Body> bodies;
+  std::array<std::uint16_t, 256> fill{};
+};
+
+[[nodiscard]] consteval Decoding decoding_for(const std::uint8_t table) {
+  Decoding result;
+  // Indexed, never searched: `made[row][key]` is the body this row already has
+  // for that combination of the slices it reads. Per row as well as per key,
+  // because two rows may narrow to the same encoding and are still two rows.
+  std::vector<std::array<std::uint16_t, 256>> made(target::rows.size());
+  std::vector<std::array<bool, 256>> known(target::rows.size());
+  for (std::size_t opcode = 0; opcode < 256; ++opcode) {
+    const auto row = *target::find_row(table, static_cast<std::uint8_t>(opcode));
+    const auto key = body_key(target::rows[row], static_cast<std::uint8_t>(opcode));
+    if (!known[row][key]) {
+      known[row][key] = true;
+      made[row][key] = static_cast<std::uint16_t>(result.bodies.size());
+      result.bodies.push_back({row, key});
+    }
+    result.fill[opcode] = made[row][key];
+  }
+  return result;
+}
+
+template<std::uint8_t Table>
+inline constexpr auto bodies_of = to_array<[] { return decoding_for(Table).bodies; }>();
+template<std::uint8_t Table>
+inline constexpr auto fill_of = decoding_for(Table).fill;
 
 // The clearest demonstration in the file of what an expansion statement buys:
-// `handler_for<Table, opcode>` needs `opcode` as a *template argument*, so an
-// ordinary loop cannot build this table and a `template for` can.
+// `execute_one` needs its row and encoding as *template arguments*, so an
+// ordinary loop cannot make these and a `template for` can. Filling the 256
+// entries afterwards is an ordinary loop, because by then they are values.
 template<std::uint8_t Table>
 inline constexpr auto dispatch = [] {
+  std::array<Handler, bodies_of<Table>.size()> made{};
+  template for (constexpr auto index: std::views::iota(0uz, bodies_of<Table>.size())) made[index] =
+      &execute_one<Table, bodies_of<Table>[index].opcode, bodies_of<Table>[index].row>;
   std::array<Handler, 256> handlers{};
-  template for (constexpr auto opcode: std::views::iota(0uz, 256uz)) handlers[opcode] =
-      handler_for<Table, static_cast<std::uint8_t>(opcode)>;
+  for (std::size_t opcode = 0; opcode < 256; ++opcode)
+    handlers[opcode] = made[fill_of<Table>[opcode]];
   return handlers;
 }();
 
