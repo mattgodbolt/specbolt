@@ -941,9 +941,15 @@ equivalent, and the option is not recognised. What gcc offers instead:
 - `-Q` — prints each function as it is compiled. Crude attribution, and it says nothing about the
   front end, which is where this workload lives.
 
-So the only way to see inside is to **profile `cc1plus` itself**. That works: the
+So on gcc the only way to see inside is to **profile `cc1plus` itself**. That works: the
 compiler-explorer build carries no debug info, but it keeps 48,954 dynamic symbols, which is enough
 for a flat profile. `perf record -F 199 -- g++ …` follows the driver's children automatically.
+
+The other way, which is what eventually gave the sharpest answers, is to get the thing building
+under clang and use `-ftime-trace` there — see "`-ftime-trace` finally answers the question" below.
+Everything between here and there is what could be established without it, and it is worth reading
+in that light: it took three separate experiments to bound what one traced clang run then measured
+directly.
 
 ### Where the 90 seconds actually goes
 
@@ -1014,7 +1020,9 @@ asked to write, so the only changes that matter are ones that ask for fewer.**
    two would take 7 tables to 5 — about **−22s and −0.25 GB, a 25% cut** — at the price of one
    runtime indirection on the rarest instructions in the set. The 338 byte-identical duplicate
    handlers recorded above are the same observation from the other end, and aliasing them would be
-   the same win by another route.
+   the same win by another route. This is the firmest number here: gcc's scaling curve says 11.2s a
+   table and clang's per-instantiation trace independently says about 12s, so the saving is measured
+   rather than estimated.
 2. **Split the translation unit — for wall clock only.** Seven TUs would each pay the 12.6s fixed
    cost, so total CPU goes *up*, to about 167s; but wall clock on four cores falls to roughly 45s
    and on sixteen to about 25s. Worth doing for a developer's edit-build loop, not for CI throughput.
@@ -1029,14 +1037,17 @@ neither would repay the effort.
 
 - **Optimising the parse.** The whole of reading, checking and lowering the description is inside
   the 12.6s fixed cost — 14% of the build — of which the `to_array` double evaluation is 3.2s.
-  Deleting the parser outright, checks and all, would leave 86% of the build standing. Everything in
-  it should be optimised for being read, because that is the only thing it is expensive in.
+  Deleting the parser outright, checks and all, would leave 86% of the build standing. clang's trace
+  later put a finer point on it: the six `to_array` instantiations that *are* the entire pipeline
+  cost 6.1 of 126 seconds, and the dearest of them is `opcodes_of_each` rather than anything in the
+  parser. Everything in it should be optimised for being read, because that is the only thing it is
+  expensive in.
 - **Blaming the back end.** It is 32%, the single largest phase, and it is not reflection's doing:
   it is 29 MB of object code at `-O0`, and a Python script emitting the same 1792 functions would
   pay it identically. The only thing that moves it is emitting fewer or smaller handlers, which is
   item 1 above rather than a separate idea.
 
-### The other implementation: Bloomberg's clang-p2996
+### The other implementations: two clang forks
 
 There is a second implementation of all this, and "gcc 16 only" is a heavy dependency for a talk to
 ask of anyone, so it is worth knowing exactly what it does and does not do. There are in fact **two**
@@ -1192,9 +1203,9 @@ To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang buil
   exactly the feature it is checking for.
 - **The tree representation is not built for this.** 5.4 GB allocated and 8% of the build in the
   collector, to evaluate a 147-line text file and stamp out functions from it.
-- **Print `what()`.** gcc does; clang-p2996 does not. A `consteval` function that throws is the
-  idiom the whole ecosystem is converging on for compile-time diagnostics, and half the
-  implementations currently discard the message.
+- **Print `what()`.** gcc does; neither clang fork does, tested on both. A `consteval` function
+  that throws is the idiom the whole ecosystem is converging on for compile-time diagnostics, and
+  half the implementations currently discard the message.
 - **Peak memory is the real ceiling.** 1.35 GB for one TU, growing 0.12 GB per table, is what stops
   this scaling — a CI box running several of these in parallel runs out of memory long before it
   runs out of patience.

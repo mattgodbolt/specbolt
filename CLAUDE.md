@@ -8,7 +8,7 @@ Presets live in `CMakePresets.json`. The common ones:
 cmake --preset debug            # Debug, no modules — works with clang or gcc
 cmake --preset debug-modules    # Debug with C++ modules (needs clang + libc++)
 cmake --preset release          # RelWithDebInfo, no modules (runs zexdoc tests)
-cmake --preset debug-reflection # Debug with C++26 reflection (needs gcc 16+)
+cmake --preset debug-reflection # Debug with C++26 reflection (needs gcc 16+ or a P2996 clang)
 cmake --build --preset debug
 ctest --preset debug
 ```
@@ -21,14 +21,14 @@ Run: `./build/debug/sdl/specbolt_sdl`
 
 ## C++26 reflection
 
-Reflection (P2996) needs **gcc 16+**; no clang release implements it yet, and the WASI build is on clang, so anything reflective must be optional. `cmake/reflection.cmake` probes for it and exposes:
+Reflection (P2996) needs **gcc 16+** or one of the P2996 clang forks; no clang *release* implements it, and the WASI build is on stock clang, so anything reflective must be optional. `cmake/reflection.cmake` probes for it -- including the extra flags clang wants -- and exposes:
 
 - `SPECBOLT_HAS_REFLECTION` — true when the compiler can do it. Exclude reflective targets with `if (SPECBOLT_HAS_REFLECTION)`, and guard reflective code on the `SPECBOLT_REFLECTION` macro.
 - `SPECBOLT_REFLECTION` cache variable — `AUTO` (default, use if available), `ON` (require it; configure fails otherwise), `OFF`.
 
 `-freflection` rides on `opt::c++26` so it reaches every specbolt target uniformly. It's a dialect switch: gcc can't merge a module built without it into a TU built with it (importing one fails with conflicting declarations for types reachable both textually and through the module), and it needs `-std=c++26`, so applying it globally breaks third-party targets built at the default standard.
 
-See [README.md](README.md) for getting a gcc 16 toolchain.
+See [README.md](README.md) for getting a gcc 16 toolchain, or Barry Revzin's clang fork, which also builds everything.
 
 Reflection works inside module interface units on gcc 16 — including `template for` in a module purview, and exported templates that reflect on their own parameters and get instantiated in importing TUs. The reflection presets set `SPECBOLT_MODULES=OFF`, and v4 is not built when modules are on: its table is a header included into more than one module partition, so its definitions duplicate. Everything else builds under both.
 

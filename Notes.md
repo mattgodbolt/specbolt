@@ -282,3 +282,12 @@ wrong answers before they were fixed: never run it while anything else is on the
 machine, and never run the implementations in a fixed order within a repetition
 -- whoever goes last meets the hottest core and the coldest caches. The harness
 alternates direction and reports the best repetition for that reason.
+
+---
+
+### Compile time
+
+The measurements above are all about how fast the emulator runs. The other half of the trade --
+how long v4 takes to *build*, where that time goes, how it scales, and what two different
+reflection implementations cost -- is in [z80/v4/NOTES.md](z80/v4/NOTES.md) under "Compile time,
+measured", because it is a fact about v4 rather than about the emulator.
