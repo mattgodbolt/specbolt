@@ -113,10 +113,16 @@ std::uint8_t Z80::read_immediate() {
   return memory_.read(address);
 }
 
-void Z80::delay(const std::uint8_t cycles) {
-  for (std::uint8_t at = 0; at < cycles; ++at)
-    bus(Bus::internal, bus_address_);
-}
+// An internal cycle presents whatever address the last access left on the bus,
+// so a run of them re-latches the same value every time and only the clock
+// actually moves. Spending them in one go is exactly equivalent -- `tick(n)`
+// and n `tick(1)`s leave the same cycle count and fire the same tasks at the
+// same cycles -- and it is worth 6% of v4, because `delay 7` was seven calls.
+//
+// This is the line contention will have to undo. A contended machine can
+// stretch each internal cycle separately, so it would want the loop back, with
+// `bus` deciding what each individual cycle costs.
+void Z80::delay(const std::uint8_t cycles) { pass_time(cycles * cost_of(Bus::internal)); }
 
 std::uint16_t Z80::read_memory16(const std::uint16_t address) {
   // Two accesses, low byte first, because that is what the bus sees.
