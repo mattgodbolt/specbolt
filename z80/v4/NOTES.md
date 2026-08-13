@@ -1003,24 +1003,37 @@ description — the size of the instruction set times the number of decoding tab
 
 ### So what could reasonably change
 
-1. **Fewer tables.** At 11.2s each this is the only large lever, and two are available without
+Everything below reduces to one sentence: **the cost is the number of functions the compiler is
+asked to write, so the only changes that matter are ones that ask for fewer.**
+
+1. **Fewer tables.** At 11.2s each this is the largest lever, and two are available without
    inventing anything. `fdcb` is `ddcb` with a different index register, and `iy` is `ix` with a
    different index register; both are written out separately today because a rule rewrites
    vocabulary references and not literal text. Making the index register a runtime value in those
    two would take 7 tables to 5 — about **−22s and −0.25 GB, a 25% cut** — at the price of one
    runtime indirection on the rarest instructions in the set. The 338 byte-identical duplicate
-   handlers recorded above are the same observation from the other end.
+   handlers recorded above are the same observation from the other end, and aliasing them would be
+   the same win by another route.
 2. **Split the translation unit — for wall clock only.** Seven TUs would each pay the 12.6s fixed
    cost, so total CPU goes *up*, to about 167s; but wall clock on four cores falls to roughly 45s
    and on sixteen to about 25s. Worth doing for a developer's edit-build loop, not for CI throughput.
    It needs a change first: `inline constexpr auto dispatches` is a namespace-scope variable, so
    **merely including `Execute.hpp` instantiates all 1792 handlers**, used or not. Found the hard
    way, trying to measure one table by including the header and touching nothing.
-3. **Do not bother optimising the parse.** It is inside the 12.6s fixed cost, of which the
-   `to_array` double evaluation is 3.2s. Even deleting the parser outright would leave 86% of the
-   build.
-4. **The back end is a third of it and is nobody's fault.** 29 MB of object code at `-O0`. The only
-   thing that shifts it is emitting fewer or smaller handlers, which is item 1 again.
+
+### And two things that look like levers and are not
+
+Worth stating because both are where one instinctively reaches first, and the measurements say
+neither would repay the effort.
+
+- **Optimising the parse.** The whole of reading, checking and lowering the description is inside
+  the 12.6s fixed cost — 14% of the build — of which the `to_array` double evaluation is 3.2s.
+  Deleting the parser outright, checks and all, would leave 86% of the build standing. Everything in
+  it should be optimised for being read, because that is the only thing it is expensive in.
+- **Blaming the back end.** It is 32%, the single largest phase, and it is not reflection's doing:
+  it is 29 MB of object code at `-O0`, and a Python script emitting the same 1792 functions would
+  pay it identically. The only thing that moves it is emitting fewer or smaller handlers, which is
+  item 1 above rather than a separate idea.
 
 ### What compilers could do, since we are going to keep asking for this
 
