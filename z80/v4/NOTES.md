@@ -928,6 +928,113 @@ Caveats, and they are large: `-O0`; one machine, and a thermally limited laptop 
 sweep is minimum-of-two rather than a distribution. Treat the ratios as real and the absolutes as
 indicative.
 
+### What tooling there is, which is not much
+
+**gcc has no `-ftime-trace`.** clang's flag emits a Chrome trace with a span per template
+instantiation and per function, which is exactly the tool this question wants; there is no gcc
+equivalent, and the option is not recognised. What gcc offers instead:
+
+- `-ftime-report` and `-ftime-report-details` — a table of *passes*, not of symbols. Useful, and
+  used below, but it cannot tell you which instantiation or which `consteval` call was expensive.
+- `-fmem-report`, `-fpre-ipa-mem-report`, `-fpost-ipa-mem-report` — allocation by pass.
+- `-Q` — prints each function as it is compiled. Crude attribution, and it says nothing about the
+  front end, which is where this workload lives.
+
+So the only way to see inside is to **profile `cc1plus` itself**. That works: the
+compiler-explorer build carries no debug info, but it keeps 48,954 dynamic symbols, which is enough
+for a flat profile. `perf record -F 199 -- g++ …` follows the driver's children automatically.
+
+### Where the 90 seconds actually goes
+
+gcc's own accounting for `Z80.cpp`:
+
+| phase | wall | share |
+|---|---:|---:|
+| parsing | 12.0s | 15% |
+| **lang. deferred** (template instantiation and constant evaluation) | **41.3s** | **51%** |
+| **opt and generate** (the back end) | **26.1s** | **32%** |
+| last asm | 1.0s | 1% |
+| — *of which* overload resolution | 11.0s | 14% |
+| — *of which* garbage collection | 6.7s | 8% |
+
+5,400 MB allocated through the collector to compile one file.
+
+And the profile of the compiler, sampled at 199Hz over the same build:
+
+| symbol | share |
+|---|---:|
+| `cxx_eval_constant_expression` | 7.4% |
+| `consteval_only_p_walker::walk` | 4.2% |
+| garbage collector (`ggc_set_mark`, alloc, marking) | 8.4% |
+| `walk_tree_1` | 1.7% |
+| **everything named `reflect`/`splice`/`metafn` put together** | **0.37%** |
+
+5,118 distinct symbols were sampled and the top twenty account for 28.6% of them. It is *flat*.
+
+**The headline, and it is not what one expects: reflection is not what costs.** The machinery that
+implements `^^`, `[: :]` and `std::meta` is a third of one percent. A third of the build is the back
+end compiling the 1792 functions we asked for, which would cost the same if a Python script had
+written them. Another seventh is overload resolution — every `cpu.read([:location:])` is an overload
+set to resolve, and there are thousands. Actual constant evaluation is under a tenth.
+
+One entry is worth calling out: `consteval_only_p_walker::walk` at 4.2%, roughly three and a half
+seconds, is gcc deciding *whether an expression contains an immediate call* — the analysis P2564's
+escalation rule requires. It is a tax levied in proportion to how much `consteval` you write, on
+code the standard is otherwise encouraging you to write.
+
+### How it scales, measured
+
+By temporarily capping how many tables `all_dispatches` builds:
+
+| decoding tables | compile | peak RSS |
+|---|---:|---:|
+| 1 | 23.7s | 0.61 GB |
+| 2 | 34.2s | 0.76 GB |
+| 4 | 58.9s | 0.96 GB |
+| 7 | 90.1s | 1.35 GB |
+
+A straight line: **12.6s fixed, then 11.2s and about 0.12 GB per 256-entry decoding table.** So
+reading, checking and lowering the description is 14% of the build, and expanding it into handlers
+is 86%. (The 1-table build additionally trips `-Werror=pointer-arith` in `execute_instruction`,
+which is an artefact of the cap; its time agrees with the line fitted through the other three.)
+
+That is the number to quote when someone asks what a second CPU costs. Not the size of the
+description — the size of the instruction set times the number of decoding tables.
+
+### So what could reasonably change
+
+1. **Fewer tables.** At 11.2s each this is the only large lever, and two are available without
+   inventing anything. `fdcb` is `ddcb` with a different index register, and `iy` is `ix` with a
+   different index register; both are written out separately today because a rule rewrites
+   vocabulary references and not literal text. Making the index register a runtime value in those
+   two would take 7 tables to 5 — about **−22s and −0.25 GB, a 25% cut** — at the price of one
+   runtime indirection on the rarest instructions in the set. The 338 byte-identical duplicate
+   handlers recorded above are the same observation from the other end.
+2. **Split the translation unit — for wall clock only.** Seven TUs would each pay the 12.6s fixed
+   cost, so total CPU goes *up*, to about 167s; but wall clock on four cores falls to roughly 45s
+   and on sixteen to about 25s. Worth doing for a developer's edit-build loop, not for CI throughput.
+   It needs a change first: `inline constexpr auto dispatches` is a namespace-scope variable, so
+   **merely including `Execute.hpp` instantiates all 1792 handlers**, used or not. Found the hard
+   way, trying to measure one table by including the header and touching nothing.
+3. **Do not bother optimising the parse.** It is inside the 12.6s fixed cost, of which the
+   `to_array` double evaluation is 3.2s. Even deleting the parser outright would leave 86% of the
+   build.
+4. **The back end is a third of it and is nobody's fault.** 29 MB of object code at `-O0`. The only
+   thing that shifts it is emitting fewer or smaller handlers, which is item 1 again.
+
+### What compilers could do, since we are going to keep asking for this
+
+- **Give gcc a `-ftime-trace`.** This whole section is guesswork assembled from a pass-level table
+  and a symbol profile of a stripped binary. Neither can answer "which instantiation cost me a
+  second", which is the only question an author actually has.
+- **Make the escalation analysis cheaper.** 4.2% spent asking "is this consteval?" scales with
+  exactly the feature it is checking for.
+- **The tree representation is not built for this.** 5.4 GB allocated and 8% of the build in the
+  collector, to evaluate a 147-line text file and stamp out functions from it.
+- **Peak memory is the real ceiling.** 1.35 GB for one TU, growing 0.12 GB per table, is what stops
+  this scaling — a CI box running several of these in parallel runs out of memory long before it
+  runs out of patience.
+
 ## Open: /INT is a level, and v4 has no way to release it
 
 v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it — which is
