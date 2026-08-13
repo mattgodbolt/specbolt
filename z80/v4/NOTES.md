@@ -1125,11 +1125,69 @@ are identical here. **The technique this project uses to make bad tables legible
 feature.** Worth saying out loud in a talk that recommends it, and worth a bug against clang,
 because nothing in the standard prevents printing `what()` — gcc simply chose to.
 
+### And with clang building, `-ftime-trace` finally answers the question
+
+The whole reason the gcc section above is assembled from a pass table and a symbol profile is that
+gcc has no `-ftime-trace`. clang does, and it attributes time to *individual template
+instantiations*. Same TU, clang 23 with libstdc++, 126s traced:
+
+| phase | seconds | count |
+|---|---:|---:|
+| Frontend | **119.2** | |
+| — `PerformPendingInstantiations` | 85.2 | |
+| — `EvaluateAsConstantExpr` | 60.2 | **451,161** |
+| — `EvaluateAsInitializer` | 24.4 | 44,675 |
+| — `Source` (headers) | 27.9 | |
+| Backend | **6.3** | |
+| — `CodeGen Function` | 5.9 | 13,982 |
+| `CheckConstraintSatisfaction` | 1.7 | 720,105 |
+
+Note the split: **95% front end, 5% back end** — where gcc spent 32% in "opt and generate". The two
+are not measuring quite the same boundary, but the direction is stark, and 451,161 constant-
+expression evaluations to compile one file is a number that needs no interpretation.
+
+Then the part gcc cannot do at all, time by template (inclusive, so `execute_one` contains the rest):
+
+| template | seconds | instantiations |
+|---|---:|---:|
+| `refract::execute_one` | **85.1** | 1792 |
+| `refract::apply` | 22.7 | 1191 |
+| `refract::to_array` | **6.1** | **6** |
+| `refract::operands_of` | 4.7 | 1230 |
+| `refract::store` | 4.0 | 321 |
+
+**Six instantiations of `to_array` are the entire compile-time pipeline** — the `#embed`, the parse,
+the checks, the coverage, the decode tables — and they cost 6.1 of 126 seconds. Individually:
+
+```
+3.1s  to_array<Table.hpp:43>   row_opcodes -- opcodes_of_each, the cartesian product walk
+1.4s  to_array<Table.hpp:42>   rows        -- parse_rows
+1.0s  to_array<Table.hpp:44>   decoded     -- decode_tables
+1.0s  all_dispatches<0..6>
+0.4s  to_array<Table.hpp:40>   vocabularies
+```
+
+That is the "don't bother optimising the parse" claim, confirmed to the individual expression by a
+different compiler: **reading the description is 5% of the build.** And 1792 `execute_one`
+instantiations at 85.1s is 47ms each, so a 256-entry decoding table costs about 12s — against the
+11.2s per table gcc's scaling curve gave. **Two compilers, two entirely different measurement
+techniques, agreeing to within 10% on what a decoding table costs.**
+
+The most expensive single handlers are the multi-step rows — `call nz,nn`, `call nn`, `rst` — at
+about 0.3s each, six times the average. Nothing surprising, but it is the first time the question
+"which instruction is expensive to compile?" has had an answer at all.
+
+To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang build and read the
+`.json` beside the object file; it is about 16 MB for this TU.
+
 ### What compilers could do, since we are going to keep asking for this
 
-- **Give gcc a `-ftime-trace`.** This whole section is guesswork assembled from a pass-level table
-  and a symbol profile of a stripped binary. Neither can answer "which instantiation cost me a
-  second", which is the only question an author actually has.
+- **Give gcc a `-ftime-trace`.** The gcc half of this section is guesswork assembled from a
+  pass-level table and a symbol profile of a stripped binary; neither can answer "which
+  instantiation cost me a second", which is the only question an author actually has. Getting clang
+  building was worth it for this alone — it answered in one run what three gcc experiments had only
+  bounded, and it agreed with them. Nobody should have to port to a second compiler to find out
+  where their build went.
 - **Make the escalation analysis cheaper.** 4.2% spent asking "is this consteval?" scales with
   exactly the feature it is checking for.
 - **The tree representation is not built for this.** 5.4 GB allocated and 8% of the build in the
