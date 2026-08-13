@@ -18,7 +18,7 @@ are all complete, and the instruction set is finished.
 - **Disassembly.** Walks the row's lowered pieces, following a `goto` through a prefix table.
 - **Execution.** A 256-entry dispatch table per decoding table, built with a `template for`
   expansion statement, one `execute_one<Table, Opcode, Index>` instantiation per entry, each
-  resolving its verb by reflection over the CPU's `primitive_scopes()`.
+  resolving its verb by reflection over the CPU's `operation_scopes()`.
 
 The pipeline is `#embed` → `consteval` parse → lower to validated pieces → `template for` → splice.
 
@@ -42,9 +42,9 @@ z80.cpu:25: this row overlaps a later one without being contained by it
 ### The argument this exists to make
 
 Everything inside `consteval` is memory-safe by construction — constant evaluation refuses to index
-out of bounds, so the parser cannot overflow its arrays even if the counting pass desynced. Every
-correctness hole found in the first cut of the spike was in the half left at runtime. Lowering the
-table to a validated fixed shape at parse time removes that half entirely.
+out of bounds or to read a dangling pointer, so a parser bug is a compile error rather than a corrupt
+table. Every correctness hole found in the first cut of the spike was in the half left at runtime.
+Lowering the table to a validated fixed shape at parse time removes that half entirely.
 
 ---
 
@@ -62,7 +62,7 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - **`std::meta::info` is a consteval-only type.** It cannot be stored in anything that survives to
   runtime — a struct containing one becomes consteval-only, so *any* runtime use of that struct
   (including reading an unrelated `int` member) is ill-formed. Resolve reflections **inside** the
-  splice: `[: find_verb(row.verb) :]`, never `[: stored.fn :]`.
+  splice: `[: find_operation(name, line) :]`, never `[: stored.fn :]`.
 - **`identifier_of` throws on members without identifiers** (constructors, etc). Guard with
   `has_identifier` before comparing names, or the exception pre-empts your own diagnostic.
 - **Reflection must live in template arguments and alias templates, never in a local.** A
@@ -89,11 +89,22 @@ The single most useful architectural fact:
   `{const char*, size_t}` pointing into the `#embed`ed blob fails with `reflect_constant failed`.
   Each string needs its own storage via `define_static_string`.
 - **But `constexpr std::array<T, N>` needs no structural type at all.** Structural is a
-  `define_static_array` requirement, not a constexpr one. So count-then-fill into a `std::array`
-  sidesteps the whole problem and lets `Row`/`Field` keep plain `string_view`s into the blob.
+  `define_static_array` requirement, not a constexpr one, so an array sidesteps the whole problem and
+  lets `Row`/`Vocabulary` keep plain `string_view`s into the blob.
 - Transient allocation is fine: a `std::vector` may be created and destroyed inside one constant
   evaluation and passed between `consteval` functions freely. It just cannot escape into a
   namespace-scope `constexpr` variable.
+- **So the parse works in `std::vector` throughout and an array is made of the answer at the end.**
+  Getting the size means evaluating the whole parse twice — once for `.size()`, once for the contents
+  — which is `to_array` in `ToArray.hpp`, and it is the only place in the pipeline that knows a count.
+  The earlier arrangement counted matching lines in a cheap pre-pass and passed the count as a
+  template argument to each parse function; that had to be right in two places, and it made every
+  parse function a template with a capacity check nobody could reach. **What the second parse costs,
+  measured** (alternating A/B, twice each, gcc 16.2 `-O0`): on `Disassembler.cpp`, which is the parse
+  plus every check and nothing else, 9.3s/387MB becomes 12.6s/570MB — so about **+3.2s and +180MB**.
+  On `Z80.cpp`, which is the same parse plus 1792 handler instantiations, 75.4s becomes 73.2s: the
+  same work, lost in the noise of what dominates that TU. Three seconds for a pipeline in which one
+  function knows a count.
 - `define_static_string` still earns its place for *generated* text, where the bytes must outlive the
   evaluation.
 
@@ -118,8 +129,12 @@ and survives promotion". It is neither, and both halves were verified false.
   needed a local `#pragma GCC diagnostic ignored "-Wshadow"`. They are all gone now.
 
   [pr124197]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124197
-- The range must be a constant expression. A `std::array` built inside the same lambda does not
-  qualify; hoist it to namespace scope as `inline constexpr`.
+- The range must be a constant expression, and for a range that means a constant *address*, not
+  merely a constant value. A plain `constexpr auto row = …;` local does not qualify — gcc says so
+  precisely: "address of non-static constexpr variable may differ on each invocation of the enclosing
+  function; add `static`". `static constexpr` fixes it, and a namespace-scope `inline constexpr` or a
+  template parameter object needs nothing. This is why `execute_one`'s `row` is `static`: expanding
+  over `row.steps` directly is what lets the step be the loop variable rather than an index into it.
 - **There is no `template switch`.** An expansion statement generates statements, and a `case`
   label is not one, so a 256-way dispatch cannot be expanded into a `switch`. The generated forms
   available are a table of function pointers (what `dispatch` does) or a chain of `if`s. A
@@ -272,7 +287,7 @@ ordinal position. Reorder one and you get a silently wrong register with no diag
 which` threaded through every `Ops` member is the symptom: the field value crosses the boundary as a
 bare ordinal, so nothing can check it.
 
-**Fix: resolve members to real C++ entities by reflection**, the same trick `find_verb` already uses
+**Fix: resolve members to real C++ entities by reflection**, the same trick `find_operation` already uses
 for the action column. Verified working on gcc 16.2:
 
 ```cpp
@@ -903,9 +918,21 @@ short ones.
 ## Done: the line between the library and the Z80
 
 The CPU-agnostic half is now `refract/`, in `namespace specbolt::refract`: `Model.hpp`,
-`Lower.hpp`, `Parse.hpp`, `Coverage.hpp`, `Pattern.hpp`, `Parser.hpp`, `Vector.hpp`,
-`TableError.hpp`, `Machine.hpp` and `Execute.hpp`. The Z80 half is `z80.cpu`, `Operations.hpp`,
-`Locations.hpp`, `Table.hpp`, `Disassembler.cpp` and `Z80.hpp`/`Z80.cpp`.
+`Lower.hpp`, `Parse.hpp`, `ToArray.hpp`, `Coverage.hpp`, `Pattern.hpp`, `Parser.hpp`, `Vector.hpp`,
+`TableError.hpp`, `Machine.hpp`, `Execute.hpp` and `Disassemble.hpp`. The Z80 half is `z80.cpu`,
+`Operations.hpp`, `Locations.hpp`, `Table.hpp`, `Disassembler.cpp` and `Z80.hpp`/`Z80.cpp`.
+
+**Both artefacts are now the library's.** `Disassemble.hpp` renders any description, so
+`Disassembler.cpp` is four lines: it says where the bytes come from and nothing else. Following
+prefixes, filling the DDCB latch, applying a view's renaming and walking the lowered pieces were all
+facts about the description rather than about the Z80, and having them in the CPU half meant the two
+artefacts followed prefixes by two separate pieces of code. The one thing genuinely left behind is
+the assembler syntax `0x` and `+0x`/`-0x` are written in; if a second CPU wants `$1234` that becomes
+a parameter, and not before.
+
+What made it possible is `Description` — the five spans a consumer of a parsed table needs
+(vocabularies, rows, tables, the decode tables, and where decoding starts) as one value. Passing
+"the table" rather than five of its parts is what keeps the signature honest.
 
 The two things that stood in the way both went:
 
@@ -925,19 +952,21 @@ is the limit, and it is what would have to change to test a second CPU alongside
 
 ## Idea: could the CPU class *be* the CPU description?
 
-Not done, and worth trying. Today a name in the table travels through three places:
+Not done, and half of the reason for it has since evaporated. A name in the table travels through
+three places:
 
-1. `z80.cpu` names something — `idle`, `read_memory`, `ld8`.
-2. `find_primitive` looks it up in `^^Ops`, a struct of static functions.
-3. Most of those static functions turn straight round and call a member of `v4::Z80`.
+1. `z80.cpu` names something — `delay`, `ld8`, `ex_sp_hl`.
+2. `find_operation` looks it up in `^^Operations` or `^^Alu`.
+3. Some of those static functions turn straight round and call a member of `v4::Z80`.
 
-`Ops::delay` is `cpu.idle(cycles)`. `read_memory` is `cpu.read(address)`. `write_memory` is
-`cpu.write(...)`. `ex_sp_ix` is `ex_sp_hl`. A good half of `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` is shims, and the shim's only
-real job is to give the CPU's method a name the table can use — which is worth something, since
-several of the underlying names are poor, but not obviously worth a third place to define things.
+The *worst* of the shims are gone: what the framework itself needs — `fetch_opcode`, `read_memory`,
+`delay`, `displaced_address` — is now stated as the `Machine` concept and called directly on the
+chip, and location access is `Z80::read`/`Z80::write` rather than free functions. What is left in
+`Operations.hpp` is mostly real semantics, plus a handful that are still pure forwarding
+(`Operations::delay`, `ex_sp_ix`, `ex_sp_iy`).
 
-The idea: teach the framework to reflect over **member** functions, so `Z80` itself is the
-description and `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` mostly disappears. `find_primitive` already rejects non-static members
+The idea that remains: teach the framework to reflect over **member** functions, so `Z80` itself is
+the description and the forwarding goes too. `find_operation` already rejects non-static members
 because a splice of one cannot be called without an object; the framework always *has* the object.
 
 Things to work out before committing to it:
@@ -1044,10 +1073,10 @@ are deferred rather than forgotten.
   declaration or a row; `check_every_line_means_something` says so. Still true and unfixed:
   `next_word` splits on spaces only, so a tab-indented `field` is not recognised at all — `trim`
   handles tabs, which shows they were meant to be whitespace.
-- **`SPECBOLT_CPU_TABLE` lives in `TableError.hpp`**, so a framework header names the CPU
-  description; `Execute.hpp` includes `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` by name for the same reason. Both should be
-  `target_compile_definitions`, which is also what would let one binary hold two CPUs. Until then,
-  "retargeting means writing one `Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp`" needs an asterisk.
+- ~~**`SPECBOLT_CPU_TABLE` lives in `TableError.hpp`**, so a framework header names the CPU
+  description, and `Execute.hpp` includes the Z80's headers by name for the same reason.~~ **Both
+  fixed** — see "the line between the library and the Z80" above. What is left is that one binary
+  still cannot hold two descriptions.
 - ~~**`Operand` carries jobs that already have types.**~~ **Done.** `Reference` is a type, and
   `write_back_delay` now lives only on `Operand` — `parse_member` writes it there directly, so
   `resolve` is a one-liner and there is nothing to keep in step.
@@ -1123,7 +1152,7 @@ debugger view can ask questions of the table at runtime.
 
 ## What the real Z80 buys, measured
 
-`Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` targets `v4::Z80 : Z80Base` rather than a stand-in struct, so v4 can be dropped
+The description targets `v4::Z80 : Z80Base` rather than a stand-in struct, so v4 can be dropped
 straight into `z80/test/OpcodeTests.cpp` — that suite is already a template over the
 implementation, which makes it the scoreboard. Two measurements, before and after memory operands:
 
@@ -1284,11 +1313,11 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 
 ## Where the framework/CPU boundary sits
 
-`Operations.hpp`, `Locations.hpp` and `Z80Machine.hpp` is the whole customisation surface — 82 lines. Retargeting means writing one of these
-and nothing else:
+`Operations.hpp`, `Locations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting means
+writing these and nothing else:
 
-- `Cpu` and `Ops` — the machine state and its non-ALU primitives
-- `primitive_scopes()` — where the table may name operations from
+- `Cpu` and `Operations` — the machine state and its non-ALU primitives
+- `operation_scopes()` — where the table may name operations from
 - `location_scopes()` — where it may name storage
 - `read`/`write` overloads — how to touch that storage
 - `read_memory`/`write_memory` — how to touch memory through an address

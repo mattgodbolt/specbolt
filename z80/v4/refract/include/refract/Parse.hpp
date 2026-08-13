@@ -1,7 +1,9 @@
 #pragma once
 
 // The three kinds of declaration a description contains, each reading the whole
-// text and returning a fixed-size array of what it found.
+// text and returning what it found. Each returns a `std::vector`: nothing here
+// knows how many of anything a description holds, and nothing has to -- see
+// ToArray.hpp for where that becomes a size.
 
 #include "refract/Lower.hpp"
 #include "refract/Model.hpp"
@@ -10,32 +12,27 @@
 #include "refract/TableError.hpp"
 
 #include <algorithm>
-#include <array>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace specbolt::refract {
 
-template<std::size_t N>
-[[nodiscard]] constexpr std::array<Vocabulary, N> parse_vocabularies(const std::string_view description) {
-  std::array<Vocabulary, N> result{};
+[[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
+  std::vector<Vocabulary> result;
   Parser lines(description);
-  std::size_t index = 0;
   while (!lines.eof()) {
     const auto [at, text] = lines.next_line();
     if (!is_vocabulary(text))
       continue;
     Parser parser(text);
     static_cast<void>(parser.next_word());
-    if (index == N)
-      throw table_error(at, "more vocabulary declarations than the count that sized this array");
-    auto &vocabulary = result[index++];
-    const auto name = parser.next_word();
-    if (name.empty())
+    Vocabulary vocabulary;
+    vocabulary.name = parser.next_word();
+    if (vocabulary.name.empty())
       throw table_error(at, "vocabulary declaration has no name");
-    vocabulary.name = name;
     if (parser.next_word() != "=")
       throw table_error(at, "expected '=' in vocabulary declaration");
     while (!parser.eof()) {
@@ -46,13 +43,12 @@ template<std::size_t N>
     }
     if (vocabulary.members.empty())
       throw table_error(at, "vocabulary declares no members");
-    for (std::size_t other = 0; other + 1 < index; ++other)
-      if (result[other].name == vocabulary.name)
-        throw table_error(at, "duplicate vocabulary name");
+    if (std::ranges::contains(result, vocabulary.name, &Vocabulary::name))
+      throw table_error(at, "duplicate vocabulary name");
+    result.push_back(vocabulary);
   }
   return result;
 }
-
 
 // After blanks and comments, every line is a declaration or a row. A line that
 // is neither is a mistyped one of them -- a row that lost its separators, or
@@ -71,10 +67,10 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
 
 [[nodiscard]] constexpr std::optional<std::size_t> find_vocabulary(
     const std::span<const Vocabulary> vocabularies, const std::string_view name) {
-  for (std::size_t index = 0; index < vocabularies.size(); ++index)
-    if (vocabularies[index].name == name)
-      return index;
-  return std::nullopt;
+  const auto found = std::ranges::find(vocabularies, name, &Vocabulary::name);
+  if (found == vocabularies.end())
+    return std::nullopt;
+  return static_cast<std::size_t>(found - vocabularies.begin());
 }
 
 // `pair.hl->ix, reg.h -> ixh`: either spacing, because both read naturally.
@@ -114,12 +110,10 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   }
 }
 
-template<std::size_t N>
-[[nodiscard]] constexpr std::array<TableDecl, N> parse_tables(
+[[nodiscard]] constexpr std::vector<TableDecl> parse_tables(
     const std::string_view description, const std::span<const Vocabulary> vocabularies) {
-  std::array<TableDecl, N> result{};
+  std::vector<TableDecl> result;
   Parser lines(description);
-  std::size_t index = 0;
   while (!lines.eof()) {
     const auto [at, text] = lines.next_line();
     if (!is_table(text))
@@ -129,42 +123,38 @@ template<std::size_t N>
     const auto name = parser.next_word();
     if (name.empty())
       throw table_error(at, "table declaration has no name");
-    for (std::size_t other = 0; other < index; ++other)
-      if (result[other].name == name)
-        throw table_error(at, "duplicate table name");
-    if (index == N)
-      throw table_error(at, "more table declarations than the count that sized this array");
-    auto &table = result[index++];
-    table = {.name = name, .line = at};
-    if (const auto equals = parser.next_word(); equals.empty())
-      continue;
-    else if (equals != "=")
-      throw table_error(at, "expected '= <parent> with <substitutions>' after the table name");
-    // Only a table already declared, which makes the derivation a forest: a
-    // parent's own rows are resolved before anything inherits them.
-    const auto parent = parser.next_word();
-    table.derived = true;
-    table.parent = 0xff;
-    for (std::size_t other = 0; other + 1 < index; ++other)
-      if (result[other].name == parent)
-        table.parent = static_cast<std::uint8_t>(other);
-    if (table.parent == 0xff)
-      throw table_error(at, "no table named '" + std::string(parent) + "' is declared above this one");
-    if (parser.next_word() != "with")
-      throw table_error(at, "expected 'with' after the parent table name");
-    parse_substitutions(parser.data(), vocabularies, table, at);
-    if (table.rules.empty())
-      throw table_error(at, "a derived table declares no substitutions, so it is its parent");
+    if (std::ranges::contains(result, name, &TableDecl::name))
+      throw table_error(at, "duplicate table name");
+    TableDecl table{.name = name, .line = at};
+    if (const auto equals = parser.next_word(); !equals.empty()) {
+      if (equals != "=")
+        throw table_error(at, "expected '= <parent> with <substitutions>' after the table name");
+      // Only a table already declared, which makes the derivation a forest: a
+      // parent's own rows are resolved before anything inherits them. `result`
+      // holds exactly those, this one not being in it yet.
+      const auto parent = parser.next_word();
+      const auto found = std::ranges::find(result, parent, &TableDecl::name);
+      if (found == result.end())
+        throw table_error(at, "no table named '" + std::string(parent) + "' is declared above this one");
+      table.derived = true;
+      table.parent = static_cast<std::uint8_t>(found - result.begin());
+      if (parser.next_word() != "with")
+        throw table_error(at, "expected 'with' after the parent table name");
+      parse_substitutions(parser.data(), vocabularies, table, at);
+      if (table.rules.empty())
+        throw table_error(at, "a derived table declares no substitutions, so it is its parent");
+    }
+    result.push_back(table);
   }
   return result;
 }
 
 [[nodiscard]] constexpr std::uint8_t find_table(
     const std::span<const TableDecl> tables, const std::string_view name, const std::size_t line) {
-  for (std::size_t index = 0; index < tables.size(); ++index)
-    if (tables[index].name == name)
-      return static_cast<std::uint8_t>(index);
-  throw table_error(line, "no table named '" + std::string(name) + "'");
+  const auto found = std::ranges::find(tables, name, &TableDecl::name);
+  if (found == tables.end())
+    throw table_error(line, "no table named '" + std::string(name) + "'");
+  return static_cast<std::uint8_t>(found - tables.begin());
 }
 
 [[nodiscard]] constexpr std::optional<std::size_t> find_slice(const Pattern &matched, const char name) {
@@ -260,12 +250,78 @@ constexpr void check_immediates(const Row &row) {
     throw table_error(row.line, "the action and the encoding disagree about whether there is an immediate");
 }
 
-template<std::size_t N>
-[[nodiscard]] constexpr std::array<Row, N> parse_rows(const std::string_view description,
+// The first column: the opcode pattern, then whichever bytes the instruction
+// carries after it.
+constexpr void parse_encoding(Parser encoding, Row &row) {
+  row.matched = parse_pattern(encoding.next_word(), row.line);
+  while (!encoding.eof()) {
+    const auto token = encoding.next_word();
+    if (token.empty())
+      continue;
+    if (token == "d") {
+      if (row.reads_displacement)
+        throw table_error(row.line, "a row reads at most one displacement");
+      row.reads_displacement = true;
+      continue;
+    }
+    if (token != "n")
+      throw table_error(row.line, "'" + std::string(token) + "' is not an encoding byte; expected 'n' or 'd'");
+    ++row.immediate_bytes;
+  }
+  if (row.immediate_bytes > 2)
+    throw table_error(row.line, "an instruction may carry at most two immediate bytes");
+}
+
+// One step of the third column: an operation, the destinations written before
+// `<-`, and the operands after it. `if` guards the rest of the row; `goto`
+// hands decoding to another table and does nothing else.
+[[nodiscard]] constexpr Step parse_step(Parser action, const std::span<const Vocabulary> vocabularies,
+    const std::span<const TableDecl> tables, const Row &row) {
+  Step step{.operation = action.next_word()};
+  if (step.operation == "if") {
+    step.kind = Step::Kind::If;
+    step.operation = action.next_word();
+    if (step.operation.empty())
+      throw table_error(row.line, "'if' needs something to test");
+  }
+  if (step.operation == "goto") {
+    if (step.kind == Step::Kind::If)
+      throw table_error(row.line, "a goto cannot be conditional; guard it with an earlier `if` step");
+    step.kind = Step::Kind::Goto;
+    step.target = find_table(tables, action.next_word(), row.line);
+    if (!action.next_word().empty())
+      throw table_error(row.line, "goto takes a single table name");
+    return step;
+  }
+  if (step.operation.starts_with('{'))
+    step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, row.line);
+  // `operation dest <- args...`; the destination is optional
+  auto writing_destination = action.data().contains("<-");
+  while (!action.eof()) {
+    const auto word = trim_comma(action.next_word());
+    if (word.empty())
+      continue;
+    if (word == "<-") {
+      writing_destination = false;
+      continue;
+    }
+    const auto operand = parse_operand(vocabularies, word, row.matched, row.line, row.immediate_bytes);
+    if (writing_destination) {
+      step.destinations.push_back(operand, row.line, "too many destinations");
+    }
+    else {
+      if (operand.kind == Operand::Kind::Discard)
+        throw table_error(row.line, "'-' discards a result, so it can only be a destination");
+      step.operands.push_back(operand, row.line, "too many operands");
+    }
+  }
+  return step;
+}
+
+[[nodiscard]] constexpr std::vector<Row> parse_rows(const std::string_view description,
     const std::span<const Vocabulary> vocabularies, const std::span<const TableDecl> tables) {
-  std::array<Row, N> result{};
+  std::vector<Row> result;
   Parser lines(description);
-  std::size_t index = 0;
   std::optional<std::uint8_t> current;
   while (!lines.eof()) {
     const auto [at, text] = lines.next_line();
@@ -280,29 +336,8 @@ template<std::size_t N>
     if (!current)
       throw table_error(at, "this row is not in any table; declare one with `table <name>` first");
     Parser parser(text, at);
-    if (index == N)
-      throw table_error(at, "more rows than the count that sized this array");
-    auto &row = result[index++];
-    row.line = at;
-    row.table = *current;
-    Parser encoding(Parser::trim(parser.split_to('|').data()), at);
-    row.matched = parse_pattern(encoding.next_word(), at);
-    while (!encoding.eof()) {
-      const auto token = encoding.next_word();
-      if (token.empty())
-        continue;
-      if (token == "d") {
-        if (row.reads_displacement)
-          throw table_error(at, "a row reads at most one displacement");
-        row.reads_displacement = true;
-        continue;
-      }
-      if (token != "n")
-        throw table_error(at, "'" + std::string(token) + "' is not an encoding byte; expected 'n' or 'd'");
-      ++row.immediate_bytes;
-    }
-    if (row.immediate_bytes > 2)
-      throw table_error(at, "an instruction may carry at most two immediate bytes");
+    Row row{.table = *current, .line = at};
+    parse_encoding(Parser(Parser::trim(parser.split_to('|').data()), at), row);
     row.mnemonic = Parser::trim(parser.split_to('|').data());
     // steps run in order, separated by `;`
     Parser sequence(Parser::trim(parser.data()));
@@ -310,46 +345,7 @@ template<std::size_t N>
       Parser action(Parser::trim(sequence.split_to(';').data()));
       if (action.eof())
         continue;
-      row.steps.push_back({}, at, "row has too many steps");
-      auto &step = row.steps[row.steps.size() - 1];
-      step.operation = action.next_word();
-      if (step.operation == "if") {
-        step.kind = Step::Kind::If;
-        step.operation = action.next_word();
-        if (step.operation.empty())
-          throw table_error(at, "'if' needs something to test");
-      }
-      if (step.operation == "goto") {
-        if (step.kind == Step::Kind::If)
-          throw table_error(at, "a goto cannot be conditional; guard it with an earlier `if` step");
-        step.kind = Step::Kind::Goto;
-        step.target = find_table(tables, action.next_word(), at);
-        if (!action.next_word().empty())
-          throw table_error(at, "goto takes a single table name");
-        continue;
-      }
-      if (step.operation.starts_with('{'))
-        step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, at);
-      // `operation dest <- args...`; the destination is optional
-      auto writing_destination = action.data().contains("<-");
-      while (!action.eof()) {
-        const auto word = trim_comma(action.next_word());
-        if (word.empty())
-          continue;
-        if (word == "<-") {
-          writing_destination = false;
-          continue;
-        }
-        const auto operand = parse_operand(vocabularies, word, row.matched, at, row.immediate_bytes);
-        if (writing_destination) {
-          step.destinations.push_back(operand, at, "too many destinations");
-        }
-        else {
-          if (operand.kind == Operand::Kind::Discard)
-            throw table_error(at, "'-' discards a result, so it can only be a destination");
-          step.operands.push_back(operand, at, "too many operands");
-        }
-      }
+      row.steps.push_back(parse_step(action, vocabularies, tables, row), at, "row has too many steps");
     }
     if (row.steps.empty())
       throw table_error(at, "row has no action");
@@ -360,6 +356,7 @@ template<std::size_t N>
       throw table_error(at, "a goto must be the row's only step");
     lower_mnemonic(vocabularies, row);
     check_immediates(row);
+    result.push_back(row);
   }
   return result;
 }

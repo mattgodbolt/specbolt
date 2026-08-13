@@ -114,10 +114,15 @@ static_assert(
 //
 // `Call` and `Operand` are non-type template parameters, so they must be
 // *structural*: literal types whose members are all public, recursively. That
-// single requirement explains a lot of `Table.hpp` — why `Vector` exposes its
+// single requirement explains a lot of the model — why `Vector` exposes its
 // `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>`
 // rather than a `std::string_view` (which has private members and is not
 // structural).
+//
+// It is also why the parse cannot simply hand its `std::vector`s over:
+// `std::define_static_array` would promote them, but only for a structural
+// element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what
+// stands in its place.
 
 // The table is written the way assembler is written, so every name in it is
 // matched without regard to case.
@@ -367,8 +372,8 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
     // two places -- `dd cb d op` puts it through the addressing mode and into
     // the register its low bits name.
     const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed));
-    template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
-        store<C.destinations[at], C.line>(cpu, immediate, indexed, result);
+    template for (constexpr auto destination: C.destinations)
+        store<destination, C.line>(cpu, immediate, indexed, result);
   }
 }
 
@@ -440,7 +445,10 @@ using Handler = Next (*)(Cpu &, std::uint8_t);
 // constants here.
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
 Next execute_one(Cpu &cpu, const std::uint8_t latch) {
-  constexpr auto row = target::rows[Index];
+  // `static` is not an optimisation here: the expansion statement below walks
+  // this as a range, and a range's *address* has to be a constant. A local
+  // `constexpr` has a constant value but not a constant address.
+  static constexpr auto row = target::rows[Index];
   // A renaming applies to every row this table decodes, inherited or its own: a
   // rule names the vocabulary it rewrites, so `ld {real:y}, (ix+d)` keeps the real
   // h by naming a vocabulary no rule mentions.
@@ -482,13 +490,10 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch) {
     else
       return 0;
   }();
-  // Expanded, not looped: the body is instantiated once per step, and `at` is
-  // `constexpr` inside it — which is what lets `step` be a constant and its
-  // contents be template arguments. `iota` rather than `row.steps` directly
-  // because the index is wanted, and a `return` here leaves `execute_one`, not
-  // the expansion.
-  template for (constexpr auto at: std::views::iota(0uz, row.steps.size())) {
-    constexpr auto step = row.steps[at];
+  // Expanded, not looped: the body is instantiated once per step, and `step` is
+  // `constexpr` inside it — which is what lets its contents be template
+  // arguments. A `return` here leaves `execute_one`, not the expansion.
+  template for (constexpr auto step: row.steps) {
     if constexpr (step.kind == Step::Kind::Goto)
       return Transfer{step.target, displacement};
     else {

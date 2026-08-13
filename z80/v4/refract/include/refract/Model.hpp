@@ -1,8 +1,11 @@
 #pragma once
 
-// The shapes a parsed instruction table is made of. Everything here is a plain
-// value type: several are non-type template parameters later, so they are
-// *structural* -- literal, with every member public, recursively.
+// The shapes a parsed instruction table is made of, all of them plain value
+// types. `Name`, `Reference` and `Operand` are non-type template parameters
+// later, so those three are *structural* -- literal, with every member public,
+// recursively, which is what `Name` exists to be. The rest hold
+// `std::string_view`s into the description and so could not be however they
+// were written.
 
 #include "refract/Pattern.hpp"
 #include "refract/Vector.hpp"
@@ -176,6 +179,31 @@ struct TableDecl {
   bool derived{};
   std::uint8_t parent{};
   Rules rules{};
+};
+
+// A row that only transfers elsewhere renders nothing and does nothing: it is a
+// prefix, and what follows it is the instruction.
+[[nodiscard]] constexpr std::optional<std::uint8_t> transfers_to(const Row &row) {
+  if (row.steps.size() == 1 && row.steps[0].kind == Step::Kind::Goto)
+    return row.steps[0].target;
+  return std::nullopt;
+}
+
+// Which row, if any, a table decodes each opcode to.
+using DecodeTable = std::array<std::optional<std::size_t>, 256>;
+
+// A whole parsed description, as everything downstream of the parse sees it.
+// Spans, because the storage belongs to whoever did the parsing: `Table.hpp`
+// for the description this build was compiled against, a test for one of its
+// own. Holding it as one value is what lets a consumer be handed "the table"
+// rather than five of its parts.
+struct Description {
+  std::span<const Vocabulary> vocabularies;
+  std::span<const Row> rows;
+  std::span<const TableDecl> tables;
+  std::span<const DecodeTable> decoded;
+  // Decoding starts here; no name is special.
+  std::uint8_t entry{};
 };
 
 } // namespace specbolt::refract

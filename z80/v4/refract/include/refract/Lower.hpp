@@ -31,16 +31,6 @@ namespace specbolt::refract {
   return !line.empty() && line.front() != '#' && !is_vocabulary(line) && !is_table(line) && line.contains('|');
 }
 
-[[nodiscard]] constexpr std::size_t count_matching(
-    const std::string_view description, bool (*predicate)(std::string_view)) {
-  Parser lines(description);
-  std::size_t count = 0;
-  while (!lines.eof())
-    if (predicate(lines.next_line().text))
-      ++count;
-  return count;
-}
-
 [[nodiscard]] constexpr std::uint8_t parse_delay(const std::string_view value, const std::size_t line) {
   if (value.size() != 1 || value.front() < '0' || value.front() > '9')
     throw table_error(line, "delay must be a single digit");

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
 #include <vector>
@@ -117,15 +118,23 @@ struct OpcodeSet {
   return result;
 }
 
+// Walking a row's cartesian product is the expensive part of evaluating a
+// description, and three of the checks below want the answer, so it is computed
+// once and passed to each.
+[[nodiscard]] constexpr std::vector<OpcodeSet> opcodes_of_each(
+    const std::span<const Vocabulary> vocabularies, const std::span<const Row> rows) {
+  return rows | std::views::transform([&](const Row &row) { return opcodes_of(vocabularies, row); }) |
+         std::ranges::to<std::vector>();
+}
+
 // Line order silently decides who wins, so say what the legal shapes are: a row
 // must win something, and where two rows overlap the earlier must be wholly
 // contained in the later. That is an override. A partial overlap is an accident.
 constexpr bool check_row_precedence(
     const std::span<const Row> rows, const std::span<const OpcodeSet> covers, const std::size_t num_tables) {
-  // What each row wins once the rows before it have taken their share. Walking
-  // the cartesian product of a row's slices is the expensive part of evaluating
-  // this table, so coverage is computed once and passed in: precedence is a
-  // fact about opcode sets, not about vocabularies.
+  // What each row wins once the rows before it have taken their share.
+  // Precedence is a fact about opcode sets, not about vocabularies, so this
+  // never resolves a name.
   std::vector<OpcodeSet> claimed(num_tables);
 
   for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
@@ -146,14 +155,12 @@ constexpr bool check_row_precedence(
   return true;
 }
 
-// Which row, if any, each table decodes each opcode to. Earlier rows win; then
-// a derived table takes from its parent whatever it did not claim itself.
-// Declaration order resolves a chain, because a parent is always declared
-// before its children.
-template<std::size_t NumTables>
-[[nodiscard]] constexpr auto decode_tables(const std::span<const Row> rows, const std::span<const OpcodeSet> opcodes,
-    const std::span<const TableDecl> tables) {
-  std::array<std::array<std::optional<std::size_t>, 256>, NumTables> all{};
+// Earlier rows win; then a derived table takes from its parent whatever it did
+// not claim itself. Declaration order resolves a chain, because a parent is
+// always declared before its children.
+[[nodiscard]] constexpr std::vector<DecodeTable> decode_tables(const std::span<const Row> rows,
+    const std::span<const OpcodeSet> opcodes, const std::span<const TableDecl> tables) {
+  std::vector<DecodeTable> all(tables.size());
   for (std::size_t index = 0; index < rows.size(); ++index)
     for (std::size_t opcode = 0; opcode < 256; ++opcode)
       if (opcodes[index].contains(static_cast<std::uint8_t>(opcode)) && !all[rows[index].table][opcode])
@@ -174,10 +181,10 @@ template<std::size_t NumTables>
 // displacement instead of reading one, and its opcode arrives by an operand
 // read rather than an instruction fetch -- the machine has already committed,
 // which is why the real chip does not increment R for that byte.
-template<std::size_t NumTables>
-[[nodiscard]] constexpr std::array<bool, NumTables> latched_tables(const std::span<const Row> rows) {
-  std::array<bool, NumTables> latched{};
-  std::array<bool, NumTables> seen{};
+[[nodiscard]] constexpr std::vector<bool> latched_tables(
+    const std::span<const Row> rows, const std::size_t num_tables) {
+  std::vector<bool> latched(num_tables);
+  std::vector<bool> seen(num_tables);
   for (const auto &row: rows)
     for (const auto &step: row.steps) {
       if (step.kind != Step::Kind::Goto)
@@ -196,9 +203,7 @@ template<std::size_t NumTables>
 // catch-all row is how a table says "and everything else does this".
 //
 // Requiring it here is what lets the dispatch loop call without checking.
-template<std::size_t NumTables>
-constexpr bool check_tables_total(const std::span<const TableDecl> tables,
-    const std::array<std::array<std::optional<std::size_t>, 256>, NumTables> &decoded) {
+constexpr bool check_tables_total(const std::span<const TableDecl> tables, const std::span<const DecodeTable> decoded) {
   for (std::size_t which = 0; which < tables.size(); ++which)
     for (std::size_t opcode = 0; opcode < 256; ++opcode)
       if (!decoded[which][opcode])
@@ -234,9 +239,8 @@ constexpr bool check_tables_total(const std::span<const TableDecl> tables,
 //
 // A row written *in* the derived table is exempt: putting it there is how one
 // says the literal was meant.
-template<std::size_t NumTables>
 constexpr bool check_inherited_literals(const std::span<const Row> rows, const std::span<const TableDecl> tables,
-    const std::array<std::array<std::optional<std::size_t>, 256>, NumTables> &decoded) {
+    const std::span<const DecodeTable> decoded) {
   for (std::size_t which = 0; which < tables.size(); ++which)
     for (std::size_t opcode = 0; opcode < 256; ++opcode) {
       const auto index = decoded[which][opcode];
@@ -301,10 +305,9 @@ constexpr bool check_derived_rows_override(
 // take the length from `displaced_through`, so they agree about how many bytes
 // to read and disagree only about what to print. The disassembler would quietly
 // name an addressing mode the machine did not use, or omit the one it did.
-template<std::size_t NumTables>
 constexpr bool check_displacement_rendered(const std::span<const Vocabulary> vocabularies,
     const std::span<const Row> rows, const std::span<const TableDecl> tables,
-    const std::array<std::array<std::optional<std::size_t>, 256>, NumTables> &decoded) {
+    const std::span<const DecodeTable> decoded) {
   for (std::size_t which = 0; which < tables.size(); ++which)
     for (std::size_t opcode = 0; opcode < 256; ++opcode) {
       const auto index = decoded[which][opcode];

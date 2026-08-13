@@ -11,9 +11,9 @@
 #include "z80/common/RegisterFile.hpp"
 #include "z80/v4/Z80.hpp"
 
-#include <array>
 #include <cstdint>
 #include <meta>
+#include <vector>
 
 namespace specbolt::v4 {
 
@@ -239,7 +239,8 @@ public:
   static void ex_af(Cpu &cpu) { cpu.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
 };
 
-// Where the table may name operations from.
-[[nodiscard]] consteval std::array<std::meta::info, 2> operation_scopes() { return {^^Operations, ^^Alu}; }
+// Where the table may name operations from. A `std::vector` for the same reason
+// `location_scopes` is one -- see Locations.hpp.
+[[nodiscard]] consteval std::vector<std::meta::info> operation_scopes() { return {^^Operations, ^^Alu}; }
 
 } // namespace specbolt::v4

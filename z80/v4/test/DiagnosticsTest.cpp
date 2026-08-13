@@ -12,37 +12,29 @@ namespace specbolt::v4 {
 using namespace refract;
 namespace {
 
-// Generous fixed capacities: the descriptions below are a few lines each.
-constexpr std::size_t max_vocabularies = 4;
-constexpr std::size_t max_tables = 4;
-constexpr std::size_t max_rows = 8;
-
 struct Parsed {
-  std::array<Vocabulary, max_vocabularies> vocabularies{};
-  std::array<TableDecl, max_tables> tables{};
-  std::array<Row, max_rows> rows{};
-  std::array<std::array<std::optional<std::size_t>, 256>, max_tables> decoded{};
+  std::vector<Vocabulary> vocabularies;
+  std::vector<TableDecl> tables;
+  std::vector<Row> rows;
+  std::vector<DecodeTable> decoded;
 };
 
 // Runs the whole pipeline, including the checks that are `static_assert`s
-// against the real description.
+// against the real description. Nothing here is `constexpr`: the same functions
+// serve a test that wants a message and a build that wants a diagnostic.
 Parsed parse(const std::string_view description) {
   Parsed parsed;
   check_every_line_means_something(description);
-  parsed.vocabularies = parse_vocabularies<max_vocabularies>(description);
-  parsed.tables = parse_tables<max_tables>(description, parsed.vocabularies);
-  parsed.rows = parse_rows<max_rows>(description, parsed.vocabularies, parsed.tables);
-  const auto row_count = count_matching(description, &is_row);
-  const std::span rows{parsed.rows.data(), row_count};
-  std::vector<OpcodeSet> opcodes;
-  for (const auto &row: rows)
-    opcodes.push_back(opcodes_of(parsed.vocabularies, row));
-  check_row_precedence(rows, opcodes, parsed.tables.size());
-  check_derived_rows_override(rows, opcodes, {parsed.tables.data(), count_matching(description, &is_table)});
-  static_cast<void>(latched_tables<max_tables>(rows));
-  check_tables_used(rows, {parsed.tables.data(), count_matching(description, &is_table)}, entry_table);
-  parsed.decoded = decode_tables<max_tables>(rows, opcodes, parsed.tables);
-  check_inherited_literals<max_tables>(rows, parsed.tables, parsed.decoded);
+  parsed.vocabularies = parse_vocabularies(description);
+  parsed.tables = parse_tables(description, parsed.vocabularies);
+  parsed.rows = parse_rows(description, parsed.vocabularies, parsed.tables);
+  const auto opcodes = opcodes_of_each(parsed.vocabularies, parsed.rows);
+  check_row_precedence(parsed.rows, opcodes, parsed.tables.size());
+  check_derived_rows_override(parsed.rows, opcodes, parsed.tables);
+  static_cast<void>(latched_tables(parsed.rows, parsed.tables.size()));
+  check_tables_used(parsed.rows, parsed.tables, entry_table);
+  parsed.decoded = decode_tables(parsed.rows, opcodes, parsed.tables);
+  check_inherited_literals(parsed.rows, parsed.tables, parsed.decoded);
   return parsed;
 }
 

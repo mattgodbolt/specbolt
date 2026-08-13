@@ -10,13 +10,16 @@
 #include "z80/common/RegisterFile.hpp"
 #include "z80/v4/Z80.hpp"
 
-#include <array>
 #include <meta>
+#include <vector>
 
 namespace specbolt::v4 {
 
-// Where the table may name storage locations from.
-[[nodiscard]] consteval std::array<std::meta::info, 9> location_scopes() {
+// Where the table may name storage locations from. A `std::vector` because only
+// `consteval` code ever reads it: the list is walked inside the same constant
+// evaluation that builds it, so nothing has to outlive that -- and adding a
+// scope means adding a scope, rather than also counting them.
+[[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
   return {^^RegisterFile::R8, ^^RegisterFile::R16, ^^FlagBit, ^^FlagWord, ^^FlipFlop, ^^ProgramCounter, ^^AddressLatch,
       ^^Interrupt, ^^Refresh};
 }

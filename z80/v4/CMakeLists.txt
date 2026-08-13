@@ -31,6 +31,7 @@ else ()
             include/z80/v4/Disassembler.hpp
             include/z80/v4/Z80.hpp
             refract/include/refract/Coverage.hpp
+            refract/include/refract/Disassemble.hpp
             refract/include/refract/Execute.hpp
             refract/include/refract/Lower.hpp
             refract/include/refract/Machine.hpp
@@ -39,6 +40,7 @@ else ()
             refract/include/refract/Parser.hpp
             refract/include/refract/Pattern.hpp
             refract/include/refract/TableError.hpp
+            refract/include/refract/ToArray.hpp
             refract/include/refract/Vector.hpp
     )
 endif ()

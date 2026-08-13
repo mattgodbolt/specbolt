@@ -3,91 +3,21 @@
 
 #include "Table.hpp"
 #include "peripherals/Memory.hpp"
+#include "refract/Disassemble.hpp"
 
-#include <format>
-#include <optional>
-#include <string>
+#include <utility>
 #endif
 
 namespace specbolt::v4 {
 
-// The compile-time library this is a description for.
-using namespace refract;
-
+// The whole of the Z80's part in disassembling itself: say where the bytes come
+// from. Following prefixes, applying a view's renaming and rendering the
+// lowered pieces are all facts about the description rather than about this
+// chip, so `refract` does them for any description.
 Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
-  const auto byte_at = [&](const std::size_t offset) {
-    return memory.read(static_cast<std::uint16_t>(address + offset));
-  };
-
-  // Follow prefixes until a row that renders something is reached.
-  std::size_t offset = 0;
-  auto table = entry_table;
-  const Row *row = nullptr;
-  std::optional<unsigned> latch;
-  while (true) {
-    const auto index = find_row(table, byte_at(offset));
-    ++offset;
-    if (!index)
-      return {"??", offset};
-    row = &rows[*index];
-    // `dd cb d op`: the displacement comes between the prefix and the byte that
-    // says what to do, so it is taken here rather than after the opcode.
-    if (row->reads_displacement)
-      latch = byte_at(offset++);
-    const auto next = transfers_to(*row);
-    if (!next)
-      break;
-    table = *next;
-  }
-
-  std::string result;
-  const auto opcode = byte_at(offset - 1);
-  const auto &rules = tables[table].rules;
-  // The displacement precedes any immediate, so it is taken before the pieces
-  // are walked and whatever they read follows it -- unless a prefix already did.
-  const auto displaced = displaced_through(vocabularies, *row, opcode, rules);
-  const unsigned displacement = latch ? *latch : displaced ? byte_at(offset) : 0;
-  if (displaced && !latch)
-    ++offset;
-
-  const auto render = [&](const Piece &part) {
-    switch (part.kind) {
-      case Piece::Kind::Literal: result += part.text; break;
-      case Piece::Kind::Vocabulary: break; // only the caller can follow one
-      case Piece::Kind::Displacement:
-        result += displacement < 0x80 ? std::format("+0x{:02x}", displacement)
-                                      : std::format("-0x{:02x}", 0x100 - displacement);
-        break;
-      case Piece::Kind::Imm8:
-        result += std::format("0x{:02x}", byte_at(offset));
-        offset += 1;
-        break;
-      case Piece::Kind::Relative: {
-        // Measured from the byte after the offset, which is the end of the
-        // instruction: a relative jump never carries anything else.
-        const auto to = static_cast<std::int8_t>(byte_at(offset));
-        offset += 1;
-        result += std::format("0x{:04x}", static_cast<std::uint16_t>(address + offset + to));
-        break;
-      }
-      case Piece::Kind::Imm16:
-        result += std::format("0x{:04x}", static_cast<std::uint16_t>(byte_at(offset) | byte_at(offset + 1) << 8));
-        offset += 2;
-        break;
-    }
-  };
-
-  for (const auto &part: row->pieces) {
-    if (part.kind != Piece::Kind::Vocabulary) {
-      render(part);
-      continue;
-    }
-    // A member renders itself, because an indexed mode writes its displacement
-    // in the middle of its own text.
-    for (const auto &inner: member_of(vocabularies, part.reference, row->matched, opcode, rules).pieces)
-      render(inner);
-  }
-  return {result, offset};
+  auto [text, length] = refract::disassemble(description, address,
+      [&](const std::size_t offset) { return memory.read(static_cast<std::uint16_t>(address + offset)); });
+  return {std::move(text), length};
 }
 
 } // namespace specbolt::v4
