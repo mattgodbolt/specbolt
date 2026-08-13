@@ -1038,29 +1038,32 @@ neither would repay the effort.
 
 ### The other implementation: Bloomberg's clang-p2996
 
-There is a second implementation of all this — the P2996 authors' clang fork, on Compiler Explorer
-as `clang_bb_p2996` — and it is worth knowing what it does and does not do, both as a second data
-point on compile time and because "gcc 16 only" is a heavy dependency for a talk to ask of anyone.
+There is a second implementation of all this, and "gcc 16 only" is a heavy dependency for a talk to
+ask of anyone, so it is worth knowing exactly what it does and does not do. There are in fact **two**
+clang forks, and the difference between them matters:
 
-**It is capable.** Every idiom this spike depends on was tried against it (trunk 2026-08-08) and
-works: enumerator splices resolving an overload set, `members_of` with
-`access_context::current()` hiding private helpers, `define_static_array` promoting
-`nonstatic_data_members_of`, `std::meta::info` as a non-type template parameter, `parameters_of` in
-a variable template, `typename[: :]`, member splices, `[:Fn:](…)` in callee position, `#embed`, and
-`template for`. The library side is fine too, on libc++ at least: constexpr `from_chars`/`to_chars`,
-`ranges::to`, `ranges::contains`, and the `to_array` idiom all behave.
+| on Compiler Explorer | fork | clang | flags needed |
+|---|---|---|---|
+| `clang_bb_p2996` | Bloomberg/clang-p2996 | 21.0.0git | `-freflection -fexpansion-statements -fparameter-reflection` |
+| `clang_barry` | brevzin/llvm-project | **23.0.0git** | **`-freflection`** |
 
-**Three flags, not one.** gcc puts everything behind `-freflection`; clang splits it up, and the
-first two errors one hits are just missing switches:
+Bloomberg's is the reference implementation and is two major versions behind; it also splits the
+feature across three switches, so the first two errors one hits are just missing flags. `template
+for` is P1306 rather than P2996 and has its own; parameter reflection — the whole mechanism by which
+an operation's signature decides what a row may say — has a third. **Barry Revzin's fork wants only
+`-freflection`, exactly as gcc does**, with expansion statements and parameter reflection on by
+default. That is the one to reach for.
 
-```
--freflection -fexpansion-statements -fparameter-reflection
-```
+**Both are capable.** Every idiom this spike depends on was tried against both: enumerator splices
+resolving an overload set, `members_of` with `access_context::current()` hiding private helpers,
+`define_static_array` promoting `nonstatic_data_members_of`, `std::meta::info` as a non-type template
+parameter, `parameters_of` in a variable template, `typename[: :]`, member splices, `[:Fn:](…)` in
+callee position, `#embed`, and `template for`. The library side is fine too, on libc++ at least:
+constexpr `from_chars`/`to_chars`, `ranges::to`, `ranges::contains`, and the `to_array` idiom all
+behave, and the whole probe is clean under `-Wall -Wextra`.
 
-`template for` is P1306 rather than P2996 and has its own flag; parameter reflection — which is the
-whole mechanism by which an operation's signature decides what a row may say — has a third. Neither
-is on by default. `#embed` also warns under `-Wc23-extensions`, which this project's `-Werror` would
-turn into an error.
+One wart to expect: `#embed` warns under `-Wc23-extensions` on both, which this project's `-Werror`
+turns into an error, so a clang build wants `-Wno-c23-extensions`.
 
 **But the diagnostics do not survive the move, and that is the finding.** The entire error strategy
 here is a `consteval` function that throws, so that a mistake in the description becomes a compile
@@ -1078,9 +1081,12 @@ clang bb:   error: constexpr variable 'bad' must be initialized by a constant ex
 clang points at the `throw` and never prints what it said. The text is right there in the source it
 quotes, so a human can read it — but nothing carries it to the top of the error, nothing puts it in
 a build log, and an editor jumping to the diagnostic shows "subexpression not valid in a constant
-expression" rather than the sentence written for the reader. **The technique this project uses to
-make bad tables legible is, today, a gcc feature.** Worth saying out loud in a talk that recommends
-it, and worth a bug against clang, because nothing in the standard prevents printing `what()`.
+expression" rather than the sentence written for the reader.
+
+**Both forks give that same answer**, so this is not the older one lagging: clang 21 and clang 23
+are identical here. **The technique this project uses to make bad tables legible is, today, a gcc
+feature.** Worth saying out loud in a talk that recommends it, and worth a bug against clang,
+because nothing in the standard prevents printing `what()` — gcc simply chose to.
 
 ### What compilers could do, since we are going to keep asking for this
 
