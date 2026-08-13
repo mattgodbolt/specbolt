@@ -76,10 +76,14 @@ struct Disassembly {
         break;
       case Piece::Kind::Relative: {
         // Measured from the byte after the offset, which is the end of the
-        // instruction: a relative jump never carries anything else.
+        // instruction: a relative jump never carries anything else. The sum is
+        // formed at the width the machine forms it at -- adding a signed
+        // displacement to a `std::size_t` offset first would take a backwards
+        // jump through 64 bits of wraparound on its way to the same answer.
         const auto to = static_cast<std::int8_t>(byte_at(offset));
         offset += 1;
-        result += std::format("0x{:04x}", static_cast<std::uint16_t>(address + offset + to));
+        const auto end_of_instruction = static_cast<std::uint16_t>(address + offset);
+        result += std::format("0x{:04x}", static_cast<std::uint16_t>(end_of_instruction + to));
         break;
       }
       case Piece::Kind::Imm16:

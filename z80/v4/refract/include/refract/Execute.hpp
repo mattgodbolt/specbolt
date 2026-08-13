@@ -333,9 +333,12 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed)
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
   static_assert(
       C.operands.size() + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
+  // A default capture rather than `[&cpu]`, because only one branch of the
+  // `if constexpr` names it: an operation that does not ask for the machine
+  // leaves an explicit capture unused, which clang diagnoses and gcc does not.
   const auto call = [&](const auto &arguments) {
     return std::apply(
-        [&cpu](const auto &...values) {
+        [&](const auto &...values) {
           if constexpr (takes_cpu<Fn>())
             return [:Fn:](cpu, values...);
           else

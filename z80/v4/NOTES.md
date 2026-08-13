@@ -1054,6 +1054,43 @@ an operation's signature decides what a row may say — has a third. **Barry Rev
 `-freflection`, exactly as gcc does**, with expansion statements and parameter reflection on by
 default. That is the one to reach for.
 
+**And the whole thing builds with Barry's, and passes.** Not a probe: the real project, configured
+with `CXX=<clang>/bin/clang++ … -DCMAKE_CXX_FLAGS=--gcc-toolchain=…/gcc-16.2.0`, all 1792 handlers,
+`ctest` 7/7 green including the 396 disassembly expectations and every diagnostic message. Three
+things had to give first:
+
+- **`-fconstexpr-steps=100000000`.** clang's constexpr budget defaults to about a million steps
+  against gcc's 33.5 million, and *parsing the description* exceeds it long before any handler is
+  instantiated. The diagnostic is "constexpr evaluation hit maximum step limit; possible infinite
+  loop?", which is not what has happened and sends you looking in the wrong place. It is the first
+  thing anyone doing serious compile-time work on clang will hit.
+- **`-Wno-c23-extensions`**, because `#embed` is C23 and this project builds with `-Werror`.
+- **Two source fixes, both real.** `apply` captured `[&cpu]` explicitly where only one branch of an
+  `if constexpr` names it, so clang rightly flagged an unused capture; a default capture is the
+  answer. And the disassembler's relative-jump rendering added a `std::int8_t` displacement to a
+  `std::size_t` offset, taking a backwards jump through 64 bits of wraparound to reach the right
+  answer by luck. gcc's `-Wconversion` never mentioned it; clang's `-Wsign-conversion` did. **A
+  second implementation earned its keep on the first build.**
+
+`cmake/reflection.cmake` now probes for both flags rather than keying off the compiler id, so this
+is `cmake --preset debug-reflection` with a different `CXX` and nothing else.
+
+**What it costs.** Same machine, same source, same `-O0`, run adjacently:
+
+| | compile | peak RSS | object |
+|---|---:|---:|---:|
+| gcc 16.2, libstdc++ | **85.6s** | 1.35 GB | 28.1 MB |
+| clang 23, libstdc++ 16.2 | 119.9s | 1.43 GB | — |
+| clang 23, libc++ | 144.7s | 1.43 GB | 36.9 MB |
+
+So **clang is about 1.4× slower than gcc on identical source and an identical standard library**,
+and the choice of standard library is worth another 20% on top — libc++ is dearer here than
+libstdc++, and produces a 31% larger object. A full project build with clang, everything, is 251s.
+
+Two implementations agreeing on the output while differing 1.4× on the cost of producing it is
+about the most useful thing this section can say: the expense is inherent to the workload rather
+than a quirk of one compiler.
+
 **Both are capable.** Every idiom this spike depends on was tried against both: enumerator splices
 resolving an overload set, `members_of` with `access_context::current()` hiding private helpers,
 `define_static_array` promoting `nonstatic_data_members_of`, `std::meta::info` as a non-type template

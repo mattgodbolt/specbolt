@@ -42,7 +42,7 @@ To pin a specific compiler, set `CC`/`CXX` or create a local `CMakeUserPresets.j
 
 ### C++26 reflection
 
-Reflection (P2996) needs **gcc 16+**; no clang release implements it yet. Detection is automatic, so any other compiler simply builds without the reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
+Reflection (P2996) needs **gcc 16+**, or one of the clang forks that implement it — no clang *release* does. Detection is automatic, including whichever extra flags the compiler wants, so any other compiler simply builds without the reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
 
 No distro packages gcc 16, so grab a [Compiler Explorer](https://compiler-explorer.com/) build — the same one CI uses:
 
@@ -51,6 +51,18 @@ mkdir -p ~/opt
 curl -fsSL https://s3.amazonaws.com/compiler-explorer/opt/gcc-16.2.0.tar.xz | tar Jxf - -C ~/opt
 CC=~/opt/gcc-16.2.0/bin/gcc CXX=~/opt/gcc-16.2.0/bin/g++ cmake --preset debug-reflection
 ```
+
+Barry Revzin's clang fork ([brevzin/llvm-project](https://github.com/brevzin/llvm-project)) builds
+everything too, and is the only clang that does without extra switches beyond `-freflection`. Point
+it at a libstdc++ new enough for the C++23 library pieces:
+
+```bash
+CC=<clang>/bin/clang CXX=<clang>/bin/clang++ cmake --preset debug-reflection \
+    -DCMAKE_CXX_FLAGS=--gcc-toolchain=$HOME/opt/gcc-16.2.0
+```
+
+It is about 1.4× slower than gcc at compiling v4 — see [z80/v4/NOTES.md](z80/v4/NOTES.md) for the
+numbers and for what each compiler needed.
 
 ### Web/WASM Build
 
