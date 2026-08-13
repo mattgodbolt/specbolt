@@ -1210,6 +1210,130 @@ To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang buil
   this scaling — a CI box running several of these in parallel runs out of memory long before it
   runs out of patience.
 
+## Proposed: a view should be a parameter, not a copy
+
+The compile-time work above says the cost is the number of functions the compiler is asked to write,
+and that two of the seven decoding tables exist only because the format cannot say "the same table
+again, with a different register". This is what saying it would look like.
+
+### What is duplicated today
+
+```
+table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
+table iy = base with pair.hl -> iy, spair.hl -> iy, reg.h -> iyh, reg.l -> iyl, reg.(hl) -> (iy+d)/delay=1
+```
+
+Two declarations differing in one register. Below them, `ddcb` and `fdcb` are five rows each, written
+out twice because a rule rewrites vocabulary references and never literal text, and those rows name
+`(ix+d)` literally. `Operations::ex_sp_ix` and `ex_sp_iy` are a third instance of the same thing:
+two functions forwarding to one, existing only so a row can name each spelling.
+
+The bill is 2 table declarations, 10 rows where 5 would do, 2 redundant operations — and **512 of the
+1792 handler instantiations**, which the scaling law prices at about 22 seconds and 0.25 GB.
+
+### The one new idea
+
+A vocabulary member is chosen today by *a slice of the opcode*: `{reg:z}` means "vocabulary `reg`,
+selected by slice `z`". The whole proposal is that a member may instead be chosen by **a parameter
+of the table it is decoded in** — a selector that arrives with the decode state rather than in the
+instruction. Everything else is machinery that already exists.
+
+```
+vocab index     = ix      iy
+vocab index_hi  = ixh     iyh
+vocab index_lo  = ixl     iyl
+vocab index_mem = (ix+d)  (iy+d)
+
+table indexed(view: index) = base with
+    pair.hl  -> {index:view},   spair.hl -> {index:view},
+    reg.h    -> {index_hi:view}, reg.l   -> {index_lo:view},
+    reg.(hl) -> {index_mem:view}/delay=1
+
+table base
+  11011101 | (dd) | goto indexed(ix)
+  11111101 | (fd) | goto indexed(iy)
+```
+
+`view` is declared as a parameter drawn from `index`; `{index_hi:view}` is an ordinary reference
+whose selector happens to be the parameter rather than an opcode slice. A `goto` supplies it by
+naming a member, and — the part that kills the second duplication — may also *forward* the parameter
+it was itself decoded under:
+
+```
+table indexed(view: index)
+  11001011 d | (dd cb) | goto indexed_cb(view)
+
+table indexed_cb(view: index)
+  00yyy110 | {shift:y} {index_mem:view} | {shift:y} {index_mem:view}/delay=1, flags <- {index_mem:view}
+  ...
+```
+
+Ten rows become five, and `fdcb` disappears.
+
+### What changes in the model
+
+- `Reference` gains a discriminator: the selector is an opcode slice or the table's parameter.
+- `TableDecl` gains an optional parameter — a name and the vocabulary it is drawn from.
+- `Transfer` gains a byte, exactly as it already carries the DDCB displacement latch. The decode
+  state becomes (table, displacement, parameter) instead of (table, displacement).
+- `member_of` — still the only place a reference is followed — takes the parameter alongside the
+  opcode. That is the whole of the resolution change.
+
+### How the interpreter lowers it, and this is the real decision
+
+A parameter-selected reference is not known when `execute_one` is instantiated, so `call_for` can no
+longer fold it away. Two ways out, and they differ in exactly the thing being optimised:
+
+**(a) Machine-resolved.** The member's *location* becomes one the machine selects at run time: the
+CPU declares `read(IndexPair, std::uint8_t which)` and friends, and the framework splices the
+vocabulary's location, passing the ordinal. One body per opcode, no duplication at all — 256
+instantiations for `indexed` and 256 for `indexed_cb` against 1024 today. **This is the option that
+actually collects the 22 seconds.** It costs an indexed load on prefixed instructions, and it is
+precisely floooh/chips' `hlx[hlx_idx]` trade, which is evidence it generalises.
+
+**(b) Generated switch.** Expand the row body once per member of the parameter vocabulary under a
+runtime compare, using the `template for` the file already leans on. No change to the machine at
+all. But a row that names the parameter duplicates its body, so `indexed_cb` — where every row does
+— saves nothing, and `indexed` saves only the 169 of 256 opcodes that DD leaves alone. Roughly a
+third of the win for none of the machine changes.
+
+**Recommend (a).** (b) is the tempting one because it changes less, and it is worth writing down
+that it does not pay: the measurement says cost follows *bodies instantiated*, and (b) keeps most of
+them.
+
+A refinement worth taking with (a): in `indexed_cb` every row addresses through the same `(i+d)`,
+and the prefix already knows both the register and the displacement. If the prefix formed the
+effective address and `Transfer` carried *that*, `indexed_cb` would need no parameter at all for
+execution — only for display. That is also closer to the hardware, which forms the address before
+fetching the opcode, and it is why the opcode read counts inside the address window.
+
+### The disassembler needs almost nothing
+
+It already resolves references at run time — `member_of` with the opcode it just read. A
+parameter-selected reference is the same lookup with a different index, and it already tracks a
+displacement latch it can track a parameter beside. This is the half that usually costs the most in
+a change like this, and here it is nearly free.
+
+### What must be checked, all at compile time
+
+- A `{v:param}` reference in a table with no parameter, or naming a parameter that is not the
+  table's, is an error.
+- A `goto` into a parameterised table must supply a parameter — a literal member or a forwarded one —
+  and a `goto` into an unparameterised table must not.
+- Parallel vocabularies must have as many members as the parameter vocabulary, exactly as a
+  slice-selected vocabulary must match its slice width today. `check_reference` already does this
+  arithmetic; it needs a second source for the count.
+- No member of a parameter vocabulary may be a hole, because coverage is computed per (table,
+  opcode) and must not depend on the parameter. Worth requiring rather than generalising coverage.
+
+### What it does not solve
+
+Nothing about `ed`, `cb` or timing changes. `ex_sp_ix`/`ex_sp_iy` collapse into one operation only
+if their rows name `{index:view}` rather than spelling the register out — which is available, and is
+the same fix as everything else here. And it does not reduce `base`: DD/FD are rare, so the runtime
+cost lands where it is least felt, which is the whole reason the trade is worth making here and
+would not be worth making for `hl` itself.
+
 ## Open: /INT is a level, and v4 has no way to release it
 
 v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it — which is
