@@ -164,6 +164,37 @@ already inlined `tick` for it. In v2's *own* binary it had not, and there the sa
 change was worth 29%, the largest gain of any implementation. The same edit is
 worth 0% or 29% depending on what else is linked beside it.
 
+#### Confirmed on a machine that can actually be measured
+
+All of the above was found on a thermally limited laptop (i7-10510U). Repeating it
+on a quiet desktop (i9-9980XE, 18 cores, 24.75MB L3) with the same compiler:
+
+Retired instructions came back **identical to within 0.03%** on every
+implementation -- v1 +0.02%, v2 -0.03%, v3 -0.01%, v4 -0.02%. That is the
+expected result for deterministic work and the same compiler, and it is why the
+instruction-count half of this investigation could be trusted from the laptop at
+all.
+
+Wall clock became usable for the first time: spreads of 0.5-1.5% against 24-45%
+on the laptop. Nanoseconds per emulated Z80 instruction:
+
+| | four in one binary | one binary each |
+|---|---|---|
+| v1 | 22.09 | 21.71 |
+| v2 | 10.21 | **9.84** |
+| v3 | 10.61 | 10.38 |
+| v4 | **10.05** | 10.42 |
+
+So the inversion is real and reproduces on different hardware: v4 is fastest in
+the binary the emulator actually ships, v2 is fastest when each is built alone,
+and the difference either way is under 6%. Cycle counts agree with the clock on
+this machine, which they did not on the laptop -- that disagreement was the
+laptop, not the code.
+
+The headline is that the original 20% gap is entirely gone. What is left is a few
+per cent that changes sign depending on the link, which is not a number to design
+against.
+
 #### Reading the benchmark
 
 `z80_bench` holds all four implementations and is what the emulator's link looks
