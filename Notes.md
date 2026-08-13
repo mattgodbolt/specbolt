@@ -195,11 +195,89 @@ The headline is that the original 20% gap is entirely gone. What is left is a fe
 per cent that changes sign depending on the link, which is not a number to design
 against.
 
+#### Real games, and two traps in measuring them
+
+`z80_bench --snapshot FILE --frames N` runs a `.sna`/`.z80` through the whole
+`Spectrum` -- ULA, display and all -- instead of running zexdoc through the bare
+CPU. Milliseconds per emulated frame, 300 frames, on the quiet desktop:
+
+| game | v1 | v2 | v3 | v4 |
+|---|---|---|---|---|
+| elite | 0.2497 | 0.1247 | 0.1262 | **0.1177** |
+| manic miner | 0.2027 | 0.1030 | 0.1093 | **0.1005** |
+| atic atac | 0.2324 | **0.1039** | 0.1091 | 0.1134 |
+| dizzy 2 | 0.2481 | 0.1067 | 0.1194 | **0.1018** |
+| jetpac | 0.2023 | 0.1903 | 0.1519 | **0.0651** |
+
+A real 48K frame is 19.97ms, so all four emulate at 80-300x real speed. v2, v3
+and v4 sit within about 10% of each other with the lead changing by game; v1 is
+2.0-2.4x behind everywhere. That agrees with what zexdoc says, so as a *ranking*
+the exerciser was not misleading.
+
+**Trap one: jetpac is not measuring what the others measure.** It spends most of
+each frame halted waiting for the frame interrupt, and the implementations model
+`halt` at different granularities:
+
+    v1, v2, v3:  if (halted_) { pass_time(1); return; }
+    v4:          if (halted_) { bus(Bus::opcode, pc()); refresh(); return; }
+
+So v1-v3 go round `execute_one` four times per four T-states where v4 goes round
+once, and jetpac's 3x is that ratio rather than anything about dispatch. Chronos
+behaves the same way. Two of five games sampled, so idling is a real part of
+emulator performance rather than an outlier to discard -- but it must not be read
+as a dispatch result.
+
+There is a correctness difference hiding in the same lines: a halted Z80 keeps
+fetching, so R keeps counting. v1-v3 freeze it. A program that reads R for
+randomness or timing sees a stopped counter across a HALT.
+
+**Trap two: a snapshot dropped in and run is in an attract loop.** Mispredict
+rates are flat from 300 frames to 3000 -- 6.6% to 6.8% on elite, 2.0% to 2.1% on
+manic miner -- so ten times the emulated time is the same behaviour repeated.
+These numbers describe title screens and demo modes, not play. Getting to
+gameplay needs keyboard input driven into `Spectrum::keyboard()`, which has not
+been done.
+
+#### What the games say about the dispatch indirect
+
+Mispredicts split with `br_misp_retired.conditional` against
+`br_misp_retired.all_branches` -- the difference is indirect branches and
+returns, and returns are predicted almost perfectly by the return stack, so it is
+mostly the dispatch. As a share of cycles at an 18-cycle Skylake penalty, v4:
+
+| workload | non-conditional misp | % of cycles |
+|---|---|---|
+| zexdoc | 959K | 2.0% |
+| manic miner | 167K | 2.1% |
+| dizzy 2 | 276K | 3.4% |
+| elite | 633K | 6.8% |
+
+**zexdoc understates this by up to 3x.** Its instruction mix runs in tight loops
+that the indirect predictor learns; elite's attract mode is a rotating wireframe
+with real line drawing and matrix work, and it mispredicts three times as often.
+The ordering across games tracks how much the loop actually does, which is what
+it should track if the number means anything.
+
+So a threaded interpreter -- each handler ending in a `[[gnu::musttail]]` call to
+the next rather than returning to a loop -- is competing for **2-7% and probably
+more in real play**, not the ~3% zexdoc alone suggests. The cost is that handlers
+stop returning per instruction, so `execute_one()` becomes a run loop and the
+`Spectrum` and scheduler integration changes with it. Not attempted.
+
+Worth noting v2 measures the same rate as v4 (6.3% against 6.6% on elite). Both
+dispatch through a function-pointer table, so this is a property of the shape
+they share, not of v4's generated one.
+
+Both of these numbers are upper bounds twice over: 18 cycles is the textbook
+penalty and out-of-order execution hides some of it, and "non-conditional"
+includes returns.
+
 #### Reading the benchmark
 
 `z80_bench` holds all four implementations and is what the emulator's link looks
 like; `z80_bench_v1` .. `z80_bench_v4` hold one each and are what a comparison
-*between* implementations should be read from. Two traps, both of which produced
+*between* implementations should be read from. `--snapshot` swaps zexdoc for a
+game; the games themselves are not in the repository. Two traps, both of which produced
 wrong answers before they were fixed: never run it while anything else is on the
 machine, and never run the implementations in a fixed order within a repetition
 -- whoever goes last meets the hottest core and the coldest caches. The harness

@@ -31,7 +31,7 @@
 // interprocedural optimisation is on for the whole link, so four
 // implementations in one binary are optimised against each other's inlining
 // budget and code layout, and changing one measurably changes the others. A
-// per-implementation binary is the honest comparison; the combined one is what
+// per-implementation binary is the comparison to trust; the combined one is what
 // the emulator actually ships.
 #if BENCH_V1
 #include "z80/v1/Z80.hpp"
@@ -46,12 +46,11 @@
 #include "z80/v4/Z80.hpp"
 #endif
 
-#ifdef SPECBOLT_MODULES
-import peripherals;
-#else
 #include "peripherals/Memory.hpp"
+#include "spectrum/Assets.hpp"
+#include "spectrum/Snapshot.hpp"
+#include "spectrum/Spectrum.hpp"
 #include "z80/common/Scheduler.hpp"
-#endif
 
 namespace specbolt {
 
@@ -93,6 +92,28 @@ template<typename Cpu>
   return std::chrono::steady_clock::now() - start;
 }
 
+// A real program, as against an instruction exerciser. zexdoc chooses its own
+// instruction mix and runs each one in a tight loop; a game runs whatever it
+// runs, and spends time in the ULA and the display as well as the CPU. The two
+// measure different things and it is worth having both.
+//
+// A 48K frame is 69888 T-states at 3.5MHz, so a real Spectrum takes 19.97ms
+// over one. Anything faster than that is emulating faster than the machine.
+template<typename Cpu>
+[[nodiscard]] std::chrono::nanoseconds time_frames(const std::filesystem::path &snapshot, const std::uint64_t frames) {
+  Spectrum<Cpu> spectrum{Variant::Spectrum48, get_asset_dir() / "48.rom", 16000};
+  Snapshot::load(snapshot, spectrum.z80());
+  // Past whatever the snapshot was taken mid-way through, so the timed part is
+  // the game running rather than the game starting.
+  for (std::uint64_t frame = 0; frame < 25; ++frame)
+    spectrum.run_frame();
+
+  const auto start = std::chrono::steady_clock::now();
+  for (std::uint64_t frame = 0; frame < frames; ++frame)
+    spectrum.run_frame();
+  return std::chrono::steady_clock::now() - start;
+}
+
 struct Result {
   std::string name;
   std::chrono::nanoseconds best{std::chrono::nanoseconds::max()};
@@ -103,6 +124,8 @@ struct Bench {
   std::uint64_t instructions = 20'000'000;
   std::size_t reps = 5;
   int only = 0;
+  std::filesystem::path snapshot;
+  std::uint64_t frames = 500;
   bool need_help{};
 
   int Main(const int argc, const char *argv[]) {
@@ -110,7 +133,9 @@ struct Bench {
                      | lyra::help(need_help) //
                      | lyra::opt(instructions, "NUM")["-n"]["--instructions"]("Instructions to run per repetition.") //
                      | lyra::opt(reps, "NUM")["-r"]["--reps"]("Repetitions; the best of these is reported.") //
-                     | lyra::opt(only, "impl")["--impl"]("Benchmark only this implementation.").choices(1, 2, 3, 4);
+                     | lyra::opt(only, "impl")["--impl"]("Benchmark only this implementation.").choices(1, 2, 3, 4) //
+                     | lyra::opt(snapshot, "FILE")["-s"]["--snapshot"]("Run a game instead of zexdoc.") //
+                     | lyra::opt(frames, "NUM")["-f"]["--frames"]("Frames per repetition, with --snapshot.");
     if (const auto parsed = cli.parse({argc, argv}); !parsed) {
       std::print(std::cerr, "Error in command line: {}\n", parsed.message());
       return 1;
@@ -157,27 +182,45 @@ struct Bench {
   }
 
   [[nodiscard]] std::chrono::nanoseconds run_named(const std::string &name) const {
+    const auto run = [&]<typename Cpu>() {
+      return snapshot.empty() ? time_one<Cpu>(instructions) : time_frames<Cpu>(snapshot, frames);
+    };
 #if BENCH_V1
     if (name == "v1")
-      return time_one<v1::Z80>(instructions);
+      return run.template operator()<v1::Z80>();
 #endif
 #if BENCH_V2
     if (name == "v2")
-      return time_one<v2::Z80>(instructions);
+      return run.template operator()<v2::Z80>();
 #endif
 #if BENCH_V3
     if (name == "v3")
-      return time_one<v3::Z80>(instructions);
+      return run.template operator()<v3::Z80>();
 #endif
 #if BENCH_V4
     if (name == "v4")
-      return time_one<v4::Z80>(instructions);
+      return run.template operator()<v4::Z80>();
 #endif
     return {};
   }
 
   void report(const std::vector<Result> &results) const {
     const auto fastest = std::ranges::min(results, {}, &Result::best).best;
+    if (!snapshot.empty()) {
+      // 69888 T-states per frame at 3.5MHz is what the hardware takes.
+      constexpr double real_ms_per_frame = 69888.0 / 3'500'000.0 * 1000.0;
+      std::print(
+          std::cout, "{:>4}  {:>10}  {:>10}  {:>8}  {:>7}\n", "impl", "ms/frame", "x realtime", "vs best", "spread");
+      for (const auto &result: results) {
+        const auto ms = static_cast<double>(result.best.count()) / 1'000'000.0 / static_cast<double>(frames);
+        const auto spread = static_cast<double>(result.worst.count() - result.best.count()) /
+                            static_cast<double>(result.best.count()) * 100.0;
+        std::print(std::cout, "{:>4}  {:>10.4f}  {:>10.1f}  {:>7.2f}x  {:>6.1f}%\n", result.name, ms,
+            real_ms_per_frame / ms, static_cast<double>(result.best.count()) / static_cast<double>(fastest.count()),
+            spread);
+      }
+      return;
+    }
     std::print(std::cout, "{:>4}  {:>10}  {:>10}  {:>8}  {:>7}\n", "impl", "ns/instr", "Minstr/s", "vs best", "spread");
     for (const auto &result: results) {
       const auto per = static_cast<double>(result.best.count()) / static_cast<double>(instructions);

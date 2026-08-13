@@ -921,7 +921,7 @@ The two things that stood in the way both went:
 
 What did *not* go: one binary still cannot hold two descriptions, because `Cpu` and the table
 constants are definitions rather than parameters. A second `.cpu` file means a second binary. That
-is the honest limit, and it is what would have to change to test a second CPU alongside the first.
+is the limit, and it is what would have to change to test a second CPU alongside the first.
 
 ## Idea: could the CPU class *be* the CPU description?
 
