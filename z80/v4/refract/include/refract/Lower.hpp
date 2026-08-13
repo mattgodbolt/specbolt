@@ -9,8 +9,11 @@
 #include "refract/Parser.hpp"
 #include "refract/TableError.hpp"
 
+#include <charconv>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <vector>
 
 namespace specbolt::refract {
 
@@ -45,10 +48,10 @@ namespace specbolt::refract {
   // vocabulary member does.
   if (const auto slash = word.find('/'); slash != std::string_view::npos) {
     Parser attribute(word.substr(slash + 1));
-    if (attribute.split_to('=').data() != "delay")
+    if (attribute.take_until('=') != "delay")
       throw table_error(line, "'" + std::string(word.substr(slash + 1)) + "' is not an operand attribute");
     auto attributed = parse_simple_operand(word.substr(0, slash), line, immediate_bytes);
-    attributed.write_back_delay = parse_delay(attribute.data(), line);
+    attributed.write_back_delay = parse_delay(attribute.rest(), line);
     return attributed;
   }
   if (word == "-")
@@ -76,20 +79,15 @@ namespace specbolt::refract {
   if (word.front() >= '0' && word.front() <= '9') {
     const auto hex = word.starts_with("0x");
     const auto digits = hex ? word.substr(2) : word;
-    const auto base = hex ? 16u : 10u;
-    if (digits.empty())
-      throw table_error(line, "malformed constant '" + std::string(word) + "'");
+    // Into an `unsigned` and then range-checked, rather than straight into a
+    // `std::uint16_t`, so that "too big" and "not a number" stay separate
+    // answers however far past 16 bits the text goes.
     unsigned value = 0;
-    for (const auto character: digits) {
-      const auto digit = character >= '0' && character <= '9'   ? static_cast<unsigned>(character - '0')
-                         : character >= 'a' && character <= 'f' ? static_cast<unsigned>(character - 'a' + 10)
-                                                                : base;
-      if (digit >= base)
-        throw table_error(line, "malformed constant '" + std::string(word) + "'");
-      value = value * base + digit;
-      if (value > 0xffff)
-        throw table_error(line, "constant '" + std::string(word) + "' does not fit in 16 bits");
-    }
+    const auto [end, failure] = std::from_chars(digits.data(), digits.data() + digits.size(), value, hex ? 16 : 10);
+    if (failure == std::errc::result_out_of_range || value > 0xffff)
+      throw table_error(line, "constant '" + std::string(word) + "' does not fit in 16 bits");
+    if (failure != std::errc{} || end != digits.data() + digits.size())
+      throw table_error(line, "malformed constant '" + std::string(word) + "'");
     return {.kind = Operand::Kind::Constant, .constant = static_cast<std::uint16_t>(value)};
   }
   if (word.size() > Name::capacity)
@@ -101,54 +99,57 @@ namespace specbolt::refract {
 // and `$nnnn` come from the encoding, `+d` is the displacement an indexed mode
 // carries. Both a row's mnemonic and a vocabulary member's text are lowered
 // with this, so neither is parsed at runtime.
-constexpr void lower_text(Parser text, const auto &push, const std::size_t line) {
-  const auto push_immediates = [&](Parser chunk) {
+[[nodiscard]] constexpr std::vector<Piece> lower_text(Parser text, const std::size_t line) {
+  std::vector<Piece> pieces;
+
+  const auto lower_immediates = [&](Parser chunk) {
     while (!chunk.eof()) {
-      if (!chunk.data().contains('$')) {
-        if (!chunk.data().empty())
-          push(Piece{.kind = Piece::Kind::Literal, .text = chunk.data()});
+      if (!chunk.rest().contains('$')) {
+        if (!chunk.rest().empty())
+          pieces.push_back({.kind = Piece::Kind::Literal, .text = chunk.rest()});
         return;
       }
-      if (const auto literal = chunk.split_to('$').data(); !literal.empty())
-        push(Piece{.kind = Piece::Kind::Literal, .text = literal});
-      if (chunk.data().starts_with('e')) {
+      if (const auto literal = chunk.take_until('$'); !literal.empty())
+        pieces.push_back({.kind = Piece::Kind::Literal, .text = literal});
+      if (chunk.rest().starts_with('e')) {
         chunk.skip_any("e");
-        push(Piece{.kind = Piece::Kind::Relative});
+        pieces.push_back({.kind = Piece::Kind::Relative});
         continue;
       }
-      const auto remaining = chunk.data().size();
+      const auto before = chunk.rest().size();
       chunk.skip_any("n");
-      switch (remaining - chunk.data().size()) {
-        case 2: push(Piece{.kind = Piece::Kind::Imm8}); break;
-        case 4: push(Piece{.kind = Piece::Kind::Imm16}); break;
+      switch (before - chunk.rest().size()) {
+        case 2: pieces.push_back({.kind = Piece::Kind::Imm8}); break;
+        case 4: pieces.push_back({.kind = Piece::Kind::Imm16}); break;
         default: throw table_error(line, "expected $nn, $nnnn or $e in mnemonic");
       }
     }
   };
 
   while (!text.eof()) {
-    const auto at = text.data().find("+d");
+    const auto at = text.rest().find("+d");
     if (at == std::string_view::npos) {
-      push_immediates(text);
-      return;
+      lower_immediates(text);
+      return pieces;
     }
-    push_immediates(Parser(text.data().substr(0, at)));
-    push(Piece{.kind = Piece::Kind::Displacement});
-    text = Parser(text.data().substr(at + 2));
+    lower_immediates(Parser(text.rest().substr(0, at)));
+    pieces.push_back({.kind = Piece::Kind::Displacement});
+    text = Parser(text.rest().substr(at + 2));
   }
+  return pieces;
 }
 
 // `bc` is display only; `adc:add8+carry` binds an operation and appends an
 // operand; `(hl)/delay=1` states the access sequence of an addressing mode.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);
-  Parser parser(whole.split_to('/').data());
-  Member member{.display = parser.split_to(':').data(), .operation = parser.data()};
+  Parser parser(whole.take_until('/'));
+  Member member{.display = parser.take_until(':'), .operation = parser.rest()};
   std::uint8_t delay_attribute = 0;
-  if (const auto attributes = whole.data(); !attributes.empty()) {
+  if (const auto attributes = whole.rest(); !attributes.empty()) {
     Parser attribute(attributes);
-    const auto key = attribute.split_to('=').data();
-    const auto value = attribute.data();
+    const auto key = attribute.take_until('=');
+    const auto value = attribute.rest();
     if (key != "delay")
       throw table_error(line, "'" + std::string(key) + "' is not a member attribute; expected 'delay'");
     delay_attribute = parse_delay(value, line);
@@ -161,16 +162,16 @@ constexpr void lower_text(Parser text, const auto &push, const std::size_t line)
     member.hole = true;
     return member;
   }
-  lower_text(
-      Parser(member.display),
-      [&](const Piece piece) { member.pieces.push_back(piece, line, "member text is too complicated"); }, line);
+  for (const auto &piece: lower_text(Parser(member.display), line))
+    if (!member.pieces.try_push_back(piece))
+      throw table_error(line, "member text is too complicated");
   member.operand = parse_simple_operand(member.display, line, 0);
   member.operand.write_back_delay = delay_attribute;
   if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
     throw table_error(line, "a vocabulary member must name something the CPU can resolve");
   Parser operation(member.operation);
-  member.operation = operation.split_to('+').data();
-  if (const auto appended = operation.data(); !appended.empty()) {
+  member.operation = operation.take_until('+');
+  if (const auto appended = operation.rest(); !appended.empty()) {
     member.appended = parse_simple_operand(appended, line, 0);
     if (member.appended->kind == Operand::Kind::Immediate)
       throw table_error(line, "a vocabulary member cannot append an immediate; only the encoding fetches those");

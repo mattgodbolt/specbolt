@@ -127,15 +127,40 @@ struct OpcodeSet {
          std::ranges::to<std::vector>();
 }
 
+// One decoded instruction: a (table, opcode) that a row answers to, and the
+// renaming it answers under. The checks below are each one question asked of
+// every one of these, and walking is not what any of them is about.
+struct Instruction {
+  std::uint8_t table{};
+  std::uint8_t opcode{};
+  const Row *row{};
+  const Rules *rules{};
+};
+
+[[nodiscard]] constexpr std::vector<Instruction> instructions_of(const Description &description) {
+  std::vector<Instruction> all;
+  // Every table is total, so this is the exact size rather than a guess. Worth
+  // saying: growing it instead costs a second of constant evaluation.
+  all.reserve(description.tables.size() * 256);
+  for (std::size_t table = 0; table < description.tables.size(); ++table)
+    for (std::size_t opcode = 0; opcode < 256; ++opcode) {
+      const auto at = static_cast<std::uint8_t>(table);
+      const auto byte = static_cast<std::uint8_t>(opcode);
+      if (const auto *row = description.row_for(at, byte))
+        all.push_back({at, byte, row, &description.rules_for(at)});
+    }
+  return all;
+}
+
 // Line order silently decides who wins, so say what the legal shapes are: a row
 // must win something, and where two rows overlap the earlier must be wholly
 // contained in the later. That is an override. A partial overlap is an accident.
-constexpr bool check_row_precedence(
-    const std::span<const Row> rows, const std::span<const OpcodeSet> covers, const std::size_t num_tables) {
+constexpr bool check_row_precedence(const Description &description, const std::span<const OpcodeSet> covers) {
+  const auto rows = description.rows;
   // What each row wins once the rows before it have taken their share.
   // Precedence is a fact about opcode sets, not about vocabularies, so this
   // never resolves a name.
-  std::vector<OpcodeSet> claimed(num_tables);
+  std::vector<OpcodeSet> claimed(description.tables.size());
 
   for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
     const auto &mine = covers[earlier];
@@ -203,13 +228,14 @@ constexpr bool check_row_precedence(
 // catch-all row is how a table says "and everything else does this".
 //
 // Requiring it here is what lets the dispatch loop call without checking.
-constexpr bool check_tables_total(const std::span<const TableDecl> tables, const std::span<const DecodeTable> decoded) {
-  for (std::size_t which = 0; which < tables.size(); ++which)
+// The one check about absence, so the only one that cannot walk `instructions_of`.
+constexpr bool check_tables_total(const Description &description) {
+  for (std::size_t table = 0; table < description.tables.size(); ++table)
     for (std::size_t opcode = 0; opcode < 256; ++opcode)
-      if (!decoded[which][opcode])
-        throw table_error(tables[which].line, "table '" + std::string(tables[which].name) +
-                                                  "' does not say what opcode " + decimal(opcode) +
-                                                  " does; add a row, or `xxxxxxxx` last to catch the rest");
+      if (!description.row_for(static_cast<std::uint8_t>(table), static_cast<std::uint8_t>(opcode)))
+        throw table_error(description.tables[table].line, "table '" + std::string(description.tables[table].name) +
+                                                              "' does not say what opcode " + decimal(opcode) +
+                                                              " does; add a row, or `xxxxxxxx` last to catch the rest");
   return true;
 }
 
@@ -239,20 +265,17 @@ constexpr bool check_tables_total(const std::span<const TableDecl> tables, const
 //
 // A row written *in* the derived table is exempt: putting it there is how one
 // says the literal was meant.
-constexpr bool check_inherited_literals(const std::span<const Row> rows, const std::span<const TableDecl> tables,
-    const std::span<const DecodeTable> decoded) {
-  for (std::size_t which = 0; which < tables.size(); ++which)
-    for (std::size_t opcode = 0; opcode < 256; ++opcode) {
-      const auto index = decoded[which][opcode];
-      if (!index || rows[*index].table == which)
-        continue;
-      for (const auto &rule: tables[which].rules)
-        if (names_literally(rows[*index], rule.from))
-          throw table_error(rows[*index].line,
-              "table '" + std::string(tables[which].name) + "' renames '" + std::string(rule.from) +
-                  "', and this row names it literally where a rule cannot reach it; give that table its own row, "
-                  "or name a vocabulary");
-    }
+constexpr bool check_inherited_literals(const Description &description) {
+  for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
+    if (row->table == table) // its own row, so the literal was meant
+      continue;
+    for (const auto &rule: *rules)
+      if (names_literally(*row, rule.from))
+        throw table_error(row->line,
+            "table '" + std::string(description.tables[table].name) + "' renames '" + std::string(rule.from) +
+                "', and this row names it literally where a rule cannot reach it; give that table its own row, "
+                "or name a vocabulary");
+  }
   return true;
 }
 
@@ -264,8 +287,9 @@ constexpr bool check_inherited_literals(const std::span<const Row> rows, const s
 // This is the check that would have caught writing `{reg:y}` for `{real:y}` in the
 // `ix` table: `r` has no hole at slot 6, so the row would claim `0x76` and
 // `halt` would quietly vanish from the prefixed pages.
-constexpr bool check_derived_rows_override(
-    const std::span<const Row> rows, const std::span<const OpcodeSet> covers, const std::span<const TableDecl> tables) {
+constexpr bool check_derived_rows_override(const Description &description, const std::span<const OpcodeSet> covers) {
+  const auto rows = description.rows;
+  const auto tables = description.tables;
   for (std::size_t mine = 0; mine < rows.size(); ++mine) {
     const auto &table = tables[rows[mine].table];
     if (!table.derived)
@@ -305,38 +329,31 @@ constexpr bool check_derived_rows_override(
 // take the length from `displaced_through`, so they agree about how many bytes
 // to read and disagree only about what to print. The disassembler would quietly
 // name an addressing mode the machine did not use, or omit the one it did.
-constexpr bool check_displacement_rendered(const std::span<const Vocabulary> vocabularies,
-    const std::span<const Row> rows, const std::span<const TableDecl> tables,
-    const std::span<const DecodeTable> decoded) {
-  for (std::size_t which = 0; which < tables.size(); ++which)
-    for (std::size_t opcode = 0; opcode < 256; ++opcode) {
-      const auto index = decoded[which][opcode];
-      if (!index)
-        continue;
-      const auto &row = rows[*index];
-      const auto &rules = tables[which].rules;
-      const auto byte = static_cast<std::uint8_t>(opcode);
-      const auto displaced = displaced_through(vocabularies, row, byte, rules).has_value();
-      if (displaced != renders_displacement(vocabularies, row, byte, rules))
-        throw table_error(
-            row.line, displaced ? "this row is displaced but its mnemonic does not say so; write `+d` where the "
-                                  "displacement belongs"
-                                : "this row's mnemonic renders a displacement that no operand of it uses");
-    }
+constexpr bool check_displacement_rendered(const Description &description) {
+  const auto vocabularies = description.vocabularies;
+  for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
+    const auto displaced = displaced_through(vocabularies, *row, opcode, *rules).has_value();
+    if (displaced != renders_displacement(vocabularies, *row, opcode, *rules))
+      throw table_error(row->line, displaced
+                                       ? "this row is displaced but its mnemonic does not say so; write `+d` where the "
+                                         "displacement belongs"
+                                       : "this row's mnemonic renders a displacement that no operand of it uses");
+  }
   return true;
 }
 
 // A table nothing reaches is a typo: nothing can ever decode in it. It is still
 // generated -- every table's dispatch is instantiated regardless of whether a
 // goto names it -- so this catches the mistake rather than un-checked code.
-constexpr bool check_tables_used(
-    const std::span<const Row> rows, const std::span<const TableDecl> tables, const std::uint8_t entry) {
+constexpr bool check_tables_used(const Description &description) {
+  const auto rows = description.rows;
+  const auto tables = description.tables;
   for (std::size_t which = 0; which < tables.size(); ++which) {
     // A derived table with no rows of its own is its parent, renamed -- which is
     // the whole point of one.
     if (!tables[which].derived && std::ranges::none_of(rows, [&](const Row &row) { return row.table == which; }))
       throw table_error(tables[which].line, "this table has no rows");
-    if (which == entry)
+    if (which == description.entry)
       continue;
     const auto reached = std::ranges::any_of(rows, [&](const Row &row) {
       return std::ranges::any_of(

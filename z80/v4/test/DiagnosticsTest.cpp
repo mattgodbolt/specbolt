@@ -22,19 +22,21 @@ struct Parsed {
 // Runs the whole pipeline, including the checks that are `static_assert`s
 // against the real description. Nothing here is `constexpr`: the same functions
 // serve a test that wants a message and a build that wants a diagnostic.
-Parsed parse(const std::string_view description) {
+Parsed parse(const std::string_view text) {
   Parsed parsed;
-  check_every_line_means_something(description);
-  parsed.vocabularies = parse_vocabularies(description);
-  parsed.tables = parse_tables(description, parsed.vocabularies);
-  parsed.rows = parse_rows(description, parsed.vocabularies, parsed.tables);
+  check_every_line_means_something(text);
+  parsed.vocabularies = parse_vocabularies(text);
+  parsed.tables = parse_tables(text, parsed.vocabularies);
+  parsed.rows = parse_rows(text, parsed.vocabularies, parsed.tables);
   const auto opcodes = opcodes_of_each(parsed.vocabularies, parsed.rows);
-  check_row_precedence(parsed.rows, opcodes, parsed.tables.size());
-  check_derived_rows_override(parsed.rows, opcodes, parsed.tables);
-  static_cast<void>(latched_tables(parsed.rows, parsed.tables.size()));
-  check_tables_used(parsed.rows, parsed.tables, entry_table);
   parsed.decoded = decode_tables(parsed.rows, opcodes, parsed.tables);
-  check_inherited_literals(parsed.rows, parsed.tables, parsed.decoded);
+  static_cast<void>(latched_tables(parsed.rows, parsed.tables.size()));
+
+  const Description description{parsed.vocabularies, parsed.rows, parsed.tables, parsed.decoded, entry_table};
+  check_row_precedence(description, opcodes);
+  check_derived_rows_override(description, opcodes);
+  check_tables_used(description);
+  check_inherited_literals(description);
   return parsed;
 }
 

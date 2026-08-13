@@ -1,6 +1,8 @@
 #pragma once
 
 #ifndef SPECBOLT_MODULES
+#include <array>
+#include <charconv>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -15,15 +17,12 @@
 
 namespace specbolt::refract {
 
-[[nodiscard]] constexpr std::string decimal(std::size_t value) {
-  if (value == 0)
-    return "0";
-  std::string result;
-  while (value != 0) {
-    result.insert(result.begin(), static_cast<char>('0' + value % 10));
-    value /= 10;
-  }
-  return result;
+// `std::to_string` is not usable during constant evaluation and `std::format`
+// is not either; `std::to_chars` has been since C++23.
+[[nodiscard]] constexpr std::string decimal(const std::size_t value) {
+  std::array<char, 20> digits{}; // enough for any 64-bit value
+  const auto [end, _] = std::to_chars(digits.data(), digits.data() + digits.size(), value);
+  return {digits.data(), end};
 }
 
 [[nodiscard]] constexpr std::runtime_error table_error(const std::size_t line, const std::string_view what) {

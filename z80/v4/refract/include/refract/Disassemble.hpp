@@ -37,11 +37,10 @@ struct Disassembly {
   const Row *row = nullptr;
   std::optional<unsigned> latch;
   while (true) {
-    const auto index = description.decoded[table][byte_at(offset)];
+    row = description.row_for(table, byte_at(offset));
     ++offset;
-    if (!index)
+    if (!row)
       return {"??", offset};
-    row = &description.rows[*index];
     if (row->reads_displacement)
       latch = byte_at(offset++);
     const auto next = transfers_to(*row);
@@ -51,10 +50,10 @@ struct Disassembly {
   }
 
   const auto opcode = byte_at(offset - 1);
-  // The table a row was *decoded in* owns the renaming, which is why this is
+  // The table a row was *decoded in* owns the renaming, which is why this asks
   // the table index rather than `row->table`: an inherited row renders under
   // the rules of whoever inherited it.
-  const auto &rules = description.tables[table].rules;
+  const auto &rules = description.rules_for(table);
   // The displacement precedes any immediate, so it is taken before the pieces
   // are walked and whatever they read follows it -- unless a prefix already did.
   const auto displaced = displaced_through(description.vocabularies, *row, opcode, rules);

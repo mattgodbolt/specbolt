@@ -1,8 +1,6 @@
 #pragma once
 
 #ifndef SPECBOLT_MODULES
-#include "refract/TableError.hpp"
-
 #include <array>
 #include <cstddef>
 #endif
@@ -11,10 +9,15 @@ namespace specbolt::refract {
 
 // A fixed-capacity vector that works during constant evaluation and stays
 // structural, so one can be a template argument. `std::inplace_vector` is the
-// obvious answer and the wrong one for now: gcc 16.2's constexpr path supports
-// trivial types only, and these hold `std::string_view`.
+// obvious answer and the wrong one twice over: it is not structural, and gcc
+// 16.2's constexpr path supports trivial types only, while these hold
+// `std::string_view`.
 //
 // Everything here is public because structural types have no other option.
+// `try_push_back` follows `std::inplace_vector`'s spelling and, like it, leaves
+// what a full container means to the caller: overflowing is a description
+// asking for more than the format allows, and only the caller knows which
+// limit was reached and on which line.
 SPECBOLT_EXPORT template<typename T, std::size_t N>
 struct Vector {
   std::array<T, N> storage{};
@@ -22,12 +25,11 @@ struct Vector {
 
   static constexpr std::size_t capacity = N;
 
-  // Overflowing is a table that asks for more than the CPU description allows,
-  // so the caller says what was too long and where.
-  constexpr void push_back(const T &value, const std::size_t line, const std::string_view what) {
+  [[nodiscard]] constexpr bool try_push_back(const T &value) {
     if (count == N)
-      throw table_error(line, what);
+      return false;
     storage[count++] = value;
+    return true;
   }
 
   [[nodiscard]] constexpr std::size_t size() const { return count; }

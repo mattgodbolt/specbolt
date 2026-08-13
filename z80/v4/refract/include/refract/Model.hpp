@@ -204,6 +204,18 @@ struct Description {
   std::span<const DecodeTable> decoded;
   // Decoding starts here; no name is special.
   std::uint8_t entry{};
+
+  // What this table decodes this opcode to, or nothing. Every table is total in
+  // a description that passes its checks, but this is what those checks are
+  // written against, so it does not assume it.
+  [[nodiscard]] constexpr const Row *row_for(const std::uint8_t table, const std::uint8_t opcode) const {
+    const auto index = decoded[table][opcode];
+    return index ? &rows[*index] : nullptr;
+  }
+
+  // The renaming every row this table decodes is read under -- its own rows as
+  // well as the ones it inherits.
+  [[nodiscard]] constexpr const Rules &rules_for(const std::uint8_t table) const { return tables[table].rules; }
 };
 
 } // namespace specbolt::refract

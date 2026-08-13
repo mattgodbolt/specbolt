@@ -6,6 +6,10 @@
 
 namespace specbolt::refract {
 
+// A cursor over the description, consuming it from the front. Ordinary text
+// handling: everything it hands back is a `std::string_view` into the original,
+// and the only state beyond the position is the line number, which is carried
+// so that a diagnostic can name where it came from.
 SPECBOLT_EXPORT class Parser {
 public:
   constexpr explicit Parser(const std::string_view buf, const std::size_t line = 1) : line_(line), buf_(buf) {}
@@ -20,11 +24,32 @@ public:
     return text;
   }
 
+  // Everything up to the next `delim`, which is consumed with it; the whole of
+  // what is left if there is none.
+  [[nodiscard]] constexpr std::string_view take_until(const char delim) {
+    const auto pos = buf_.find(delim);
+    if (pos == std::string_view::npos) {
+      const auto all = buf_;
+      consume(buf_.size());
+      return all;
+    }
+    const auto result = buf_.substr(0, pos);
+    consume(pos + 1);
+    return result;
+  }
+
+  // The next `delim`-separated field, blanks removed. A row is three of these.
+  [[nodiscard]] constexpr std::string_view next_field(const char delim) { return trim(take_until(delim)); }
+
   // The next whitespace-separated word, or empty at the end.
   [[nodiscard]] constexpr std::string_view next_word() {
     skip_any(" \t");
-    return trim(split_to(' ').data());
+    return next_field(' ');
   }
+
+  // For a word that has already been recognised, such as the keyword a
+  // declaration opens with.
+  constexpr void skip_word() { static_cast<void>(next_word()); }
 
   // The next line and the number it came from, so a diagnostic can name it.
   struct Line {
@@ -33,7 +58,7 @@ public:
   };
   [[nodiscard]] constexpr Line next_line() {
     const auto number = line_;
-    return {number, trim(split_to('\n').data())};
+    return {number, next_field('\n')};
   }
 
   constexpr void skip_any(const std::string_view skip) {
@@ -41,22 +66,10 @@ public:
     consume(pos == std::string_view::npos ? buf_.size() : pos);
   }
 
-  constexpr Parser split_to(const char delim) {
-    const auto pos = buf_.find(delim);
-    const auto line = line_;
-    if (pos == std::string_view::npos) {
-      const auto result = buf_;
-      consume(buf_.size());
-      return Parser(result, line);
-    }
-    const auto result = buf_.substr(0, pos);
-    consume(pos + 1);
-    return Parser(result, line);
-  }
-
   [[nodiscard]] constexpr bool eof() const { return buf_.empty(); }
   [[nodiscard]] constexpr std::size_t line() const { return line_; }
-  [[nodiscard]] constexpr std::string_view data() const { return buf_; }
+  // Everything not yet consumed.
+  [[nodiscard]] constexpr std::string_view rest() const { return buf_; }
 
 private:
   constexpr void consume(const std::size_t count) {

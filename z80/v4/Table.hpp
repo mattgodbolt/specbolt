@@ -63,11 +63,11 @@ inline constexpr std::size_t decoded_count = [] {
 }();
 
 static_assert(check_every_line_means_something(cpu_description));
-static_assert(check_row_precedence(rows, row_opcodes, tables.size()));
-static_assert(check_tables_used(rows, tables, entry_table));
-static_assert(check_derived_rows_override(rows, row_opcodes, tables));
-static_assert(check_displacement_rendered(vocabularies, rows, tables, decoded));
-static_assert(check_inherited_literals(rows, tables, decoded));
-static_assert(check_tables_total(tables, decoded));
+static_assert(check_row_precedence(description, row_opcodes));
+static_assert(check_derived_rows_override(description, row_opcodes));
+static_assert(check_tables_used(description));
+static_assert(check_tables_total(description));
+static_assert(check_inherited_literals(description));
+static_assert(check_displacement_rendered(description));
 
 } // namespace specbolt::v4

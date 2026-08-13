@@ -28,7 +28,7 @@ namespace specbolt::refract {
     if (!is_vocabulary(text))
       continue;
     Parser parser(text);
-    static_cast<void>(parser.next_word());
+    parser.skip_word();
     Vocabulary vocabulary;
     vocabulary.name = parser.next_word();
     if (vocabulary.name.empty())
@@ -39,7 +39,8 @@ namespace specbolt::refract {
       const auto value = parser.next_word();
       if (value.empty())
         continue;
-      vocabulary.members.push_back(parse_member(value, at), at, "too many members in vocabulary");
+      if (!vocabulary.members.try_push_back(parse_member(value, at)))
+        throw table_error(at, "too many members in vocabulary");
     }
     if (vocabulary.members.empty())
       throw table_error(at, "vocabulary declares no members");
@@ -78,7 +79,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
     TableDecl &table, const std::size_t line) {
   Parser list(text);
   while (!list.eof()) {
-    const auto rule = Parser::trim(list.split_to(',').data());
+    const auto rule = list.next_field(',');
     if (rule.empty())
       continue;
     const auto arrow = rule.find("->");
@@ -105,8 +106,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
     const auto replacement = parse_member(to, line);
     if (replacement.hole)
       throw table_error(line, "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
-    table.rules.push_back(
-        {static_cast<std::uint8_t>(*named), from, replacement}, line, "too many substitutions in table");
+    if (!table.rules.try_push_back({static_cast<std::uint8_t>(*named), from, replacement}))
+      throw table_error(line, "too many substitutions in table");
   }
 }
 
@@ -119,7 +120,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
     if (!is_table(text))
       continue;
     Parser parser(text);
-    static_cast<void>(parser.next_word());
+    parser.skip_word();
     const auto name = parser.next_word();
     if (name.empty())
       throw table_error(at, "table declaration has no name");
@@ -140,7 +141,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       table.parent = static_cast<std::uint8_t>(found - result.begin());
       if (parser.next_word() != "with")
         throw table_error(at, "expected 'with' after the parent table name");
-      parse_substitutions(parser.data(), vocabularies, table, at);
+      parse_substitutions(parser.rest(), vocabularies, table, at);
       if (table.rules.empty())
         throw table_error(at, "a derived table declares no substitutions, so it is its parent");
     }
@@ -168,8 +169,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 [[nodiscard]] constexpr Reference parse_reference(const std::span<const Vocabulary> vocabularies,
     const std::string_view inner, const Pattern &matched, const std::size_t line) {
   Parser parser(inner);
-  const auto name = parser.split_to(':').data();
-  const auto slice = parser.data();
+  const auto name = parser.take_until(':');
+  const auto slice = parser.rest();
   if (name.empty() || slice.size() != 1)
     throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
   const auto field = find_vocabulary(vocabularies, name);
@@ -198,20 +199,26 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 }
 
 constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Row &row) {
-  const auto push = [&row](const Piece piece) { row.pieces.push_back(piece, row.line, "mnemonic is too complicated"); };
-  const auto push_text = [&](const Parser text) { lower_text(text, push, row.line); };
+  const auto add = [&row](const Piece piece) {
+    if (!row.pieces.try_push_back(piece))
+      throw table_error(row.line, "mnemonic is too complicated");
+  };
+  const auto add_text = [&](const Parser text) {
+    for (const auto &piece: lower_text(text, row.line))
+      add(piece);
+  };
 
   Parser parser(row.mnemonic);
   while (!parser.eof()) {
-    if (!parser.data().contains('{')) {
-      push_text(parser);
+    if (!parser.rest().contains('{')) {
+      add_text(parser);
       return;
     }
-    push_text(Parser(parser.split_to('{').data()));
-    if (!parser.data().contains('}'))
+    add_text(Parser(parser.take_until('{')));
+    if (!parser.rest().contains('}'))
       throw table_error(row.line, "unterminated vocabulary reference in mnemonic");
-    push({.kind = Piece::Kind::Vocabulary,
-        .reference = parse_reference(vocabularies, parser.split_to('}').data(), row.matched, row.line)});
+    add({.kind = Piece::Kind::Vocabulary,
+        .reference = parse_reference(vocabularies, parser.take_until('}'), row.matched, row.line)});
   }
 }
 
@@ -296,7 +303,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
   if (step.operation.starts_with('{'))
     step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, row.line);
   // `operation dest <- args...`; the destination is optional
-  auto writing_destination = action.data().contains("<-");
+  auto writing_destination = action.rest().contains("<-");
   while (!action.eof()) {
     const auto word = trim_comma(action.next_word());
     if (word.empty())
@@ -307,12 +314,14 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     }
     const auto operand = parse_operand(vocabularies, word, row.matched, row.line, row.immediate_bytes);
     if (writing_destination) {
-      step.destinations.push_back(operand, row.line, "too many destinations");
+      if (!step.destinations.try_push_back(operand))
+        throw table_error(row.line, "too many destinations");
     }
     else {
       if (operand.kind == Operand::Kind::Discard)
         throw table_error(row.line, "'-' discards a result, so it can only be a destination");
-      step.operands.push_back(operand, row.line, "too many operands");
+      if (!step.operands.try_push_back(operand))
+        throw table_error(row.line, "too many operands");
     }
   }
   return step;
@@ -327,7 +336,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     const auto [at, text] = lines.next_line();
     if (is_table(text)) {
       Parser declaration(text);
-      static_cast<void>(declaration.next_word());
+      declaration.skip_word();
       current = find_table(tables, declaration.next_word(), at);
       continue;
     }
@@ -335,17 +344,19 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
       continue;
     if (!current)
       throw table_error(at, "this row is not in any table; declare one with `table <name>` first");
+    // Three columns, separated by `|`: what is encoded, how it reads, what it does.
     Parser parser(text, at);
     Row row{.table = *current, .line = at};
-    parse_encoding(Parser(Parser::trim(parser.split_to('|').data()), at), row);
-    row.mnemonic = Parser::trim(parser.split_to('|').data());
-    // steps run in order, separated by `;`
-    Parser sequence(Parser::trim(parser.data()));
+    parse_encoding(Parser(parser.next_field('|'), at), row);
+    row.mnemonic = parser.next_field('|');
+    // Steps run in order, separated by `;`.
+    Parser sequence(Parser::trim(parser.rest()));
     while (!sequence.eof()) {
-      Parser action(Parser::trim(sequence.split_to(';').data()));
+      Parser action(sequence.next_field(';'));
       if (action.eof())
         continue;
-      row.steps.push_back(parse_step(action, vocabularies, tables, row), at, "row has too many steps");
+      if (!row.steps.try_push_back(parse_step(action, vocabularies, tables, row)))
+        throw table_error(at, "row has too many steps");
     }
     if (row.steps.empty())
       throw table_error(at, "row has no action");

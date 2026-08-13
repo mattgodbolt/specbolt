@@ -100,11 +100,17 @@ The single most useful architectural fact:
   The earlier arrangement counted matching lines in a cheap pre-pass and passed the count as a
   template argument to each parse function; that had to be right in two places, and it made every
   parse function a template with a capacity check nobody could reach. **What the second parse costs,
-  measured** (alternating A/B, twice each, gcc 16.2 `-O0`): on `Disassembler.cpp`, which is the parse
-  plus every check and nothing else, 9.3s/387MB becomes 12.6s/570MB — so about **+3.2s and +180MB**.
-  On `Z80.cpp`, which is the same parse plus 1792 handler instantiations, 75.4s becomes 73.2s: the
-  same work, lost in the noise of what dominates that TU. Three seconds for a pipeline in which one
-  function knows a count.
+  measured** (alternating A/B, twice each side, gcc 16.2 `-O0`): on `Disassembler.cpp`, which is the
+  parse plus every check and nothing else, this one change took 9.3s/387MB to 12.6s/570MB — about
+  **+3.2s and +180MB**. On `Z80.cpp`, which is the same parse plus 1792 handler instantiations, 75.4s
+  became 73.2s: the same work, lost in the noise of what dominates that TU. Three seconds for a
+  pipeline in which one function knows a count. (For where those absolutes stand today, after the
+  rest of the clarity work, see "Compile time, measured".)
+- **Growing a `std::vector` during constant evaluation is much dearer than growing one at run time.**
+  `instructions_of` builds a 1792-element vector for the checks to walk; adding a `reserve` for it
+  took about a second off `Disassembler.cpp`. The evaluator has no `realloc` — every growth copies
+  every element through the interpreter — so `reserve` is worth writing wherever the size is known,
+  which in a parse it usually is.
 - `define_static_string` still earns its place for *generated* text, where the bytes must outlive the
   evaluation.
 
@@ -888,6 +894,39 @@ before the Spectrum needs it. **Profile before believing any of this.**
 
 Caveats: one run each, no repeats, on a laptop; and zexdoc's instruction mix is ALU-heavy, so this
 under-reports dispatch cost relative to a program doing more loads and jumps.
+
+## Compile time, measured
+
+The other half of the trade, and the one that is easy to forget because `ccache` hides it. Same
+compiler for all four (gcc 16.2, `-O0 -g`, `-freflection`), `ccache` bypassed, each translation unit
+compiled on its own. The sweep was run in both orders and the **minimum** of each TU taken, because
+this laptop moves a compile by 30% depending on what ran before it — v4's disassembler TU measured
+15.5s running last and 23.1s running first, on identical input.
+
+| | how the decoder is written | compile | peak RSS | `.a` |
+|---|---|---:|---:|---:|
+| v1 | decode to an `Instruction`, then execute | 10.6s | 0.27 GB | 3.1 MB |
+| v2 | templates, one instantiation per opcode | 22.8s | 0.46 GB | 8.9 MB |
+| v3 | a C++ generator emitting 12,501 lines, compiled | 13.2s | 0.31 GB | 2.5 MB |
+| **v4** | **a table read and expanded by the compiler** | **99.9s** | **1.35 GB** | **35.7 MB** |
+
+v3's figure includes building and running its generator (3.3s to compile `MakeZ80.cpp`, and the
+generated file is then 4.6s of the total). That is the honest comparison: v3 and v4 do the same job,
+one with a program that writes C++ and one with the compiler itself, and **v4 costs about 7.5× as
+much wall clock and 4.3× the memory**.
+
+Almost all of it is one translation unit: `Z80.cpp` is 84s of the 100s and the whole 1.35 GB,
+because that is where the 1792 `execute_one` instantiations land. `Disassembler.cpp` — the same
+parse and every `static_assert`, but no handlers — is the other 15s.
+
+Two things follow. Reflection is not free at this scale, and a talk that shows the technique without
+the number is selling it. And the cost is *concentrated*: it is per-instantiation, not per-line, so
+it scales with the instruction set times the table count rather than with the size of the
+description. That is the number to watch when the 6502 arrives.
+
+Caveats, and they are large: `-O0`; one machine, and a thermally limited laptop at that; and the
+sweep is minimum-of-two rather than a distribution. Treat the ratios as real and the absolutes as
+indicative.
 
 ## Open: /INT is a level, and v4 has no way to release it
 

@@ -403,8 +403,8 @@ template<std::meta::info Fn, Call C>
   const auto member = member_for(step, matched, opcode, rules);
   Call result{.line = line};
   for (const auto &operand: step.operands)
-    result.operands.push_back(
-        resolve(target::vocabularies, operand, matched, opcode, rules), line, "too many operands");
+    if (!result.operands.try_push_back(resolve(target::vocabularies, operand, matched, opcode, rules)))
+      throw table_error(line, "too many operands");
   for (auto destination: step.destinations) {
     destination = resolve(target::vocabularies, destination, matched, opcode, rules);
     // The idle cycle belongs to a write-back, so only to something read through
@@ -414,11 +414,13 @@ template<std::meta::info Fn, Call C>
     });
     if (!was_read)
       destination.write_back_delay = 0;
-    result.destinations.push_back(destination, line, "too many destinations");
+    if (!result.destinations.try_push_back(destination))
+      throw table_error(line, "too many destinations");
   }
   // A vocabulary member may append an operand the encoding does not carry.
   if (member.appended)
-    result.operands.push_back(*member.appended, line, "too many operands");
+    if (!result.operands.try_push_back(*member.appended))
+      throw table_error(line, "too many operands");
   return result;
 }
 
