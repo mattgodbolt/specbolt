@@ -1541,10 +1541,33 @@ static constexpr auto locations = std::array{[:find_location("b"):], [:find_loca
 return cpu.read(locations[Op.slice.extract(opcode)]);
 ```
 
-The array is built from the members *as that table resolves them*, so views fall out for nothing --
-`base` gets `h`/`l` and `indexed` gets `ixh`/`ixl`, and the two do not share a body because their
-arrays differ, which is correct. `read` stays the existing overload set. **No machine change at all**,
-where the view work needed four new accessors.
+The array is built from the members *as that table resolves them*, so `base` gets `h`/`l` where
+`indexed` gets `ixh`/`ixl`, and the two rightly do not share a body. `read` stays the existing
+overload set: **no machine change at all**, where the view work needed four new accessors.
+
+**Correction, from building it: views do *not* fall out for nothing.** A `Call` is one non-type
+template parameter shared by both views, so `call_for` resolves at view 0 -- and an array frozen
+there pins every `iy` row to `ix`. The tests said so immediately, in the plainest possible way:
+
+```
+CHECK( regs.iy() == 0x1300 )   with expansion:  4863 == 4864      # 0x12ff: an iy row read ix
+```
+
+Hoisting the view test above the shape-class test is not enough, because under `indexed` the classes
+*span* the two mechanisms: `reg` resolves to `b c d e ixh ixl (ix+d) a`, so ordinals 0-3 and 7 are
+untouched by any rule and want shape classing, while 4 and 5 are view-rewritten and want the runtime
+view. One array, two ways of choosing.
+
+Two ways out, and they are not equal:
+
+- **Per-view arrays.** `location_table` becomes `[view][ordinal]`. Correct and general, but the
+  operand would have to carry its `Pattern` and table so the table could be rebuilt per view --
+  plumbing a good deal of the row into a type that exists to be small.
+- **Do not shape-class a vocabulary the table rewrites.** One condition, no plumbing. Gives up the
+  collapse in `indexed`/`indexed_cb` and keeps it in `base`, `cb` and `ed`, which is where `arith`,
+  `logic`, `ld r,r'` and the `cb` families live -- most of the prize.
+
+The spike as built is on `stash@{0}`.
 
 At run time this is one load from a constant table where there used to be a constant. The class
 condition -- all members' locations of the same kind -- is what makes the array well-typed.
