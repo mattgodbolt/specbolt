@@ -74,8 +74,9 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - **`access_context::current()` at namespace scope excludes private members.** This is why `Ops` is a
   struct with a private section rather than a namespace: access control gates which names the table
   may use as verbs. Deliberate and worth keeping.
-- **Clang has no reflection at all** — 22.1 and trunk both lack `<meta>`. The wasm build is clang, so
-  v4 is excluded in CMake via `if (SPECBOLT_HAS_REFLECTION)` rather than by `#ifdef`s in source.
+- **Released clang has no reflection at all** — 22.1 and trunk both lack `<meta>`. The wasm build is
+  clang, so v4 is excluded in CMake via `if (SPECBOLT_HAS_REFLECTION)` rather than by `#ifdef`s in
+  source. Bloomberg's P2996 fork is a different matter — see "The other implementation" below.
 - Reflection works inside module interface units, including `template for` in a module purview and
   exported templates that reflect on their own parameters and are instantiated in importing TUs.
 
@@ -1035,6 +1036,52 @@ neither would repay the effort.
   pay it identically. The only thing that moves it is emitting fewer or smaller handlers, which is
   item 1 above rather than a separate idea.
 
+### The other implementation: Bloomberg's clang-p2996
+
+There is a second implementation of all this — the P2996 authors' clang fork, on Compiler Explorer
+as `clang_bb_p2996` — and it is worth knowing what it does and does not do, both as a second data
+point on compile time and because "gcc 16 only" is a heavy dependency for a talk to ask of anyone.
+
+**It is capable.** Every idiom this spike depends on was tried against it (trunk 2026-08-08) and
+works: enumerator splices resolving an overload set, `members_of` with
+`access_context::current()` hiding private helpers, `define_static_array` promoting
+`nonstatic_data_members_of`, `std::meta::info` as a non-type template parameter, `parameters_of` in
+a variable template, `typename[: :]`, member splices, `[:Fn:](…)` in callee position, `#embed`, and
+`template for`. The library side is fine too, on libc++ at least: constexpr `from_chars`/`to_chars`,
+`ranges::to`, `ranges::contains`, and the `to_array` idiom all behave.
+
+**Three flags, not one.** gcc puts everything behind `-freflection`; clang splits it up, and the
+first two errors one hits are just missing switches:
+
+```
+-freflection -fexpansion-statements -fparameter-reflection
+```
+
+`template for` is P1306 rather than P2996 and has its own flag; parameter reflection — which is the
+whole mechanism by which an operation's signature decides what a row may say — has a third. Neither
+is on by default. `#embed` also warns under `-Wc23-extensions`, which this project's `-Werror` would
+turn into an error.
+
+**But the diagnostics do not survive the move, and that is the finding.** The entire error strategy
+here is a `consteval` function that throws, so that a mistake in the description becomes a compile
+error carrying the message and the `.cpu` line. Identical source, identical mistake:
+
+```
+gcc 16.2:   error: uncaught exception of type 'std::runtime_error'; 'what()':
+            'z80.cpu:9: reference names a vocabulary that does not exist'
+
+clang bb:   error: constexpr variable 'bad' must be initialized by a constant expression
+            note: subexpression not valid in a constant expression
+                      throw table_error(9, "reference names a vocabulary that does not exist");
+```
+
+clang points at the `throw` and never prints what it said. The text is right there in the source it
+quotes, so a human can read it — but nothing carries it to the top of the error, nothing puts it in
+a build log, and an editor jumping to the diagnostic shows "subexpression not valid in a constant
+expression" rather than the sentence written for the reader. **The technique this project uses to
+make bad tables legible is, today, a gcc feature.** Worth saying out loud in a talk that recommends
+it, and worth a bug against clang, because nothing in the standard prevents printing `what()`.
+
 ### What compilers could do, since we are going to keep asking for this
 
 - **Give gcc a `-ftime-trace`.** This whole section is guesswork assembled from a pass-level table
@@ -1044,6 +1091,9 @@ neither would repay the effort.
   exactly the feature it is checking for.
 - **The tree representation is not built for this.** 5.4 GB allocated and 8% of the build in the
   collector, to evaluate a 147-line text file and stamp out functions from it.
+- **Print `what()`.** gcc does; clang-p2996 does not. A `consteval` function that throws is the
+  idiom the whole ecosystem is converging on for compile-time diagnostics, and half the
+  implementations currently discard the message.
 - **Peak memory is the real ceiling.** 1.35 GB for one TU, growing 0.12 GB per table, is what stops
   this scaling — a CI box running several of these in parallel runs out of memory long before it
   runs out of patience.
