@@ -1489,6 +1489,77 @@ index. That needs indexed register access on the machine, which `RegisterFile` c
 The operation vocabularies (`shift`, `arith`, `cond`, `logic`) can never be demoted: their members
 are different functions to splice, not different values.
 
+## Sketch: partition a slice, rather than demoting it
+
+Demoting `bit` treated a slice as all-or-nothing: either every member is interchangeable at run time
+or none is. That is the wrong granularity, and it is why `reg = b c d e h l (hl)/delay=1 a` looked
+undemotable and led to the idea of splitting fourteen rows.
+
+Seven of `reg`'s eight members share a *shape*: a plain 8-bit register, no indirection, no
+write-back delay, no operation of their own. They differ only in **which** register. The eighth,
+`(hl)`, is genuinely different code -- an address, a memory access, an idle cycle. So the question
+is not "can this slice be a run-time value" but **"how many shapes does this slice have?"**
+
+### The rule
+
+Two members are in the same class when the code generated for them differs only in which location it
+names: same operand kind, same `indirect`/`displaced`, same `write_back_delay`, no bound operation,
+and locations of the same kind. Generate **one body per class**, and inside a class read the ordinal
+from the opcode.
+
+It subsumes everything already built rather than sitting beside it:
+
+| vocabulary | classes | bodies per combination |
+|---|---|---|
+| `bit = 0 1 ... 7` | one, value *is* the ordinal | 8 -> 1 *(what is built today)* |
+| `reg` | two: the registers, and `(hl)` | 8 -> 2 |
+| `real` | one of seven; a hole is not a class | 8 -> 1 |
+| `shift`, `arith`, `cond`, `logic` | one **per member** -- each is a different function to splice | no change, and correctly so |
+
+The operation vocabularies needing no special case is the sign the rule is the right one. So is
+`(hl)` earning its own class *because of its `/delay=1`* -- the member attribute §2 introduced to
+avoid splitting these rows is exactly what classifies them now.
+
+### Where the cunning goes, and it is not in the body
+
+The body already branches: `value_of` and `store` do `if constexpr (Op.indirect)` today, and the two
+classes take the two arms unchanged. What has to change is the **key**. `body_key` currently folds
+in the slice's extracted value; it must fold in the *class* that value selects instead. Once two
+opcodes agree on the key, everything downstream generates one shared body with no further work.
+
+### How a class names its location without the framework learning the CPU
+
+The obvious move -- have the machine offer `read(RegAt, n)` -- does not survive views. Under
+`indexed`, `reg` resolves to `b c d e ixh ixl (ix+d) a`, so the ordinal-to-register map differs per
+table, and `Operand` cannot hold a `RegisterFile::R8` because `refract` must not know what a Z80 is.
+
+Better: let the *generated code* hold the map. Inside the body, a `template for` over the class's
+resolved members builds a local table of spliced enumerators, and the ordinal indexes it:
+
+```cpp
+static constexpr auto locations = std::array{[:find_location("b"):], [:find_location("c"):], …};
+return cpu.read(locations[Op.slice.extract(opcode)]);
+```
+
+The array is built from the members *as that table resolves them*, so views fall out for nothing --
+`base` gets `h`/`l` and `indexed` gets `ixh`/`ixl`, and the two do not share a body because their
+arrays differ, which is correct. `read` stays the existing overload set. **No machine change at all**,
+where the view work needed four new accessors.
+
+At run time this is one load from a constant table where there used to be a constant. The class
+condition -- all members' locations of the same kind -- is what makes the array well-typed.
+
+### What it is worth, and what it costs
+
+Demoting `reg` outright measured at -492 bodies of 1034, but that pretended `(hl)` was a register.
+Partitioning gets two bodies per combination rather than one, so roughly **-430**, still the largest
+item on the board. `real` (-156), `pair` (-36) and `spair` (-12) come under the same rule with no
+description change either.
+
+Costs, honestly: the generator grows a partition step and a class-indexed key, which is more than
+`is_numeric` was. And **the description does not change by one row** -- which, after the last three
+experiments, is the part worth caring about. The table is the artefact; the generator is machinery.
+
 ## Open: /INT is a level, and v4 has no way to release it
 
 v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it — which is
