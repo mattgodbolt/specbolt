@@ -68,4 +68,35 @@ private:
   }
 };
 
+// Defined here rather than in the .cpp: this is the hottest pair of functions in
+// the emulator -- every opcode fetch and every data access reaches one of them
+// -- and out of line they can only be inlined when the whole program is
+// optimised at once, which turns out to be a lottery.
+inline std::uint8_t Memory::read(const std::uint16_t address) const {
+  if (listener_) [[unlikely]]
+    listener_->on_memory_read(address);
+  return address_space_[offset_for(address)];
+}
+
+inline std::uint16_t Memory::read16(const std::uint16_t address) const {
+  return static_cast<std::uint16_t>(read(static_cast<std::uint16_t>(address + 1)) << 8 | read(address));
+}
+
+inline void Memory::raw_write(const std::uint16_t address, const std::uint8_t byte) {
+  address_space_[offset_for(address)] = byte;
+}
+
+inline void Memory::write(const std::uint16_t address, const std::uint8_t byte) {
+  if (listener_) [[unlikely]]
+    listener_->on_memory_write(address);
+  if (rom_[address / page_size])
+    return;
+  raw_write(address, byte);
+}
+
+inline void Memory::write16(const std::uint16_t address, const std::uint16_t word) {
+  write(address, static_cast<std::uint8_t>(word));
+  write(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(word >> 8));
+}
+
 } // namespace specbolt

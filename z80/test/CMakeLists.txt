@@ -21,6 +21,28 @@ if (TARGET z80_v4)
     target_compile_definitions(zexdoc_test PRIVATE SPECBOLT_HAS_V4)
 endif ()
 
+# One benchmark holding every implementation, and one per implementation.
+# Interprocedural optimisation is on for the whole link, so the combined binary
+# optimises the four against each other -- editing one changes the code
+# generated for the others, by enough to swamp what is being measured. The
+# combined binary is what the emulator ships; the single ones are what a
+# comparison between implementations should be read from.
+add_executable(z80_bench Bench.cpp)
+target_link_libraries(z80_bench PRIVATE z80_v1 z80_v2 z80_v3 lyra)
+target_compile_definitions(z80_bench PRIVATE BENCH_V1=1 BENCH_V2=1 BENCH_V3=1)
+if (TARGET z80_v4)
+    target_link_libraries(z80_bench PRIVATE z80_v4)
+    target_compile_definitions(z80_bench PRIVATE BENCH_V4=1)
+endif ()
+
+foreach (version IN ITEMS 1 2 3 4)
+    if (TARGET z80_v${version})
+        add_executable(z80_bench_v${version} Bench.cpp)
+        target_link_libraries(z80_bench_v${version} PRIVATE z80_v${version} lyra)
+        target_compile_definitions(z80_bench_v${version} PRIVATE BENCH_V${version}=1)
+    endif ()
+endforeach ()
+
 if (NOT (CMAKE_BUILD_TYPE STREQUAL "Debug"))
     add_test(NAME "Z80 Regression Test (v1 implementation)" COMMAND zexdoc_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     add_test(NAME "Z80 Regression Test (v2 implementation)" COMMAND zexdoc_test --impl 2 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})

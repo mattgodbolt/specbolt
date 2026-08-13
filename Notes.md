@@ -78,3 +78,98 @@ Minimally an instruction takes 4 cycles:
 - 3 cycles decode/memory access/execute
 
 On top of that regular reads and writes take 3, IO takes 4.
+
+---
+
+### Why v2 looked 20% faster than v3 and v4 (and wasn't)
+
+For a long time the zexdoc times said v2 was clearly the quickest and v3/v4 were
+paying for their fancier dispatch. That turned out to be wrong, and the way it
+was wrong is the interesting part. `z80/test/Bench.cpp` is the harness; run it
+with `--impl`, or use the per-implementation binaries (see below).
+
+**Wall-clock on a laptop cannot see a 15% effect.** The same binary varied by a
+third between runs of the zexdoc suite. Everything below is `perf` counters:
+retired instructions reproduce to better than 0.01%, and cycles to about 2%.
+
+**The ranking depended on how the binaries were linked.** Interprocedural
+optimisation is on for the whole build, and every test binary contains all four
+implementations, so they are optimised against each other. Cycles per emulated
+Z80 instruction:
+
+| | four in one binary | one binary each |
+|---|---|---|
+| v1 | 134.8 | 135.1 |
+| v2 | **55.9** | 67.0 |
+| v3 | 63.4 | 58.6 |
+| v4 | 62.1 | **54.0** |
+
+v2 wins one column and v4 wins the other. This was found by accident: editing v4
+moved *v2's* retired instruction count by 7.5% without v2's source changing.
+
+**The mechanism was two shared functions losing an inlining lottery.** Whichever
+one stayed out of line decided the loser: `Memory::read` was 18% of v4's runtime
+in the combined binary, and `Scheduler::tick` was 28% of v2's in its own binary.
+Neither has anything to do with how an instruction is dispatched.
+
+Both are now fixed at the source: `Memory`'s accessors moved into the header, and
+`tick` grew an inline fast path over an out-of-line `tick_with_tasks`. Every
+implementation got faster -- v1 -25%, v2 -18%, v3 -31%, v4 -29% -- and v2, v3 and
+v4 now execute within 1% of the same number of x86 instructions per Z80
+instruction. The gap that looked like a verdict on dispatch design was the layer
+underneath all of them.
+
+#### What this says about "we don't need to inline by hand, that is what LTO is for"
+
+Three builds of the *unmodified* source, combined binary, cycles per 20M
+instructions:
+
+| build | v2 | v4 |
+|---|---|---|
+| default `-flto=auto` | 1.10G | 1.27G |
+| `-flto-partition=one` | 1.10G | 1.27G |
+| `--param max-inline-insns-auto=200 --param inline-unit-growth=200` | 0.73G | 0.93G |
+| *header `inline` + tick fast path, default LTO* | *0.94G* | *0.85G* |
+
+`-flto-partition=one` changes nothing at all. Whole program, one partition, every
+definition visible, and gcc still declines to inline `Memory::read` -- so this is
+not the visibility problem LTO exists to solve. Raising the inline budget alone
+recovers most of the win with no source change, which shows the compiler could
+have done it and chose not to.
+
+The reason is that gcc runs two budgets: `max-inline-insns-single` for functions
+*declared* `inline`, and a much stingier `max-inline-insns-auto` for everything
+else. `Memory::read` has thousands of call sites, so `inline-unit-growth` vetoes
+it under the auto budget. Writing `inline` in a header tells the compiler nothing
+new about the code; it moves the function into the generous budget.
+
+So the claim survives as a statement about *capability* and fails as one about
+*policy*. Nobody has to arrange code for the linker's benefit any more -- but
+`inline` is still a hint to the cost model, and for a few tiny leaf functions on
+the hot path with a thousand callers it is the difference between a call and no
+call. The alternative is a whole-program flag, which is a blunt instrument: it
+re-ranked every implementation and helped v2 most, where the keyword helped v4
+most. Same win, very different blast radius.
+
+#### Why the `tick` fast path did nothing for v1
+
+v1 ticks once per instruction -- it decodes into an `Instruction` carrying its own
+T-state count and spends it in one go (`pass_time(extra_t_states +
+instr.decode_t_states)`), from four call sites in the whole implementation.
+v2/v3/v4 tick per bus access, from around forty. Making a per-access function
+cheap only helps the implementations that call it per access: v1 gained 2%.
+
+v2 gained nothing either, for a different reason -- in the combined binary LTO had
+already inlined `tick` for it. In v2's *own* binary it had not, and there the same
+change was worth 29%, the largest gain of any implementation. The same edit is
+worth 0% or 29% depending on what else is linked beside it.
+
+#### Reading the benchmark
+
+`z80_bench` holds all four implementations and is what the emulator's link looks
+like; `z80_bench_v1` .. `z80_bench_v4` hold one each and are what a comparison
+*between* implementations should be read from. Two traps, both of which produced
+wrong answers before they were fixed: never run it while anything else is on the
+machine, and never run the implementations in a fixed order within a repetition
+-- whoever goes last meets the hottest core and the coldest caches. The harness
+alternates direction and reports the best repetition for that reason.
