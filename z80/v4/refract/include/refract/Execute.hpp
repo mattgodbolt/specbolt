@@ -476,8 +476,12 @@ struct Transfer {
   // needed by the row, and not in the row's own bytes.
   std::uint8_t view{};
 };
-using Next = std::optional<Transfer>;
-using Handler = Next (*)(Cpu &, std::uint8_t, std::uint8_t, std::uint8_t);
+// Every handler has one signature, because a table of function pointers can
+// only have one. So `view` is a parameter of all 747 of them and not merely of
+// the ones a prefix can reach: `nop` pays a register's worth for `ix` existing.
+// That is about 2% of run time, bought with 38% of the build -- see NOTES.md,
+// which has the measurements and the alternative that was rejected.
+using Handler = std::optional<Transfer> (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
 // table surviving into the generated code. There is one of these per (table,
@@ -488,7 +492,8 @@ using Handler = Next (*)(Cpu &, std::uint8_t, std::uint8_t, std::uint8_t);
 // so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules are all
 // constants here.
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
-Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
+std::optional<Transfer> execute_one(
+    Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
   // `static` is not an optimisation here: the expansion statement below walks
   // this as a range, and a range's *address* has to be a constant. A local
   // `constexpr` has a constant value but not a constant address.
@@ -539,7 +544,8 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
   // arguments. A `return` here leaves `execute_one`, not the expansion.
   template for (constexpr auto step: row.steps) {
     if constexpr (step.kind == Step::Kind::Goto)
-      return Transfer{step.target, displacement, step.forwards_view ? view : step.target_view};
+      return Transfer{
+          .table = step.target, .displacement = displacement, .view = step.forwards_view ? view : step.target_view};
     else {
       constexpr auto member = member_for(step, row.matched, Opcode, rules);
       constexpr auto operation = step.operation_reference ? member.operation : step.operation;
@@ -581,9 +587,10 @@ Next execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
   const auto note = [&used](const Reference reference) {
     if (reference.from_view || is_numeric(target::vocabularies[reference.vocabulary_index]))
       return;
-    for (const auto already: used)
-      if (already == reference.slice_index)
-        return;
+    if (std::ranges::contains(used, reference.slice_index))
+      return;
+    // Cannot overflow: these are distinct slice indices of one pattern, and a
+    // pattern holds at most `Pattern::max_slices` of them.
     static_cast<void>(used.try_push_back(reference.slice_index));
   };
   for (const auto &step: row.steps) {
@@ -628,17 +635,16 @@ struct Decoding {
   // Indexed, never searched: `made[row][key]` is the body this row already has
   // for that combination of the slices it reads. Per row as well as per key,
   // because two rows may narrow to the same encoding and are still two rows.
-  std::vector<std::array<std::uint16_t, 256>> made(target::rows.size());
-  std::vector<std::array<bool, 256>> known(target::rows.size());
-  for (std::size_t opcode = 0; opcode < 256; ++opcode) {
+  std::vector<std::array<std::optional<std::uint16_t>, 256>> made(target::rows.size());
+  for (const auto opcode: std::views::iota(0uz, 256uz)) {
     const auto row = *target::find_row(table, static_cast<std::uint8_t>(opcode));
     const auto key = body_key(target::rows[row], static_cast<std::uint8_t>(opcode));
-    if (!known[row][key]) {
-      known[row][key] = true;
-      made[row][key] = static_cast<std::uint16_t>(result.bodies.size());
-      result.bodies.push_back({row, key});
+    auto &body = made[row][key];
+    if (!body) {
+      body = static_cast<std::uint16_t>(result.bodies.size());
+      result.bodies.push_back({.row = row, .opcode = key});
     }
-    result.fill[opcode] = made[row][key];
+    result.fill[opcode] = *body;
   }
   return result;
 }
@@ -655,11 +661,14 @@ inline constexpr auto fill_of = decoding_for(Table).fill;
 template<std::uint8_t Table>
 inline constexpr auto dispatch = [] {
   std::array<Handler, bodies_of<Table>.size()> made{};
-  template for (constexpr auto index: std::views::iota(0uz, bodies_of<Table>.size())) made[index] =
-      &execute_one<Table, bodies_of<Table>[index].opcode, bodies_of<Table>[index].row>;
+  // Expanded over the bodies themselves rather than over indices into them, so
+  // that `body` is the thing being generated. Both variables are in scope at
+  // once and only one of them is a constant: `body` is a template argument and
+  // `at` is an ordinary counter.
+  std::size_t at = 0;
+  template for (constexpr auto body: bodies_of<Table>) made[at++] = &execute_one<Table, body.opcode, body.row>;
   std::array<Handler, 256> handlers{};
-  for (std::size_t opcode = 0; opcode < 256; ++opcode)
-    handlers[opcode] = made[fill_of<Table>[opcode]];
+  std::ranges::transform(fill_of<Table>, handlers.begin(), [&made](const std::uint16_t body) { return made[body]; });
   return handlers;
 }();
 

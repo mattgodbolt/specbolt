@@ -6,42 +6,23 @@ import z80_v4;
 #include "refract/Parser.hpp"
 #endif
 
+#include <ranges>
+#include <vector>
+
 namespace specbolt::v4 {
 
 using namespace refract;
 
 TEST_CASE("Parser tests") {
-  Parser parser(R"(# I am a comment
-I am the second line
-I am the third line
-#MAGIC!)");
-  SECTION("Starts out sensibly") {
-    CHECK(!parser.eof());
-    CHECK(parser.line() == 1);
-  }
-  SECTION("Takes up to a delimiter and tracks line numbers") {
-    CHECK(parser.take_until('\n') == "# I am a comment");
-    CHECK(parser.line() == 2);
-    CHECK(parser.take_until('\n') == "I am the second line");
-    CHECK(parser.line() == 3);
-    CHECK(parser.take_until('\n') == "I am the third line");
-    CHECK(parser.line() == 4);
+  Parser parser("# I am a comment");
+  SECTION("Starts out sensibly") { CHECK(!parser.eof()); }
+  SECTION("Takes up to a delimiter") {
+    Parser lines("one\ntwo\nthree");
+    CHECK(lines.take_until('\n') == "one");
+    CHECK(lines.take_until('\n') == "two");
     // No delimiter left, so this takes the rest.
-    CHECK(parser.take_until('\n') == "#MAGIC!");
-    CHECK(parser.line() == 4);
-    CHECK(parser.eof());
-  }
-  SECTION("A line says which one it was") {
-    const auto [number, text] = parser.next_line();
-    CHECK(number == 1);
-    CHECK(text == "# I am a comment");
-    CHECK(parser.next_line().number == 2);
-  }
-  SECTION("Counts the lines it passes over in one go") {
-    CHECK(parser.take_until('\n') == "# I am a comment");
-    CHECK(parser.take_until('#') == "I am the second line\nI am the third line\n");
-    CHECK(parser.rest() == "MAGIC!");
-    CHECK(parser.line() == 4);
+    CHECK(lines.take_until('\n') == "three");
+    CHECK(lines.eof());
   }
   SECTION("A field is trimmed, which is what a row's three columns want") {
     Parser row("  00000000 n  |  ld a, $nn  | ld8 a <- n  ");
@@ -57,23 +38,50 @@ I am the third line
     CHECK(words.next_word() == "=");
     CHECK(words.next_word() == "a");
   }
-  SECTION("Skips and accounts for lines") {
+  SECTION("Trimming takes blanks from both ends") {
+    CHECK(Parser::trim("  hello  ") == "hello");
+    CHECK(Parser::trim("\thello\t") == "hello");
+    // A description written on a machine that ends its lines with \r\n.
+    CHECK(Parser::trim("hello\r") == "hello");
+    CHECK(Parser::trim("   ").empty());
+    CHECK(Parser::trim("").empty());
+  }
+  SECTION("Skips to the first character not in the set") {
     Parser spaces("  \n\n  hello");
     spaces.skip_any(" \n");
     CHECK(spaces.rest() == "hello");
-    CHECK(spaces.line() == 3);
   }
   SECTION("Skips to the end") {
     Parser blanks(" \n ");
     blanks.skip_any(" \n");
     CHECK(blanks.eof());
-    CHECK(blanks.line() == 2);
   }
   SECTION("Skips nothing") {
     Parser none("hello");
     none.skip_any(" \n");
     CHECK(none.rest() == "hello");
-    CHECK(none.line() == 1);
   }
+}
+
+TEST_CASE("Lines are numbered from one") {
+  const auto numbers_and_text = [](const std::string_view description) {
+    return lines_of(description) |
+           std::views::transform([](const Line &line) { return std::pair{line.number, line.text}; }) |
+           std::ranges::to<std::vector>();
+  };
+  using Lines = std::vector<std::pair<std::size_t, std::string_view>>;
+  SECTION("Every line carries the number a diagnostic names it by") {
+    CHECK(numbers_and_text("one\ntwo\nthree") == Lines{{1, "one"}, {2, "two"}, {3, "three"}});
+  }
+  SECTION("Each line arrives trimmed, because every caller wants it that way") {
+    CHECK(numbers_and_text("  one  \n\ttwo\r") == Lines{{1, "one"}, {2, "two"}});
+  }
+  SECTION("A blank line still counts, or everything after it would be misnamed") {
+    CHECK(numbers_and_text("one\n\nthree") == Lines{{1, "one"}, {2, ""}, {3, "three"}});
+  }
+  SECTION("A trailing newline ends a line rather than starting one worth reading") {
+    CHECK(numbers_and_text("one\n") == Lines{{1, "one"}, {2, ""}});
+  }
+  SECTION("An empty description has no lines at all") { CHECK(numbers_and_text("").empty()); }
 }
 } // namespace specbolt::v4

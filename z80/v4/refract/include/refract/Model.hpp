@@ -14,6 +14,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <string_view>
@@ -35,7 +36,7 @@ struct Name {
     std::ranges::copy(text, storage.begin());
     length = text.size();
   }
-  static constexpr std::size_t capacity = decltype(storage){}.size();
+  static constexpr std::size_t capacity = std::tuple_size_v<decltype(storage)>;
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), length}; }
   [[nodiscard]] constexpr bool empty() const { return length == 0; }
   constexpr bool operator==(const Name &) const = default;
@@ -145,8 +146,7 @@ using Rules = Vector<Rule, 6>;
 // them they are worth 21 of 1034 bodies, which is not worth a lookup table.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
-  for (std::size_t at = 0; at < vocabulary.members.size(); ++at) {
-    const auto &member = vocabulary.members[at];
+  for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
     if (member.hole)
       continue;
     if (member.operand.kind != Operand::Kind::Constant || !member.operation.empty() || member.appended)

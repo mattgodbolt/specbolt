@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bitset>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -70,36 +71,14 @@ namespace specbolt::refract {
 
 // Earlier rows win, so a specific encoding must precede the general one that
 // would otherwise swallow it: `halt` before `ld {reg:y}, {reg:z}`.
-// A set of opcodes, as bits, so containment and overlap are four operations
-// rather than 256.
-struct OpcodeSet {
-  std::array<std::uint64_t, 4> words{};
+// A set of opcodes, as bits, so containment and overlap are whole-set
+// operations rather than 256. C++23 made `std::bitset` usable during constant
+// evaluation, which is the only reason this is not written out by hand.
+using OpcodeSet = std::bitset<256>;
 
-  constexpr void add(const std::uint8_t opcode) { words[opcode >> 6] |= std::uint64_t{1} << (opcode & 63); }
-  [[nodiscard]] constexpr bool contains(const std::uint8_t opcode) const {
-    return (words[opcode >> 6] >> (opcode & 63) & 1) != 0;
-  }
-  [[nodiscard]] constexpr bool empty() const {
-    return std::ranges::all_of(words, [](const std::uint64_t word) { return word == 0; });
-  }
-  constexpr void add_all(const OpcodeSet &other) {
-    for (std::size_t at = 0; at < words.size(); ++at)
-      words[at] |= other.words[at];
-  }
-  [[nodiscard]] constexpr bool overlaps(const OpcodeSet &other) const {
-    for (std::size_t at = 0; at < words.size(); ++at)
-      if ((words[at] & other.words[at]) != 0)
-        return true;
-    return false;
-  }
-  // Every opcode of mine is also one of theirs: an override, rather than an accident.
-  [[nodiscard]] constexpr bool within(const OpcodeSet &other) const {
-    for (std::size_t at = 0; at < words.size(); ++at)
-      if ((words[at] & ~other.words[at]) != 0)
-        return false;
-    return true;
-  }
-};
+// Every opcode of mine is also one of theirs: an override, rather than an accident.
+[[nodiscard]] constexpr bool within(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & ~theirs).none(); }
+[[nodiscard]] constexpr bool overlaps(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & theirs).any(); }
 
 // A pattern *generates* its opcodes -- walk the cartesian product of its
 // variable vocabularies and place each combination -- rather than being tested
@@ -118,7 +97,7 @@ struct OpcodeSet {
       remaining /= values;
     }
     if (members_live(vocabularies, row, opcode))
-      result.add(opcode);
+      result.set(opcode);
   }
   return result;
 }
@@ -169,16 +148,16 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 
   for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
     const auto &mine = covers[earlier];
-    if (mine.empty())
+    if (mine.none())
       throw table_error(rows[earlier].line, "this row matches no opcode at all");
     auto &already = claimed[rows[earlier].table];
-    if (mine.within(already))
+    if (within(mine, already))
       throw table_error(rows[earlier].line, "an earlier row shadows this one completely");
-    already.add_all(mine);
+    already |= mine;
     for (std::size_t later = earlier + 1; later < rows.size(); ++later) {
       if (rows[later].table != rows[earlier].table)
         continue;
-      if (const auto &theirs = covers[later]; mine.overlaps(theirs) && !mine.within(theirs))
+      if (const auto &theirs = covers[later]; overlaps(mine, theirs) && !within(mine, theirs))
         throw table_error(rows[earlier].line, "this row overlaps a later one without being contained by it");
     }
   }
@@ -191,10 +170,12 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 [[nodiscard]] constexpr std::vector<DecodeTable> decode_tables(const std::span<const Row> rows,
     const std::span<const OpcodeSet> opcodes, const std::span<const TableDecl> tables) {
   std::vector<DecodeTable> all(tables.size());
-  for (std::size_t index = 0; index < rows.size(); ++index)
-    for (std::size_t opcode = 0; opcode < 256; ++opcode)
-      if (opcodes[index].contains(static_cast<std::uint8_t>(opcode)) && !all[rows[index].table][opcode])
-        all[rows[index].table][opcode] = index;
+  // `rows` and `opcodes` are index-coupled by construction -- `opcodes_of_each`
+  // built one from the other -- so zip says that rather than trusting it.
+  for (const auto [index, row, claimed]: std::views::zip(std::views::iota(0uz), rows, opcodes))
+    for (const auto opcode: std::views::iota(0uz, 256uz))
+      if (claimed.test(opcode) && !all[row.table][opcode])
+        all[row.table][opcode] = index;
   for (std::size_t which = 0; which < tables.size(); ++which)
     if (tables[which].derived)
       for (std::size_t opcode = 0; opcode < 256; ++opcode)
@@ -213,18 +194,20 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 // which is why the real chip does not increment R for that byte.
 [[nodiscard]] constexpr std::vector<bool> latched_tables(
     const std::span<const Row> rows, const std::size_t num_tables) {
-  std::vector<bool> latched(num_tables);
-  std::vector<bool> seen(num_tables);
+  // Empty until some goto has said, so that "not reached yet" and "reached
+  // without a displacement" stay different answers rather than both being false.
+  std::vector<std::optional<bool>> reached(num_tables);
   for (const auto &row: rows)
     for (const auto &step: row.steps) {
       if (step.kind != Step::Kind::Goto)
         continue;
-      if (seen[step.target] && latched[step.target] != row.reads_displacement)
+      auto &latched = reached[step.target];
+      if (latched && *latched != row.reads_displacement)
         throw table_error(row.line, "this table is reached both with and without a displacement");
-      seen[step.target] = true;
-      latched[step.target] = row.reads_displacement;
+      latched = row.reads_displacement;
     }
-  return latched;
+  return reached | std::views::transform([](const std::optional<bool> latched) { return latched.value_or(false); }) |
+         std::ranges::to<std::vector>();
 }
 
 // Every opcode of every table must decode to something. On real hardware one
@@ -300,8 +283,8 @@ constexpr bool check_derived_rows_override(const Description &description, const
     if (!table.derived)
       continue;
     for (std::size_t theirs = 0; theirs < rows.size(); ++theirs)
-      if (rows[theirs].table == table.parent && covers[mine].overlaps(covers[theirs]) &&
-          !covers[mine].within(covers[theirs]))
+      if (rows[theirs].table == table.parent && overlaps(covers[mine], covers[theirs]) &&
+          !within(covers[mine], covers[theirs]))
         throw table_error(rows[mine].line,
             "this row overlaps one it inherits from '" + std::string(tables[table.parent].name) +
                 "' without replacing it or fitting inside it, so it takes opcodes that row meant to keep");

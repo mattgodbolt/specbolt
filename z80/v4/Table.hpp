@@ -19,11 +19,13 @@ using namespace refract;
 // clang-format off
 inline constexpr char cpu_raw[] = {
 #embed SPECBOLT_CPU_TABLE
-  , 0
 };
 // clang-format on
 
-inline constexpr std::string_view cpu_description{cpu_raw};
+// `#embed` already knows how long the file is, so the view is built from the
+// size rather than from a terminator the description would otherwise have to
+// carry.
+inline constexpr std::string_view cpu_description{cpu_raw, sizeof cpu_raw};
 
 // The description this build was compiled against. Everything above parses
 // whatever it is handed; these are where the embedded file enters. (Diagnostics

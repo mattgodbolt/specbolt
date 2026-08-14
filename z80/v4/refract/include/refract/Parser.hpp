@@ -1,27 +1,26 @@
 #pragma once
 
 #ifndef SPECBOLT_MODULES
+#include <ranges>
 #include <string_view>
 #endif
 
 namespace specbolt::refract {
 
-// A cursor over the description, consuming it from the front. Ordinary text
-// handling: everything it hands back is a `std::string_view` into the original,
-// and the only state beyond the position is the line number, which is carried
-// so that a diagnostic can name where it came from.
+// A cursor over one line of the description, consuming it from the front.
+// Ordinary text handling: everything it hands back is a `std::string_view` into
+// the original, and the position is the whole of its state.
 SPECBOLT_EXPORT class Parser {
 public:
-  constexpr explicit Parser(const std::string_view buf, const std::size_t line = 1) : line_(line), buf_(buf) {}
+  constexpr explicit Parser(const std::string_view buf) : buf_(buf) {}
 
   // Text with leading and trailing blanks removed. A trailing \r matters
   // because the description may have been written on a machine that thinks so.
-  [[nodiscard]] static constexpr std::string_view trim(std::string_view text) {
-    while (!text.empty() && (text.front() == ' ' || text.front() == '\t'))
-      text.remove_prefix(1);
-    while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r'))
-      text.remove_suffix(1);
-    return text;
+  [[nodiscard]] static constexpr std::string_view trim(const std::string_view text) {
+    const auto first = text.find_first_not_of(" \t");
+    if (first == std::string_view::npos)
+      return {};
+    return text.substr(first, text.find_last_not_of(" \t\r") + 1 - first);
   }
 
   // Everything up to the next `delim`, which is consumed with it; the whole of
@@ -51,36 +50,34 @@ public:
   // declaration opens with.
   constexpr void skip_word() { static_cast<void>(next_word()); }
 
-  // The next line and the number it came from, so a diagnostic can name it.
-  struct Line {
-    std::size_t number{};
-    std::string_view text{};
-  };
-  [[nodiscard]] constexpr Line next_line() {
-    const auto number = line_;
-    return {number, next_field('\n')};
-  }
-
   constexpr void skip_any(const std::string_view skip) {
     const auto pos = buf_.find_first_not_of(skip);
     consume(pos == std::string_view::npos ? buf_.size() : pos);
   }
 
   [[nodiscard]] constexpr bool eof() const { return buf_.empty(); }
-  [[nodiscard]] constexpr std::size_t line() const { return line_; }
   // Everything not yet consumed.
   [[nodiscard]] constexpr std::string_view rest() const { return buf_; }
 
 private:
-  constexpr void consume(const std::size_t count) {
-    for (const auto character: buf_.substr(0, count))
-      if (character == '\n')
-        ++line_;
-    buf_ = buf_.substr(count);
-  }
+  constexpr void consume(const std::size_t count) { buf_ = buf_.substr(count); }
 
-  std::size_t line_{1};
   std::string_view buf_;
 };
+
+// A line, and the number a diagnostic names it by.
+SPECBOLT_EXPORT struct Line {
+  std::size_t number{};
+  std::string_view text{};
+};
+
+// A description is its lines, numbered from one. Every pass over the text wants
+// exactly this, and this is the only place that knows lines are numbered at all.
+SPECBOLT_EXPORT [[nodiscard]] constexpr auto lines_of(const std::string_view description) {
+  return description | std::views::split('\n') | std::views::enumerate | std::views::transform([](const auto numbered) {
+    const auto &[index, text] = numbered;
+    return Line{static_cast<std::size_t>(index) + 1, Parser::trim(std::string_view{text})};
+  });
+}
 
 } // namespace specbolt::refract
