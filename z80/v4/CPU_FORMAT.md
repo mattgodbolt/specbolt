@@ -17,6 +17,9 @@ into the extensions directory and reload the window:
 ln -s "$PWD/tools/vscode-cpu" ~/.vscode/extensions/cpu-instruction-table
 ```
 
+Over a remote connection a grammar still runs locally, so it has to be packaged
+and installed on that end; the extension's README says how.
+
 ---
 
 ## Overview

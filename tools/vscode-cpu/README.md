@@ -13,9 +13,26 @@ is enough — no packaging, no marketplace:
 ln -s "$PWD/tools/vscode-cpu" ~/.vscode/extensions/cpu-instruction-table
 ```
 
-Use `~/.vscode-server/extensions` for a remote window, or
-`~/.vscode-insiders/extensions` for Insiders. Reload the window afterwards
+Use `~/.vscode-insiders/extensions` for Insiders. Reload the window afterwards
 (`Developer: Reload Window`), and `.cpu` files will highlight.
+
+### Over a remote connection
+
+A grammar is a UI extension: it runs in the *local* extension host, whichever
+machine the code is on. So it goes in the local `~/.vscode/extensions` — not the
+remote's `~/.vscode-server/extensions` — and the symlink above is no use, since
+the local machine cannot see the checkout. Build a `.vsix` on the remote and
+install it locally:
+
+```sh
+npx @vscode/vsce package          # in this directory, on the remote
+# then, on the local machine:
+scp remote:path/to/cpu-instruction-table-0.1.0.vsix .
+code --install-extension cpu-instruction-table-0.1.0.vsix
+```
+
+That copy does not track the repository, so a change to the grammar means
+packaging and installing again.
 
 To check what a given piece of text was scoped as, run
 `Developer: Inspect Editor Tokens and Scopes` with the cursor on it.
