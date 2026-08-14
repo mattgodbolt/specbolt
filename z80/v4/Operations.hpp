@@ -7,6 +7,7 @@
 // exchanges, the flag minutiae. The easy majority of the instruction set became
 // rows; this is the awkward remainder, and it is meant to be read as such.
 
+#include "refract/Model.hpp"
 #include "z80/common/Alu.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/v4/Z80.hpp"
@@ -18,6 +19,20 @@
 namespace specbolt::v4 {
 
 using Cpu = Z80;
+
+// Which way the block operations walk memory. Bit 3 of the opcode is exactly
+// this, so the values are the hardware's rather than anyone's choice and are
+// written out: nothing here should depend on the order the enumerators happen
+// to be declared in.
+//
+// The spellings are how `z80.cpu` names these, and they are here rather than
+// there because the enum is what knows: `ldi` steps forwards, and `i` is the
+// Z80's name for forwards. `refract` finds them by annotation, so the table
+// writes `i` and this file never mentions the number 1. See CPU_FORMAT.md.
+enum class BlockDirection : std::uint8_t {
+  Up[[= refract::Spelling{"i"}]] = 0,
+  Down[[= refract::Spelling{"d"}]] = 1,
+};
 
 struct Operations {
 private:
@@ -173,8 +188,8 @@ public:
   // bc down. The repeating forms are the same row with a condition and a
   // rewind: the chip really does re-execute the opcode, which is why an
   // interrupt can land in the middle of an `ldir`.
-  static Flags block_load(Cpu &cpu, const bool increment, const Flags flags) {
-    const auto step = static_cast<std::uint16_t>(increment ? 1 : 0xffff);
+  static Flags block_load(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+    const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto de = cpu.get(RegisterFile::R16::DE);
     const auto bc = cpu.get(RegisterFile::R16::BC);
@@ -187,8 +202,8 @@ public:
     // Flags 3 and 5 come from the byte plus the accumulator, and swapped over.
     return counted(flags, bc, static_cast<std::uint8_t>(byte + cpu.get(RegisterFile::R8::A)));
   }
-  static Flags block_compare(Cpu &cpu, const bool increment, const Flags flags) {
-    const auto step = static_cast<std::uint16_t>(increment ? 1 : 0xffff);
+  static Flags block_compare(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+    const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto bc = cpu.get(RegisterFile::R16::BC);
     const auto byte = cpu.read_memory(hl);
@@ -203,21 +218,21 @@ public:
     constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
     return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
   }
-  static Flags block_in(Cpu &cpu, const bool increment, const Flags flags) {
+  static Flags block_in(Cpu &cpu, const BlockDirection direction, const Flags flags) {
     cpu.delay(1);
     const auto port = cpu.get(RegisterFile::R16::BC);
     cpu.bus(Bus::io_read, port);
     const auto value = cpu.in(port);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     cpu.write_memory(hl, value);
-    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (increment ? 1 : 0xffff)));
+    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
     return stepped(cpu, flags);
   }
-  static Flags block_out(Cpu &cpu, const bool increment, const Flags flags) {
+  static Flags block_out(Cpu &cpu, const BlockDirection direction, const Flags flags) {
     cpu.delay(1);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto value = cpu.read_memory(hl);
-    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (increment ? 1 : 0xffff)));
+    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
     // B is counted down before the port goes on the bus, so it addresses with
     // the new value.
     const auto result = stepped(cpu, flags);

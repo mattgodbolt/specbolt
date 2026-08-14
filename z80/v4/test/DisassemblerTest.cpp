@@ -394,6 +394,17 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xed, 0xa9) == "cpd");
     CHECK(dis(0xed, 0xb1) == "cpir");
     CHECK(dis(0xed, 0xb9) == "cpdr");
+    // All sixteen come from eight rows whose direction is bit 3 of the opcode,
+    // so the whole family is pinned here. `otir`/`otdr` are the reason the four
+    // families kept a row each: their repeating forms spell `out` as `ot`.
+    CHECK(dis(0xed, 0xa2) == "ini");
+    CHECK(dis(0xed, 0xaa) == "ind");
+    CHECK(dis(0xed, 0xb2) == "inir");
+    CHECK(dis(0xed, 0xba) == "indr");
+    CHECK(dis(0xed, 0xa3) == "outi");
+    CHECK(dis(0xed, 0xab) == "outd");
+    CHECK(dis(0xed, 0xb3) == "otir");
+    CHECK(dis(0xed, 0xbb) == "otdr");
   }
 }
 

@@ -57,6 +57,10 @@ vocab cond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry po:
 # The four conditions a relative jump has room to encode.
 vocab jcond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
 
+# Which way a block operation walks memory. Its members are neither locations
+# nor constants but the spellings `BlockDirection` declares for itself.
+vocab dir = i d
+
 # The interrupt modes, as the three-bit slice of the ed table spells them:
 # every mode has two encodings and mode 0 has four.
 vocab imode = 0 0 1 2 0 0 1 2
@@ -192,22 +196,14 @@ table ed
 01yyy110     | im {imode:y}         | ld8 im <- {imode:y}
 01100111     | rrd                  | rrd8 (hl), flags <- (hl) flags
 01101111     | rld                  | rld8 (hl), flags <- (hl) flags
-10100000     | ldi                  | block_load flags <- 1 flags
-10101000     | ldd                  | block_load flags <- 0 flags
-10110000     | ldir                 | block_load flags <- 1 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
-10111000     | lddr                 | block_load flags <- 0 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
-10100001     | cpi                  | block_compare flags <- 1 flags
-10101001     | cpd                  | block_compare flags <- 0 flags
-10110001     | cpir                 | block_compare flags <- 1 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
-10111001     | cpdr                 | block_compare flags <- 0 flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
-10100010     | ini                  | block_in flags <- 1 flags
-10101010     | ind                  | block_in flags <- 0 flags
-10110010     | inir                 | block_in flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
-10111010     | indr                 | block_in flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
-10100011     | outi                 | block_out flags <- 1 flags
-10101011     | outd                 | block_out flags <- 0 flags
-10110011     | otir                 | block_out flags <- 1 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
-10111011     | otdr                 | block_out flags <- 0 flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+1010d000     | ld{dir:d}            | block_load flags <- {dir:d} flags
+1010d001     | cp{dir:d}            | block_compare flags <- {dir:d} flags
+1010d010     | in{dir:d}            | block_in flags <- {dir:d} flags
+1010d011     | out{dir:d}           | block_out flags <- {dir:d} flags
+1011d000     | ld{dir:d}r           | block_load flags <- {dir:d} flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+1011d001     | cp{dir:d}r           | block_compare flags <- {dir:d} flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
+1011d010     | in{dir:d}r           | block_in flags <- {dir:d} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+1011d011     | ot{dir:d}r           | block_out flags <- {dir:d} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
 
 # Everything the chip does not define in this table is a two-byte nop, which is
 # a row like any other and has to come last so the rest shadow it.
