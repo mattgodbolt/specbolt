@@ -804,6 +804,26 @@ The undocumented register copy is a second destination, and `z == 6` is a separa
 first-match-wins rather than a "no destination" member — `s` already has a hole at 6, so `10bbbzzz`
 does not claim it and `10bbb110` does. No new vocabulary syntax was needed.
 
+**A second instance of the same class arrived while this was being written.** #39, fixed in #43:
+v2 and v3 both disassembled and executed `DD EB` as `ex de, ix`, because their prefix handling
+carries an index-register choice that every `hl` is read through. Real hardware ignores DD and FD
+here — `EX DE,HL` is `EX DE,HL` under any prefix.
+
+v4 was right without anyone deciding it should be. A view renames *vocabulary members* —
+`pair.hl`, `spair.hl`, `reg.h`, `reg.l`, `reg.(hl)` — and `ex de, hl` names `hl` as literal text, so
+there is nothing for the rename to reach. Every base row that writes `hl` literally and *does* want
+the index register under a prefix — `add hl, rr`, `ld (nn), hl`, `ld hl, (nn)`, `jp (hl)`,
+`ld sp, hl`, `ex (sp), hl` — carries an explicit override row in `indexed`, which is the same fact
+seen from the other side: substitution here is opt-in, and the default is to leave the instruction
+alone.
+
+Which is the argument for the whole design, in one opcode — though a smaller argument than it first
+looks. Both schemes can be wrong; what differs is which way they fail when nobody is paying
+attention. v2 and v3 substitute by default and must remember to stop, so a forgotten exception is a
+*changed* instruction. v4 substitutes only where asked, so a forgotten exception is an *unchanged*
+one. Neither is caught by the compiler. But the DD/FD prefix leaves most of the map alone, so the
+lazier default is also the more often correct one, and the exceptions are nine rows one can read.
+
 `ddcb` and `fdcb` are written out twice rather than one derived from the other, because they differ
 only in a *literal* operand and a rule rewrites only `{field}` references. That is the same rule that
 keeps `ex de, hl` safe, so the duplication is the price of it; worth revisiting together when
