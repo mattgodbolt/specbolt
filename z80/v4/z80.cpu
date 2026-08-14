@@ -22,8 +22,9 @@ vocab logic = and:and8 xor:xor8 or:or8 -
 vocab bit = 0 1 2 3 4 5 6 7
 
 # The rotates and shifts of the cb table. `rl` and `rr` take the carry in the
-# same way the arithmetic group does.
-vocab shift = rlc:rlc8 rrc:rrc8 rl:rl8+carry rr:rr8+carry sla:sla8 sra:sra8 sll:sll8 srl:srl8
+# same way the arithmetic group does. `sll` is undocumented, and shifts a one in
+# where `sla` shifts a zero.
+vocab shift = rlc:rotate_circular8+left rrc:rotate_circular8+right rl:rl8+carry rr:rr8+carry sla:shift_arithmetic8+left sra:shift_arithmetic8+right sll:shift_logical8+left srl:shift_logical8+right
 
 # The accumulator-only rotates, which keep sign, zero and parity where the cb
 # forms above recompute them.

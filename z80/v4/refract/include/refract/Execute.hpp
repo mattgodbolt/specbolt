@@ -163,34 +163,39 @@ static_assert(
   return only_match(candidates, name, line);
 }
 
-// An enumerator of the enum a *parameter* asks for, found by the spelling it
-// declares rather than by its C++ identifier. The parameter type is the scope,
-// and that is what keeps these names out of the location namespace: a spelling
-// is free to collide with the name of a register and mean something else
-// entirely. (On the Z80, `i` and `d` are a direction here and the I and D
-// registers everywhere else.)
+// What a description calls one enumerator: the `Spelling` it declares, or its
+// own identifier when it declares none. The annotation is an override, so only
+// a name the description and C++ disagree about has to be written down.
 //
-// The annotation is read back with `extract`, and `type_of` on an annotation is
-// const-qualified, hence `^^const Spelling` rather than `^^Spelling`.
+// `type_of` on an annotation is const-qualified, hence `^^const Spelling`.
+[[nodiscard]] consteval std::string spelling_of(const std::meta::info enumerator) {
+  for (const auto annotation: std::meta::annotations_of(enumerator))
+    if (std::meta::type_of(annotation) == ^^const Spelling)
+      return std::string(std::meta::extract<Spelling>(annotation).text.view());
+  return std::string(std::meta::identifier_of(enumerator));
+}
+
+// An enumerator of the enum a *parameter* asks for. The parameter type is the
+// scope, and that is what keeps these names out of the location namespace: a
+// spelling is free to collide with the name of a register and mean something
+// else entirely. (On the Z80, `i` and `d` are a direction here and the I and D
+// registers everywhere else.)
 [[nodiscard]] consteval std::meta::info find_spelling(
     const std::meta::info scope, const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
   std::string offered;
-  for (const auto enumerator: std::meta::enumerators_of(scope))
-    for (const auto annotation: std::meta::annotations_of(enumerator))
-      if (std::meta::type_of(annotation) == ^^const Spelling) {
-        const auto spelling = std::meta::extract<Spelling>(annotation).text;
-        offered += (offered.empty() ? " (it offers " : ", ") + std::string(spelling.view());
-        if (same_ignoring_case(spelling.view(), name))
-          candidates.push_back(enumerator);
-      }
+  for (const auto enumerator: std::meta::enumerators_of(scope)) {
+    const auto spelling = spelling_of(enumerator);
+    offered += (offered.empty() ? " (it has " : ", ") + spelling;
+    if (same_ignoring_case(spelling, name))
+      candidates.push_back(enumerator);
+  }
   if (candidates.empty())
-    throw table_error(line, "'" + std::string(name) + "' is not how any member of '" +
-                                std::string(std::meta::identifier_of(scope)) + "' is spelled" +
-                                (offered.empty() ? ", and it spells none of them" : offered + ")"));
+    throw table_error(line, "no member of '" + std::string(std::meta::identifier_of(scope)) + "' is called '" +
+                                std::string(name) + "'" + (offered.empty() ? ", which has no members" : offered + ")"));
   if (candidates.size() > 1)
-    throw table_error(line, "'" + std::string(name) + "' is how more than one member of '" +
-                                std::string(std::meta::identifier_of(scope)) + "' is spelled");
+    throw table_error(line, "more than one member of '" + std::string(std::meta::identifier_of(scope)) +
+                                "' is called '" + std::string(name) + "'");
   return candidates.front();
 }
 

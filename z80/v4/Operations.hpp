@@ -88,17 +88,10 @@ public:
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
-  // The rotate and shift family. `Alu` spells the direction as an argument;
-  // a table names operations, so each direction gets a name.
-  static Alu::R8 rlc8(const std::uint8_t v) { return Alu::rotate_circular8(v, Alu::Direction::Left); }
-  static Alu::R8 rrc8(const std::uint8_t v) { return Alu::rotate_circular8(v, Alu::Direction::Right); }
+  // `rl` and `rr` take the carry in the middle of the argument list, where an
+  // appended operand cannot reach.
   static Alu::R8 rl8(const std::uint8_t v, const bool carry) { return Alu::rotate8(v, Alu::Direction::Left, carry); }
   static Alu::R8 rr8(const std::uint8_t v, const bool carry) { return Alu::rotate8(v, Alu::Direction::Right, carry); }
-  static Alu::R8 sla8(const std::uint8_t v) { return Alu::shift_arithmetic8(v, Alu::Direction::Left); }
-  static Alu::R8 sra8(const std::uint8_t v) { return Alu::shift_arithmetic8(v, Alu::Direction::Right); }
-  // Undocumented, and shifts a one in where sla shifts a zero.
-  static Alu::R8 sll8(const std::uint8_t v) { return Alu::shift_logical8(v, Alu::Direction::Left); }
-  static Alu::R8 srl8(const std::uint8_t v) { return Alu::shift_logical8(v, Alu::Direction::Right); }
 
   // The accumulator forms keep sign, zero and parity rather than recomputing
   // them, which is the whole difference between `rlca` and `rlc a`.
