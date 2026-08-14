@@ -222,6 +222,13 @@ struct Call {
   std::size_t line{};
 };
 
+// The rule the paragraph above states, said in a way the compiler checks. Give
+// `Operand` a `std::string_view` and this fires here, rather than as a
+// deduction failure several hundred lines away from the cause.
+static_assert(std::meta::is_structural_type(^^Name));
+static_assert(std::meta::is_structural_type(^^Operand));
+static_assert(std::meta::is_structural_type(^^Call));
+
 // An operand becomes the type the parameter it feeds asks for. A constant is
 // checked here, because the table wrote it and a value too big for its
 // parameter is a mistake worth naming. A location converts the ordinary way, so
@@ -280,6 +287,12 @@ template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter value_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
     const std::uint8_t view, const std::uint8_t opcode) {
   if constexpr (Op.indirect) {
+    // The machine offers two widths and the parameter's type picks. Said out
+    // loud because the alternative is an `else` that quietly means "one byte":
+    // an operation declaring `unsigned` rather than `std::uint16_t` would read
+    // half of what it asked for and zero-extend the rest.
+    static_assert(std::same_as<Parameter, std::uint8_t> || std::same_as<Parameter, std::uint16_t>,
+        "an indirect operand is read at one of the two widths the machine offers");
     const auto address = address_of<Op, Line>(cpu, immediate, indexed, view, opcode);
     if constexpr (std::same_as<Parameter, std::uint16_t>)
       return cpu.read_memory16(address);
@@ -296,6 +309,8 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
   if constexpr (Op.kind == Operand::Kind::Discard)
     static_cast<void>(value);
   else if constexpr (Op.indirect) {
+    static_assert(std::same_as<T, std::uint8_t> || std::same_as<T, std::uint16_t>,
+        "an indirect destination is written at one of the two widths the machine offers");
     // The addressing mode says how long the machine idles before writing back.
     if constexpr (Op.write_back_delay != 0)
       cpu.delay(Op.write_back_delay);
