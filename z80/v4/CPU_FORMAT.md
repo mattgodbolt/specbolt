@@ -10,6 +10,13 @@ constants, and `Disassembler.cpp` renders the mnemonics; both belong to the Z80
 rather than to the library. For why the format is shaped this way rather than
 some other way, see [NOTES.md](NOTES.md).
 
+To edit one in VS Code, symlink [`tools/vscode-cpu`](../../tools/vscode-cpu)
+into the extensions directory and reload the window:
+
+```sh
+ln -s "$PWD/tools/vscode-cpu" ~/.vscode/extensions/cpu-instruction-table
+```
+
 ---
 
 ## Overview

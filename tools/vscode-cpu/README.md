@@ -1,0 +1,85 @@
+# `.cpu` syntax highlighting for VS Code
+
+A TextMate grammar for the instruction-set description format that v4 compiles.
+The format is documented in [`CPU_FORMAT.md`](../../z80/v4/CPU_FORMAT.md); the
+file it exists for is [`z80.cpu`](../../z80/v4/z80.cpu).
+
+## Installing
+
+VS Code loads any extension it finds in its extensions directory, so a symlink
+is enough — no packaging, no marketplace:
+
+```sh
+ln -s "$PWD/tools/vscode-cpu" ~/.vscode/extensions/cpu-instruction-table
+```
+
+Use `~/.vscode-server/extensions` for a remote window, or
+`~/.vscode-insiders/extensions` for Insiders. Reload the window afterwards
+(`Developer: Reload Window`), and `.cpu` files will highlight.
+
+To check what a given piece of text was scoped as, run
+`Developer: Inspect Editor Tokens and Scopes` with the cursor on it.
+
+## What it colours
+
+The three columns are scoped separately, because they are three different
+languages sharing a line.
+
+| | scoped as |
+|---|---|
+| fixed bits of an encoding | `constant.numeric.binary` |
+| a slice — the bits a vocabulary is selected by | `variable.parameter.slice` |
+| the encoding's `n` and `d` byte tokens | `constant.other.immediate` / `.displacement` |
+| mnemonic literal text | `string.unquoted.mnemonic` |
+| `$nn`, `$nnnn`, `$e`, `+d` in a mnemonic | `constant.character.format.placeholder` |
+| the first word of a step — the operation | `support.function.operation` |
+| `goto`, `if`, `vocab`, `table`, `with` | `keyword.control` |
+| `<-` | `keyword.operator.assignment` |
+| a location the CPU supplies | `variable.other.location` |
+| `{vocab:selector}` | vocabulary as a type, selector as a parameter |
+| `/delay=N` | `storage.modifier.delay` |
+| a hole, and a `-` discard | `constant.language` |
+
+Because the mnemonic column is a format string and the action column is code,
+they read differently in any theme: the mnemonic is string-coloured throughout,
+with the placeholders picked out, while the action gets the operation, operand
+and keyword colours of an ordinary language.
+
+Three things are marked `invalid` — all of them cases the compiler rejects, so
+the colour arrives before the build does:
+
+- a line that is neither blank, comment, declaration nor row (the format
+  requires every line to mean something, rather than skipping what it cannot
+  read);
+- an encoding that is not eight pattern characters, on a line that is otherwise
+  a row;
+- a `#` in the action column. `#` is only special at the start of a line, so a
+  trailing comment on a row is not a comment — it becomes part of the action and
+  fails to parse as one.
+
+## Testing a change
+
+The grammar is checked by tokenizing the real table and looking at what came
+out, which is the only way to be sure about a TextMate grammar:
+
+```sh
+npm install vscode-textmate vscode-oniguruma
+node tokenize.mjs
+```
+
+`tokenize.mjs` prints every token of `z80.cpu` with its scopes; a second
+argument filters to tokens whose scopes contain it. Two runs are the actual
+test, and both should print nothing but blank lines:
+
+```sh
+node tokenize.mjs ../../z80/v4/z80.cpu '<unscoped>'
+node tokenize.mjs ../../z80/v4/z80.cpu invalid
+```
+
+## Limits
+
+This is a grammar, not a parser. It knows the shape of the format but none of
+its checks: it cannot tell you that a vocabulary has the wrong number of members
+for the slice that selects it, that two rows overlap partially, or that a name
+does not resolve — those need the CPU description, and they are what the build
+is for. What it can see is one line at a time.

@@ -1,0 +1,301 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "CPU instruction table",
+  "scopeName": "source.cpu",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#vocab-decl" },
+    { "include": "#table-decl" },
+    { "include": "#row" },
+    { "include": "#row-bad-encoding" },
+    { "include": "#unrecognised-line" }
+  ],
+  "repository": {
+    "comment": {
+      "comment": "`#` is only special at the start of a line; a trailing one is part of the action column.",
+      "name": "comment.line.number-sign.cpu",
+      "match": "^\\s*#.*$"
+    },
+
+    "unrecognised-line": {
+      "comment": "Every line must mean something. What is neither blank, comment, declaration nor row is a mistyped one of them.",
+      "name": "invalid.illegal.unrecognised-line.cpu",
+      "match": "^(?!\\s*(?:#|vocab\\s|table\\s|$))[^|]*$"
+    },
+
+    "vocab-decl": {
+      "name": "meta.declaration.vocab.cpu",
+      "begin": "^\\s*(vocab)\\s+([^\\s=]+)\\s*(=)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.vocab.cpu" },
+        "2": { "name": "entity.name.type.vocab.cpu" },
+        "3": { "name": "keyword.operator.assignment.cpu" }
+      },
+      "end": "$",
+      "patterns": [{ "include": "#member" }]
+    },
+
+    "table-decl": {
+      "name": "meta.declaration.table.cpu",
+      "begin": "^\\s*(table)\\s+([^\\s(=]+)",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.table.cpu" },
+        "2": { "name": "entity.name.type.table.cpu" }
+      },
+      "end": "$",
+      "patterns": [
+        { "include": "#view-decl" },
+        { "include": "#derivation" },
+        { "include": "#substitution" },
+        { "include": "#separator-comma" },
+        { "include": "#reference" },
+        { "include": "#member" }
+      ]
+    },
+
+    "view-decl": {
+      "comment": "(view:index) — this table takes a parameter drawn from a vocabulary.",
+      "match": "(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\))",
+      "captures": {
+        "1": { "name": "punctuation.definition.view.begin.cpu" },
+        "2": { "name": "variable.parameter.view.cpu" },
+        "3": { "name": "punctuation.separator.view.cpu" },
+        "4": { "name": "entity.name.type.vocab.cpu" },
+        "5": { "name": "punctuation.definition.view.end.cpu" }
+      }
+    },
+
+    "derivation": {
+      "comment": "= parent with …",
+      "match": "(=)\\s*([^\\s]+)\\s+(with)\\b",
+      "captures": {
+        "1": { "name": "keyword.operator.assignment.cpu" },
+        "2": { "name": "entity.name.type.table.cpu" },
+        "3": { "name": "keyword.control.with.cpu" }
+      }
+    },
+
+    "substitution": {
+      "comment": "vocabulary.member -> replacement. The rule names the vocabulary it rewrites.",
+      "match": "([A-Za-z_][A-Za-z0-9_]*)(\\.)([^\\s>]+)\\s*(->)",
+      "captures": {
+        "1": { "name": "entity.name.type.vocab.cpu" },
+        "2": { "name": "punctuation.accessor.cpu" },
+        "3": { "name": "variable.other.member.cpu" },
+        "4": { "name": "keyword.operator.substitution.cpu" }
+      }
+    },
+
+    "member": {
+      "comment": "display[:operation[+operand]][/delay=N], or `-` for a hole.",
+      "match": "(?<![^\\s=,])(?:(-)|(0[xX][0-9a-fA-F]+|[0-9]+)|(\\([^)\\s]*\\))|([^\\s:/+,]+))(?:(:)([A-Za-z_][A-Za-z0-9_]*))?(?:(\\+)([^\\s/,]+))?(?:(/)(delay)(=)([0-9]))?(?=[\\s,]|$)",
+      "captures": {
+        "1": { "name": "constant.language.hole.cpu" },
+        "2": { "name": "constant.numeric.cpu" },
+        "3": { "patterns": [{ "include": "#indirect" }] },
+        "4": { "name": "variable.other.location.cpu" },
+        "5": { "name": "punctuation.separator.member.cpu" },
+        "6": { "name": "support.function.operation.cpu" },
+        "7": { "name": "keyword.operator.append.cpu" },
+        "8": { "patterns": [{ "include": "#number" }, { "include": "#location" }] },
+        "9": { "name": "punctuation.separator.attribute.cpu" },
+        "10": { "name": "storage.modifier.delay.cpu" },
+        "11": { "name": "punctuation.separator.key-value.cpu" },
+        "12": { "name": "constant.numeric.cpu" }
+      }
+    },
+
+    "row": {
+      "comment": "Three columns: encoding | mnemonic | action.",
+      "name": "meta.row.cpu",
+      "begin": "^([01A-Za-z_]{8})((?:\\s+[nd]\\b)*)\\s*(?=\\|)",
+      "beginCaptures": {
+        "1": {
+          "name": "meta.encoding.cpu",
+          "patterns": [
+            { "match": "[01]+", "name": "constant.numeric.binary.cpu" },
+            { "match": "[^01]+", "name": "variable.parameter.slice.cpu" }
+          ]
+        },
+        "2": { "patterns": [{ "include": "#encoding-bytes" }] }
+      },
+      "end": "$",
+      "patterns": [{ "include": "#mnemonic-column" }]
+    },
+
+    "row-bad-encoding": {
+      "comment": "A line with `|` is a row, so anything else before the first one is a broken pattern.",
+      "name": "meta.row.cpu",
+      "begin": "^([^|]+?)\\s*(?=\\|)",
+      "beginCaptures": {
+        "1": { "name": "invalid.illegal.encoding.cpu" }
+      },
+      "end": "$",
+      "patterns": [{ "include": "#mnemonic-column" }]
+    },
+
+    "encoding-bytes": {
+      "patterns": [
+        { "match": "\\bn\\b", "name": "constant.other.immediate.cpu" },
+        { "match": "\\bd\\b", "name": "constant.other.displacement.cpu" }
+      ]
+    },
+
+    "mnemonic-column": {
+      "name": "meta.mnemonic.cpu",
+      "begin": "\\|",
+      "beginCaptures": { "0": { "name": "punctuation.separator.column.cpu" } },
+      "end": "$",
+      "patterns": [
+        { "include": "#action-column" },
+        { "include": "#reference" },
+        { "include": "#placeholder" },
+        { "match": "[^{}$|+]+", "name": "string.unquoted.mnemonic.cpu" }
+      ]
+    },
+
+    "placeholder": {
+      "comment": "What the disassembler substitutes: immediates, a relative target, a displacement.",
+      "match": "\\$nnnn|\\$nn|\\$e|\\+d",
+      "name": "constant.character.format.placeholder.cpu"
+    },
+
+    "action-column": {
+      "name": "meta.action.cpu",
+      "begin": "\\|",
+      "beginCaptures": { "0": { "name": "punctuation.separator.column.cpu" } },
+      "end": "$",
+      "patterns": [
+        { "include": "#step-goto" },
+        { "include": "#step-if" },
+        { "include": "#step-operation" },
+        { "include": "#assign" },
+        { "include": "#separator-step" },
+        { "include": "#separator-comma" },
+        { "include": "#delay-attribute" },
+        { "include": "#reference" },
+        { "include": "#indirect" },
+        { "include": "#discard" },
+        { "include": "#immediate" },
+        { "include": "#number" },
+        { "include": "#location" },
+        { "include": "#trailing-comment" }
+      ]
+    },
+
+    "trailing-comment": {
+      "comment": "`#` is only special at the start of a line, so a trailing comment on a row is part of the action and will not parse as one.",
+      "match": "#.*$",
+      "name": "invalid.illegal.trailing-comment.cpu"
+    },
+
+    "step-goto": {
+      "comment": "goto must be the row's only step; the view is chosen by name or forwarded.",
+      "match": "(?:(?<=\\|)|(?<=;))\\s*(goto)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\)))?",
+      "captures": {
+        "1": { "name": "keyword.control.goto.cpu" },
+        "2": { "name": "entity.name.type.table.cpu" },
+        "3": { "name": "punctuation.definition.view.begin.cpu" },
+        "4": { "name": "variable.parameter.view.cpu" },
+        "5": { "name": "punctuation.definition.view.end.cpu" }
+      }
+    },
+
+    "step-if": {
+      "comment": "`if` guards the rest of the row; what follows it is an operation like any other.",
+      "match": "(?:(?<=\\|)|(?<=;))\\s*(if)\\s+(?:(\\{[^}]*\\})|([A-Za-z_][A-Za-z0-9_]*))",
+      "captures": {
+        "1": { "name": "keyword.control.conditional.cpu" },
+        "2": { "patterns": [{ "include": "#reference" }] },
+        "3": { "name": "support.function.operation.cpu" }
+      }
+    },
+
+    "step-operation": {
+      "comment": "The first word of a step is the operation, and it may itself be a reference.",
+      "match": "(?:(?<=\\|)|(?<=;))\\s*(?:(\\{[^}]*\\})|([A-Za-z_][A-Za-z0-9_]*))",
+      "captures": {
+        "1": { "patterns": [{ "include": "#reference" }] },
+        "2": { "name": "support.function.operation.cpu" }
+      }
+    },
+
+    "assign": {
+      "comment": "Separates destinations from operands. Without it, everything is an operand.",
+      "match": "<-",
+      "name": "keyword.operator.assignment.cpu"
+    },
+
+    "separator-step": {
+      "match": ";",
+      "name": "punctuation.separator.step.cpu"
+    },
+
+    "separator-comma": {
+      "comment": "Decoration: stripped from the end of a word, and meaning nothing.",
+      "match": ",",
+      "name": "punctuation.separator.comma.cpu"
+    },
+
+    "delay-attribute": {
+      "match": "(/)(delay)(=)([0-9])",
+      "captures": {
+        "1": { "name": "punctuation.separator.attribute.cpu" },
+        "2": { "name": "storage.modifier.delay.cpu" },
+        "3": { "name": "punctuation.separator.key-value.cpu" },
+        "4": { "name": "constant.numeric.cpu" }
+      }
+    },
+
+    "reference": {
+      "comment": "{vocabulary:selector} — the selector is a slice letter or a view name.",
+      "match": "(\\{)([^:}\\s]+)(:)([^}\\s]+)(\\})",
+      "captures": {
+        "1": { "name": "punctuation.definition.reference.begin.cpu" },
+        "2": { "name": "entity.name.type.vocab.cpu" },
+        "3": { "name": "punctuation.separator.reference.cpu" },
+        "4": { "name": "variable.parameter.slice.cpu" },
+        "5": { "name": "punctuation.definition.reference.end.cpu" }
+      }
+    },
+
+    "indirect": {
+      "comment": "Parentheses are a modifier, not a kind: (hl) is hl used as an address.",
+      "name": "meta.indirect.cpu",
+      "begin": "\\(",
+      "beginCaptures": { "0": { "name": "punctuation.section.indirect.begin.cpu" } },
+      "end": "\\)",
+      "endCaptures": { "0": { "name": "punctuation.section.indirect.end.cpu" } },
+      "patterns": [
+        { "match": "\\+d", "name": "constant.other.displacement.cpu" },
+        { "include": "#immediate" },
+        { "include": "#number" },
+        { "include": "#location" }
+      ]
+    },
+
+    "discard": {
+      "comment": "Discards a result, and may only be a destination.",
+      "match": "(?<![^\\s|])-(?=[\\s,]|$)",
+      "name": "constant.language.discard.cpu"
+    },
+
+    "immediate": {
+      "comment": "The row's whole immediate, however many bytes the encoding fetched.",
+      "match": "\\bn\\b",
+      "name": "constant.other.immediate.cpu"
+    },
+
+    "number": {
+      "comment": "Unsigned, and checked against the parameter it is passed to.",
+      "match": "\\b(?:0[xX][0-9a-fA-F]+|[0-9]+)\\b",
+      "name": "constant.numeric.cpu"
+    },
+
+    "location": {
+      "comment": "A name the CPU supplies, resolved by reflection and ignoring case.",
+      "match": "[A-Za-z_][A-Za-z0-9_]*",
+      "name": "variable.other.location.cpu"
+    }
+  }
+}

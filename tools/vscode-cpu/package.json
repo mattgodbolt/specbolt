@@ -1,0 +1,36 @@
+{
+  "name": "cpu-instruction-table",
+  "displayName": "CPU instruction tables",
+  "description": "Syntax highlighting for the .cpu instruction-set description format",
+  "version": "0.1.0",
+  "publisher": "specbolt",
+  "license": "BSD-3-Clause",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cpu",
+        "aliases": [
+          "CPU instruction table",
+          "cpu"
+        ],
+        "extensions": [
+          ".cpu"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cpu",
+        "scopeName": "source.cpu",
+        "path": "./syntaxes/cpu.tmLanguage.json"
+      }
+    ]
+  }
+}
