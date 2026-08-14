@@ -329,7 +329,11 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xdd, 0xe5) == "push ix");
     CHECK(dis(0xdd, 0x09) == "add ix, bc");
     CHECK(dis(0xdd, 0x22, 0xad, 0xba) == "ld (0xbaad), ix");
+    // A rename would make this `ex de, ix`; the table names hl literally here,
+    // and only vocabulary members are renamed by a view. See #39.
+    CHECK(dis(0xdd, 0xeb) == "ex de, hl");
   }
+  SECTION("Test fd prefixes") { CHECK(dis(0xfd, 0xeb) == "ex de, hl"); }
   SECTION("Test ddcb prefixes") {
     CHECK(dis(0xdd, 0xcb, 0xff, 0x06) == "rlc (ix-0x01)");
     CHECK(dis(0xdd, 0xcb, 0x23, 0xf6) == "set 6, (ix+0x23)");
