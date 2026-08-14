@@ -163,6 +163,37 @@ static_assert(
   return only_match(candidates, name, line);
 }
 
+// An enumerator of the enum a *parameter* asks for, found by the spelling it
+// declares rather than by its C++ identifier. The parameter type is the scope,
+// and that is what keeps these names out of the location namespace: a spelling
+// is free to collide with the name of a register and mean something else
+// entirely. (On the Z80, `i` and `d` are a direction here and the I and D
+// registers everywhere else.)
+//
+// The annotation is read back with `extract`, and `type_of` on an annotation is
+// const-qualified, hence `^^const Spelling` rather than `^^Spelling`.
+[[nodiscard]] consteval std::meta::info find_spelling(
+    const std::meta::info scope, const std::string_view name, const std::size_t line) {
+  std::vector<std::meta::info> candidates;
+  std::string offered;
+  for (const auto enumerator: std::meta::enumerators_of(scope))
+    for (const auto annotation: std::meta::annotations_of(enumerator))
+      if (std::meta::type_of(annotation) == ^^const Spelling) {
+        const auto spelling = std::meta::extract<Spelling>(annotation).text;
+        offered += (offered.empty() ? " (it offers " : ", ") + std::string(spelling.view());
+        if (same_ignoring_case(spelling.view(), name))
+          candidates.push_back(enumerator);
+      }
+  if (candidates.empty())
+    throw table_error(line, "'" + std::string(name) + "' is not how any member of '" +
+                                std::string(std::meta::identifier_of(scope)) + "' is spelled" +
+                                (offered.empty() ? ", and it spells none of them" : offered + ")"));
+  if (candidates.size() > 1)
+    throw table_error(line, "'" + std::string(name) + "' is how more than one member of '" +
+                                std::string(std::meta::identifier_of(scope)) + "' is spelled");
+  return candidates.front();
+}
+
 // `inc8`, `add16`, `is_set`: a static member function of one of the CPU's
 // operation scopes.
 [[nodiscard]] consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
@@ -252,6 +283,12 @@ template<Operand Op, std::size_t Line, typename Parameter>
     // check against the parameter: the mask already bounds it.
     return static_cast<Parameter>(Op.slice.extract(opcode));
   else if constexpr (Op.kind == Operand::Kind::Constant) {
+    // A parameter that is an enum has names for its values, and those names are
+    // what a spelling annotation exists to expose. Casting a number into one
+    // would get past every check the enum was introduced to impose, so this is
+    // where a description is made to name a value rather than encode one.
+    static_assert(!std::is_enum_v<Parameter>,
+        "this parameter is an enum, so name one of its spellings rather than passing a number");
     if constexpr (std::integral<Parameter>)
       static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
           "this constant does not fit the parameter it is passed to");
@@ -268,6 +305,13 @@ template<Operand Op, std::size_t Line, typename Parameter>
     // run, so the machine is handed the selector and picks. `Op.name` is the
     // vocabulary's name here rather than a member's -- see `resolve`.
     return cpu.read([:find_location(Op.name.view(), Line):], view);
+  else if constexpr (std::is_enum_v<Parameter>)
+    // The parameter asks for an enum, so the name is one of *its* members
+    // rather than a place to read from: spliced as a value, with nothing
+    // fetched. `Parameter` is the scope, which is the whole trick -- the same
+    // rule that already lets a parameter's type decide how wide an access is
+    // now decides which enum a bare name belongs to.
+    return [:find_spelling(^^Parameter, Op.name.view(), Line):];
   else
     // An *enumerator* splice: this yields a prvalue whose type is the enum the
     // name was found in, so the machine's overload set decides what reading it

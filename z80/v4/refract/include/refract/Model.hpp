@@ -42,6 +42,22 @@ struct Name {
   constexpr bool operator==(const Name &) const = default;
 };
 
+// How a `.cpu` file spells an enumerator, when that differs from what C++ calls
+// it. Written as a C++26 annotation (P3394) on the enumerator itself:
+//
+//   enum class Direction { Up [[=Spelling{"i"}]], Down [[=Spelling{"d"}]] };
+//
+// The enum is the thing that knows. `Direction::Up` means "step forwards", and
+// that the Z80 writes it `i` is a fact about the Z80's assembly syntax, not
+// about the direction -- so it belongs on the declaration rather than in a
+// table the description has to keep in step.
+//
+// An annotation's type must be *structural*, which is exactly what `Name` was
+// built for: `std::string_view` here is rejected outright.
+struct Spelling {
+  Name text{};
+};
+
 // Which vocabulary to look a value up in, and what says which of its members to
 // take: a slice of the opcode, or -- when `from_view` is set -- the decoding
 // table's own parameter, which a prefix chose and the instruction does not
