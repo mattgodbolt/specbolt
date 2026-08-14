@@ -24,6 +24,12 @@ struct Disassembly {
   std::size_t length{};
 };
 
+// How far a chain of prefixes is followed before the answer is "??". Nothing in
+// the description bounds one -- a prefix may reach its own table -- and a
+// listing that walks a kilobyte of `0xdd` before rendering one line is no use
+// to the caller even where it terminates.
+inline constexpr std::size_t max_instruction_bytes = 8;
+
 // `byte_at(n)` is the nth byte of the instruction, counting from `address`.
 // `address` itself is needed because a relative jump renders where it lands
 // rather than how far it goes.
@@ -39,21 +45,31 @@ struct Disassembly {
   // The view a prefix chose, carried for the same reason the interpreter
   // carries it: the row is decoded under it and the text depends on it.
   std::uint8_t view = 0;
+  std::uint8_t opcode = 0;
   while (true) {
-    row = description.row_for(table, byte_at(offset));
+    opcode = static_cast<std::uint8_t>(byte_at(offset));
+    row = description.row_for(table, opcode);
     ++offset;
     if (!row)
       return {"??", offset};
+    // Taken before the terminal test, because the opcode is this row's own byte
+    // and the displacement follows it: reading it back afterwards would find
+    // the displacement instead.
     if (row->reads_displacement)
       latch = byte_at(offset++);
     const auto next = transfers_to(*row);
     if (!next)
       break;
+    // `dd dd dd ...` is a legal and unbounded Z80 instruction, and the chip is
+    // right to spend 4T a byte on it forever. A disassembler is asked what is
+    // at an address and has to answer, so it gives up rather than following a
+    // run of prefixes to the end of memory.
+    if (offset >= max_instruction_bytes)
+      return {"??", offset};
     view = row->steps[0].forwards_view ? view : row->steps[0].target_view;
     table = *next;
   }
 
-  const auto opcode = byte_at(offset - 1);
   // The table a row was *decoded in* owns the renaming, which is why this asks
   // the table index rather than `row->table`: an inherited row renders under
   // the rules of whoever inherited it.
