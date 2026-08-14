@@ -40,7 +40,10 @@ struct Vector {
   [[nodiscard]] constexpr auto end() { return storage.begin() + static_cast<std::ptrdiff_t>(count); }
   [[nodiscard]] constexpr const T &operator[](const std::size_t at) const { return storage[at]; }
   [[nodiscard]] constexpr T &operator[](const std::size_t at) { return storage[at]; }
-  [[nodiscard]] constexpr const T &back() const { return storage[count - 1]; }
+  // Compares the unused tail as well as the used part, which is sound only
+  // because nothing here ever shrinks: two vectors holding the same sequence
+  // reached it by the same appends, so their spare slots are equally untouched.
+  // This is how a `Call` is compared as a template argument, so it matters.
   constexpr bool operator==(const Vector &) const = default;
 };
 

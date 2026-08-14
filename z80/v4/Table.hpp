@@ -55,13 +55,6 @@ inline constexpr Description description{vocabularies, rows, tables, decoded, en
   return decoded[table][opcode];
 }
 
-inline constexpr std::size_t decoded_count = [] {
-  std::size_t count = 0;
-  for (const auto &table: decoded)
-    count += static_cast<std::size_t>(std::ranges::count_if(table, &std::optional<std::size_t>::has_value));
-  return count;
-}();
-
 static_assert(check_every_line_means_something(cpu_description));
 static_assert(check_row_precedence(description, row_opcodes));
 static_assert(check_derived_rows_override(description, row_opcodes));

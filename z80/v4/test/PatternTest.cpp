@@ -19,8 +19,6 @@ TEST_CASE("Opcode bit parsing") {
     STATIC_CHECK(matched.opcode_bits == 0b00000001);
     STATIC_CHECK(matched.slices.size() == 1);
     STATIC_CHECK(matched.slices[0] == BitSlice{'p', 4, 3});
-    STATIC_CHECK(matched.variable_mask() == 0b00110000);
-    STATIC_CHECK(matched.fixed_mask() == 0b11001111);
   }
   SECTION("LD r, r'") {
     constexpr auto matched = parse_pattern("01yyyzzz", 1);
@@ -28,19 +26,16 @@ TEST_CASE("Opcode bit parsing") {
     STATIC_CHECK(matched.slices.size() == 2);
     STATIC_CHECK(matched.slices[0] == BitSlice{'y', 3, 7});
     STATIC_CHECK(matched.slices[1] == BitSlice{'z', 0, 7});
-    STATIC_CHECK(matched.fixed_mask() == 0b11000000);
   }
   SECTION("Wholly fixed") {
     constexpr auto matched = parse_pattern("11001001", 1);
     STATIC_CHECK(matched.opcode_bits == 0xc9);
     STATIC_CHECK(matched.slices.size() == 0);
-    STATIC_CHECK(matched.fixed_mask() == 0xff);
   }
   SECTION("Wholly variable") {
     constexpr auto matched = parse_pattern("nnnnnnnn", 1);
     STATIC_CHECK(matched.opcode_bits == 0);
     STATIC_CHECK(matched.slices[0] == BitSlice{'n', 0, 0xff});
-    STATIC_CHECK(matched.fixed_mask() == 0);
   }
   SECTION("Rejects bad patterns") {
     CHECK_THROWS(parse_pattern("0101", 1));
@@ -51,26 +46,16 @@ TEST_CASE("Opcode bit parsing") {
   SECTION("Accepts the widest supported field count") {
     constexpr auto matched = parse_pattern("wwxxyyzz", 1);
     STATIC_CHECK(matched.slices.size() == Pattern::max_slices);
-    STATIC_CHECK(matched.fixed_mask() == 0);
   }
 }
 
 constexpr auto ld_rr_imm16 = parse_pattern("00pp0001", 1);
 
-TEST_CASE("Opcode matching") {
+// A pattern is only ever read in one direction: `place` builds the opcodes a
+// row claims, and `extract` reads a value back out of one. Nothing tests an
+// opcode *against* a pattern, because nothing does that -- see `opcodes_of`.
+TEST_CASE("Opcode slices") {
   constexpr auto matched = ld_rr_imm16;
-  SECTION("Matches every variant") {
-    STATIC_CHECK(matched.matches(0x01));
-    STATIC_CHECK(matched.matches(0x11));
-    STATIC_CHECK(matched.matches(0x21));
-    STATIC_CHECK(matched.matches(0x31));
-  }
-  SECTION("Rejects others") {
-    STATIC_CHECK(!matched.matches(0x00));
-    STATIC_CHECK(!matched.matches(0x02));
-    STATIC_CHECK(!matched.matches(0x41));
-    STATIC_CHECK(!matched.matches(0x09));
-  }
   SECTION("Extracts and places field values") {
     STATIC_CHECK(matched.slices[0].extract(0x21) == 2);
     STATIC_CHECK(matched.slices[0].place(3) == 0x30);

@@ -4,6 +4,7 @@
 #include "refract/TableError.hpp"
 #include "refract/Vector.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string_view>
@@ -31,17 +32,6 @@ SPECBOLT_EXPORT struct Pattern {
 
   std::uint8_t opcode_bits{};
   Vector<BitSlice, max_slices> slices{};
-
-  [[nodiscard]] constexpr std::uint8_t variable_mask() const {
-    std::uint8_t result = 0;
-    for (const auto &slice: slices)
-      result = static_cast<std::uint8_t>(result | slice.place(slice.mask));
-    return result;
-  }
-  [[nodiscard]] constexpr std::uint8_t fixed_mask() const { return static_cast<std::uint8_t>(~variable_mask()); }
-  [[nodiscard]] constexpr bool matches(const std::uint8_t opcode) const {
-    return (opcode & fixed_mask()) == opcode_bits;
-  }
 };
 
 SPECBOLT_EXPORT [[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
@@ -56,19 +46,16 @@ SPECBOLT_EXPORT [[nodiscard]] constexpr Pattern parse_pattern(const std::string_
         result.opcode_bits = static_cast<std::uint8_t>(result.opcode_bits | (1u << bit));
       continue;
     }
-    auto extended = false;
-    for (auto &slice: result.slices) {
-      if (slice.name != character)
-        continue;
-      if (slice.shift != bit + 1)
-        throw table_error(line, "opcode pattern has non-contiguous bits for a slice");
-      slice.shift = bit;
-      slice.mask = static_cast<std::uint8_t>((slice.mask << 1) | 1);
-      extended = true;
-      break;
+    const auto found = std::ranges::find(result.slices, character, &BitSlice::name);
+    if (found == result.slices.end()) {
+      if (!result.slices.try_push_back({character, bit, 1}))
+        throw table_error(line, "opcode pattern has too many slices");
+      continue;
     }
-    if (!extended && !result.slices.try_push_back({character, bit, 1}))
-      throw table_error(line, "opcode pattern has too many slices");
+    if (found->shift != bit + 1)
+      throw table_error(line, "opcode pattern has non-contiguous bits for a slice");
+    found->shift = bit;
+    found->mask = static_cast<std::uint8_t>((found->mask << 1) | 1);
   }
   return result;
 }
