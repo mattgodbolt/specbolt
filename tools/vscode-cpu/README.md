@@ -19,19 +19,19 @@ Use `~/.vscode-insiders/extensions` for Insiders. Reload the window afterwards
 ### Over a remote connection
 
 A grammar is a UI extension: it runs in the *local* extension host, whichever
-machine the code is on. So it goes in the local `~/.vscode/extensions` — not the
-remote's `~/.vscode-server/extensions` — and the symlink above is no use, since
-the local machine cannot see the checkout. Build a `.vsix` on the remote and
-install it locally:
+machine the code is on. So it goes in the local `~/.vscode/extensions`, never
+the remote's `~/.vscode-server/extensions`.
+
+The tidy answer is a checkout on the local machine as well, and the symlink
+above — which goes on tracking the repository, so an edit to the grammar needs
+only a window reload. Failing that, package it and carry the result across:
 
 ```sh
-npx @vscode/vsce package          # in this directory, on the remote
-# then, on the local machine:
-scp remote:path/to/cpu-instruction-table-0.1.0.vsix .
-code --install-extension cpu-instruction-table-0.1.0.vsix
+npx @vscode/vsce package                                   # in this directory
+code --install-extension cpu-instruction-table-0.1.0.vsix  # on the local machine
 ```
 
-That copy does not track the repository, so a change to the grammar means
+A packaged copy does not track the repository, so changing the grammar means
 packaging and installing again.
 
 To check what a given piece of text was scoped as, run
