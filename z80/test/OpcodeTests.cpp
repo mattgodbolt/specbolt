@@ -1035,6 +1035,19 @@ struct OpcodeTester {
         CHECK(z80.flags() == (Flags::Zero() | Flags::HalfCarry()));
       } // not supported in the old code
     }
+    SECTION("ex de, hl") {
+      if (use_new_code) {
+        regs.set(RegisterFile::R16::DE, 0x0102);
+        regs.set(RegisterFile::R16::HL, 0xcafe);
+        regs.set(RegisterFile::R16::IX, 0xabcd);
+        run(0xdd, 0xeb);
+        CHECK(z80.pc() == 2);
+        CHECK(z80.cycle_count() == 8);
+        CHECK(regs.get(RegisterFile::R16::DE) == 0xcafe);
+        CHECK(regs.get(RegisterFile::R16::HL) == 0x0102);
+        CHECK(regs.get(RegisterFile::R16::IX) == 0xabcd);
+      }
+    }
     SECTION("inc ix") {
       regs.set(RegisterFile::R16::IX, 0x12ff);
       run(0xdd, 0x23); // inc ix
@@ -1125,6 +1138,19 @@ struct OpcodeTester {
 
   void fd_prefix() {
     // Assumed that if we turned HL->IX for all the 0xdd prefix, then 0xfd works if one of them works...
+    SECTION("ex de, hl") {
+      if (use_new_code) {
+        regs.set(RegisterFile::R16::DE, 0x0102);
+        regs.set(RegisterFile::R16::HL, 0xcafe);
+        regs.set(RegisterFile::R16::IY, 0xabcd);
+        run(0xfd, 0xeb);
+        CHECK(z80.pc() == 2);
+        CHECK(z80.cycle_count() == 8);
+        CHECK(regs.get(RegisterFile::R16::DE) == 0xcafe);
+        CHECK(regs.get(RegisterFile::R16::HL) == 0x0102);
+        CHECK(regs.get(RegisterFile::R16::IY) == 0xabcd);
+      }
+    }
     SECTION("inc iy") {
       regs.set(RegisterFile::R16::IY, 0x12ff);
       run(0xfd, 0x23); // inc iy
