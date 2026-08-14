@@ -138,8 +138,16 @@ static_assert(
     const std::span<const std::meta::info> candidates, const std::string_view name, const std::size_t line) {
   if (candidates.empty())
     throw table_error(line, "this CPU has nothing named '" + std::string(name) + "'");
-  if (candidates.size() > 1)
-    throw table_error(line, "this CPU has more than one thing named '" + std::string(name) + "'");
+  if (candidates.size() > 1) {
+    // Naming both is the point: the scopes are found by scanning rather than
+    // listed, so "more than one" is most likely a scope the reader did not know
+    // was being searched.
+    std::string found;
+    for (const auto candidate: candidates)
+      found +=
+          (found.empty() ? " (in " : ", ") + std::string(std::meta::identifier_of(std::meta::parent_of(candidate)));
+    throw table_error(line, "this CPU has more than one thing named '" + std::string(name) + "'" + found + ")");
+  }
   return candidates.front();
 }
 
