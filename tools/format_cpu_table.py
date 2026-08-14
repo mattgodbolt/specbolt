@@ -18,12 +18,12 @@ from pathlib import Path
 
 
 def is_row(line: str) -> bool:
-    """Mirrors `is_row` in Table.hpp: a row is a non-comment line with a `|`."""
+    """Mirrors `is_row` in Lower.hpp: a row is a non-comment, non-declaration line with a `|`."""
     stripped = line.strip()
     return (
         bool(stripped)
         and not stripped.startswith("#")
-        and not stripped.startswith("field ")
+        and not stripped.startswith("vocab ")
         and not stripped.startswith("table ")
         and "|" in stripped
     )
