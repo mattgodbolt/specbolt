@@ -1567,7 +1567,28 @@ Two ways out, and they are not equal:
   collapse in `indexed`/`indexed_cb` and keeps it in `base`, `cb` and `ed`, which is where `arith`,
   `logic`, `ld r,r'` and the `cb` families live -- most of the prize.
 
-The spike as built is on `stash@{0}`.
+**Called after a third correction.** The narrower fix -- do not shape-class a vocabulary the table
+rewrites -- was tried and also failed, and the failure moved from `iy` to `ix`, which is the tell:
+
+```
+CHECK( regs.ix() == 0x1300 )   with expansion:  4863 == 4864
+```
+
+The diagnosis, which is the useful thing to keep: **`body_key` and `resolve` must agree about what a
+class is, and only `resolve` was taught the exclusion.** `body_key` went on folding ordinals 4 and 5
+onto the class's first member, so two opcodes shared a body while their operands resolved two
+different ways -- one through the runtime view, one as a plain register. One body, two answers.
+
+That is a ten-minute fix (give `body_key` the same condition) and the spike was dropped anyway,
+because three corrections in one sitting is the point at which a design is telling you something.
+What it is telling us is that **the class of a member is not a property of the member alone** -- it
+depends on the rules of the table that decoded it, and every place that computes it has to say so.
+Whoever picks this up should start by giving `body_key` and `resolve` a *shared* function that
+answers "what class is ordinal n here", rather than two conditions that have to be kept in step.
+
+Worth weighing before picking it up at all: the predicted -430 bodies was never verified, and the
+last two predictions in this file were 33% too optimistic and outright wrong respectively. The
+compile-time win from `bit` was real and measured; this one is arithmetic.
 
 At run time this is one load from a constant table where there used to be a constant. The class
 condition -- all members' locations of the same kind -- is what makes the array well-typed.
