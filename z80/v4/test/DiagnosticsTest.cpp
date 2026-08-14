@@ -237,6 +237,66 @@ TEST_CASE("Table diagnostics") {
                             "table u = t with r.b->c, r.c->b, r.b->c, r.c->b, r.b->c, r.c->b, r.b->c\n"),
         Equals("z80.cpu:5: too many substitutions in table"));
   }
+  SECTION("A table's view is declared with itself and a vocabulary") {
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view)\n"),
+        Equals("z80.cpu:4: a table view names itself and a vocabulary, as in 'indexed(view:index)'"));
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view:i\n"),
+        Equals("z80.cpu:4: unterminated '(' in table view"));
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view:nope)\n"),
+        Equals("z80.cpu:4: table view names a vocabulary that does not exist"));
+  }
+  SECTION("A view reference must line up with the view it is selected by") {
+    // `r` has three members and the view has two, so no opcode could pick
+    // between them: the reference has nothing to mean.
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\nvocab r = b c d\ntable t\n11011101 | (dd) | goto u(ix)\n"
+                            "table u(view:i)\n00000000 | ld {r:view} | ld8 {r:view} <- a\n"),
+        Equals("z80.cpu:6: vocabulary has a different number of members than the table's view"));
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\nvocab r = b c\ntable t\n11011101 | (dd) | goto u\n"
+                            "0000000y | ld {r:y} | ld8 {r:y} <- a\ntable u = t with r.b -> {i:view}\n"),
+        Equals("z80.cpu:6: only a table that takes a view may substitute a view reference"));
+  }
+  SECTION("A goto says which view the table it enters is decoded under") {
+    constexpr std::string_view vocabs = "vocab i = ix iy\nvocab j = bc de\n";
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t\n11011101 | (dd) | goto u\ntable u(view:i)\n"
+                                                  "00000000 | frob {i:view} | ld16 {i:view} <- {i:view}\n"),
+        Equals("z80.cpu:4: this table takes a view, so the goto must say which"));
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t\n11011101 | (dd) | goto u(ix)\ntable u\n"
+                                                  "00000000 | frob | nop\n"),
+        Equals("z80.cpu:4: this table takes no view, so the goto may not supply one"));
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t\n11011101 | (dd) | goto u(nope)\ntable u(view:i)\n"
+                                                  "00000000 | frob {i:view} | ld16 {i:view} <- {i:view}\n"),
+        Equals("z80.cpu:4: goto names a view that is not a member of that table's view vocabulary"));
+    // Handing a view on rather than choosing one: the two tables have to agree
+    // about what the value means, which is the vocabulary it is drawn from.
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t(view:i)\n11001011 | (cb) | goto u(view)\n"
+                                                  "00000000 | frob {i:view} | ld16 {i:view} <- {i:view}\n"
+                                                  "table u(view:j)\n"
+                                                  "00000000 | frob {j:view} | ld16 {j:view} <- {j:view}\n"),
+        Equals("z80.cpu:4: the view being handed on is drawn from a different vocabulary"));
+  }
+  SECTION("Every member of a vocabulary a view selects must have the same shape") {
+    // Nothing that runs at compile time can know which member a view will pick,
+    // so every check resolves at member 0 and applies the answer to all of them.
+    // Members that disagree would make that silently wrong rather than wrong
+    // out loud -- one addressing mode executed and another printed.
+    constexpr std::string_view prefix = "vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n"
+                                        "table u(view:i)\n00000000 | ld {m:view} | ld8 {m:view} <- a\n";
+    CHECK_NOTHROW(parse("vocab m = (ix+d)/delay=1 (iy+d)/delay=1\n" + std::string(prefix)));
+    // The mistake this exists for: one member displaced and the other not, so
+    // the `fd` page would run `(iy+d)` and print `(iy)`.
+    CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy)\n" + std::string(prefix)),
+        Equals("z80.cpu:6: vocabulary 'm' is selected by a view, so all of its members must have the same shape; "
+               "'(iy)' does not match '(ix+d)'"));
+    // Disagreeing about the idle cycle a write-back costs is just as silent.
+    CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy+d)\n" + std::string(prefix)),
+        Equals("z80.cpu:6: vocabulary 'm' is selected by a view, so all of its members must have the same shape; "
+               "'(iy+d)' does not match '(ix+d)'"));
+    // A hole cannot be one of them either: a view has no opcode bits to leave
+    // room for a more specific row in.
+    CHECK_THROWS_WITH(parse("vocab m = ix -\n" + std::string(prefix)),
+        Equals("z80.cpu:6: vocabulary 'm' is selected by a view, so all of its members must have the same shape; "
+               "'-' does not match 'ix'"));
+  }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("vocab r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
   }

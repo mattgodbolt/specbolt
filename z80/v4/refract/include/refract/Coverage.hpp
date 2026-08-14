@@ -24,6 +24,11 @@ namespace specbolt::refract {
 // One per instruction, not one per operand. `inc (ix+d)` reads and writes
 // through the same address, and the chip reads one displacement and forms one
 // sum; forming it per operand would pay for it twice.
+//
+// No `view` parameter: every member of a vocabulary a view selects is required
+// to have the same shape, so view 0 answers for all of them. That requirement
+// is `check_view_vocabulary` in Parse.hpp, without which this would quietly
+// give the `iy` page the `ix` page's addressing mode.
 [[nodiscard]] constexpr std::optional<Operand> displaced_through(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   std::optional<Operand> found;
@@ -345,23 +350,43 @@ constexpr bool check_displacement_rendered(const Description &description) {
 // A table nothing reaches is a typo: nothing can ever decode in it. It is still
 // generated -- every table's dispatch is instantiated regardless of whether a
 // goto names it -- so this catches the mistake rather than un-checked code.
+//
+// Reachable *from the entry table*, rather than merely named by some goto: two
+// tables that only reach each other are as unreachable as one nothing names at
+// all, and cost just as much to generate. Walking the decoded tables rather
+// than the rows is what accounts for inheritance -- a derived table reaches
+// wherever its parent's rows go.
 constexpr bool check_tables_used(const Description &description) {
-  const auto rows = description.rows;
   const auto tables = description.tables;
-  for (std::size_t which = 0; which < tables.size(); ++which) {
+  for (const auto [which, table]: std::views::enumerate(tables))
     // A derived table with no rows of its own is its parent, renamed -- which is
     // the whole point of one.
-    if (!tables[which].derived && std::ranges::none_of(rows, [&](const Row &row) { return row.table == which; }))
-      throw table_error(tables[which].line, "this table has no rows");
-    if (which == description.entry)
-      continue;
-    const auto reached = std::ranges::any_of(rows, [&](const Row &row) {
-      return std::ranges::any_of(
-          row.steps, [&](const Step &step) { return step.kind == Step::Kind::Goto && step.target == which; });
-    });
-    if (!reached)
-      throw table_error(tables[which].line, "no goto reaches this table, so nothing in it is ever checked");
+    if (!table.derived && !std::ranges::contains(description.rows, static_cast<std::uint8_t>(which), &Row::table))
+      throw table_error(table.line, "this table has no rows");
+
+  std::vector<bool> reachable(tables.size());
+  std::vector<std::uint8_t> pending;
+  const auto reach = [&](const std::uint8_t table) {
+    if (!reachable[table]) {
+      reachable[table] = true;
+      pending.push_back(table);
+    }
+  };
+  reach(description.entry);
+  while (!pending.empty()) {
+    const auto from = pending.back();
+    pending.pop_back();
+    // Totality is checked separately and after this, so an opcode that decodes
+    // to nothing is somebody else's diagnostic rather than a reason to stop.
+    for (const auto opcode: std::views::iota(0uz, 256uz))
+      if (const auto *row = description.row_for(from, static_cast<std::uint8_t>(opcode)))
+        for (const auto &step: row->steps)
+          if (step.kind == Step::Kind::Goto)
+            reach(step.target);
   }
+  for (const auto [which, table]: std::views::enumerate(tables))
+    if (!reachable[static_cast<std::size_t>(which)])
+      throw table_error(table.line, "no goto reaches this table, so nothing in it is ever checked");
   return true;
 }
 

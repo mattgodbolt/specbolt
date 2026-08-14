@@ -16,15 +16,14 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace specbolt::refract {
 
 [[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
   std::vector<Vocabulary> result;
-  Parser lines(description);
-  while (!lines.eof()) {
-    const auto [at, text] = lines.next_line();
+  for (const auto [at, text]: lines_of(description)) {
     if (!is_vocabulary(text))
       continue;
     Parser parser(text);
@@ -56,9 +55,7 @@ namespace specbolt::refract {
 // `vocabularies` for `vocab` -- and would otherwise be skipped in silence, surfacing
 // much later as an opcode nothing decodes.
 constexpr bool check_every_line_means_something(const std::string_view description) {
-  Parser lines(description);
-  while (!lines.eof()) {
-    const auto [at, text] = lines.next_line();
+  for (const auto [at, text]: lines_of(description)) {
     if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
       continue;
     throw table_error(at, "this is not a comment, a declaration, or a row; a row needs its '|' separators");
@@ -112,7 +109,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
     const auto from = left.substr(dot + 1);
     if (from.empty())
       throw table_error(line, "a table substitution needs a name on each side of '->'");
-    if (std::ranges::none_of(vocabularies[*named].members, [&](const Member &m) { return m.display == from; }))
+    if (!std::ranges::contains(vocabularies[*named].members, from, &Member::display))
       throw table_error(line, "vocabulary '" + std::string(vocabulary) + "' has no member '" + std::string(from) + "'");
     Rule substitution{.vocabulary_index = static_cast<std::uint8_t>(*named), .from = from};
     if (to.starts_with('{')) {
@@ -139,9 +136,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 [[nodiscard]] constexpr std::vector<TableDecl> parse_tables(
     const std::string_view description, const std::span<const Vocabulary> vocabularies) {
   std::vector<TableDecl> result;
-  Parser lines(description);
-  while (!lines.eof()) {
-    const auto [at, text] = lines.next_line();
+  for (const auto [at, text]: lines_of(description)) {
     if (!is_table(text))
       continue;
     Parser parser(text);
@@ -207,6 +202,36 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   return static_cast<std::size_t>(found - matched.slices.begin());
 }
 
+// A view is chosen by a prefix, long after everything about the instruction
+// that a compile-time check can see has been settled. So every check resolves
+// such a reference at member 0 and applies the answer to all of them --
+// `displaced_through` does not even take a view -- which is only sound if the
+// members agree about everything except which location they name.
+//
+// Without this, `vocab index_mem = (ix+d)/delay=1 (iy)` compiles clean and the
+// `fd` page silently runs one addressing mode while printing another. It is the
+// one mistake in the format that would otherwise produce a wrong emulator
+// rather than a line number.
+constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::size_t line) {
+  const auto &first = vocabulary.members[0];
+  const auto shape_of = [](const Member &member) {
+    return std::tuple{member.hole, member.operand.indirect, member.operand.displaced, member.operand.write_back_delay,
+        member.operand.kind, member.operation.empty(), member.appended.has_value(), member.pieces.size()};
+  };
+  for (const auto &member: vocabulary.members) {
+    if (shape_of(member) != shape_of(first))
+      throw table_error(line, "vocabulary '" + std::string(vocabulary.name) +
+                                  "' is selected by a view, so all of its members must have the same shape; '" +
+                                  std::string(member.display) + "' does not match '" + std::string(first.display) +
+                                  "'");
+    if (!std::ranges::equal(member.pieces, first.pieces, {}, &Piece::kind, &Piece::kind))
+      throw table_error(line, "vocabulary '" + std::string(vocabulary.name) +
+                                  "' is selected by a view, so all of its members must render the same way; '" +
+                                  std::string(member.display) + "' does not match '" + std::string(first.display) +
+                                  "'");
+  }
+}
+
 // `{reg:z}` binds the vocabulary `reg` to the slice `z`; in a table that takes
 // one, `{index:view}` binds it to the view instead, which the opcode does not
 // carry and a prefix chose.
@@ -223,6 +248,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   if (table.takes_view() && slice == table.view_name) {
     if (vocabularies[*field].members.size() != vocabularies[table.view_vocabulary].members.size())
       throw table_error(line, "vocabulary has a different number of members than the table's view");
+    check_view_vocabulary(vocabularies[*field], line);
     return {.vocabulary_index = static_cast<std::uint8_t>(*field), .from_view = true};
   }
   if (slice.size() != 1)
@@ -232,7 +258,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
     throw table_error(line, "reference names a slice the opcode pattern does not define");
   if (vocabularies[*field].members.size() != std::size_t{matched.slices[*found].mask} + 1)
     throw table_error(line, "vocabulary has the wrong number of members for its opcode bits");
-  return {static_cast<std::uint8_t>(*field), static_cast<std::uint8_t>(*found)};
+  return {.vocabulary_index = static_cast<std::uint8_t>(*field), .slice_index = static_cast<std::uint8_t>(*found)};
 }
 
 [[nodiscard]] constexpr Reference reference_from_braces(const std::span<const Vocabulary> vocabularies,
@@ -410,10 +436,8 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
 [[nodiscard]] constexpr std::vector<Row> parse_rows(const std::string_view description,
     const std::span<const Vocabulary> vocabularies, const std::span<const TableDecl> tables) {
   std::vector<Row> result;
-  Parser lines(description);
   std::optional<std::uint8_t> current;
-  while (!lines.eof()) {
-    const auto [at, text] = lines.next_line();
+  for (const auto [at, text]: lines_of(description)) {
     if (is_table(text)) {
       Parser declaration(text);
       declaration.skip_word();
@@ -425,9 +449,9 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     if (!current)
       throw table_error(at, "this row is not in any table; declare one with `table <name>` first");
     // Three columns, separated by `|`: what is encoded, how it reads, what it does.
-    Parser parser(text, at);
+    Parser parser(text);
     Row row{.table = *current, .line = at};
-    parse_encoding(Parser(parser.next_field('|'), at), row);
+    parse_encoding(Parser(parser.next_field('|')), row);
     row.mnemonic = parser.next_field('|');
     // Steps run in order, separated by `;`.
     Parser sequence(Parser::trim(parser.rest()));

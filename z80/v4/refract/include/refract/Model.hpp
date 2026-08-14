@@ -158,20 +158,31 @@ using Rules = Vector<Rule, 6>;
   return any;
 }
 
+// Which rule, if any, rewrites this member of this vocabulary. The two
+// functions below must agree about which rule fires -- one returns the member
+// it produces and the other where that member came from -- so they ask the
+// same question rather than each spelling it out.
+[[nodiscard]] constexpr const Rule *rule_for(
+    const Rules &rules, const Reference reference, const std::string_view display) {
+  const auto found = std::ranges::find_if(rules,
+      [&](const Rule &rule) { return rule.vocabulary_index == reference.vocabulary_index && rule.from == display; });
+  return found == rules.end() ? nullptr : &*found;
+}
+
 // The one place a reference is followed, and therefore the one place a derived
 // table's renaming has to happen. Every column resolves the same way: the slice
 // picks a member, the opcode says which.
 // A parameterised table is decoded once per value its view can take without
 // being generated once per value, so `view` reaches here alongside the opcode.
 // Checks pass the default: every member of a view vocabulary must have the same
-// shape, so anything a check asks is true of all of them or none.
+// shape -- `check_view_vocabulary` in Parse.hpp requires it -- so anything a
+// check asks is true of all of them or none.
 [[nodiscard]] constexpr Member member_of(const std::span<const Vocabulary> vocabularies, const Reference reference,
     const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}, const std::uint8_t view = 0) {
   const auto which = reference.from_view ? view : matched.slices[reference.slice_index].extract(opcode);
   const auto &member = vocabularies[reference.vocabulary_index].members[which];
-  for (const auto &rule: rules)
-    if (rule.vocabulary_index == reference.vocabulary_index && rule.from == member.display)
-      return rule.to_is_view ? vocabularies[rule.to_vocabulary].members[view] : rule.to;
+  if (const auto *rule = rule_for(rules, reference, member.display))
+    return rule->to_is_view ? vocabularies[rule->to_vocabulary].members[view] : rule->to;
   return member;
 }
 
@@ -180,13 +191,13 @@ using Rules = Vector<Rule, 6>;
 // vocabulary rather than the member, because the member is not known yet.
 [[nodiscard]] constexpr std::pair<std::uint8_t, bool> source_of(const std::span<const Vocabulary> vocabularies,
     const Reference reference, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
-  // Member 0 stands for all of them here: this only matches rules by display,
-  // and a view vocabulary's members are required to share a shape.
+  // Member 0 stands for all of them here: this matches rules by display text
+  // alone, and every member of a view vocabulary shares a shape and so is
+  // rewritten by the same rule or by none.
   const std::size_t which = reference.from_view ? 0u : matched.slices[reference.slice_index].extract(opcode);
   const auto &member = vocabularies[reference.vocabulary_index].members[which];
-  for (const auto &rule: rules)
-    if (rule.vocabulary_index == reference.vocabulary_index && rule.from == member.display)
-      return {rule.to_vocabulary, rule.to_is_view};
+  if (const auto *rule = rule_for(rules, reference, member.display))
+    return {rule->to_vocabulary, rule->to_is_view};
   return {reference.vocabulary_index, reference.from_view};
 }
 
