@@ -120,20 +120,33 @@ and survives promotion". It is neither, and both halves were verified false.
 
 ### Expansion statements
 
-- **`template for` + `-Wshadow` was a gcc bug** — [PR c++/124197][pr124197], **fixed** in 16.2, which is
-  what this builds against. Verified by removing all six pragma lines and rebuilding with
-  `-Wshadow -Werror`: clean. Kept here because the shape of the bug is worth knowing.
-  Each expanded copy is reported as shadowing the previous, though nothing is shadowed: every copy is
-  its own scope. Minimal repro:
+- **`template for` + `-Wshadow` is a gcc bug, half fixed** — [PR c++/124197][pr124197]. Each expanded
+  copy is reported as shadowing the previous, though nothing is shadowed: every copy is its own scope.
+
+  16.2 fixed it **in dependent contexts only**. An expansion statement inside a template is clean; the
+  same statement in a non-dependent context still errors. Verified on the gcc 16.2 this builds
+  against — one file, both forms, `-Wshadow -Werror`:
 
   ```cpp
-  constexpr std::array<int, 3> values{1, 2, 3};
-  int sum = 0;
-  template for (constexpr auto value : values) { sum += value; }   // 3 spurious warnings
+  inline constexpr auto non_dependent = [] {                      // 4 errors
+    std::array<int, 4> out{};
+    template for (constexpr auto at: std::views::iota(0uz, 4uz)) out[at] = static_cast<int>(at);
+    return out;
+  }();
+
+  template<int N> constexpr auto dependent() {                    // clean
+    std::array<int, 4> out{};
+    template for (constexpr auto at: std::views::iota(0uz, 4uz)) out[at] = static_cast<int>(at) + N;
+    return out;
+  }
   ```
 
-  `-Wshadow -Werror` is exactly this project's setting, so until it landed every expansion statement
-  needed a local `#pragma GCC diagnostic ignored "-Wshadow"`. They are all gone now.
+  **An earlier version of this note said it was fixed outright**, on the evidence that removing all six
+  `#pragma GCC diagnostic ignored "-Wshadow"` lines rebuilt clean. That evidence was real and the
+  conclusion was wrong: all six were inside templates. `-Wshadow -Werror` is exactly this project's
+  setting, which is why the pragmas existed at all, and it is still why `all_dispatches` is a pack
+  rather than an expansion statement — that one initialiser is not dependent. `Execute.hpp` said so
+  all along; this file contradicted it.
 
   [pr124197]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124197
 - The range must be a constant expression, and for a range that means a constant *address*, not
@@ -363,8 +376,10 @@ author. Verified by breaking the table three ways and reading the diagnostic:
 | a row partly overlapping a later one | `z80.cpu:13: …` |
 | a row all of whose vocabulary members are holes | `z80.cpu:30: this row matches no opcode at all` |
 
-Coverage is `decoded_count`, a compile-time constant, ratcheted by a test. Because precedence is
-checked, coverage cannot be gained by silently shadowing another row.
+Coverage needs no ratchet: `check_tables_total` proves every opcode of every table decodes, so a
+count asserted by a test could only ever restate what the build already refuses to do without. It
+was there for a while and has been removed. Because precedence is checked too, coverage cannot be
+gained by silently shadowing another row.
 
 ### 6. Timing attaches to the micro-op sequence — done, and it moved
 
@@ -1798,16 +1813,100 @@ are deferred rather than forgotten.
 - **The write-back-delay rule compares only the name**, not that both ends are indirect, and two
   nameless indirect operands compare equal. Nothing exercises it today; the rule meant is "the
   destination is the same addressing mode as one of the operands".
-- **`Matched::matches` is test-only and misleading** — it is the obvious way to decode and the
-  design deliberately does not use it. Either exercise `opcodes_of` in its place or say why it stays.
+- ~~**`Matched::matches` is test-only and misleading**~~ **Fixed by deleting it**, along with
+  `fixed_mask` and `variable_mask`, which existed only to serve it. It was the obvious way to decode
+  — AND with a mask, compare — sitting in the first file a reader opens, in a design that
+  deliberately does the opposite: `opcodes_of` *generates* a row's opcodes and decoding is a
+  precomputed table. A decoy in production code, kept alive by nothing but its own test.
 - **Naming.** "field" means the `.cpu` keyword, the C++ `Field`, a `BitSlice` (in one error message),
   and `Piece::Kind::Field`. One word per concept. `Matched` is a participle for "a parsed opcode
   pattern". `Member::display` is not only for display.
 - **The v4 `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so every
   `SPECBOLT_MODULES` branch in v4 is unbuildable by construction, and the partitions do not include
   the headers they would need. They look maintained and are not.
-- **`DisassemblerTest` understates coverage.** Around twenty commented-out `CHECK`s are instructions
-  the table now covers, including the whole CB `bit`/`res`/`set` block.
+- ~~**`DisassemblerTest` understates coverage.**~~ **Stale — no commented-out `CHECK`s remain**; the
+  only markers left say "tested elsewhere". What is genuinely missing is a test that the *two
+  artefacts agree*: for every (table, opcode), that `disassemble(...).length` equals how far the
+  interpreter moved PC, and that nothing renders `??`. The format's headline claim is "one
+  description, two artefacts", and length is checked on one side and PC on the other and never
+  against each other.
+
+## A second review, and what came of it
+
+Four passes over the finished spike, each with one lens: modern C++ we were not using, whether
+reflection was earning its keep, simplicity and teachability, and API design and latent bugs. The
+library claims below were checked against the gcc 16.2 this builds against rather than assumed.
+
+**The worst finding was a hole in the checking, not a bug in the code.** `Model.hpp` said a view
+vocabulary's members "are required to share a shape" — and nothing required it. Only member *count*
+was checked. Three separate mechanisms resolve a view reference at member 0 and apply the answer to
+every view, and one of them, `displaced_through`, does not take a view at all; so
+`check_displacement_rendered`, whose whole job is catching a mnemonic that disagrees with what runs,
+never looked at view 1. `vocab index_mem = (ix+d)/delay=1 (iy)` compiled clean and gave the `FD`
+page the `IX` page's addressing mode, timing and text. Every other class of `.cpu` mistake in this
+project produces a line number; this one produced a wrong emulator. `check_view_vocabulary` now
+rejects it where the reference is written, and `displaced_through`'s missing parameter is justified
+in one line instead of being an omission to reverse-engineer.
+
+Alongside it: **all ten view diagnostics were untested**. The newest feature had the thinnest
+coverage, which is the wrong way round. They have cases now, and so does the new check.
+
+**Two disassembler defects**, one live and one latent:
+
+- No bound on the prefix loop. `dd` reaches its own table, `offset` is a `std::size_t`, and
+  `byte_at` wraps at 16 bits, so a region of `0xdd` was walked to its end before one line was
+  rendered — quadratic for a listing, unbounded for a 64K image of it. Note the asymmetry with the
+  interpreter, which is *right* to loop forever there: the chip really does spend 4T a byte on
+  `dd dd dd …`. A disassembler is asked what is at an address and has to answer.
+- `opcode` was read back as `byte_at(offset - 1)` after the loop, which is the *displacement* for
+  any row that reads one and does not `goto`. Latent only because `z80.cpu`'s single `d` row is a
+  goto; nothing rejects one that is not. The interpreter takes its opcode as a template argument, so
+  the failure mode would have been the two artefacts silently disagreeing.
+
+**Two silent `else` branches** in code whose thesis is that mistakes are compile errors: access
+width was `std::same_as<std::uint16_t>` with everything else falling through to one byte, so an
+operation declaring `unsigned` would have read half of what it asked for and zero-extended the rest.
+Two `static_assert`s.
+
+**`check_tables_used` proved the wrong thing** — "some goto names this table", not "reachable from
+the entry table". Two tables that only reach each other passed, and were then forced to be total and
+generated in full: 512 handlers of dead code from a typo. It walks the decoded tables from `entry`
+now, which also accounts for inheritance.
+
+Simplifications taken, all verified by building:
+
+- `OpcodeSet` was 28 lines of hand-rolled `std::array<std::uint64_t, 4>`. C++23 made `std::bitset`
+  constexpr, so it is now `std::bitset<256>` plus two free functions, and the four bit-fiddling
+  loops are gone.
+- `Parser` maintained a line counter that **only the test read**: every diagnostic threads an
+  explicit line, and the number handed to the constructor was never read back. `lines_of` is a
+  `split | enumerate | transform` pipeline, the counter and its per-token scan are gone, and four
+  copies of the same loop became four range-`for`s.
+- `location_scopes()` was the one list in the project that mirrored a set of declarations with
+  nothing holding them together — and `Z80.hpp` says the enums exist *for* it. It is now every enum
+  the namespace declares. A new location enum is a location; forgetting to list it is not a thing
+  that can happen. `Bus` is swept up too, harmlessly, and if a name ever did collide `only_match`
+  says so — with both scopes named, which it did not before.
+- `Pattern::matches` and its two mask helpers deleted; `decoded_count` deleted (it restated what
+  `check_tables_total` already refuses to build without); `Vector::back()` deleted (no callers, and
+  it would have underflowed on an empty one).
+- Three `static_assert(std::meta::is_structural_type(…))` where fifteen lines of comment used to
+  explain the requirement and nothing enforced it.
+
+**Deliberately not done.** `std::expected` for parse failures — it would destroy the throwing-
+`consteval` diagnostic, which is the best idea in the file. `std::generator` for the lowering
+passes — coroutines cannot be constant-evaluated at all, which makes it a better slide than a
+change. `std::optional<T&>` for `row_for` — not in libstdc++ 16.2, checked. `views::concat` to
+unify the "operands then destinations" loops — absent from libc++ 21, and v4 is libstdc++-only
+today, but not worth the portability question for five loops. Splitting `Operand` into parsed and
+resolved halves, and bundling the `(vocabularies, matched, opcode, rules, view)` tuple that nine
+functions thread: both real, both structural, neither obvious enough to do without deciding what
+the talk needs first.
+
+**Unresolved and worth knowing.** `a substitution's reference must be selected by the table's view`
+appears unreachable: `parse_substitutions` calls `reference_from_braces` with an empty `Pattern`, so
+any reference that is *not* the view fails earlier on "names a slice the opcode pattern does not
+define". The throw stays as a guard, but no test can reach it.
 
 ## Follow-up work, in order
 

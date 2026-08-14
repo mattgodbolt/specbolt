@@ -83,7 +83,8 @@ This document describes the table. The other half of the contract lives in the
 CPU description, and a `.cpu` file is meaningless without it, so here is its
 shape. It comes in three parts: what a row's verbs mean, what its names mean,
 and how the framework drives the chip. For the Z80 the verbs are in
-`Operations.hpp`, the names are listed by `Locations.hpp`, and the machine
+`Operations.hpp`, the scopes the names are looked up in come from
+`Locations.hpp`, and the machine
 itself supplies the rest as member functions — `Machine.hpp` states that half of
 the contract as a concept. Be warned that the verbs are not a small file: the
 easy majority of an instruction set becomes rows, and what stays behind is the
@@ -93,6 +94,7 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 |---|---|
 | an **operation** — `inc8`, `add16` | a function of that name, found by reflection |
 | a **location** — `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` members taking it |
+| a **view reference** — `{index:view}` | an enumerator named for the *vocabulary*, plus `read`/`write` members taking it and a selector |
 | an **indirect operand** — `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
 | an **immediate** — `n` | `fetch_immediate` |
 | any **opcode fetch** | `fetch_opcode` |
@@ -152,9 +154,11 @@ vocab-decl      = "vocab" , vocab-name , "=" , member , { member } ;
 member          = hole | ( operand , [ ":" , identifier , [ "+" , operand ] ] ) ;
 hole            = "-" ;
 
-table-decl      = "table" , table-name , [ "=" , table-name , "with" , rules ] ;
+table-decl      = "table" , table-name , [ view-decl ] ,
+                    [ "=" , table-name , "with" , rules ] ;
+view-decl       = "(" , view-name , ":" , vocab-name , ")" ;
 rules           = rule , { "," , rule } ;
-rule            = vocab-name , "." , display-text , "->" , member ;
+rule            = vocab-name , "." , display-text , "->" , ( member | view-reference ) ;
 
 row             = encoding , "|" , mnemonic , "|" , steps ;
 
@@ -164,11 +168,12 @@ pattern-bit     = "0" | "1" | slice-char ;
 encoding-byte   = "n" | "d" ;
 
 mnemonic        = { literal | reference | "$nn" | "$nnnn" | "$e" | "+d" } ;
-reference       = "{" , vocab-name , ":" , slice-char , "}" ;
+reference       = "{" , vocab-name , ":" , ( slice-char | view-name ) , "}" ;
+view-reference  = "{" , vocab-name , ":" , view-name , "}" ;
 
 steps           = step , { ";" , step } ;
 step            = goto-step | if-step | apply-step ;
-goto-step       = "goto" , table-name ;
+goto-step       = "goto" , table-name , [ "(" , ( member-name | view-name ) , ")" ] ;
 if-step         = "if" , operation , { operand } ;
 apply-step      = operation , [ { operand } , "<-" ] , { operand } ;
 operation            = identifier | reference ;
@@ -275,7 +280,7 @@ all, and why `dd dd dd 23` is a legal instruction costing four cycles a byte.
 (A *latched* table, below, is the exception: its opcode arrives by an operand
 read rather than an instruction fetch.)
 
-### Derived tables (views)
+### Derived tables
 
 ```
 table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
@@ -307,6 +312,72 @@ this repository get wrong.)
 
 A parent must be declared above its children. A derived table with no rows of
 its own is legal: it *is* its parent, renamed.
+
+(The example above is what `DD` looks like on its own. `z80.cpu` does not write
+it that way, because `FD` would then be the same thing again with two letters
+changed — see views, next.)
+
+### Views: a table that takes a parameter
+
+```
+table indexed(view:index) = base with pair.hl -> {index:view}, reg.h -> {index_hi:view}, …
+```
+
+`DD` and `FD` differ in one thing only: which index register they mean. Written
+as two derivations that is two of everything — two tables, two sets of rules,
+and two generated copies of every instruction on the prefixed page.
+
+A **view** says it once. `(view:index)` declares that this table takes a
+parameter called `view`, whose value is a member of the vocabulary `index`. The
+table is then decoded once *per member* without being generated once per
+member: the parameter is a run-time value the prefix supplies, so `ix` and `iy`
+share every function between them.
+
+Three things follow, and they are the whole feature:
+
+- **A reference may be selected by the view instead of by opcode bits.**
+  `{index:view}` reads "the member of `index` that this table's view picked".
+  Everywhere else `{reg:z}` names a slice of the opcode; here the instruction's
+  own bytes do not carry the answer, because a byte already gone by chose it.
+- **A rule's right-hand side may be a view reference.** `pair.hl -> {index:view}`
+  renames `hl` to whichever of `ix`/`iy` is in play, rather than to a fixed one.
+- **A `goto` says which view it enters under.** `goto indexed(ix)` chooses a
+  member by name. `goto indexed_cb(view)` *forwards* the view this table was
+  itself decoded under, which is how `dd cb` keeps hold of the register `dd`
+  chose. Both tables must draw their view from the same vocabulary for that to
+  mean anything, and it is checked.
+
+A table takes a view or it does not, and its gotos must agree: entering a
+parameterised table without saying which member, or supplying one to a table
+that takes none, is an error rather than a default.
+
+Derivation and parameterisation are **separate mechanisms**. `z80.cpu` happens
+to use both on one line — `indexed` is derived from `base` *and* takes a view —
+but `indexed_cb` takes a view and derives from nothing, and every other derived
+table in the file takes no view at all.
+
+#### Every member of a vocabulary a view selects must have the same shape
+
+Nothing that runs at compile time can know which member a view will pick, so
+every check resolves such a reference at member 0 and applies the answer to all
+of them. That is only sound if the members agree about everything except which
+location they name: whether they are indirect, whether they are displaced, what
+a write-back costs, whether they bring an operation of their own, and how they
+render.
+
+So this is rejected, on the line that references it:
+
+```
+vocab index_mem = (ix+d)/delay=1  (iy)
+```
+
+Without the check it would compile, and the `FD` page would *execute* `(iy+d)`
+while *printing* `(iy)` — the one mistake in this format that would otherwise
+produce a wrong emulator rather than a line number.
+
+A hole is excluded for the same reason. A hole exists so a general row can leave
+room for a specific one in the *opcode space*, and a view has no opcode bits to
+leave room in.
 
 ---
 
@@ -569,8 +640,8 @@ on to the table it transfers to.
 The Z80 has exactly one such encoding, `DD CB d op`:
 
 ```
-table ix = base with …
-  11001011 d | (dd cb) | goto ddcb
+table indexed(view:index) = base with …
+  11001011 d | (dd cb) | goto indexed_cb(view)
 ```
 
 Everything else is derived from that `d`. A table reached by a row that reads a
@@ -613,9 +684,16 @@ the line in the `.cpu` file:
 - **Totality.** Every opcode of every table must decode to some row. A table
   with a gap is rejected naming the opcode that has none, which is what the
   catch-all row is for.
-- **Reachability.** A table no `goto` reaches is still generated, and still
-  checked; it is rejected because it can only be a mistake, as is a non-derived
-  table with no rows.
+- **Reachability.** Every table must be reachable from the entry table by
+  following gotos. One that is not is still generated, and still checked, so it
+  is rejected as a mistake — as is a non-derived table with no rows. Reachable
+  *from the entry*, rather than merely named by some goto: two tables that only
+  reach each other are as dead as one nothing names at all.
+- **Views.** A table takes a view or it does not, and every goto entering it must
+  agree; a view handed on rather than chosen must come from the same vocabulary
+  the target draws its own from; and every member of a vocabulary a view selects
+  must have the same shape, because the checks above resolve such a reference at
+  one member and apply the answer to all of them.
 - **Override containment.** A derived table's own row that overlaps a row it
   inherits must be wholly contained in it. A derived row that took opcodes the
   parent row meant to keep would silently change instructions nobody was
@@ -625,7 +703,7 @@ the line in the `.cpu` file:
   never literal text. A row that spells a renamed name out, and is inherited
   unchanged by the table that renames it, is rejected — writing that row *in*
   the derived table is how one says the literal was meant. This is what forces
-  the override rows in `z80.cpu`'s `ix` and `iy` tables, and it was added after
+  the override rows in `z80.cpu`'s `indexed` table, and it was added after
   a missing one made `dd e3` do `ex (sp), hl` where the chip does `ex (sp), ix`.
 - **Every line means something.** After blanks and comments, a line is a
   declaration or a row; anything else is a mistyped one of them.
@@ -644,7 +722,7 @@ Precedence is by position in the file, and a derived table's own rows all come
 derived table's row always wins over the parent row it overlaps — that is what
 makes it an override.
 
-Which raises a question the `ix` example does not answer on its own: `DD 76` is
+Which raises a question the derivation example does not answer on its own: `DD 76` is
 `halt` on real hardware, so how does the parent's `01110110` survive the derived
 `01yyy110`? Not by precedence — it would lose. It survives because `real`, the
 vocabulary that row selects with, has a **hole** at slot 6, so `01yyy110` does
@@ -734,13 +812,15 @@ Seven T-states not taken, twelve taken.
 **A view.**
 
 ```
-table ix = base with pair.hl -> ix, spair.hl -> ix, reg.h -> ixh, reg.l -> ixl, reg.(hl) -> (ix+d)/delay=1
+table indexed(view:index) = base with pair.hl -> {index:view}, reg.h -> {index_hi:view}, reg.(hl) -> {index_mem:view}
 
-01yyy110 | ld {real:y}, (ix+d) | ld8 {real:y} <- (ix+d)
+01yyy110 | ld {real:y}, {index_mem:view} | ld8 {real:y} <- {index_mem:view}
 ```
 
-The override row exists because `ld h,(ix+d)` uses the *real* `h`. It says so by
-naming `real`, the vocabulary of true registers, which no rule rewrites.
+One table for both `DD` and `FD`: `{index:view}` is whichever index register the
+prefix chose. The override row exists because `ld h,(ix+d)` uses the *real* `h`.
+It says so by naming `real`, the vocabulary of true registers, which no rule
+rewrites.
 
 **A repeat.**
 
