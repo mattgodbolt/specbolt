@@ -5,7 +5,7 @@
 // knows how many of anything a description holds, and nothing has to. See
 // ToArray.hpp for where that becomes a size.
 
-#include "refract/Lower.hpp"
+#include "refract/Lexical.hpp"
 #include "refract/Model.hpp"
 #include "refract/Parser.hpp"
 #include "refract/Pattern.hpp"
@@ -308,7 +308,7 @@ constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Ro
       throw table_error(row.line, "mnemonic is too complicated");
   };
   const auto add_text = [&](const Parser text) {
-    for (const auto &piece: lower_text(text, row.line))
+    for (const auto &piece: pieces_of(text, row.line))
       add(piece);
   };
 

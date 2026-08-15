@@ -2,7 +2,7 @@
 
 A reference for the instruction-set description that v4 compiles. The file this
 describes is [`z80.cpu`](z80.cpu). The code that reads it is the `refract`
-library, in `refract/`: the parser is `Lower.hpp` (a fragment of text at a time)
+library, in `refract/`: the parser is `Lexical.hpp` (a fragment of text at a time)
 and `Parse.hpp` (the declarations); `Coverage.hpp` works out what each row claims
 and checks it; `Machine.hpp` states what a machine must provide; `Execute.hpp`
 generates the interpreter. `Table.hpp` embeds the description and builds the

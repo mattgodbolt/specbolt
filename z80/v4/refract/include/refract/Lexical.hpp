@@ -99,7 +99,7 @@ namespace specbolt::refract {
 // and `$nnnn` come from the encoding, `+d` is the displacement an indexed mode
 // carries. Both a row's mnemonic and a vocabulary member's text are lowered
 // with this, so neither is parsed at runtime.
-[[nodiscard]] constexpr std::vector<Piece> lower_text(Parser text, const std::size_t line) {
+[[nodiscard]] constexpr std::vector<Piece> pieces_of(Parser text, const std::size_t line) {
   std::vector<Piece> pieces;
 
   const auto lower_immediates = [&](Parser chunk) {
@@ -162,7 +162,7 @@ namespace specbolt::refract {
     member.hole = true;
     return member;
   }
-  for (const auto &piece: lower_text(Parser(member.display), line))
+  for (const auto &piece: pieces_of(Parser(member.display), line))
     if (!member.pieces.try_push_back(piece))
       throw table_error(line, "member text is too complicated");
   member.operand = parse_simple_operand(member.display, line, 0);

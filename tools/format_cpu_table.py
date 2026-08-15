@@ -18,7 +18,7 @@ from pathlib import Path
 
 
 def is_row(line: str) -> bool:
-    """Mirrors `is_row` in Lower.hpp: a row is a non-comment, non-declaration line with a `|`."""
+    """Mirrors `is_row` in Lexical.hpp: a row is a non-comment, non-declaration line with a `|`."""
     stripped = line.strip()
     return (
         bool(stripped)

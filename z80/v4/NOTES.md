@@ -658,7 +658,7 @@ renames nothing; and `dd dd dd 23` at 4 T-states a prefix byte. Generated code f
 with `add`, reuses it for the read and the write, and folds both idles into constant clones.
 
 **The disassembler followed.** A member's text is now lowered into `Piece`s at parse time exactly as
-a row's mnemonic is (`lower_text` does both) with `Piece::Kind::Displacement` for the hole `+d`
+a row's mnemonic is (`pieces_of` does both) with `Piece::Kind::Displacement` for the hole `+d`
 leaves. A row renders its pieces, and a member renders its own, so `inc (ix-0x01)` falls out without
 the disassembler parsing anything at runtime. The displacement is taken before the pieces are walked,
 because it precedes any immediate, which also makes the reported length right.
@@ -1707,7 +1707,7 @@ short ones.
 ## Done: the line between the library and the Z80
 
 The CPU-agnostic half is now `refract/`, in `namespace specbolt::refract`: `Model.hpp`,
-`Lower.hpp`, `Parse.hpp`, `ToArray.hpp`, `Coverage.hpp`, `Pattern.hpp`, `Parser.hpp`, `Vector.hpp`,
+`Lexical.hpp`, `Parse.hpp`, `ToArray.hpp`, `Coverage.hpp`, `Pattern.hpp`, `Parser.hpp`, `Vector.hpp`,
 `TableError.hpp`, `Machine.hpp`, `Execute.hpp` and `Disassemble.hpp`. The Z80 half is `z80.cpu`,
 `Operations.hpp`, `Locations.hpp`, `Table.hpp`, `Disassembler.cpp` and `Z80.hpp`/`Z80.cpp`.
 

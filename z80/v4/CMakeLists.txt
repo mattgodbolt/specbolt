@@ -33,7 +33,7 @@ else ()
             refract/include/refract/Coverage.hpp
             refract/include/refract/Disassemble.hpp
             refract/include/refract/Execute.hpp
-            refract/include/refract/Lower.hpp
+            refract/include/refract/Lexical.hpp
             refract/include/refract/Machine.hpp
             refract/include/refract/Model.hpp
             refract/include/refract/Parse.hpp
