@@ -1421,7 +1421,7 @@ the honest framing is that it buys developer time with user time.
 relative-jump arithmetic. Having a second compiler on the same source paid for itself twice in one
 session.
 
-## Done, and it did not pay: one function per instruction
+## Done: one function per instruction, which cost 16s and now saves 4
 
 `execute_one` used to be generated per (table, opcode), 256 per table, always.
 But a row's body is built only from the slices it *reads*. `ed`'s catch-all row claims 218 opcodes
@@ -1454,8 +1454,54 @@ implementation was bad" (the third is O(256) per table with no search at all) it
 **the instantiations this removes are nearly free, and finding them is not.**
 
 Kept anyway, for the shape: generation follows the description's own grain rather than sweeping an
-opcode space, and the 256-entry `template for` is gone. That is a taste judgement with a price tag
+opcode space, and the 256-entry `template for` is gone. That was a taste judgement with a price tag
 on it, which is the honest way to have one.
+
+### The price tag came off
+
+Re-measured after `bit` was demoted (the next section), because that change removed 287 of the
+`apply` and `operands_of` instantiations, and those are shared by *both* schemes. The 52.6s baseline
+above was therefore taken in a world that no longer existed, and the +16s that justified this scheme
+being a judgement call was a comparison against it. Five interleaved runs of each, on an idle
+36-core machine:
+
+| | gcc `Z80.cpp` | peak | distinct bodies |
+|---|---:|---:|---:|
+| per (table, opcode) | 39.26s ± 0.12 | 1.08 GB | 1561 |
+| per instruction (this) | **35.22s ± 0.07** | 1.09 GB | **853** |
+
+**It is now 11.5% faster, and the ranges do not overlap.** The +16s became −4s, so there is nothing
+left to trade: this scheme is both the better shape and the cheaper one, and the machinery that
+implements it earns its keep rather than being paid for.
+
+The mechanism is obvious in hindsight and was not obvious in advance. Demoting `bit` cut the
+distinct bodies by nearly half, and *this* is the scheme that profits from there being fewer of
+them: less analysis to do, and more duplication avoided by doing it. Per-opcode generation cannot
+profit, because it emits one handler per slot whatever the bodies turn out to be. **The two changes
+were not independent, and measuring them separately hid that.** Any conclusion of the form "X did
+not pay" is only true against the rest of the system as it stood that day.
+
+### The laptop sent us on a merry dance
+
+Worth recording, because the wrong answer was not obviously wrong. The same experiment on a
+thermally limited laptop, five interleaved runs each, gave a **25% spread on one scheme and 41% on
+the other**, ranges overlapping heavily, and:
+
+- by **median**, per-opcode was 2% *faster*
+- by **minimum**, per-opcode was 13% *slower*
+
+Two respectable summary statistics from one honest dataset, disagreeing about the sign. Either would
+have been quoted with a straight face. On the idle machine the standard deviation was 0.07s and the
+result was never in doubt. The caveat NOTES already carried for the bench applies to compile times
+just as hard: read the spread first, and if it is wide, the numbers describe the machine.
+
+Three separate harness failures also reached the point of producing plausible output before being
+caught, and all three failed *quietly, in the direction of looking fine*: a `g++` invocation that
+died on `too many filenames given` and read as 0.00s; two builds whose peak memory agreed to 0.09%,
+which is what prompted checking whether the experiment was switching anything at all; and timings
+taken while other work ran on the same machine. The orthogonal check that settled it was counting
+`execute_one` symbols in the two objects with `nm`: 853 against 1561, so the schemes really were
+different. Measure something the harness cannot fake.
 
 The corollary matters more than the result. If duplicate *handlers* are free, the expensive thing is
 the `<Fn, Call>` instantiations underneath, and those only collapse if two instructions genuinely

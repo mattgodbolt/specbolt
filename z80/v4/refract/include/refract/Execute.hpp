@@ -814,18 +814,6 @@ inline constexpr auto bodies_of = to_array<[] { return decoding_for(Table).bodie
 template<std::uint8_t Table>
 inline constexpr auto fill_of = decoding_for(Table).fill;
 
-// TEMPORARY, for the measurement in NOTES: the scheme this replaced, generating
-// one handler per (table, opcode) whether or not two opcodes share a body. Kept
-// behind a macro so both can be timed without editing between runs.
-#ifdef SPECBOLT_DISPATCH_PER_OPCODE
-template<std::uint8_t Table>
-inline constexpr auto dispatch = [] {
-  std::array<Handler, 256> handlers{};
-  template for (constexpr auto opcode: std::views::iota(0uz, 256uz)) handlers[opcode] =
-      &execute_one<Table, static_cast<std::uint8_t>(opcode), *target::find_row(Table, opcode)>;
-  return handlers;
-}();
-#else
 // The clearest demonstration in the file of what an expansion statement buys:
 // `execute_one` needs its row and encoding as *template arguments*, so an
 // ordinary loop cannot make these and a `template for` can. Filling the 256
@@ -839,7 +827,6 @@ inline constexpr auto dispatch = [] {
   std::ranges::transform(fill_of<Table>, handlers.begin(), [&made](const std::uint16_t body) { return made[body]; });
   return handlers;
 }();
-#endif
 
 // The loop's table is not a constant after the first byte, so every table's
 // dispatch has to be reachable by index. A pack rather than a `template for`:
