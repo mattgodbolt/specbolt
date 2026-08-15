@@ -15,7 +15,7 @@ void Z80::execute_one() {
     handle_interrupt();
   if (halted_) [[unlikely]] {
     // A halted Z80 is executing internal NOPs, not stopped: it still fetches
-    // -- at the address it parked on, without advancing -- so it still spends
+    // at the address it parked on, without advancing, so it still spends
     // an opcode cycle on the bus and still refreshes.
     bus(Bus::opcode, pc());
     refresh();
@@ -115,9 +115,9 @@ std::uint8_t Z80::read_immediate() {
 
 // An internal cycle presents whatever address the last access left on the bus,
 // so a run of them re-latches the same value every time and only the clock
-// actually moves. Spending them in one go is exactly equivalent -- `tick(n)`
+// actually moves. Spending them in one go is exactly equivalent, because `tick(n)`
 // and n `tick(1)`s leave the same cycle count and fire the same tasks at the
-// same cycles -- and it is worth 6% of v4, because `delay 7` was seven calls.
+// covers the same cycles, and it is worth 6% of v4, because `delay 7` was seven calls.
 //
 // This is the line contention will have to undo. A contended machine can
 // stretch each internal cycle separately, so it would want the loop back, with
@@ -131,7 +131,7 @@ std::uint16_t Z80::read_memory16(const std::uint16_t address) {
 }
 
 // Low byte first, which is what `ld (nn), hl` does. A push does the opposite --
-// high byte to sp-1, then low to sp-2 -- and gets this order instead. The bytes
+// high byte to sp-1, then low to sp-2, and gets this order instead. The bytes
 // land in the same places either way, so nothing can see the difference until
 // `bus` starts contending or a watchpoint watches. Recorded in NOTES.
 void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {

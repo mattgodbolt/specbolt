@@ -45,23 +45,23 @@ TEST_CASE("Conditions") {
 
   SECTION("jp cc costs the same either way") {
     t.z80.flags(Flags::Zero());
-    t.run(0xc2, 0x34, 0x12); // jp nz, 0x1234 -- not taken
+    t.run(0xc2, 0x34, 0x12); // jp nz, 0x1234, not taken
     CHECK(t.z80.pc() == 3);
     CHECK(t.z80.cycle_count() == 10);
-    t.run(0xca, 0x34, 0x12); // jp z, 0x1234 -- taken
+    t.run(0xca, 0x34, 0x12); // jp z, 0x1234, taken
     CHECK(t.z80.pc() == 0x1234);
     CHECK(t.z80.cycle_count() == 20);
   }
   SECTION("call cc pays for the push only when it takes it") {
     t.z80.flags(Flags());
-    t.run(0xd4, 0x34, 0x12); // call nc, 0x1234 -- taken
+    t.run(0xd4, 0x34, 0x12); // call nc, 0x1234, taken
     CHECK(t.z80.pc() == 0x1234);
     CHECK(regs.sp() == 0x7ffe);
     CHECK(t.z80.cycle_count() == 17);
   }
   SECTION("call cc not taken is ten") {
     t.z80.flags(Flags::Carry());
-    t.run(0xd4, 0x34, 0x12); // call nc -- not taken
+    t.run(0xd4, 0x34, 0x12); // call nc, not taken
     CHECK(t.z80.pc() == 3);
     CHECK(regs.sp() == 0x8000);
     CHECK(t.z80.cycle_count() == 10);
@@ -70,22 +70,22 @@ TEST_CASE("Conditions") {
     t.memory.write16(0x7ffe, 0xbeef);
     regs.sp(0x7ffe);
     t.z80.flags(Flags::Zero());
-    t.run(0xc0); // ret nz -- not taken
+    t.run(0xc0); // ret nz, not taken
     CHECK(t.z80.pc() == 1);
     CHECK(regs.sp() == 0x7ffe);
     CHECK(t.z80.cycle_count() == 5);
 
-    t.run(0xc8); // ret z -- taken
+    t.run(0xc8); // ret z, taken
     CHECK(t.z80.pc() == 0xbeef);
     CHECK(regs.sp() == 0x8000);
     CHECK(t.z80.cycle_count() == 5 + 11);
   }
   SECTION("jr is twelve taken and seven not") {
     t.z80.flags(Flags::Zero());
-    t.run(0x20, 0x10); // jr nz, +16 -- not taken
+    t.run(0x20, 0x10); // jr nz, +16, not taken
     CHECK(t.z80.pc() == 2);
     CHECK(t.z80.cycle_count() == 7);
-    t.run(0x28, 0x10); // jr z, +16 -- taken
+    t.run(0x28, 0x10); // jr z, +16, taken
     CHECK(t.z80.pc() == 2 + 2 + 16);
     CHECK(t.z80.cycle_count() == 7 + 12);
   }
@@ -97,7 +97,7 @@ TEST_CASE("Conditions") {
   SECTION("djnz counts b without touching the flags") {
     t.z80.flags(Flags::Zero() | Flags::Carry());
     regs.set(RegisterFile::R8::B, 2);
-    t.run(0x10, 0x10); // djnz +16 -- taken
+    t.run(0x10, 0x10); // djnz +16, taken
     CHECK(regs.get(RegisterFile::R8::B) == 1);
     CHECK(t.z80.pc() == 2 + 16);
     CHECK(t.z80.flags() == (Flags::Zero() | Flags::Carry()));
@@ -266,7 +266,7 @@ TEST_CASE("Interrupts") {
     // arrives before the instruction that was meant to run under it.
     t.run(0xfb); // ei
     t.z80.interrupt();
-    t.run(0x00); // nop -- runs first
+    t.run(0x00); // nop, runs first
     CHECK(t.z80.pc() == 2);
     t.run(0x00); // and now the interrupt is taken instead of this
     CHECK(t.memory.read16(0x7ffe) == 2); // the address it interrupted
@@ -296,7 +296,7 @@ TEST_CASE("Interrupts") {
   SECTION("a halted cycle is a real opcode fetch, so the bus keeps following it") {
     // The halted path once spent its four cycles directly rather than through
     // `bus`, which left the address bus holding whatever the last instruction
-    // put there for as long as the machine idled -- and idling in `halt` until
+    // put there for as long as the machine idled, and idling in `halt` until
     // the frame interrupt is the commonest thing a Spectrum program does. It
     // also meant the one place contention would matter most was the one place
     // the seam did not reach.

@@ -2,7 +2,7 @@
 
 // The shapes a parsed instruction table is made of, all of them plain value
 // types. `Name`, `Reference` and `Operand` are non-type template parameters
-// later, so those three are *structural* -- literal, with every member public,
+// later, so those three are *structural*: literal, with every member public,
 // recursively, which is what `Name` exists to be. The rest hold
 // `std::string_view`s into the description and so could not be however they
 // were written.
@@ -49,7 +49,7 @@ struct Name {
 //
 // The enum is the thing that knows. `Direction::Up` means "step forwards", and
 // that the Z80 writes it `i` is a fact about the Z80's assembly syntax, not
-// about the direction -- so it belongs on the declaration rather than in a
+// about the direction, so it belongs on the declaration rather than in a
 // table the description has to keep in step.
 //
 // An annotation's type must be *structural*, which is exactly what `Name` was
@@ -59,7 +59,7 @@ struct Spelling {
 };
 
 // Which vocabulary to look a value up in, and what says which of its members to
-// take: a slice of the opcode, or -- when `from_view` is set -- the decoding
+// take: a slice of the opcode, or (when `from_view` is set) the decoding
 // table's own parameter, which a prefix chose and the instruction does not
 // carry. Anything a row can write `{reg:z}` or `{index:view}` in holds one.
 struct Reference {
@@ -71,7 +71,7 @@ struct Reference {
 
 // An operand is a constant, a name the CPU can resolve, or a vocabulary reference.
 // `a`, `hl` and `carry` are all just names, whatever they denote on the
-// machine -- a register, a register pair, a single flag bit. Wrapping one in parentheses
+// machine: a register, a register pair, a single flag bit. Wrapping one in parentheses
 // says to use it as an address rather than as a value, which is orthogonal to
 // all of the above.
 struct Operand {
@@ -91,9 +91,9 @@ struct Operand {
   // a run-time read rather than one function per member.
   bool from_opcode{};
   BitSlice slice{};
-  // Chosen by the table's view, so it cannot be folded away at compile time:
-  // `name` is the *vocabulary's* name, which is the family of locations the
-  // machine offers, and the machine is handed the selector to pick with.
+  // Chosen by the table's view, so it cannot be folded away at compile time.
+  // `reference.vocabulary_index` says which vocabulary, and the generated code
+  // turns that into the list of locations the view indexes.
   bool from_view{};
   constexpr bool operator==(const Operand &) const = default;
 };
@@ -133,7 +133,7 @@ struct Vocabulary {
 // A derived table re-reads its parent's rows with some vocabulary members
 // renamed: `dd` is `base` read with `pair.hl -> ix`. A rule names the vocabulary
 // it rewrites as well as the member, because the same text means different
-// things in different vocabularies -- `reg.h` is renamed by a view and the
+// things in different vocabularies: `reg.h` is renamed by a view and the
 // `real.h` of an indexed load is not. The right side is a whole member, so a substitute
 // may bring its own operation and its own access sequence.
 struct Rule {
@@ -150,8 +150,8 @@ struct Rule {
 using Rules = Vector<Rule, 6>;
 
 // A vocabulary that *is* its slice: `bit = 0 1 2 3 4 5 6 7`, where member n is
-// the number n. Its members differ in a value and nothing else -- no operation
-// to splice, no location to name, no addressing mode to pay for -- so the
+// the number n. Its members differ in a value and nothing else, with no
+// operation to splice, no location to name and no addressing mode to pay for, so the
 // choice between them need not be baked into a function, because the opcode
 // already carries it.
 //
@@ -175,8 +175,8 @@ using Rules = Vector<Rule, 6>;
 }
 
 // Which rule, if any, rewrites this member of this vocabulary. The two
-// functions below must agree about which rule fires -- one returns the member
-// it produces and the other where that member came from -- so they ask the
+// functions below must agree about which rule fires, since one returns the
+// member it produces and the other where that member came from, so they ask the
 // same question rather than each spelling it out.
 [[nodiscard]] constexpr const Rule *rule_for(
     const Rules &rules, const Reference reference, const std::string_view display) {
@@ -191,7 +191,7 @@ using Rules = Vector<Rule, 6>;
 // A parameterised table is decoded once per value its view can take without
 // being generated once per value, so `view` reaches here alongside the opcode.
 // Checks pass the default: every member of a view vocabulary must have the same
-// shape -- `check_view_vocabulary` in Parse.hpp requires it -- so anything a
+// shape, which `check_view_vocabulary` in Parse.hpp requires, so anything a
 // check asks is true of all of them or none.
 [[nodiscard]] constexpr Member member_of(const std::span<const Vocabulary> vocabularies, const Reference reference,
     const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}, const std::uint8_t view = 0) {
@@ -233,8 +233,8 @@ using Rules = Vector<Rule, 6>;
     result.constant = 0;
     return result;
   }
-  // The member supplies the shape -- indirect, displaced, what a write-back
-  // idles for -- but *which* member is not known until the table's view has
+  // The member supplies the shape (indirect, displaced, what a write-back
+  // idles for) but *which* member is not known until the table's view has
   // been chosen, so the vocabulary is carried instead of a name. The generated
   // code turns it into the list of locations the view selects between.
   if (const auto [vocabulary, from_view] = source_of(vocabularies, operand.reference, matched, opcode, rules);
@@ -294,7 +294,7 @@ struct TableDecl {
   bool derived{};
   std::uint8_t parent{};
   Rules rules{};
-  // `table indexed(view:index)` -- decoded once for each member of `index`
+  // `table indexed(view:index)`, decoded once for each member of `index`
   // without being generated once for each. The name is what a row writes where
   // a slice letter would go; empty means the table takes no view.
   std::string_view view_name{};
@@ -334,7 +334,7 @@ struct Description {
     return index ? &rows[*index] : nullptr;
   }
 
-  // The renaming every row this table decodes is read under -- its own rows as
+  // The renaming every row this table decodes is read under: its own rows as
   // well as the ones it inherits.
   [[nodiscard]] constexpr const Rules &rules_for(const std::uint8_t table) const { return tables[table].rules; }
 };

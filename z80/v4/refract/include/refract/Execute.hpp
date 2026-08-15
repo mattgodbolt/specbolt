@@ -58,7 +58,7 @@ static_assert(
 // ---------------------------------------------------------------------------
 //
 // **Reflection (P2996).** `^^X` yields a `std::meta::info`: one type that can
-// denote *any* entity — a type, a function, an enumerator, a data member. That
+// denote *any* entity: a type, a function, an enumerator, a data member. That
 // one-type-for-everything is why `find_location` and `find_operation` have the
 // same shape despite looking for very different things. `info` is a structural
 // type, so it can be a non-type template parameter, which is the hinge the
@@ -73,7 +73,7 @@ static_assert(
 //                                      yields until it is instantiated.
 //   [:Fn:](arguments...)               a function, in callee position.
 //   cpu.read([:find_location(…):])     an enumerator, yielding a prvalue of the
-//                                      enum type — so ordinary overload
+//                                      enum type, so ordinary overload
 //                                      resolution picks `read(R8)` or
 //                                      `read(FlagBit)`. The framework does not
 //                                      dispatch on the kind of location; C++
@@ -84,7 +84,7 @@ static_assert(
 //
 // **Expansion statements (P1306)**, `template for`. The body is *instantiated
 // once per element*, so it is code size rather than a loop, and the induction
-// variable is `constexpr` inside the body — which is what lets it be used as a
+// variable is `constexpr` inside the body, which is what lets it be used as a
 // template argument. A `return` inside one returns from the enclosing function,
 // not from an iteration. There is deliberately no `template switch`: an
 // expansion statement generates statements, and a `case` label is not one, so a
@@ -103,7 +103,7 @@ static_assert(
 // as a template argument afterwards.
 //
 // **`std::meta::access_context::current()`** means the context of the function
-// that names it — namespace scope here, not the caller's. Load-bearing twice:
+// that names it, namespace scope here rather than the caller's. Load-bearing twice:
 // it is why `Flags` counts as one value rather than a struct to destructure
 // (its byte is private, so this file cannot see it), and why the private
 // helpers in `Ops` cannot be named by a table.
@@ -114,7 +114,7 @@ static_assert(
 //
 // `Call` and `Operand` are non-type template parameters, so they must be
 // *structural*: literal types whose members are all public, recursively. That
-// single requirement explains a lot of the model — why `Vector` exposes its
+// single requirement explains a lot of the model: why `Vector` exposes its
 // `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>`
 // rather than a `std::string_view` (which has private members and is not
 // structural).
@@ -152,7 +152,7 @@ static_assert(
 }
 
 // `a`, `hl`, `carry`, `pc`: an enumerator in one of the scopes the CPU offers.
-// The `std::vector` here is fine — it is created and destroyed entirely within
+// The `std::vector` here is fine, because it is created and destroyed within
 // one constant evaluation, which is allowed; what it must not do is escape.
 [[nodiscard]] consteval std::meta::info find_location(const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
@@ -201,7 +201,7 @@ static_assert(
 
 // The locations a view selects between, in the order its vocabulary lists them,
 // so that the view *is* the index. Every member resolves to a location of the
-// same type -- `check_view_vocabulary` is what guarantees that -- so the machine
+// same type, which `check_view_vocabulary` guarantees, so the machine
 // is handed a location it already knows how to read, and needs no notion of a
 // view at all. The alternative is for the machine to offer a location per
 // vocabulary and a selector to go with it, which works only while the machine
@@ -238,7 +238,7 @@ template<Operand Op, std::size_t Line>
 
 // Arity and parameter types live in the template system rather than in a local
 // `constexpr`, and the reason is narrower than "reflection cannot go in a
-// local" -- `takes_cpu` and `destructures_into` are both called into locals
+// local": `takes_cpu` and `destructures_into` are both called into locals
 // further down, and both are fine.
 //
 // What is not fine is `parameters_of` specifically: it returns a `std::vector`,
@@ -280,8 +280,8 @@ template<std::meta::info Fn>
 }
 
 // Everything one step needs, with its vocabulary references already resolved. This
-// is a non-type template parameter, so every member of it — and of everything
-// it contains — has to be public. See the note on structural types above.
+// is a non-type template parameter, so every member of it, and of everything
+// it contains, has to be public. See the note on structural types above.
 struct Call {
   Vector<Operand, max_operands> operands{};
   Vector<Operand, max_operands> destinations{};
@@ -336,7 +336,7 @@ template<Operand Op, std::size_t Line, typename Parameter>
   else if constexpr (std::is_enum_v<Parameter>)
     // The parameter asks for an enum, so the name is one of *its* members
     // rather than a place to read from: spliced as a value, with nothing
-    // fetched. `Parameter` is the scope, which is the whole trick -- the same
+    // fetched. `Parameter` is the scope, which is the whole trick: the same
     // rule that already lets a parameter's type decide how wide an access is
     // now decides which enum a bare name belongs to.
     return [:find_spelling(^^Parameter, Op.name.view(), Line):];
@@ -413,7 +413,7 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
 
 // Resolving an operand is not a pure act: it can read memory, advance the clock
 // and move the address bus. So the order matters, and the order a function's
-// arguments are evaluated in is *unspecified* -- gcc evaluates them right to
+// arguments are evaluated in is *unspecified*, and gcc evaluates them right to
 // left. Braced initialisation is sequenced left to right ([dcl.init.list]/4),
 // so the values are materialised into a tuple first and the call made from
 // that.
@@ -488,7 +488,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
   else {
     static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
     // More than one *destination* is how an instruction writes one result to
-    // two places -- `dd cb d op` puts it through the addressing mode and into
+    // two places: `dd cb d op` puts it through the addressing mode and into
     // the register its low bits name.
     const auto result = call(operands_of<Fn, C>(cpu, immediate, indexed, view, opcode));
     template for (constexpr auto destination: C.destinations)
@@ -561,13 +561,13 @@ struct Transfer {
 // Every handler has one signature, because a table of function pointers can
 // only have one. So `view` is a parameter of all 747 of them and not merely of
 // the ones a prefix can reach: `nop` pays a register's worth for `ix` existing.
-// That is about 2% of run time, bought with 38% of the build -- see NOTES.md,
+// That is about 2% of run time, bought with 38% of the build. See NOTES.md,
 // which has the measurements and the alternative that was rejected.
 using Handler = std::optional<Transfer> (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
 // table surviving into the generated code. There is one of these per (table,
-// opcode) — 1792 for a complete Z80 — and each is typically a handful of
+// opcode), 1792 for a complete Z80, and each is typically a handful of
 // instructions, because every choice below is made at compile time.
 //
 // `Table` and `Opcode` are template parameters rather than arguments precisely
@@ -622,7 +622,7 @@ std::optional<Transfer> execute_one(
       return 0;
   }();
   // Expanded, not looped: the body is instantiated once per step, and `step` is
-  // `constexpr` inside it — which is what lets its contents be template
+  // `constexpr` inside it, which is what lets its contents be template
   // arguments. A `return` here leaves `execute_one`, not the expansion.
   template for (constexpr auto step: row.steps) {
     if constexpr (step.kind == Step::Kind::Goto)
@@ -688,7 +688,7 @@ std::optional<Transfer> execute_one(
   return used;
 }
 
-// The encoding with every unread variable bit cleared -- the name of the body
+// The encoding with every unread variable bit cleared, which names the body
 // this opcode wants. Two opcodes of one row share a body exactly when this
 // agrees.
 [[nodiscard]] consteval std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
@@ -767,7 +767,7 @@ inline constexpr auto dispatches = all_dispatches(std::make_index_sequence<targe
 
 // Fetch, decode, run; and go round again while what ran was a prefix. Each turn
 // of the loop is a real opcode fetch, so the loop always advances time and
-// always advances PC -- which is why a table may now reach itself.
+// always advances PC, which is why a table may now reach itself.
 inline void execute_instruction(Cpu &cpu) {
   auto table = target::entry_table;
   std::uint8_t latch = 0;

@@ -21,7 +21,7 @@ namespace specbolt::v4 {
 //
 // The registers are named outright because they live in the shared register
 // file; everything else is *every enum this namespace declares*, because that
-// is what those enums are for -- `Z80.hpp` declares one per family of locations
+// is what those enums are for. `Z80.hpp` declares one per family of locations
 // precisely so that a name can be found by walking `enumerators_of`. Writing
 // the list out instead means a new enum silently is not a location. Nothing
 // here has to exclude the enums that are not locations either: a name that
@@ -29,7 +29,7 @@ namespace specbolt::v4 {
 // named rather than guessed at.
 //
 // `members_of` sees what has been declared by the time it is *evaluated*, which
-// is during the first instantiation of `execute_one` -- long after every header
+// is during the first instantiation of `execute_one`, long after every header
 // is in. A scope declared later than that would not be found.
 [[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
   std::vector scopes{^^RegisterFile::R8, ^^RegisterFile::R16};

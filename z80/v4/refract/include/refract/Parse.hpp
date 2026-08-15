@@ -2,7 +2,7 @@
 
 // The three kinds of declaration a description contains, each reading the whole
 // text and returning what it found. Each returns a `std::vector`: nothing here
-// knows how many of anything a description holds, and nothing has to -- see
+// knows how many of anything a description holds, and nothing has to. See
 // ToArray.hpp for where that becomes a size.
 
 #include "refract/Lower.hpp"
@@ -51,8 +51,8 @@ namespace specbolt::refract {
 }
 
 // After blanks and comments, every line is a declaration or a row. A line that
-// is neither is a mistyped one of them -- a row that lost its separators, or
-// `vocabularies` for `vocab` -- and would otherwise be skipped in silence, surfacing
+// is neither is a mistyped one of them (a row that lost its separators, or
+// `vocabularies` for `vocab`) and would otherwise be skipped in silence, surfacing
 // much later as an opcode nothing decodes.
 constexpr bool check_every_line_means_something(const std::string_view description) {
   for (const auto [at, text]: lines_of(description)) {
@@ -205,7 +205,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 // A view is chosen by a prefix, long after everything about the instruction
 // that a compile-time check can see has been settled. So every check resolves
 // such a reference at member 0 and applies the answer to all of them --
-// `displaced_through` does not even take a view -- which is only sound if the
+// `displaced_through` does not even take a view, which is only sound if the
 // members agree about everything except which location they name.
 //
 // Without this, `vocab index_mem = (ix+d)/delay=1 (iy)` compiles clean and the
@@ -304,7 +304,7 @@ constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Ro
 // The encoding says what is fetched. The mnemonic must render exactly that, and
 // the action must use it: otherwise one of the three columns is lying.
 constexpr void check_immediates(const Row &row) {
-  // A row fetches one immediate, of `immediate_bytes` bytes -- so the mnemonic
+  // A row fetches one immediate, of `immediate_bytes` bytes, so the mnemonic
   // must render exactly one, of exactly that width. Summing widths would let
   // `$nn $nn` pass against `n n` and then disassemble as two bytes where the
   // machine read one sixteen-bit value.

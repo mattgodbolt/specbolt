@@ -25,7 +25,7 @@ struct Disassembly {
 };
 
 // How far a chain of table transfers is followed before the answer is "??".
-// Nothing in the description bounds one -- a table may reach itself -- and a
+// Nothing in the description bounds one, since a table may reach itself, and a
 // listing that walks a kilobyte before rendering a line is no use to the caller
 // even where it terminates. (On the Z80 the unbounded chain is a run of `0xdd`.)
 inline constexpr std::size_t max_instruction_bytes = 8;
@@ -75,7 +75,7 @@ inline constexpr std::size_t max_instruction_bytes = 8;
   // the rules of whoever inherited it.
   const auto &rules = description.rules_for(table);
   // The displacement precedes any immediate, so it is taken before the pieces
-  // are walked and whatever they read follows it -- unless a prefix already did.
+  // are walked and whatever they read follows it, unless a prefix already did.
   const auto displaced = displaced_through(description.vocabularies, *row, opcode, rules);
   const unsigned displacement = latch ? *latch : displaced ? byte_at(offset) : 0;
   if (displaced && !latch)
@@ -97,7 +97,7 @@ inline constexpr std::size_t max_instruction_bytes = 8;
       case Piece::Kind::Relative: {
         // Measured from the byte after the offset, which is the end of the
         // instruction: a relative jump never carries anything else. The sum is
-        // formed at the width the machine forms it at -- adding a signed
+        // formed at the width the machine forms it at. Adding a signed
         // displacement to a `std::size_t` offset first would take a backwards
         // jump through 64 bits of wraparound on its way to the same answer.
         const auto to = static_cast<std::int8_t>(byte_at(offset));

@@ -278,7 +278,7 @@ TEST_CASE("Table diagnostics") {
     // Nothing that runs at compile time can know which member a view will pick,
     // so every check resolves at member 0 and applies the answer to all of them.
     // Members that disagree would make that silently wrong rather than wrong
-    // out loud -- one addressing mode executed and another printed.
+    // out loud: one addressing mode executed and another printed.
     constexpr std::string_view prefix = "vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n"
                                         "table u(view:i)\n00000000 | ld {m:view} | ld8 {m:view} <- a\n";
     CHECK_NOTHROW(parse("vocab m = (ix+d)/delay=1 (iy+d)/delay=1\n" + std::string(prefix)));

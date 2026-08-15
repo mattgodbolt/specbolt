@@ -2,7 +2,7 @@
 
 // What a row means once an opcode has chosen among its vocabularies: which
 // operands it resolves to, which opcodes it claims, and the checks that answer
-// from those sets -- precedence, reachability, totality.
+// from those sets: precedence, reachability, totality.
 
 #include <algorithm>
 #include <array>
@@ -18,7 +18,7 @@
 
 namespace specbolt::refract {
 
-// What this opcode, decoded here, is displaced through -- nothing if it is not.
+// What this opcode, decoded here, is displaced through, or nothing if it is not.
 // Nothing declares this: a row says `{reg:z}`, a view says that member is now
 // `(ix+d)`, and the answer is whatever the operands resolve to.
 //
@@ -80,8 +80,8 @@ using OpcodeSet = std::bitset<256>;
 [[nodiscard]] constexpr bool within(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & ~theirs).none(); }
 [[nodiscard]] constexpr bool overlaps(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & theirs).any(); }
 
-// A pattern *generates* its opcodes -- walk the cartesian product of its
-// variable vocabularies and place each combination -- rather than being tested
+// A pattern *generates* its opcodes, walking the cartesian product of its
+// variable vocabularies and placing each combination, rather than being tested
 // against all 256. `BitSlice::place` exists for exactly this.
 [[nodiscard]] constexpr OpcodeSet opcodes_of(const std::span<const Vocabulary> vocabularies, const Row &row) {
   OpcodeSet result;
@@ -170,8 +170,9 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 [[nodiscard]] constexpr std::vector<DecodeTable> decode_tables(const std::span<const Row> rows,
     const std::span<const OpcodeSet> opcodes, const std::span<const TableDecl> tables) {
   std::vector<DecodeTable> all(tables.size());
-  // `rows` and `opcodes` are index-coupled by construction -- `opcodes_of_each`
-  // built one from the other -- so zip says that rather than trusting it.
+  // `rows` and `opcodes` are index-coupled by construction, because
+  // `opcodes_of_each` built one from the other, so zip says that rather than
+  // trusting it.
   for (const auto [index, row, claimed]: std::views::zip(std::views::iota(0uz), rows, opcodes))
     for (const auto opcode: std::views::iota(0uz, 256uz))
       if (claimed.test(opcode) && !all[row.table][opcode])
@@ -185,12 +186,12 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 }
 
 // Which tables are entered with a displacement already read. Where an encoding
-// interleaves a byte before the opcode that decides what to do with it -- the
-// Z80's `dd cb d op`, for example -- the row that meets that byte reads it and
+// interleaves a byte before the opcode that decides what to do with it (the
+// Z80's `dd cb d op`, for example), the row that meets that byte reads it and
 // hands it on rather than using it. Two consequences, both derived from the
 // gotos that reach a table rather than declared on it: its rows use the
 // displacement instead of reading one, and its opcode arrives by an operand
-// read rather than an instruction fetch -- the machine has already committed,
+// read rather than an instruction fetch, because the machine has committed,
 // which is why the real chip does not increment R for that byte.
 [[nodiscard]] constexpr std::vector<bool> latched_tables(
     const std::span<const Row> rows, const std::size_t num_tables) {
@@ -211,7 +212,7 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 }
 
 // Every opcode of every table must decode to something. On real hardware one
-// always does -- an unassigned encoding still has an effect -- so a table that
+// always does, since an unassigned encoding still has an effect, so a table that
 // declines to say is an incomplete description rather than a permissive one. A
 // catch-all row is how a table says "and everything else does this".
 //
@@ -231,7 +232,7 @@ constexpr bool check_tables_total(const Description &description) {
 // it?
 [[nodiscard]] constexpr bool names_literally(const Row &row, std::string_view what) {
   // A rule's left side is written as the vocabulary writes it, so it may carry
-  // parentheses -- `reg.(hl) -> (ix+d)`. An operand keeps the name and the
+  // parentheses, as in `reg.(hl) -> (ix+d)`. An operand keeps the name and the
   // indirection apart, so compare both halves rather than the text.
   auto indirect = false;
   if (what.starts_with('(') && what.ends_with(')')) {
@@ -268,7 +269,7 @@ constexpr bool check_inherited_literals(const Description &description) {
 }
 
 // Precedence within a table is checked pairwise, and a derived table's own rows
-// win over everything it inherits -- but nothing yet relates the two. A derived
+// win over everything it inherits, but nothing yet relates the two. A derived
 // row that overlaps a parent row without being contained in it is silently
 // taking opcodes the parent meant to keep.
 //
@@ -292,8 +293,8 @@ constexpr bool check_derived_rows_override(const Description &description, const
   return true;
 }
 
-// Does this row's mnemonic render a displacement? It may say so itself -- an
-// override row writing `(ix+d)` in full -- or through a vocabulary member that
+// Does this row's mnemonic render a displacement? It may say so itself, as an
+// override row writing `(ix+d)` in full does, or through a vocabulary member that
 // a view renamed to one.
 [[nodiscard]] constexpr bool renders_displacement(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
@@ -309,9 +310,9 @@ constexpr bool check_derived_rows_override(const Description &description, const
 }
 
 // `check_immediates` cross-checks the three columns about `n`; this is the same
-// question for a displacement. It needs an opcode -- whether a row is displaced
+// question for a displacement. It needs an opcode, since whether a row is displaced
 // depends on which vocabulary member the opcode picks, and on the renaming of
-// the table it was decoded in -- so it belongs here rather than beside the row.
+// depends on the table it was decoded in, so it belongs here, not beside the row.
 //
 // A mismatch is not a length error: both the interpreter and the disassembler
 // take the length from `displaced_through`, so they agree about how many bytes
@@ -331,18 +332,18 @@ constexpr bool check_displacement_rendered(const Description &description) {
 }
 
 // A table nothing reaches is a typo: nothing can ever decode in it. It is still
-// generated -- every table's dispatch is instantiated regardless of whether a
-// goto names it -- so this catches the mistake rather than un-checked code.
+// generated, because every table's dispatch is instantiated whether or not a
+// goto names it, so this catches the mistake rather than un-checked code.
 //
 // Reachable *from the entry table*, rather than merely named by some goto: two
 // tables that only reach each other are as unreachable as one nothing names at
 // all, and cost just as much to generate. Walking the decoded tables rather
-// than the rows is what accounts for inheritance -- a derived table reaches
+// than the rows is what accounts for inheritance: a derived table reaches
 // wherever its parent's rows go.
 constexpr bool check_tables_used(const Description &description) {
   const auto tables = description.tables;
   for (const auto [which, table]: std::views::enumerate(tables))
-    // A derived table with no rows of its own is its parent, renamed -- which is
+    // A derived table with no rows of its own is its parent, renamed, which is
     // the whole point of one.
     if (!table.derived && !std::ranges::contains(description.rows, static_cast<std::uint8_t>(which), &Row::table))
       throw table_error(table.line, "this table has no rows");

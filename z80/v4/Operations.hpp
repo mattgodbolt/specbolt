@@ -3,7 +3,7 @@
 // What a row's verbs mean: every operation a description of this chip may name,
 // and where reflection is to look for them.
 //
-// These are the semantics the table cannot express -- the block moves, the
+// These are the semantics the table cannot express: the block moves, the
 // exchanges, the flag minutiae. The easy majority of the instruction set became
 // rows; this is the awkward remainder, and it is meant to be read as such.
 
@@ -242,7 +242,7 @@ public:
 };
 
 // Where the table may name operations from. A `std::vector` for the same reason
-// `location_scopes` is one -- see Locations.hpp.
+// `location_scopes` is one. See Locations.hpp.
 [[nodiscard]] consteval std::vector<std::meta::info> operation_scopes() { return {^^Operations, ^^Alu}; }
 
 } // namespace specbolt::v4

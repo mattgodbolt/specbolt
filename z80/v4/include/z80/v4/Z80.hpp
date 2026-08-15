@@ -45,7 +45,7 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 SPECBOLT_EXPORT enum class FlagBit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };
 
 // Reordering the enumerators above would silently retarget every condition in
-// the description -- `jr nz` would test the wrong bit, with nothing to fail but
+// the description: `jr nz` would test the wrong bit, with nothing to fail but
 // the exerciser. These say so at compile time instead.
 namespace detail {
 constexpr bool flag_bit_is(const Flags flag, const FlagBit bit) {
@@ -73,7 +73,7 @@ SPECBOLT_EXPORT enum class FlipFlop : std::uint8_t { halted, iff1, iff2, deferre
 // The program counter, which is not in the programmer's register file.
 SPECBOLT_EXPORT enum class ProgramCounter : std::uint8_t { pc };
 
-// The high byte of the last address the machine formed -- WZ, as the Z80
+// The high byte of the last address the machine formed. WZ, as the Z80
 // literature calls it. `bit n, (ix+d)` takes flags 3 and 5 from it.
 SPECBOLT_EXPORT enum class AddressLatch : std::uint8_t { wzh };
 
@@ -88,7 +88,7 @@ SPECBOLT_EXPORT enum class Refresh : std::uint8_t { r };
 
 // The index registers, named once rather than twice. A DD or FD prefix decodes
 // the same table under a different *view*, and these are the locations that
-// view selects between at run time -- so `ix` and `iy` cost one description,
+// view selects between at run time, so `ix` and `iy` cost one description,
 // one set of rows and one set of generated handlers between them. Each
 // enumerator is named for the vocabulary in `z80.cpu` that resolves to it.
 SPECBOLT_EXPORT class Z80 : public Z80Base {
@@ -97,7 +97,7 @@ public:
 
   void execute_one();
 
-  // What the framework asks of a machine -- see refract/Machine.hpp. These are
+  // What the framework asks of a machine. See refract/Machine.hpp. These are
   // the chip's own names for what it does; the framework calls them directly
   // rather than through anything in between.
   std::uint8_t fetch_opcode();
@@ -109,7 +109,7 @@ public:
   void delay(std::uint8_t cycles);
 
   // How a displacement offsets a base, and what forming that address costs.
-  // The Z80 sign-extends and spends a five-T-state window doing it -- but any
+  // The Z80 sign-extends and spends a five-T-state window doing it, but any
   // immediate the instruction also carries is read *inside* that window, which
   // is why `ld (ix+d), n` is 19 T-states and not 22, and why the framework says
   // how many bytes it already read.
@@ -118,7 +118,7 @@ public:
   // Reading and writing a named location. One overload per kind of location,
   // all called `read` or `write`, because the framework has only the one name
   // to call: it splices an enumerator and lets overload resolution land on the
-  // right one. The return types differ, and that is the point -- `carry` yields
+  // right one. The return types differ, and that is the point: `carry` yields
   // a `bool` and `flags` a `Flags`, without anything in between being told.
   [[nodiscard]] std::uint8_t read(const RegisterFile::R8 location) const { return get(location); }
   [[nodiscard]] std::uint16_t read(const RegisterFile::R16 location) const { return get(location); }

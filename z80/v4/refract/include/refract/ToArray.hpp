@@ -15,8 +15,8 @@ namespace specbolt::refract {
 // fixed-size array, and an array's size has to be known before it is filled.
 //
 // Hence twice: once to ask how big the answer is, and once for the answer.
-// `Make` is a captureless lambda -- a structural type, and therefore a legal
-// template argument -- which is what lets the same expression be evaluated in
+// `Make` is a captureless lambda, which is a structural type and therefore a
+// legal template argument, and that is what lets the same expression be evaluated in
 // both places. It costs a second parse and buys a pipeline in which nothing but
 // this function has to know a count in advance.
 template<auto Make>

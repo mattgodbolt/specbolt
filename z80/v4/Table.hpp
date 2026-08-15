@@ -31,13 +31,13 @@ inline constexpr std::string_view cpu_description{cpu_raw, sizeof cpu_raw};
 
 // The description this build was compiled against. Everything above parses
 // whatever it is handed; these are where the embedded file enters. (Diagnostics
-// name it too, through `SPECBOLT_CPU_TABLE` in TableError.hpp -- which is why
+// name it too, through `SPECBOLT_CPU_TABLE` in TableError.hpp, which is why
 // one build can hold only one description.)
 //
 // This is also the whole of the boundary between compile time and run time.
 // Each step works in `std::vector` and `to_array` fixes the answer; the size of
 // each one is whatever the description turned out to say. Five of the six are
-// read by running code -- the disassembler walks `rows`, `vocabularies` and
+// read by running code: the disassembler walks `rows`, `vocabularies` and
 // `tables`, `find_row` reads `decoded`, and the dispatch loop reads `latched`.
 // `row_opcodes` is the exception: only the checks below want it, and it is a
 // constant so that three of them share one computation.

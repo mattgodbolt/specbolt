@@ -5,7 +5,7 @@
 // A `.cpu` description names operations and locations; this says how the
 // framework fetches, accesses memory, forms an indexed address and spends time.
 // Where the *names* are resolved is a separate question, answered by the
-// `operation_scopes()` and `location_scopes()` the target supplies -- they take
+// `operation_scopes()` and `location_scopes()` the target supplies, since they take
 // no argument, so no concept can reach them by lookup.
 //
 // This is what the *framework* calls, not everything the machine is asked for:
