@@ -32,7 +32,16 @@ namespace specbolt::refract {
     vocabulary.name = parser.next_word();
     if (vocabulary.name.empty())
       throw table_error(at, "vocabulary declaration has no name");
-    if (parser.next_word() != "=")
+    auto next = parser.next_word();
+    // `vocab pair : R16 = ...`: the scope its members are looked up in, rather
+    // than every location the CPU offers.
+    if (next == ":") {
+      vocabulary.scope = parser.next_word();
+      if (vocabulary.scope.empty())
+        throw table_error(at, "':' introduces the scope a vocabulary's members come from, and none was given");
+      next = parser.next_word();
+    }
+    if (next != "=")
       throw table_error(at, "expected '=' in vocabulary declaration");
     while (!parser.eof()) {
       const auto value = parser.next_word();

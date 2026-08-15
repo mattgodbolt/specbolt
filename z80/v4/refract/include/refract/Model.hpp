@@ -99,6 +99,9 @@ struct Operand {
   // `reference.vocabulary_index` says which vocabulary, and the generated code
   // turns that into the list of locations the view indexes.
   bool from_view{};
+  // Carried from the vocabulary this came from, because by the time a name is
+  // looked up the vocabulary is long gone.
+  Name scope{};
   constexpr bool operator==(const Operand &) const = default;
 };
 
@@ -131,6 +134,11 @@ struct Member {
 struct Vocabulary {
   static constexpr std::size_t max_members = 8;
   std::string_view name{};
+  // `vocab pair : R16 = bc de hl sp`: which scope its members are looked up in.
+  // Empty means the CPU's locations, which is what most of them are. Compared
+  // exactly, unlike a member, because it names a C++ type rather than something
+  // written the way assembly is written.
+  std::string_view scope{};
   Vector<Member, max_members> members{};
 };
 
@@ -243,6 +251,7 @@ struct Resolution {
   // The member supplies everything about the operand except which parameter it
   // was written against, which is the row's business and not the vocabulary's.
   result.parameter = operand.parameter;
+  result.scope = Name{at.vocabularies[operand.reference.vocabulary_index].scope};
   // A number the opcode already carries: say where, rather than which. Every
   // member of the vocabulary then resolves to the same operand, so the eight
   // functions that differed only in a bit index become one.

@@ -31,11 +31,31 @@ namespace specbolt::v4 {
 // `members_of` sees what has been declared by the time it is *evaluated*, which
 // is during the first instantiation of `execute_one`, long after every header
 // is in. A scope declared later than that would not be found.
+[[nodiscard]] consteval std::vector<std::meta::info> enums_in(const std::meta::info scope) {
+  std::vector<std::meta::info> found;
+  for (const auto member: std::meta::members_of(scope, std::meta::access_context::current()))
+    if (std::meta::is_type(member) && std::meta::is_enum_type(member))
+      found.push_back(member);
+  return found;
+}
+
 [[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
   std::vector scopes{^^RegisterFile::R8, ^^RegisterFile::R16};
-  for (const auto member: std::meta::members_of(^^specbolt::v4::locations, std::meta::access_context::current()))
-    if (std::meta::is_type(member) && std::meta::is_enum_type(member))
-      scopes.push_back(member);
+  for (const auto found: enums_in(^^specbolt::v4::locations))
+    scopes.push_back(found);
+  return scopes;
+}
+
+// Every scope a vocabulary may name in its `: Scope` clause: the locations, and
+// the enums this namespace declares that are not locations. Scanned rather than
+// listed, for the same reason `location_scopes` is: declaring one is what makes
+// it nameable, and forgetting to add it to a list is not a thing that can
+// happen. Naming one is opt-in per vocabulary, so `Bus` appearing here costs
+// nothing; no vocabulary asks for it.
+[[nodiscard]] consteval std::vector<std::meta::info> named_scopes() {
+  auto scopes = location_scopes();
+  for (const auto found: enums_in(^^specbolt::v4))
+    scopes.push_back(found);
   return scopes;
 }
 

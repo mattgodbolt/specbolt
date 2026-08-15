@@ -154,15 +154,6 @@ static_assert(
 // `a`, `hl`, `carry`, `pc`: an enumerator in one of the scopes the CPU offers.
 // The `std::vector` here is fine, because it is created and destroyed within
 // one constant evaluation, which is allowed; what it must not do is escape.
-[[nodiscard]] consteval std::meta::info find_location(const std::string_view name, const std::size_t line) {
-  std::vector<std::meta::info> candidates;
-  for (const auto scope: target::location_scopes())
-    for (const auto enumerator: std::meta::enumerators_of(scope))
-      if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
-        candidates.push_back(enumerator);
-  return only_match(candidates, name, line);
-}
-
 // What a description calls one enumerator: the `Spelling` it declares, or its
 // own identifier when it declares none. The annotation is an override, so only
 // a name the description and C++ disagree about has to be written down.
@@ -173,6 +164,35 @@ static_assert(
     if (std::meta::type_of(annotation) == ^^const Spelling)
       return std::string(std::meta::extract<Spelling>(annotation).text.view());
   return std::string(std::meta::identifier_of(enumerator));
+}
+
+// The scope a vocabulary named. Compared exactly: it is a C++ type's name, not
+// something written the way assembly is written.
+[[nodiscard]] consteval std::meta::info find_scope(const std::string_view name, const std::size_t line) {
+  std::string offered;
+  for (const auto scope: target::named_scopes()) {
+    if (std::meta::identifier_of(scope) == name)
+      return scope;
+    offered += (offered.empty() ? " (this CPU offers " : ", ") + std::string(std::meta::identifier_of(scope));
+  }
+  throw table_error(line, "no scope named '" + std::string(name) + "'" + offered + ")");
+}
+
+[[nodiscard]] consteval std::meta::info find_location(
+    const std::string_view name, const std::size_t line, const std::string_view scope = {}) {
+  std::vector<std::meta::info> candidates;
+  if (!scope.empty()) {
+    for (const auto enumerator: std::meta::enumerators_of(find_scope(scope, line)))
+      if (same_ignoring_case(std::meta::identifier_of(enumerator), name) ||
+          same_ignoring_case(spelling_of(enumerator), name))
+        candidates.push_back(enumerator);
+    return only_match(candidates, name, line);
+  }
+  for (const auto everywhere: target::location_scopes())
+    for (const auto enumerator: std::meta::enumerators_of(everywhere))
+      if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
+        candidates.push_back(enumerator);
+  return only_match(candidates, name, line);
 }
 
 // An enumerator of the enum a *parameter* asks for. The parameter type is the
@@ -214,10 +234,11 @@ static_assert(
 template<Operand Op, std::size_t Line>
 [[nodiscard]] consteval auto locations_of_view() {
   constexpr const auto &members = target::vocabularies[Op.reference.vocabulary_index].members;
-  std::array<typename[:std::meta::type_of(find_location(members[0].operand.name.view(), Line)):], members.size()>
+  std::array<typename[:std::meta::type_of(find_location(
+                           members[0].operand.name.view(), Line, members[0].operand.scope.view())):], members.size()>
       locations{};
   template for (constexpr auto at: std::views::iota(0uz, members.size()))
-      locations[at] = [:find_location(members[at].operand.name.view(), Line):];
+      locations[at] = [:find_location(members[at].operand.name.view(), Line, members[at].operand.scope.view()):];
   return locations;
 }
 
@@ -371,7 +392,7 @@ template<Operand Op, std::size_t Line, typename Parameter>
     // means. `cpu.read(R8::A)` and `cpu.read(FlagBit::carry)` are different
     // functions returning different types, chosen here by nothing more exotic
     // than overload resolution.
-    return cpu.read([:find_location(Op.name.view(), Line):]);
+    return cpu.read([:find_location(Op.name.view(), Line, Op.scope.view()):]);
 }
 
 // The address an indirect operand addresses through. A displaced one was formed
@@ -431,7 +452,7 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
       cpu.write(locations[decoded.view], value);
     }
     else
-      cpu.write([:find_location(Op.name.view(), Line):], value);
+      cpu.write([:find_location(Op.name.view(), Line, Op.scope.view()):], value);
   }
 }
 

@@ -4,7 +4,7 @@
 # that opcode at all, which is how a general row leaves room for a specific one.
 
 # The sixteen-bit pairs, as most of the opcode space spells them.
-vocab pair = bc de hl sp
+vocab pair : R16 = bc de hl sp
 
 # The eight-bit registers. Slot 6 is not a register but an addressing mode, and
 # it carries the idle cycle a read-modify-write through it costs.
@@ -36,10 +36,10 @@ vocab arot = rlca:rlca8 rrca:rrca8 rla:rla8 rra:rra8
 # The real eight-bit registers, which no view renames: in `ld r, (ix+d)` the
 # register half is the true h or l. A rule names the vocabulary it rewrites, and
 # no rule names this one. Slot 6 is a hole so these rows leave `halt` alone.
-vocab real = b c d e h l - a
+vocab real : R8 = b c d e h l - a
 
 # The stack's view of the pairs, which puts af where sp would be.
-vocab spair = bc de hl af
+vocab spair : R16 = bc de hl af
 
 # The two index registers, as a vocabulary rather than as two tables. A `dd` or
 # `fd` prefix decodes the same rows under a different *view*, and these four
@@ -50,10 +50,10 @@ vocab spair = bc de hl af
 # in the same order as each other: `ixh` has to sit where `ix` sits. Nothing can
 # check that, because nothing but the Z80 knows the two are halves of a pair.
 # The order itself is free, and no longer anything the machine knows about.
-vocab index     = ix              iy
-vocab index_hi  = ixh             iyh
-vocab index_lo  = ixl             iyl
-vocab index_mem = (ix+d)/delay=1  (iy+d)/delay=1
+vocab index     : R16 = ix              iy
+vocab index_hi  : R8  = ixh             iyh
+vocab index_lo  : R8  = ixl             iyl
+vocab index_mem : R16 = (ix+d)/delay=1  (iy+d)/delay=1
 
 # Where each `rst` goes. The member is the constant itself.
 vocab rst = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
@@ -70,7 +70,7 @@ vocab jcond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
 
 # Which way a block operation walks memory. Its members are neither locations
 # nor constants but the spellings `BlockDirection` declares for itself.
-vocab dir = i d
+vocab dir : BlockDirection = i d
 
 # The interrupt modes, as the three-bit slice of the ed table spells them:
 # every mode has two encodings and mode 0 has four.

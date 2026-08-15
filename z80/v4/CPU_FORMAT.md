@@ -168,7 +168,7 @@ line            = comment | vocab-decl | table-decl | row | empty ;
 (* a line ending in "\" is joined to the next before any of the above *)
 comment         = "#" , { any } ;
 
-vocab-decl      = "vocab" , vocab-name , "=" , member , { member } ;
+vocab-decl      = "vocab" , vocab-name , [ ":" , scope-name ] , "=" , member , { member } ;
 member          = hole | ( operand , [ ":" , identifier , [ "+" , operand ] ] ) ;
 hole            = "-" ;
 
@@ -205,6 +205,9 @@ number          = digit , { digit } | "0x" , hex-digit , { hex-digit } ;
 (* terminals *)
 vocab-name      = ? a word, no space. Compared exactly, so `reg` and `Reg`
                     would be different vocabularies ? ;
+scope-name      = ? the identifier of an enum the CPU declares. Compared
+                    *exactly*, unlike a member: it names a C++ type rather than
+                    something written the way assembly is written ? ;
 slice-char      = ? one character other than "0" or "1", compared exactly ? ;
 name            = ? up to 15 characters, no space. Resolved against the CPU's
                     locations, ignoring case ? ;
@@ -247,6 +250,34 @@ A vocabulary's name is a word. Its members are listed in the order
 the opcode bits select them, so a vocabulary of four members belongs to a
 two-bit slice and one of eight members to a three-bit slice. A mismatch is a
 compile error.
+
+### Where its members are looked up
+
+```
+vocab pair : R16 = bc de hl sp
+```
+
+A vocabulary may name the scope its members come from. Without one they are
+looked up in every location the CPU offers, which is what most vocabularies
+want. With one the search is that enum and nothing else, so a member that is not
+one of its enumerators is an error naming the line, and a name that means two
+things elsewhere means only one thing here.
+
+The scope may be any enum the CPU declares, not only a location, which is how a
+vocabulary can select between values rather than places:
+
+```
+vocab dir : BlockDirection = i d
+```
+
+Members are still matched ignoring case, and against an enumerator's
+[spelling](#spellings) where it declares one. The *scope* is matched exactly,
+because it names a C++ type.
+
+Not every vocabulary can have one. `reg` is `b c d e h l (hl)/delay=1 a`, whose
+names come from two different enums: seven registers and one addressing mode
+built on a pair. That is a vocabulary of mixed things, and it keeps the default
+search.
 
 ### Members
 

@@ -32,11 +32,13 @@
 
     "vocab-decl": {
       "name": "meta.declaration.vocab.cpu",
-      "begin": "^\\s*(vocab)\\s+([^\\s=]+)\\s*(=)",
+      "begin": "^\\s*(vocab)\\s+([^\\s:=]+)\\s*(?:(:)\\s*([^\\s=]+)\\s*)?(=)",
       "beginCaptures": {
         "1": { "name": "keyword.control.vocab.cpu" },
         "2": { "name": "entity.name.type.vocab.cpu" },
-        "3": { "name": "keyword.operator.assignment.cpu" }
+        "3": { "name": "punctuation.separator.scope.cpu" },
+        "4": { "name": "entity.name.type.scope.cpu" },
+        "5": { "name": "keyword.operator.assignment.cpu" }
       },
       "end": "(?=\\n)",
       "patterns": [{ "include": "#continuation" }, { "include": "#member" }]
