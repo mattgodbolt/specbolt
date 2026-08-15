@@ -130,6 +130,11 @@ an addressing mode is formed and paid for.
 
 ## Lexical structure
 
+A line ending in `\` continues onto the next, and the two are read as one. The
+join happens before anything below: a continued line is one line, and it is
+reported at the number it *started* on. Nothing else changes, so wrapping a
+declaration is only ever a matter of taste.
+
 Lines are trimmed of leading and trailing spaces and tabs, and of a trailing
 carriage return. After trimming:
 
@@ -140,6 +145,7 @@ carriage return. After trimming:
 | begins with `vocab ` | a vocabulary declaration |
 | begins with `table ` | a table declaration |
 | contains `\|` | a row |
+| ends with `\` | joined to the line below, and read as one |
 | anything else | a compile error |
 
 > **Comments must be on their own line.** `#` is only special at the start of a
@@ -158,6 +164,7 @@ carriage return. After trimming:
 ```ebnf
 file            = { line } ;
 line            = comment | vocab-decl | table-decl | row | empty ;
+(* a line ending in "\" is joined to the next before any of the above *)
 comment         = "#" , { any } ;
 
 vocab-decl      = "vocab" , vocab-name , "=" , member , { member } ;

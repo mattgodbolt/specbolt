@@ -4,6 +4,7 @@
   "scopeName": "source.cpu",
   "patterns": [
     { "include": "#comment" },
+    { "include": "#continuation" },
     { "include": "#vocab-decl" },
     { "include": "#table-decl" },
     { "include": "#row" },
@@ -11,6 +12,12 @@
     { "include": "#unrecognised-line" }
   ],
   "repository": {
+    "continuation": {
+      "comment": "A trailing backslash joins this line to the next, and the two are read as one.",
+      "match": "\\\\\\s*$",
+      "name": "keyword.operator.continuation.cpu"
+    },
+
     "comment": {
       "comment": "`#` is only special at the start of a line; a trailing one is part of the action column.",
       "name": "comment.line.number-sign.cpu",
@@ -20,7 +27,7 @@
     "unrecognised-line": {
       "comment": "Every line must mean something. What is neither blank, comment, declaration nor row is a mistyped one of them.",
       "name": "invalid.illegal.unrecognised-line.cpu",
-      "match": "^(?!\\s*(?:#|vocab\\s|table\\s|$))[^|]*$"
+      "match": "^(?!\\s*(?:#|vocab\\s|table\\s|$))[^|]*(?<!\\\\)$"
     },
 
     "vocab-decl": {
@@ -31,8 +38,8 @@
         "2": { "name": "entity.name.type.vocab.cpu" },
         "3": { "name": "keyword.operator.assignment.cpu" }
       },
-      "end": "$",
-      "patterns": [{ "include": "#member" }]
+      "end": "(?<!\\\\)\\n",
+      "patterns": [{ "include": "#continuation" }, { "include": "#member" }]
     },
 
     "table-decl": {
@@ -42,11 +49,12 @@
         "1": { "name": "keyword.control.table.cpu" },
         "2": { "name": "entity.name.type.table.cpu" }
       },
-      "end": "$",
+      "end": "(?<!\\\\)\\n",
       "patterns": [
         { "include": "#view-decl" },
         { "include": "#derivation" },
         { "include": "#substitution" },
+        { "include": "#continuation" },
         { "include": "#separator-comma" },
         { "include": "#reference" },
         { "include": "#member" }
@@ -119,7 +127,7 @@
         },
         "2": { "patterns": [{ "include": "#encoding-bytes" }] }
       },
-      "end": "$",
+      "end": "(?<!\\\\)\\n",
       "patterns": [{ "include": "#mnemonic-column" }]
     },
 
@@ -130,7 +138,7 @@
       "beginCaptures": {
         "1": { "name": "invalid.illegal.encoding.cpu" }
       },
-      "end": "$",
+      "end": "(?<!\\\\)\\n",
       "patterns": [{ "include": "#mnemonic-column" }]
     },
 
@@ -145,9 +153,10 @@
       "name": "meta.mnemonic.cpu",
       "begin": "\\|",
       "beginCaptures": { "0": { "name": "punctuation.separator.column.cpu" } },
-      "end": "$",
+      "end": "(?<!\\\\)\\n",
       "patterns": [
         { "include": "#action-column" },
+        { "include": "#continuation" },
         { "include": "#reference" },
         { "include": "#placeholder" },
         { "match": "[^{}$|+]+", "name": "string.unquoted.mnemonic.cpu" }
@@ -164,8 +173,9 @@
       "name": "meta.action.cpu",
       "begin": "\\|",
       "beginCaptures": { "0": { "name": "punctuation.separator.column.cpu" } },
-      "end": "$",
+      "end": "(?<!\\\\)\\n",
       "patterns": [
+        { "include": "#continuation" },
         { "include": "#step-goto" },
         { "include": "#step-if" },
         { "include": "#step-operation" },

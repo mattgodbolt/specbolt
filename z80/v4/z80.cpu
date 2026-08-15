@@ -24,7 +24,10 @@ vocab bit = 0 1 2 3 4 5 6 7
 # The rotates and shifts of the cb table. `rl` and `rr` take the carry in the
 # same way the arithmetic group does. `sll` is undocumented, and shifts a one in
 # where `sla` shifts a zero.
-vocab shift = rlc:rotate_circular8+left rrc:rotate_circular8+right rl:rl8+carry rr:rr8+carry sla:shift_arithmetic8+left sra:shift_arithmetic8+right sll:shift_logical8+left srl:shift_logical8+right
+vocab shift = rlc:rotate_circular8+left  rrc:rotate_circular8+right \
+              rl:rl8+carry               rr:rr8+carry \
+              sla:shift_arithmetic8+left sra:shift_arithmetic8+right \
+              sll:shift_logical8+left    srl:shift_logical8+right
 
 # The accumulator-only rotates, which keep sign, zero and parity where the cb
 # forms above recompute them.
@@ -57,7 +60,10 @@ vocab rst = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
 
 # The conditions. Each binds a test and appends the flag it asks about, so the
 # vocabulary is the whole of what `nz` means.
-vocab cond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry po:is_clear+parity pe:is_set+parity p:is_clear+sign m:is_set+sign
+vocab cond = nz:is_clear+zero   z:is_set+zero \
+             nc:is_clear+carry  c:is_set+carry \
+             po:is_clear+parity pe:is_set+parity \
+             p:is_clear+sign    m:is_set+sign
 
 # The four conditions a relative jump has room to encode.
 vocab jcond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
@@ -146,7 +152,11 @@ table cb
 # with hl renamed, which is why two thirds of their entries are the base
 # instruction untouched. The rows below are the ones a rename alone gets wrong.
 
-table indexed(view:index) = base with pair.hl -> {index:view}, spair.hl -> {index:view}, reg.h -> {index_hi:view}, reg.l -> {index_lo:view}, reg.(hl) -> {index_mem:view}
+table indexed(view:index) = base with pair.hl  -> {index:view}, \
+                                      spair.hl -> {index:view}, \
+                                      reg.h    -> {index_hi:view}, \
+                                      reg.l    -> {index_lo:view}, \
+                                      reg.(hl) -> {index_mem:view}
 
 00pp1001     | add {index:view}, {pair:p}    | add16 {index:view}, flags <- {index:view} {pair:p} flags ; delay 7
 00100010 n n | ld ($nnnn), {index:view}      | ld16 (n) <- {index:view}

@@ -84,4 +84,44 @@ TEST_CASE("Lines are numbered from one") {
   }
   SECTION("An empty description has no lines at all") { CHECK(numbers_and_text("").empty()); }
 }
+
+TEST_CASE("A trailing backslash joins a line to the next") {
+  const auto numbers_and_text = [](const std::string_view description) {
+    return lines_of(description) |
+           std::views::transform([](const Line &line) { return std::pair{line.number, line.text}; }) |
+           std::ranges::to<std::vector>();
+  };
+  using Lines = std::vector<std::pair<std::size_t, std::string_view>>;
+  SECTION("The joined text is one view over the original, backslash and newline included") {
+    CHECK(numbers_and_text("one \\\ntwo") == Lines{{1, "one \\\ntwo"}});
+  }
+  SECTION("It is reported at the line it started on, and later lines keep their own numbers") {
+    CHECK(numbers_and_text("a\nb \\\nc\nd") == Lines{{1, "a"}, {2, "b \\\nc"}, {4, "d"}});
+  }
+  SECTION("A chain of them joins as one") {
+    CHECK(numbers_and_text("a \\\nb \\\nc\nd") == Lines{{1, "a \\\nb \\\nc"}, {4, "d"}});
+  }
+  SECTION("The backslash need not be the last character, because the line is trimmed first") {
+    CHECK(numbers_and_text("a \\  \nb") == Lines{{1, "a \\  \nb"}});
+  }
+  SECTION("A backslash on the last line has nothing to join to, and the text survives to be diagnosed") {
+    CHECK(numbers_and_text("a \\") == Lines{{1, "a"}});
+  }
+  SECTION("Joining onto a blank line is not a crash") {
+    CHECK(numbers_and_text("a \\\n\nb") == Lines{{1, "a"}, {3, "b"}});
+  }
+  // The point of all the above: `Parser` sees the join as whitespace, so a
+  // caller reads the same words whether or not the description was wrapped.
+  SECTION("Words read the same either way") {
+    const auto words = [](const std::string_view text) {
+      Parser parser(lines_of(text).front().text);
+      std::vector<std::string_view> found;
+      while (!parser.eof())
+        if (const auto word = parser.next_word(); !word.empty())
+          found.push_back(word);
+      return found;
+    };
+    CHECK(words("vocab dir = i d") == words("vocab dir = i \\\n          d"));
+  }
+}
 } // namespace specbolt::v4
