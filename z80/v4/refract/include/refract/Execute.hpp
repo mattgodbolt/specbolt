@@ -199,6 +199,28 @@ static_assert(
   return candidates.front();
 }
 
+// The locations a view selects between, in the order its vocabulary lists them,
+// so that the view *is* the index. Every member resolves to a location of the
+// same type -- `check_view_vocabulary` is what guarantees that -- so the machine
+// is handed a location it already knows how to read, and needs no notion of a
+// view at all. The alternative is for the machine to offer a location per
+// vocabulary and a selector to go with it, which works only while the machine
+// and the description agree about what the number means; nothing states that
+// agreement, so nothing can check it.
+//
+// `template for` rather than a loop: a splice needs its operand to be a
+// constant expression, and only an expansion statement's induction variable is
+// one.
+template<Operand Op, std::size_t Line>
+[[nodiscard]] consteval auto locations_of_view() {
+  constexpr const auto &members = target::vocabularies[Op.reference.vocabulary_index].members;
+  std::array<typename[:std::meta::type_of(find_location(members[0].operand.name.view(), Line)):], members.size()>
+      locations{};
+  std::size_t at = 0;
+  template for (constexpr auto member: members) locations[at++] = [:find_location(member.operand.name.view(), Line):];
+  return locations;
+}
+
 // `inc8`, `add16`, `is_set`: a static member function of one of the CPU's
 // operation scopes.
 [[nodiscard]] consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
@@ -305,11 +327,12 @@ template<Operand Op, std::size_t Line, typename Parameter>
     else
       return immediate;
   }
-  else if constexpr (Op.from_view)
-    // The view chose this one, and the view is not known until a prefix has
-    // run, so the machine is handed the selector and picks. `Op.name` is the
-    // vocabulary's name here rather than a member's -- see `resolve`.
-    return cpu.read([:find_location(Op.name.view(), Line):], view);
+  else if constexpr (Op.from_view) {
+    // Which member is not known until the table's view has been chosen, so the
+    // choice is an array index rather than a splice. See `locations_of_view`.
+    static constexpr auto locations = locations_of_view<Op, Line>();
+    return cpu.read(locations[view]);
+  }
   else if constexpr (std::is_enum_v<Parameter>)
     // The parameter asks for an enum, so the name is one of *its* members
     // rather than a place to read from: spliced as a value, with nothing
@@ -379,8 +402,10 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
   }
   else {
     static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
-    if constexpr (Op.from_view)
-      cpu.write([:find_location(Op.name.view(), Line):], view, value);
+    if constexpr (Op.from_view) {
+      static constexpr auto locations = locations_of_view<Op, Line>();
+      cpu.write(locations[view], value);
+    }
     else
       cpu.write([:find_location(Op.name.view(), Line):], value);
   }

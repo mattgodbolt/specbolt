@@ -40,9 +40,13 @@ vocab spair = bc de hl af
 
 # The two index registers, as a vocabulary rather than as two tables. A `dd` or
 # `fd` prefix decodes the same rows under a different *view*, and these four
-# parallel vocabularies are what a view selects between: the display text is
-# per-member, and every member of one resolves to the same machine location,
-# which is handed the view at run time. One set of rows, one set of handlers.
+# parallel vocabularies are what a view selects between. One set of rows, one
+# set of handlers.
+#
+# A view is an ordinal into all four at once, so they must list their registers
+# in the same order as each other: `ixh` has to sit where `ix` sits. Nothing can
+# check that, because nothing but the Z80 knows the two are halves of a pair.
+# The order itself is free, and no longer anything the machine knows about.
 vocab index     = ix              iy
 vocab index_hi  = ixh             iyh
 vocab index_lo  = ixl             iyl

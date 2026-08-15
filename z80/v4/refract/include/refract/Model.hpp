@@ -234,12 +234,13 @@ using Rules = Vector<Rule, 6>;
     return result;
   }
   // The member supplies the shape -- indirect, displaced, what a write-back
-  // idles for -- but when the view chose it the name must be the vocabulary's,
-  // because which member it is will not be known until the prefix has run.
+  // idles for -- but *which* member is not known until the table's view has
+  // been chosen, so the vocabulary is carried instead of a name. The generated
+  // code turns it into the list of locations the view selects between.
   if (const auto [vocabulary, from_view] = source_of(vocabularies, operand.reference, matched, opcode, rules);
       from_view) {
     result.from_view = true;
-    result.name = Name{vocabularies[vocabulary].name};
+    result.reference.vocabulary_index = vocabulary;
   }
   return result;
 }

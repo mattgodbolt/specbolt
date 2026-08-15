@@ -91,9 +91,6 @@ SPECBOLT_EXPORT enum class Refresh : std::uint8_t { r };
 // view selects between at run time -- so `ix` and `iy` cost one description,
 // one set of rows and one set of generated handlers between them. Each
 // enumerator is named for the vocabulary in `z80.cpu` that resolves to it.
-SPECBOLT_EXPORT enum class Index : std::uint8_t { index, index_mem };
-SPECBOLT_EXPORT enum class IndexHalf : std::uint8_t { index_hi, index_lo };
-
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
@@ -188,31 +185,7 @@ public:
   [[nodiscard]] bool interrupts_deferred() const { return interrupts_deferred_; }
   void interrupts_deferred(const bool value) { interrupts_deferred_ = value; }
 
-  // A view-selected location. These take the selector as well as the splice,
-  // because which register is meant was decided by a prefix and is not known
-  // when the instruction is generated. `index_mem` is the base of `(i+d)`:
-  // the addressing mode differs from `index`, the storage does not.
-  [[nodiscard]] std::uint16_t read(Index, const std::uint8_t view) const { return get(pair_for(view)); }
-  void write(Index, const std::uint8_t view, const std::uint16_t value) { set(pair_for(view), value); }
-  [[nodiscard]] std::uint8_t read(const IndexHalf which, const std::uint8_t view) const {
-    return get(half_for(which, view));
-  }
-  void write(const IndexHalf which, const std::uint8_t view, const std::uint8_t value) {
-    set(half_for(which, view), value);
-  }
-
 private:
-  // View 0 is `ix` and view 1 is `iy`, which is the order `vocab index` lists
-  // them in; nothing else in the machine knows or cares which is which.
-  [[nodiscard]] static constexpr RegisterFile::R16 pair_for(const std::uint8_t view) {
-    return view == 0 ? RegisterFile::R16::IX : RegisterFile::R16::IY;
-  }
-  [[nodiscard]] static constexpr RegisterFile::R8 half_for(const IndexHalf which, const std::uint8_t view) {
-    if (which == IndexHalf::index_hi)
-      return view == 0 ? RegisterFile::R8::IXH : RegisterFile::R8::IYH;
-    return view == 0 ? RegisterFile::R8::IXL : RegisterFile::R8::IYL;
-  }
-
   std::uint8_t read_immediate();
   std::uint16_t read_immediate16();
 

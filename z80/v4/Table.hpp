@@ -59,33 +59,6 @@ inline constexpr Description description{vocabularies, rows, tables, decoded, en
   return decoded[table][opcode];
 }
 
-// A view is a number, and `Z80::pair_for` reads 0 as IX and 1 as IY. Nothing in
-// the description says so: the number is a vocabulary member's ordinal, so the
-// machine's mapping is an agreement with the *order* the four parallel index
-// vocabularies happen to list their members in. Swap `ix` and `iy` in one of
-// them and the disassembler renders one register while the machine works on the
-// other -- a wrong emulator rather than a diagnostic, which is the failure this
-// file exists to prevent.
-//
-// So the agreement is checked rather than trusted. This is a stopgap: the
-// mapping should come from the description instead of being restated here, and
-// then there would be nothing left to check.
-//
-// A plain `static_assert` rather than the throwing idiom the other checks use,
-// because a vocabulary does not carry the line it was declared on and a
-// diagnostic naming the wrong line is worse than one naming none.
-[[nodiscard]] consteval bool index_views_agree_with_machine() {
-  for (const auto &vocabulary: vocabularies)
-    if (vocabulary.name.starts_with("index"))
-      for (const auto [member, half]: std::views::zip(vocabulary.members, std::array{"ix", "iy"}))
-        if (!member.display.contains(half))
-          return false;
-  return true;
-}
-
-static_assert(index_views_agree_with_machine(),
-    "every 'index' vocabulary must list its ix register before its iy one: a view is an ordinal, and "
-    "Z80::pair_for reads view 0 as IX");
 static_assert(check_every_line_means_something(cpu_description));
 static_assert(check_row_precedence(description, row_opcodes));
 static_assert(check_derived_rows_override(description, row_opcodes));

@@ -104,7 +104,7 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 |---|---|
 | an **operation** — `inc8`, `add16` | a function of that name, found by reflection |
 | a **location** — `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` members taking it |
-| a **view reference** — `{index:view}` | an enumerator named for the *vocabulary*, plus `read`/`write` members taking it and a selector |
+| a **view reference** — `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand** — `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
 | an **immediate** — `n` | `fetch_immediate` |
 | any **opcode fetch** | `fetch_opcode` |
