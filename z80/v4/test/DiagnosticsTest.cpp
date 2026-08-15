@@ -167,11 +167,20 @@ TEST_CASE("Table diagnostics") {
     const auto reference = row.pieces[1].reference;
 
     // The substitution reaches whatever the row names, and only that member.
-    CHECK(member_of(parsed.vocabularies, reference, row.matched, 0x00).display == "b");
-    CHECK(member_of(parsed.vocabularies, reference, row.matched, 0x00, derived.rules).display == "ixh");
-    CHECK(member_of(parsed.vocabularies, reference, row.matched, 0x01, derived.rules).display == "c");
-    CHECK(resolve(parsed.vocabularies, row.steps[0].destinations[0], row.matched, 0x00, derived.rules).name ==
-          Name{"ixh"});
+    CHECK(member_of({.vocabularies = parsed.vocabularies, .matched = row.matched, .opcode = 0x00}, //
+              reference)
+              .display == "b");
+    CHECK(
+        member_of({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x00},
+            reference)
+            .display == "ixh");
+    CHECK(
+        member_of({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x01},
+            reference)
+            .display == "c");
+    CHECK(resolve({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x00},
+              row.steps[0].destinations[0])
+              .name == Name{"ixh"});
 
     // Opcode 0 is the derived table's own row; 1 it inherits; 0xdd it inherits,
     // which is what makes `dd dd` re-enter.

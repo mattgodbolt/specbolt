@@ -385,8 +385,10 @@ template<Operand Op, std::size_t Line>
 }
 
 // An indirect operand is whatever it would have been, read as an address. How
-// wide the read is comes from the parameter it feeds, so `ld16 hl <- (n)` reads
-// two bytes and `ld8 a <- (n)` one, with the row saying neither.
+// wide the read is comes from the parameter it feeds rather than from anything
+// the row says, so one operand spelling serves every width the machine offers.
+// (On the Z80 that is `ld16 hl <- (n)` reading two bytes where `ld8 a <- (n)`
+// reads one.)
 template<Operand Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter value_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   if constexpr (Op.indirect) {
@@ -611,18 +613,20 @@ template<std::meta::info Fn, Call C>
     const Step &step, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
   if (!step.operation_reference)
     return {};
-  return member_of(target::vocabularies, *step.operation_reference, matched, opcode, rules);
+  return member_of({.vocabularies = target::vocabularies, .matched = matched, .rules = rules, .opcode = opcode},
+      *step.operation_reference);
 }
 
 [[nodiscard]] consteval Call call_for(
     const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
   const auto member = member_for(step, matched, opcode, rules);
+  const Resolution at{.vocabularies = target::vocabularies, .matched = matched, .rules = rules, .opcode = opcode};
   Call result{.line = line};
   for (const auto &operand: step.operands)
-    if (!result.operands.try_push_back(resolve(target::vocabularies, operand, matched, opcode, rules)))
+    if (!result.operands.try_push_back(resolve(at, operand)))
       throw table_error(line, "too many operands");
   for (auto destination: step.destinations) {
-    destination = resolve(target::vocabularies, destination, matched, opcode, rules);
+    destination = resolve(at, destination);
     // The idle cycle belongs to a write-back, so only to something read through
     // the same address it will be written through.
     const auto was_read = destination.indirect && std::ranges::any_of(result.operands, [&](const Operand &operand) {
@@ -683,9 +687,10 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
   // this as a range, and a range's *address* has to be a constant. A local
   // `constexpr` has a constant value but not a constant address.
   static constexpr auto row = target::rows[Index];
-  // A renaming applies to every row this table decodes, inherited or its own: a
-  // rule names the vocabulary it rewrites, so `ld {real:y}, (ix+d)` keeps the real
-  // h by naming a vocabulary no rule mentions.
+  // A renaming applies to every row this table decodes, inherited or its own. A
+  // rule names the vocabulary it rewrites, not just the member, so a row can opt
+  // out of a renaming by naming a vocabulary no rule mentions. (That is how the
+  // Z80's `ld {real:y}, (ix+d)` keeps a real h.)
   static constexpr auto rules = target::tables[Table].rules;
   // The displacement is read before any immediate, which is the order the bytes
   // appear in: `dd 36 d n` is `ld (ix+d), n`.

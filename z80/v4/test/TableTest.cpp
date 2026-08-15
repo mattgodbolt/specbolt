@@ -31,9 +31,16 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(vocabularies[1].name == "reg");
     STATIC_CHECK(vocabularies[1].members[6].display == "(hl)");
     constexpr auto ld = rows[*find_row(entry_table, 0x46)]; // ld b, (hl)
-    STATIC_CHECK(resolve(vocabularies, ld.steps[0].operands[0], ld.matched, 0x46).indirect);
-    STATIC_CHECK(!resolve(vocabularies, ld.steps[0].destinations[0], ld.matched, 0x46).indirect);
-    STATIC_CHECK(resolve(vocabularies, ld.steps[0].destinations[0], ld.matched, 0x70).indirect); // ld (hl), b
+    STATIC_CHECK(resolve({.vocabularies = vocabularies, .matched = ld.matched, .opcode = 0x46}, //
+        ld.steps[0].operands[0])
+            .indirect);
+    STATIC_CHECK(!resolve({.vocabularies = vocabularies, .matched = ld.matched, .opcode = 0x46}, //
+        ld.steps[0].destinations[0])
+            .indirect);
+    // ld (hl), b
+    STATIC_CHECK(resolve({.vocabularies = vocabularies, .matched = ld.matched, .opcode = 0x70}, //
+        ld.steps[0].destinations[0])
+            .indirect);
     STATIC_CHECK(find_row(entry_table, 0x86)); // add a, (hl)
     STATIC_CHECK(find_row(entry_table, 0x70)); // ld (hl), b
   }

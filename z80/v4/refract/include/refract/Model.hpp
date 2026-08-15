@@ -178,6 +178,21 @@ using Rules = Vector<Rule, 6>;
   return any;
 }
 
+// Where a reference is resolved: the vocabularies to look in, the encoding the
+// row matched, the opcode that selects within it, the renaming the table
+// applies to what it decodes, and the view a prefix chose.
+//
+// Taken by const reference throughout. `Rules` holds whole members, so this is
+// large enough that copying it per call would be paid for in constant
+// evaluation, which is where this file's cost lives.
+struct Resolution {
+  std::span<const Vocabulary> vocabularies{};
+  Pattern matched{};
+  Rules rules{};
+  std::uint8_t opcode{};
+  std::uint8_t view{};
+};
+
 // Which rule, if any, rewrites this member of this vocabulary. The two
 // functions below must agree about which rule fires, since one returns the
 // member it produces and the other where that member came from, so they ask the
@@ -197,46 +212,43 @@ using Rules = Vector<Rule, 6>;
 // Checks pass the default: every member of a view vocabulary must have the same
 // shape, which `check_view_vocabulary` in Parse.hpp requires, so anything a
 // check asks is true of all of them or none.
-[[nodiscard]] constexpr Member member_of(const std::span<const Vocabulary> vocabularies, const Reference reference,
-    const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}, const std::uint8_t view = 0) {
-  const auto which = reference.from_view ? view : matched.slices[reference.slice_index].extract(opcode);
-  const auto &member = vocabularies[reference.vocabulary_index].members[which];
-  if (const auto *rule = rule_for(rules, reference, member.display))
-    return rule->to_is_view ? vocabularies[rule->to_vocabulary].members[view] : rule->to;
+[[nodiscard]] constexpr Member member_of(const Resolution &at, const Reference reference) {
+  const auto which = reference.from_view ? at.view : at.matched.slices[reference.slice_index].extract(at.opcode);
+  const auto &member = at.vocabularies[reference.vocabulary_index].members[which];
+  if (const auto *rule = rule_for(at.rules, reference, member.display))
+    return rule->to_is_view ? at.vocabularies[rule->to_vocabulary].members[at.view] : rule->to;
   return member;
 }
 
 // Which vocabulary a reference finally lands in, and whether the view chose the
 // member. Only `resolve` needs this: an operand the view chose must name the
 // vocabulary rather than the member, because the member is not known yet.
-[[nodiscard]] constexpr std::pair<std::uint8_t, bool> source_of(const std::span<const Vocabulary> vocabularies,
-    const Reference reference, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
+[[nodiscard]] constexpr std::pair<std::uint8_t, bool> source_of(const Resolution &at, const Reference reference) {
   // Member 0 stands for all of them here: this matches rules by display text
   // alone, and every member of a view vocabulary shares a shape and so is
   // rewritten by the same rule or by none.
-  const std::size_t which = reference.from_view ? 0u : matched.slices[reference.slice_index].extract(opcode);
-  const auto &member = vocabularies[reference.vocabulary_index].members[which];
-  if (const auto *rule = rule_for(rules, reference, member.display))
+  const std::size_t which = reference.from_view ? 0u : at.matched.slices[reference.slice_index].extract(at.opcode);
+  const auto &member = at.vocabularies[reference.vocabulary_index].members[which];
+  if (const auto *rule = rule_for(at.rules, reference, member.display))
     return {rule->to_vocabulary, rule->to_is_view};
   return {reference.vocabulary_index, reference.from_view};
 }
 
 // A reference operand names whichever vocabulary member its slice selects, and that
 // member is written the same way an operand is written in a row.
-[[nodiscard]] constexpr Operand resolve(const std::span<const Vocabulary> vocabularies, const Operand operand,
-    const Pattern &matched, const std::uint8_t opcode, const Rules &rules = {}, const std::uint8_t view = 0) {
+[[nodiscard]] constexpr Operand resolve(const Resolution &at, const Operand operand) {
   if (operand.kind != Operand::Kind::Vocabulary)
     return operand;
-  auto result = member_of(vocabularies, operand.reference, matched, opcode, rules, view).operand;
+  auto result = member_of(at, operand.reference).operand;
   // The member supplies everything about the operand except which parameter it
   // was written against, which is the row's business and not the vocabulary's.
   result.parameter = operand.parameter;
   // A number the opcode already carries: say where, rather than which. Every
   // member of the vocabulary then resolves to the same operand, so the eight
   // functions that differed only in a bit index become one.
-  if (!operand.reference.from_view && is_numeric(vocabularies[operand.reference.vocabulary_index])) {
+  if (!operand.reference.from_view && is_numeric(at.vocabularies[operand.reference.vocabulary_index])) {
     result.from_opcode = true;
-    result.slice = matched.slices[operand.reference.slice_index];
+    result.slice = at.matched.slices[operand.reference.slice_index];
     result.constant = 0;
     return result;
   }
@@ -244,8 +256,7 @@ using Rules = Vector<Rule, 6>;
   // idles for) but *which* member is not known until the table's view has
   // been chosen, so the vocabulary is carried instead of a name. The generated
   // code turns it into the list of locations the view selects between.
-  if (const auto [vocabulary, from_view] = source_of(vocabularies, operand.reference, matched, opcode, rules);
-      from_view) {
+  if (const auto [vocabulary, from_view] = source_of(at, operand.reference); from_view) {
     result.from_view = true;
     result.reference.vocabulary_index = vocabulary;
   }

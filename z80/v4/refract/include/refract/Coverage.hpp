@@ -32,9 +32,10 @@ namespace specbolt::refract {
 // give the `iy` page the `ix` page's addressing mode.
 [[nodiscard]] constexpr std::optional<Operand> displaced_through(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
+  const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode};
   std::optional<Operand> found;
   const auto consider = [&](const Operand &operand) {
-    const auto resolved = resolve(vocabularies, operand, row.matched, opcode, rules);
+    const auto resolved = resolve(at, operand);
     if (!resolved.displaced)
       return;
     if (found && found->name != resolved.name)
@@ -54,9 +55,8 @@ namespace specbolt::refract {
 // so the row does not cover that opcode even though the bits fit.
 [[nodiscard]] constexpr bool members_live(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode) {
-  const auto live = [&](const Reference reference) {
-    return !member_of(vocabularies, reference, row.matched, opcode).hole;
-  };
+  const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .opcode = opcode};
+  const auto live = [&](const Reference reference) { return !member_of(at, reference).hole; };
   const auto operands_live = [&](const auto &operands) {
     return std::ranges::all_of(operands,
         [&](const Operand &operand) { return operand.kind != Operand::Kind::Vocabulary || live(operand.reference); });
@@ -303,7 +303,8 @@ constexpr bool check_derived_rows_override(const Description &description, const
       return true;
     if (piece.kind != Piece::Kind::Vocabulary)
       return false;
-    const auto member = member_of(vocabularies, piece.reference, row.matched, opcode, rules);
+    const auto member = member_of(
+        {.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode}, piece.reference);
     return std::ranges::any_of(
         member.pieces, [](const Piece &inner) { return inner.kind == Piece::Kind::Displacement; });
   });

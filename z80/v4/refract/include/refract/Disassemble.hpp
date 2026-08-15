@@ -120,8 +120,12 @@ inline constexpr std::size_t max_instruction_bytes = 8;
     }
     // A member renders itself, because an indexed mode writes its displacement
     // in the middle of its own text.
-    for (const auto &inner:
-        member_of(description.vocabularies, part.reference, row->matched, opcode, rules, view).pieces)
+    const Resolution at{.vocabularies = description.vocabularies,
+        .matched = row->matched,
+        .rules = rules,
+        .opcode = opcode,
+        .view = view};
+    for (const auto &inner: member_of(at, part.reference).pieces)
       render(inner);
   }
   return {result, offset};
