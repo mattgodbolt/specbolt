@@ -2182,3 +2182,137 @@ Three properties of the primitive, all read by reflection, none of them Z80-spec
 
 A `-` destination discards a component, which is how `cp` uses `cmp8` without writing the result
 back to `a`.
+
+## Done: annotations (P3394), and the three things they bought
+
+An annotation is a value attached to a declaration and read back by reflection. gcc 16.2 has them,
+which was not obvious: they are a separate paper from P2996 and the library half is declared whether
+or not the syntax is. Three things cost time before anything worked.
+
+- **On an enumerator the annotation goes after the name.** `Up [[=Spelling{"i"}]]`, not
+  `[[=Spelling{"i"}]] Up`. The second does not parse, and the error is about an enum body rather
+  than about an annotation.
+- **`type_of` on an annotation is const-qualified.** Comparing against `^^Spelling` silently matches
+  nothing; it has to be `^^const Spelling`. This is the one that looks like "annotations do not
+  work", because `annotations_of` returns the right count and the filter drops them all.
+- **The annotation's type must be structural.** `struct Spelling { std::string_view text; }` is
+  rejected outright. `Name` was already in the codebase for exactly this constraint, since a
+  template argument has the same requirement. The same fixed `std::array<char, 15>` serves both.
+
+### What the table calls a thing, said by the thing
+
+`Spelling` is how a `.cpu` file names an enumerator when that differs from what C++ calls it:
+
+```cpp
+enum class BlockDirection : std::uint8_t {
+  Up[[= refract::Spelling{"i"}]] = 0,
+  Down[[= refract::Spelling{"d"}]] = 1,
+};
+```
+
+The point is not the annotation. It is that the *parameter type is the scope*: `find_spelling` looks
+a bare name up in the enum the parameter asks for, which is the same rule that already lets a
+parameter's type decide how wide an access is. That is what keeps these names out of the location
+namespace, and it matters here because `i` and `d` are also the I and D registers and mean neither
+of them in this row.
+
+An operand that is a number where the parameter is an enum is now an error. A cast would get past
+every check the enum was introduced to impose, so the facility cannot be quietly bypassed.
+
+### The annotation is an override, and mostly is not needed
+
+`find_spelling` first matched only annotated enumerators, which made an enum unusable unless it was
+annotated in full. That is not what an override is. It now asks each enumerator for its spelling and
+gets the annotation if there is one and the identifier if there is not.
+
+The payoff was immediate: `Alu::Direction { Left, Right }` spells itself, so the description can name
+it with no edit to a header shared with v1 to v3, and six pure-forwarding wrappers went. `rl8` and
+`rr8` keep theirs, because their carry sits in the middle of the argument list where an appended
+operand cannot reach.
+
+It also sharpens the claim. Annotate where the assembly spelling and the C++ identifier genuinely
+differ. `Up` is written `i` because the Z80's assembly says so, and that is worth stating. `Left`
+being written `left` is not.
+
+### Sixteen block rows became eight
+
+Bit 3 of a block operation's opcode is which way it walks memory, so the sixteen rows were eight
+pairs differing in one letter of the mnemonic and one digit of the action. The digit was a
+`bool increment` whose sense was the *opposite* of the bit it came from: the `i` forms encode 0.
+
+The values are written out rather than left implicit, because they are the hardware's and nothing
+should depend on the order enumerators happen to be declared in.
+
+The four families keep a row each rather than collapsing further. Their step lists genuinely differ,
+and the repeating forms spell `out` as `ot`.
+
+## Done: a view is an index into the description, not a pact with the machine
+
+A view was a number the machine had to interpret. `Z80::pair_for` read 0 as IX and 1 as IY, which
+was correct only while that matched the order `vocab index` listed its members in. Nothing stated
+the agreement and nothing could check it, so reordering the vocabulary would have rendered one
+register and executed the other: a wrong emulator rather than a diagnostic, which is the same
+category as the `check_view_vocabulary` finding.
+
+It was fixed twice, on purpose. First a `static_assert` that the four parallel index vocabularies
+list ix before iy, which turns silence into a compile error. Then the coupling itself:
+`locations_of_view` walks the vocabulary a view selects from and splices each member's location into
+an array, so the view indexes that array and the machine is handed a location it already knows how
+to read. `check_view_vocabulary` is what makes this sound, since it already guarantees the members
+share a shape and so resolve to one type.
+
+The machine lost `Index`, `IndexHalf`, `pair_for`, `half_for` and four `read`/`write` overloads, the
+format lost a requirement from its contract table, and the check from the first fix was deleted
+because there was nothing left to check.
+
+Verified by reversing all four index vocabularies: every test still passes, which is exactly the
+property that did not hold before. One coupling survives and is now visible in one file, since a
+view is an ordinal into all four at once and they must agree with each other. Nothing can check
+that, because nothing but the Z80 knows `ixh` is half of `ix`. Reversing one alone fails three
+suites.
+
+## Done: keyword operands, because position was a silent coupling
+
+`bit8(value, bit, flags, bus)` takes three `std::uint8_t` parameters and a row filled them by
+position. Swapping two compiles, runs, and quietly tests the wrong bit. Types cannot catch it and a
+reader has to count.
+
+An operand may now be written `value=(hl)`, and the names are the ones in the CPU's own declaration,
+read off it with `identifier_of` on `parameters_of`. Nothing restates them, so renaming a parameter
+in C++ renames it here, and a row still using the old name fails to build with the line that wrote
+it. `has_identifier` guards the case of a declaration without parameter names.
+
+The design decision that mattered was keeping *when an operand is read* separate from *which
+argument it becomes*. Resolving one can read memory and move the address bus, so the tuple is still
+built in the order the row writes its operands; `call_with` is where that order and the signature's
+order are reconciled. Naming never reorders effects.
+
+Two rules, both diagnosed. All or nothing within a step, because a half-named argument list needs a
+rule about what "the next one" means and a description is easier to read if there is no such rule to
+remember. A destination may not be named, because it is where the result goes rather than something
+handed to the operation.
+
+Worth recording how it was verified, because the first attempt proved nothing. Writing the operands
+in reverse *with* names passes. Writing them in the same order *without* names fails to compile,
+which looks like a result and is not: `Flags` will not convert to `unsigned char`, so the type
+system caught that particular scramble and the ordering was never exercised. The test with teeth
+transposes `value` and `bus`, both `std::uint8_t`: it builds clean and fails two suites.
+
+## Done: a line may end in a backslash
+
+`vocab shift` reached 196 characters once the rotate and shift rows started naming `Alu` operations
+directly, and the `table indexed … with` rule list 169. Both are lists, and a list that cannot be
+wrapped is a list that gets read by scrolling.
+
+Nothing is joined. The description is one buffer, so a continued line is still a single
+`string_view` into it, just a longer one that happens to contain the `\` and the newline it was
+wrapped at. Those two became blanks to `Parser` alongside space and tab, which is the whole of the
+change: all four passes over the text needed nothing, because they read words and a word never
+contained either character.
+
+A continued line is reported at the number it started on. Per-token numbering is available if it is
+ever wanted, since a token is a view into the description and its line is the count of newlines
+before `token.data() - description.data()`, but nothing has needed it.
+
+The TextMate grammar ends a declaration at a newline the line did not escape. A lookbehind on `$`
+looks equivalent, and silently is not.
