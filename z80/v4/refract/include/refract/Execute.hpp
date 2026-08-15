@@ -285,6 +285,17 @@ template<std::meta::info Fn>
 struct Call {
   Vector<Operand, max_operands> operands{};
   Vector<Operand, max_operands> destinations{};
+  // Which line of the description this came from, so a diagnostic can name it.
+  // It sits here, and is threaded through `value_of`, `store` and the rest as a
+  // separate template parameter, rather than being a member of `Operand` where
+  // it would obviously be tidier.
+  //
+  // Deliberately. `Operand` is a template argument, so two of them are the same
+  // argument when they are memberwise equal. Give it a line and `ld a, b` on
+  // line 40 stops being the same operand as `ld a, b` on line 90, every
+  // instantiation below splits in two, and a file whose build cost is measured
+  // in tens of seconds pays for a field that only ever appears in an error
+  // message. The tidier arrangement is the expensive one.
   std::size_t line{};
 };
 
