@@ -33,6 +33,28 @@
 // budget and code layout, and changing one measurably changes the others. A
 // per-implementation binary is the comparison to trust; the combined one is what
 // the emulator actually ships.
+// Every `#include` above precedes the first `import`, which gcc requires: it
+// merges a module's global module fragment on import, and a standard header
+// pulled in afterwards redefines what the module already supplied.
+#ifdef SPECBOLT_MODULES
+import peripherals;
+import spectrum;
+import z80_common;
+#if BENCH_V1
+import z80_v1;
+#endif
+#if BENCH_V2
+import z80_v2;
+#endif
+#if BENCH_V3
+import z80_v3;
+#endif
+#else
+#include "peripherals/Memory.hpp"
+#include "spectrum/Assets.hpp"
+#include "spectrum/Snapshot.hpp"
+#include "spectrum/Spectrum.hpp"
+#include "z80/common/Scheduler.hpp"
 #if BENCH_V1
 #include "z80/v1/Z80.hpp"
 #endif
@@ -42,15 +64,11 @@
 #if BENCH_V3
 #include "z80/v3/Z80.hpp"
 #endif
+// v4 is never built with modules, so it is only ever a header.
 #if BENCH_V4
 #include "z80/v4/Z80.hpp"
 #endif
-
-#include "peripherals/Memory.hpp"
-#include "spectrum/Assets.hpp"
-#include "spectrum/Snapshot.hpp"
-#include "spectrum/Spectrum.hpp"
-#include "z80/common/Scheduler.hpp"
+#endif
 
 namespace specbolt {
 

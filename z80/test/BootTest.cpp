@@ -6,9 +6,15 @@
 #include <ios>
 #include <vector>
 
+#ifdef SPECBOLT_MODULES
+import spectrum;
+import z80_common;
+import z80_v3;
+#else
 #include "spectrum/Assets.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v3/Z80.hpp"
+#endif
 
 #ifdef SPECBOLT_HAS_V4
 #include "z80/v4/Z80.hpp"
