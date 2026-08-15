@@ -258,11 +258,63 @@ with real line drawing and matrix work, and it mispredicts three times as often.
 The ordering across games tracks how much the loop actually does, which is what
 it should track if the number means anything.
 
-So a threaded interpreter -- each handler ending in a `[[gnu::musttail]]` call to
-the next rather than returning to a loop -- is competing for **2-7% and probably
+So a threaded interpreter, each handler ending in a `[[gnu::musttail]]` call to
+the next rather than returning to a loop, is competing for **2-7% and probably
 more in real play**, not the ~3% zexdoc alone suggests. The cost is that handlers
 stop returning per instruction, so `execute_one()` becomes a run loop and the
-`Spectrum` and scheduler integration changes with it. Not attempted.
+`Spectrum` and scheduler integration changes with it.
+
+#### Attempted, and it is worth more than the estimate
+
+Done, on gcc 16.2. Five interleaved rounds per workload on an idle 36-core
+machine, best of three repetitions each, v4 against v4:
+
+| workload | returning | threaded | |
+|---|---:|---:|---:|
+| manic miner | 0.0891 | **0.0743** | **17% faster** |
+| elite | 0.1085 | **0.0924** | **15% faster** |
+| zexdoc, driven per instruction | 10.22 ns | **9.41 ns** | 8% faster |
+
+The prediction held in both directions: the games gain about twice what zexdoc
+shows, and they gain it in the order the mispredict counts said they would.
+
+**How you drive it decides what you collect.** Threading only the prefix chain,
+so a `dd` hands to the next handler but an instruction still returns, was worth
+9.6% on zexdoc. Threading whole runs is worth *less* on that same workload, 8%,
+because `z80_bench` calls `execute_one()` per instruction to watch for CP/M
+calls, so it pays to set a one-instruction budget and collects nothing between
+instructions. The games go through `Spectrum::run_cycles`, which hands over a
+whole frame, and that is where the 15-17% is. An interpreter that cannot be
+given a long run cannot be threaded, whatever the handlers do.
+
+#### What gcc had to say about it
+
+All three of its objections are the same objection: **a tail call abandons the
+frame, so nothing the compiler believes lives there may still be addressable.**
+`-Werror=maybe-musttail-local-addr` is unusually good about saying so.
+
+- The lambda that forms the indexed address captured `[&]`, which takes the
+  address of every local it touches. Explicit captures fixed it.
+- The `constexpr` locals had to become `static constexpr`, exactly as `row`
+  already was for an unrelated reason.
+- **A tail call cannot be made from inside a `template for` at all**, because the
+  expansion's own induction variable lives in that frame. This one has no
+  workaround and shapes the code: a row that abandons its remaining steps
+  `break`s out and hands on at the end rather than handing on where it stopped.
+
+The first two are worth knowing before starting; the third is worth knowing
+because it is not obvious that an expansion statement should constrain calling
+convention, and it does.
+
+#### The bug that only a long run could show
+
+An untaken conditional used to `return`. Under threading a `return` ends the
+*run*, not the row, so the machine stopped at the first `jr nz` that was not
+taken. Every unit test passed: they drive `execute_one()`, and with one
+instruction budgeted, stopping the row and stopping the run are the same thing.
+Booting the ROM found it immediately, at **1558 cycles where 14 million were
+due**. A test that runs one instruction cannot distinguish the two, and after
+this change they are no longer the same thing.
 
 Worth noting v2 measures the same rate as v4 (6.3% against 6.6% on elite). Both
 dispatch through a function-pointer table, so this is a property of the shape
