@@ -96,6 +96,15 @@ public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
 
   void execute_one();
+  // Run until `instructions` have started or the machine says stop. The
+  // handlers tail-call each other for the whole of it, so this returns once.
+  void run(std::size_t instructions);
+  // The same, bounded by the clock rather than by a count, which is what a
+  // scheduler wants: run to the next thing that is due.
+  void run_until(std::size_t cycle_count);
+  // Called between instructions by the generated code. Takes the interrupt,
+  // idles a halted chip, and says whether there is another instruction to run.
+  bool start_instruction();
 
   // What the framework asks of a machine. See refract/Machine.hpp. These are
   // the chip's own names for what it does; the framework calls them directly
@@ -186,6 +195,9 @@ public:
   void interrupts_deferred(const bool value) { interrupts_deferred_ = value; }
 
 private:
+  std::size_t remaining_{};
+  std::size_t until_{};
+
   std::uint8_t read_immediate();
   std::uint16_t read_immediate16();
 

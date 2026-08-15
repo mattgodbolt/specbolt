@@ -2362,3 +2362,44 @@ before `token.data() - description.data()`, but nothing has needed it.
 
 The TextMate grammar ends a declaration at a newline the line did not escape. A lookbehind on `$`
 looks equivalent, and silently is not.
+
+## Done: an expansion statement constrains the calling convention
+
+Threading the interpreter (each handler ending in a `[[gnu::musttail]]` call to
+the next rather than returning to a loop) is worth 15-17% on real games. The
+measurements are in [Notes.md](../../Notes.md), because they are facts about the
+emulator. What belongs here is what it taught us about C++26, because one of the
+three things is genuinely surprising and is not written down anywhere else.
+
+**`[[gnu::musttail]]` works on gcc 16.2 through a function pointer**, which is
+what a table-driven interpreter needs and was not obvious. Verified in the
+disassembly before building anything on it: the call site is a bare `jmp *%r8`,
+with no `call` and no `ret`.
+
+All the constraints are one constraint, and gcc states it well through
+`-Werror=maybe-musttail-local-addr`: **a tail call abandons the frame, so
+nothing the compiler believes lives in that frame may still be addressable.**
+Three consequences, in increasing order of interest.
+
+- A lambda capturing `[&]` takes the address of every local it touches, which
+  blocks the tail call from anywhere after it. Explicit captures fix it.
+- A `constexpr` local is still an automatic object. `static constexpr` is not an
+  optimisation here any more than it was for `row`; it is what moves the object
+  out of the frame.
+- **A tail call cannot be made from inside a `template for` body at all**, because
+  the expansion's own induction variable lives in the frame the call would
+  abandon. There is no workaround, and it shapes the code: a row that abandons
+  its remaining steps `break`s out of the expansion and hands on afterwards
+  rather than handing on where it stopped.
+
+The third is the one to remember. An expansion statement looks like a purely
+compile-time construct, a way of writing several statements rather than one, and
+it reads as though it should leave no trace at run time. It does leave one: while
+the expansion is in scope there is an object in the frame, and that is enough to
+forbid a tail call. Nothing about `template for` suggests it should have an
+opinion about calling convention, and it has one.
+
+Worth noting what got *smaller*, since the usual expectation of a performance
+change is the reverse. `Transfer`, the `std::optional` it was returned in, and
+the entire dispatch loop are gone: the loop is now the chain of tail calls
+itself, and `execute_instruction` is one line.

@@ -38,6 +38,9 @@ template<typename M>
 concept Machine = requires(M &machine, const std::uint16_t address, const std::uint8_t byte) {
   // Reading the instruction stream.
   { machine.fetch_opcode() } -> std::same_as<std::uint8_t>;
+  // Between instructions: false ends the run. The machine does whatever it
+  // does in between, which on a Z80 is interrupts and the halt idle.
+  { machine.start_instruction() } -> std::same_as<bool>;
   { machine.fetch_immediate(byte) } -> std::convertible_to<std::uint16_t>;
 
   // Reading and writing memory, in both widths a row can ask for.
