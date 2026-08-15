@@ -163,7 +163,7 @@ using Rules = Vector<Rule, 6>;
 // ... 0x38` and `imode = 0 0 1 2 0 0 1 2` are just as numeric, but their member
 // is a *function* of the slice rather than the slice, so reading the bits would
 // give `rst 3` where `rst 0x18` was meant. Those keep a function each; between
-// them they are worth 21 of 1034 bodies, which is not worth a lookup table.
+// them they are worth 21 bodies, which is not worth a lookup table.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {

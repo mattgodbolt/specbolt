@@ -40,10 +40,15 @@ struct Vector {
   [[nodiscard]] constexpr auto end() { return storage.begin() + static_cast<std::ptrdiff_t>(count); }
   [[nodiscard]] constexpr const T &operator[](const std::size_t at) const { return storage[at]; }
   [[nodiscard]] constexpr T &operator[](const std::size_t at) { return storage[at]; }
-  // Compares the unused tail as well as the used part, which is sound only
-  // because nothing here ever shrinks: two vectors holding the same sequence
-  // reached it by the same appends, so their spare slots are equally untouched.
-  // This is how a `Call` is compared as a template argument, so it matters.
+  // The unused tail counts as well as the used part, which is sound only because
+  // nothing here ever shrinks: two vectors holding the same sequence reached it
+  // by the same appends, so their spare slots are equally untouched.
+  //
+  // That is a fact about `storage` and `count`, not about this operator. Two
+  // `Call`s are the same template argument when they are *memberwise* equal
+  // ([temp.type]), which never consults `operator==`. This is here so that
+  // ordinary code can compare one, and it agrees with the language by
+  // construction because it is defaulted.
   constexpr bool operator==(const Vector &) const = default;
 };
 
