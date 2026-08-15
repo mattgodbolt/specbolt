@@ -91,6 +91,10 @@ struct Operand {
   // a run-time read rather than one function per member.
   bool from_opcode{};
   BitSlice slice{};
+  // `value=(hl)`: the operand says which parameter it feeds rather than relying
+  // on where it sits. Empty when the row wrote it positionally, which is almost
+  // always. See `operand_order` in Execute.hpp.
+  Name parameter{};
   // Chosen by the table's view, so it cannot be folded away at compile time.
   // `reference.vocabulary_index` says which vocabulary, and the generated code
   // turns that into the list of locations the view indexes.
@@ -224,6 +228,9 @@ using Rules = Vector<Rule, 6>;
   if (operand.kind != Operand::Kind::Vocabulary)
     return operand;
   auto result = member_of(vocabularies, operand.reference, matched, opcode, rules, view).operand;
+  // The member supplies everything about the operand except which parameter it
+  // was written against, which is the row's business and not the vocabulary's.
+  result.parameter = operand.parameter;
   // A number the opcode already carries: say where, rather than which. Every
   // member of the vocabulary then resolves to the same operand, so the eight
   // functions that differed only in a bit index become one.

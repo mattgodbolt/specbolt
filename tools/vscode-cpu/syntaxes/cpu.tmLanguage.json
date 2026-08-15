@@ -180,6 +180,7 @@
         { "include": "#step-if" },
         { "include": "#step-operation" },
         { "include": "#assign" },
+        { "include": "#keyword-operand" },
         { "include": "#separator-step" },
         { "include": "#separator-comma" },
         { "include": "#delay-attribute" },
@@ -227,6 +228,15 @@
       "captures": {
         "1": { "patterns": [{ "include": "#reference" }] },
         "2": { "name": "support.function.operation.cpu" }
+      }
+    },
+
+    "keyword-operand": {
+      "comment": "value=(hl) — the operand names the parameter it feeds. An identifier before `=`, which `/delay=1` is not.",
+      "match": "(?<![^\\s,|])([A-Za-z_][A-Za-z0-9_]*)(=)",
+      "captures": {
+        "1": { "name": "variable.parameter.operand.cpu" },
+        "2": { "name": "punctuation.separator.key-value.cpu" }
       }
     },
 

@@ -427,6 +427,79 @@ void store(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
 // rescue: `template for` sequences its iterations, so destinations were never
 // at risk.
 
+// Which of the row's operands feeds each of the operation's parameters. By
+// position, unless the row said otherwise: an operand written `value=(hl)` goes
+// to the parameter *called* `value`, and what the parameters are called is
+// asked of the declaration rather than written down anywhere.
+//
+// This exists because position is a silent coupling. `bit8(value, bit, flags,
+// bus)` takes three `std::uint8_t`s, so a row that swaps two of them compiles,
+// runs, and quietly tests the wrong bit.
+//
+// Naming is all or nothing within a step. A half-named argument list needs a
+// rule about what "the next one" means, and a description is easier to read if
+// there is no such rule to remember.
+template<std::meta::info Fn, Call C>
+[[nodiscard]] consteval std::array<std::size_t, C.operands.size()> operand_order() {
+  constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
+  std::array<std::size_t, C.operands.size()> written{};
+  std::size_t named = 0;
+  for (const auto &operand: C.operands)
+    if (!operand.parameter.empty())
+      ++named;
+  if (named == 0) {
+    for (std::size_t at = 0; at < written.size(); ++at)
+      written[at] = at;
+    return written;
+  }
+  if (named != C.operands.size())
+    throw table_error(C.line,
+        "this step names some of its parameters and not others; name all of them or none, so that reading it needs no "
+        "rule about which is which");
+
+  const auto parameters = std::meta::parameters_of(Fn);
+  std::string offered;
+  for (std::size_t slot = 0; slot < written.size(); ++slot) {
+    const auto parameter = parameters[slot + supplied];
+    if (!std::meta::has_identifier(parameter))
+      throw table_error(
+          C.line, "this operation was declared without parameter names, so there is nothing to name here");
+    offered += (offered.empty() ? " (it takes " : ", ") + std::string(std::meta::identifier_of(parameter));
+  }
+  for (std::size_t slot = 0; slot < written.size(); ++slot) {
+    const auto name = std::meta::identifier_of(parameters[slot + supplied]);
+    std::size_t found = 0;
+    std::size_t matches = 0;
+    for (const auto [at, operand]: std::views::enumerate(C.operands))
+      if (same_ignoring_case(operand.parameter.view(), name)) {
+        found = static_cast<std::size_t>(at);
+        ++matches;
+      }
+    if (matches == 0)
+      throw table_error(C.line, "no operand is given for '" + std::string(name) + "'" + offered + ")");
+    if (matches > 1)
+      throw table_error(C.line, "'" + std::string(name) + "' is given more than one operand");
+    written[slot] = found;
+  }
+  return written;
+}
+
+// The inverse: which parameter each operand, in the order the row wrote it,
+// ends up feeding. Needed because an operand is *read* where the row put it and
+// *passed* where the signature wants it, and its type comes from the latter.
+template<std::meta::info Fn, Call C>
+[[nodiscard]] consteval std::array<std::size_t, C.operands.size()> slot_of_operand() {
+  constexpr auto written = operand_order<Fn, C>();
+  std::array<std::size_t, C.operands.size()> slots{};
+  for (std::size_t slot = 0; slot < written.size(); ++slot)
+    slots[written[slot]] = slot;
+  return slots;
+}
+
+// The row's operands, resolved in the order the row wrote them, because
+// resolving one can read memory and move the address bus. Naming a parameter
+// changes which argument an operand becomes, never when it is read.
+//
 // The generic-lambda-plus-`index_sequence` dance is here because this is the
 // one job `template for` cannot do: expanding into a *call's argument list*
 // needs a pack, and an expansion statement produces statements, not pack
@@ -435,14 +508,29 @@ template<std::meta::info Fn, Call C>
 [[nodiscard]] auto operands_of(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
     const std::uint8_t view, const std::uint8_t opcode) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
+  constexpr auto slots = slot_of_operand<Fn, C>();
   return [&]<std::size_t... I>(std::index_sequence<I...>) {
-    return std::tuple{
-        value_of<C.operands[I], C.line, parameter_type<Fn, I + supplied>>(cpu, immediate, indexed, view, opcode)...};
+    return std::tuple{value_of<C.operands[I], C.line, parameter_type<Fn, slots[I] + supplied>>(
+        cpu, immediate, indexed, view, opcode)...};
   }(std::make_index_sequence<C.operands.size()>{});
 }
 
-// Arguments are supplied positionally; destinations destructure the result in
-// declaration order.
+// Where the row's order and the signature's order are reconciled: the tuple
+// holds the values in the order they were read, and this hands them over in the
+// order the parameters want them.
+template<std::meta::info Fn, Call C>
+[[nodiscard]] auto call_with(Cpu &cpu, const auto &arguments) {
+  constexpr auto written = operand_order<Fn, C>();
+  return [&]<std::size_t... S>(std::index_sequence<S...>) {
+    if constexpr (takes_cpu<Fn>())
+      return [:Fn:](cpu, std::get<written[S]>(arguments)...);
+    else
+      return [:Fn:](std::get<written[S]>(arguments)...);
+  }(std::make_index_sequence<C.operands.size()>{});
+}
+
+// Arguments are supplied positionally, or by name where the row said so;
+// destinations destructure the result in declaration order.
 template<std::meta::info Fn, Call C>
 void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed, const std::uint8_t view,
     const std::uint8_t opcode) {
@@ -452,16 +540,7 @@ void apply(Cpu &cpu, const std::uint16_t immediate, const std::uint16_t indexed,
   // A default capture rather than `[&cpu]`, because only one branch of the
   // `if constexpr` names it: an operation that does not ask for the machine
   // leaves an explicit capture unused, which clang diagnoses and gcc does not.
-  const auto call = [&](const auto &arguments) {
-    return std::apply(
-        [&](const auto &...values) {
-          if constexpr (takes_cpu<Fn>())
-            return [:Fn:](cpu, values...);
-          else
-            return [:Fn:](values...);
-        },
-        arguments);
-  };
+  const auto call = [&](const auto &arguments) { return call_with<Fn, C>(cpu, arguments); };
 
   // Unevaluated, despite everything just said about operands having effects:
   // `decltype` asks for the type and calls nothing.
@@ -505,8 +584,7 @@ template<std::meta::info Fn, Call C>
   static_assert(C.destinations.size() == 0, "a condition names no destination; it decides whether the rest happens");
   static_assert(!takes_cpu<Fn>(), "a condition may not ask for the machine; it only reads what the row hands it");
   static_assert(std::is_same_v<typename[:std::meta::return_type_of(Fn):], bool>, "a condition must answer yes or no");
-  return std::apply([](const auto &...values) { return [:Fn:](values...); },
-      operands_of<Fn, C>(cpu, immediate, indexed, view, opcode));
+  return call_with<Fn, C>(cpu, operands_of<Fn, C>(cpu, immediate, indexed, view, opcode));
 }
 
 // A vocabulary member may bind the operation late, and may append an operand the

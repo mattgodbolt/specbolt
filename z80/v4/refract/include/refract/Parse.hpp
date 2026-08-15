@@ -268,13 +268,38 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, line, table);
 }
 
+// `value=(hl)`: an operand may name the parameter it feeds instead of relying on
+// its position. A keyword is an identifier followed by `=`, and nothing else is,
+// which is what stops `(hl)/delay=1` from looking like one: everything before
+// its `=` is punctuation.
+[[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(
+    const std::string_view word, const std::size_t line) {
+  const auto at = word.find('=');
+  if (at == std::string_view::npos || at == 0)
+    return {{}, word};
+  const auto keyword = word.substr(0, at);
+  const auto in_identifier = [](const char c) {
+    return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+  };
+  if (!std::ranges::all_of(keyword, in_identifier))
+    return {{}, word};
+  if (keyword.size() > Name::capacity)
+    throw table_error(line, "'" + std::string(keyword) + "' is too long to be a parameter name");
+  if (at + 1 == word.size())
+    throw table_error(line, "'" + std::string(keyword) + "=' names a parameter but gives it no operand");
+  return {Name{keyword}, word.substr(at + 1)};
+}
+
 [[nodiscard]] constexpr Operand parse_operand(const std::span<const Vocabulary> vocabularies,
     const std::string_view word, const Pattern &matched, const std::size_t line, const std::uint8_t immediate_bytes,
     const TableDecl &table) {
-  if (!word.starts_with('{'))
-    return parse_simple_operand(word, line, immediate_bytes);
-  return {
-      .kind = Operand::Kind::Vocabulary, .reference = reference_from_braces(vocabularies, word, matched, line, table)};
+  const auto [parameter, text] = split_keyword(word, line);
+  auto operand = text.starts_with('{')
+                     ? Operand{.kind = Operand::Kind::Vocabulary,
+                           .reference = reference_from_braces(vocabularies, text, matched, line, table)}
+                     : parse_simple_operand(text, line, immediate_bytes);
+  operand.parameter = parameter;
+  return operand;
 }
 
 constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Row &row, const TableDecl &table) {
@@ -420,6 +445,10 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     }
     const auto operand = parse_operand(vocabularies, word, row.matched, row.line, row.immediate_bytes, table);
     if (writing_destination) {
+      if (!operand.parameter.empty())
+        throw table_error(row.line, "'" + std::string(operand.parameter.view()) +
+                                        "=' names a parameter, and a destination is not one: it is where the result "
+                                        "goes, not something handed to the operation");
       if (!step.destinations.try_push_back(operand))
         throw table_error(row.line, "too many destinations");
     }

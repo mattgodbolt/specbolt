@@ -143,8 +143,8 @@ table base
 table cb
 
 00yyyzzz | {shift:y} {reg:z}    | {shift:y} {reg:z}, flags <- {reg:z}
-01bbb110 | bit {bit:b}, (hl)    | bit8 flags <- (hl) {bit:b} flags h ; delay 1
-01bbbzzz | bit {bit:b}, {reg:z} | bit8 flags <- {reg:z} {bit:b} flags {reg:z}
+01bbb110 | bit {bit:b}, (hl)    | bit8 flags <- value=(hl) bit={bit:b} flags=flags bus=h ; delay 1
+01bbbzzz | bit {bit:b}, {reg:z} | bit8 flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
 10bbbzzz | res {bit:b}, {reg:z} | res8 {reg:z} <- {reg:z} {bit:b}
 11bbbzzz | set {bit:b}, {reg:z} | set8 {reg:z} <- {reg:z} {bit:b}
 
@@ -179,7 +179,7 @@ table indexed_cb(view:index)
 
 00yyy110 | {shift:y} {index_mem:view}              | {shift:y} {index_mem:view}, flags <- {index_mem:view}
 00yyyzzz | {shift:y} {index_mem:view}, {real:z}    | {shift:y} {real:z}, flags <- {index_mem:view} ; delay 1 ; ld8 {index_mem:view} <- {real:z}
-01bbbzzz | bit {bit:b}, {index_mem:view}           | bit8 flags <- {index_mem:view} {bit:b} flags wzh ; delay 1
+01bbbzzz | bit {bit:b}, {index_mem:view}           | bit8 flags <- value={index_mem:view} bit={bit:b} flags=flags bus=wzh ; delay 1
 10bbb110 | res {bit:b}, {index_mem:view}           | res8 {index_mem:view} <- {index_mem:view} {bit:b}
 10bbbzzz | res {bit:b}, {index_mem:view}, {real:z} | res8 {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
 11bbb110 | set {bit:b}, {index_mem:view}           | set8 {index_mem:view} <- {index_mem:view} {bit:b}

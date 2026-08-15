@@ -116,9 +116,10 @@ An operation's signature is the interface:
 - it may take the machine itself as its **first** parameter, by mutable
   reference, when it needs machine state or needs to charge time. The framework
   supplies that argument; the row does not mention it.
-- its remaining parameters are filled from the row's operands, **positionally**.
-  The parameter's type is what decides how wide an access is and whether a
-  constant fits.
+- its remaining parameters are filled from the row's operands, **positionally**,
+  or by name if the row writes them that way (see
+  [keyword operands](#keyword-operands)). The parameter's type is what decides
+  how wide an access is and whether a constant fits.
 - its **return type decides destinations**, as described under
   [the action column](#the-action-column).
 
@@ -195,7 +196,7 @@ if-step         = "if" , operation , { operand } ;
 apply-step      = operation , [ { operand } , "<-" ] , { operand } ;
 operation            = identifier | reference ;
 
-operand         = operand-body , [ "/" , attribute ] ;
+operand         = [ identifier , "=" ] , operand-body , [ "/" , attribute ] ;
 operand-body    = "-" | "n" | number | reference | indirect | name ;
 indirect        = "(" , ( "n" | number | name ) , [ "+d" ] , ")" ;
 attribute       = "delay" , "=" , digit ;
@@ -620,6 +621,39 @@ two bytes and `ld8 a <- (n)` one, with the row saying neither.
 
 An operand may carry `/delay=1` exactly as a vocabulary member can, for an
 addressing mode written out in a row rather than named by one.
+
+### Keyword operands
+
+An operand may name the parameter it feeds instead of relying on its position:
+
+```
+01bbbzzz | bit {bit:b}, {reg:z} | bit8 flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
+```
+
+The names are the parameter names in the CPU's own declaration, read off it by
+reflection. Nothing restates them, so a parameter that is renamed in C++ is
+renamed here, and a row that still uses the old name fails to build with the
+line that wrote it.
+
+This exists because position is a silent coupling. `bit8` above takes three
+`std::uint8_t` parameters, so a row that swaps two of them compiles, runs, and
+quietly tests the wrong bit. Types cannot catch it and neither can a reader.
+
+Two rules:
+
+- **All or nothing within a step.** A half-named argument list needs a rule
+  about what "the next one" means, and a description is easier to read if there
+  is no such rule to remember.
+- **A destination may not be named.** It is where the result goes, not something
+  handed to the operation.
+
+Naming changes which argument an operand becomes, never **when it is read**.
+Operands are still resolved in the order the row writes them, which matters
+because resolving one can read memory and move the address bus.
+
+A keyword is an identifier followed by `=`, and nothing else is, which is what
+keeps `(hl)/delay=1` from looking like one: everything before its `=` is
+punctuation.
 
 ### Displacement
 
