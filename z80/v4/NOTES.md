@@ -1,8 +1,8 @@
 # v4: notes from the spike
 
 Working notes for the table-driven, compile-time v4: what it does today, what was learned about C++26
-along the way, and what remains. For the `.cpu` format itself — grammar, semantics and worked
-examples — see [CPU_FORMAT.md](CPU_FORMAT.md). This file is about *why* it is that shape.
+along the way, and what remains. For the `.cpu` format itself, grammar, semantics and worked
+examples. See [CPU_FORMAT.md](CPU_FORMAT.md). This file is about *why* it is that shape.
 
 Known bugs in v1/v2/v3 discovered while researching this are filed as issues rather than recorded
 here.
@@ -23,7 +23,7 @@ are all complete, and the instruction set is finished.
 The pipeline is `#embed` → `consteval` parse → lower to validated pieces → `template for` → splice.
 
 A row has three columns: an encoding token sequence, a mnemonic, and an ordered list of steps. Each
-column is checked against the others — length and what is fetched come from the encoding, never from
+column is checked against the others, length and what is fetched come from the encoding, never from
 the display text.
 
 Mnemonics are **lowered at parse time** into a fixed `Piece` array (literal chunk, field reference
@@ -41,7 +41,7 @@ z80.cpu:25: this row overlaps a later one without being contained by it
 
 ### The argument this exists to make
 
-Everything inside `consteval` is memory-safe by construction — constant evaluation refuses to index
+Everything inside `consteval` is memory-safe by construction, constant evaluation refuses to index
 out of bounds or to read a dangling pointer, so a parser bug is a compile error rather than a corrupt
 table. Every correctness hole found in the first cut of the spike was in the half left at runtime.
 Lowering the table to a validated fixed shape at parse time removes that half entirely.
@@ -55,12 +55,12 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 ### Reflection
 
 - **`-freflection` is a language dialect switch, not a per-target option.** gcc cannot merge a module
-  built without it into a TU built with it — importing one fails with conflicting declarations for
+  built without it into a TU built with it, importing one fails with conflicting declarations for
   types reachable both textually and through the module. It also requires `-std=c++26`. It therefore
   lives on `opt::c++26`, which every specbolt target links; applying it globally instead breaks
   third-party targets that build at the default standard.
 - **`std::meta::info` is a consteval-only type.** It cannot be stored in anything that survives to
-  runtime — a struct containing one becomes consteval-only, so *any* runtime use of that struct
+  runtime, a struct containing one becomes consteval-only, so *any* runtime use of that struct
   (including reading an unrelated `int` member) is ill-formed. Resolve reflections **inside** the
   splice: `[: find_operation(name, line) :]`, never `[: stored.fn :]`.
 - **`identifier_of` throws on members without identifiers** (constructors, etc). Guard with
@@ -74,9 +74,9 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - **`access_context::current()` at namespace scope excludes private members.** This is why `Ops` is a
   struct with a private section rather than a namespace: access control gates which names the table
   may use as verbs. Deliberate and worth keeping.
-- **Released clang has no reflection at all** — 22.1 and trunk both lack `<meta>`. The wasm build is
+- **Released clang has no reflection at all**, 22.1 and trunk both lack `<meta>`. The wasm build is
   clang, so v4 is excluded in CMake via `if (SPECBOLT_HAS_REFLECTION)` rather than by `#ifdef`s in
-  source. Bloomberg's P2996 fork is a different matter — see "The other implementation" below.
+  source. Bloomberg's P2996 fork is a different matter. See "The other implementation" below.
 - Reflection works inside module interface units, including `template for` in a module purview and
   exported templates that reflect on their own parameters and are instantiated in importing TUs.
 
@@ -96,21 +96,21 @@ The single most useful architectural fact:
   evaluation and passed between `consteval` functions freely. It just cannot escape into a
   namespace-scope `constexpr` variable.
 - **So the parse works in `std::vector` throughout and an array is made of the answer at the end.**
-  Getting the size means evaluating the whole parse twice — once for `.size()`, once for the contents
-  — which is `to_array` in `ToArray.hpp`, and it is the only place in the pipeline that knows a count.
+  Getting the size means evaluating the whole parse twice, once for `.size()`, once for the contents
+ , which is `to_array` in `ToArray.hpp`, and it is the only place in the pipeline that knows a count.
   The earlier arrangement counted matching lines in a cheap pre-pass and passed the count as a
   template argument to each parse function; that had to be right in two places, and it made every
   parse function a template with a capacity check nobody could reach. **What the second parse costs,
   measured** (alternating A/B, twice each side, gcc 16.2 `-O0`): on `Disassembler.cpp`, which is the
-  parse plus every check and nothing else, this one change took 9.3s/387MB to 12.6s/570MB — about
+  parse plus every check and nothing else, this one change took 9.3s/387MB to 12.6s/570MB, about
   **+3.2s and +180MB**. On `Z80.cpp`, which is the same parse plus 1792 handler instantiations, 75.4s
   became 73.2s: the same work, lost in the noise of what dominates that TU. Three seconds for a
   pipeline in which one function knows a count. (For where those absolutes stand today, after the
   rest of the clarity work, see "Compile time, measured".)
 - **Growing a `std::vector` during constant evaluation is much dearer than growing one at run time.**
   `instructions_of` builds a 1792-element vector for the checks to walk; adding a `reserve` for it
-  took about a second off `Disassembler.cpp`. The evaluator has no `realloc` — every growth copies
-  every element through the interpreter — so `reserve` is worth writing wherever the size is known,
+  took about a second off `Disassembler.cpp`. The evaluator has no `realloc`, every growth copies
+  every element through the interpreter, so `reserve` is worth writing wherever the size is known,
   which in a parse it usually is.
 - `define_static_string` still earns its place for *generated* text, where the bytes must outlive the
   evaluation.
@@ -120,12 +120,12 @@ and survives promotion". It is neither, and both halves were verified false.
 
 ### Expansion statements
 
-- **`template for` + `-Wshadow` is a gcc bug, half fixed** — [PR c++/124197][pr124197]. Each expanded
+- **`template for` + `-Wshadow` is a gcc bug, half fixed** ([PR c++/124197][pr124197]). Each expanded
   copy is reported as shadowing the previous, though nothing is shadowed: every copy is its own scope.
 
   16.2 fixed it **in dependent contexts only**. An expansion statement inside a template is clean; the
   same statement in a non-dependent context still errors. Verified on the gcc 16.2 this builds
-  against — one file, both forms, `-Wshadow -Werror`:
+  against, one file, both forms, `-Wshadow -Werror`:
 
   ```cpp
   inline constexpr auto non_dependent = [] {                      // 4 errors
@@ -145,12 +145,12 @@ and survives promotion". It is neither, and both halves were verified false.
   `#pragma GCC diagnostic ignored "-Wshadow"` lines rebuilt clean. That evidence was real and the
   conclusion was wrong: all six were inside templates. `-Wshadow -Werror` is exactly this project's
   setting, which is why the pragmas existed at all, and it is still why `all_dispatches` is a pack
-  rather than an expansion statement — that one initialiser is not dependent. `Execute.hpp` said so
+  rather than an expansion statement, that one initialiser is not dependent. `Execute.hpp` said so
   all along; this file contradicted it.
 
   [pr124197]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124197
 - The range must be a constant expression, and for a range that means a constant *address*, not
-  merely a constant value. A plain `constexpr auto row = …;` local does not qualify — gcc says so
+  merely a constant value. A plain `constexpr auto row = …;` local does not qualify, gcc says so
   precisely: "address of non-static constexpr variable may differ on each invocation of the enclosing
   function; add `static`". `static constexpr` fixes it, and a namespace-scope `inline constexpr` or a
   template parameter object needs nothing. This is why `execute_one`'s `row` is `static`: expanding
@@ -159,14 +159,14 @@ and survives promotion". It is neither, and both halves were verified false.
   label is not one, so a 256-way dispatch cannot be expanded into a `switch`. The generated forms
   available are a table of function pointers (what `dispatch` does) or a chain of `if`s. A
   `switch` over a dense contiguous range is the one shape the compiler turns into a jump table on
-  its own, so it is exactly the shape reflection cannot reach — worth knowing before assuming
+  its own, so it is exactly the shape reflection cannot reach, worth knowing before assuming
   generated dispatch matches a hand-written interpreter's codegen.
 
 ### Toolchain
 
 - gcc 16.2 from the compiler-explorer tarball. No distro packages gcc 16; CI pulls the same tarball.
 - Binaries built with an out-of-prefix toolchain bind to the distro's `libstdc++` unless an rpath is
-  embedded — resolve the standard library actually being linked and add its directory.
+  embedded, resolve the standard library actually being linked and add its directory.
 - **ccache's direct mode does not track `#embed` dependencies** and serves stale objects when only
   the embedded file changes. Worked around with `CCACHE_DEPEND=1`. Upstream fix is PR ccache#1765,
   merged 2026-07-19 but not in any release yet; delete the workaround when it ships.
@@ -182,7 +182,7 @@ and survives promotion". It is neither, and both halves were verified false.
 These dictate the `Row`/`Field`/`Matched` data shapes and are expensive to retrofit. Everything else
 is additive.
 
-### 1. Encoding is a byte sequence, not one 8-bit pattern — partly done
+### 1. Encoding is a byte sequence, not one 8-bit pattern (partly done)
 
 The encoding column is now a token sequence rather than a single pattern:
 
@@ -191,8 +191,7 @@ The encoding column is now a token sequence rather than a single pattern:
 110qq110 n   | {q} a, $nn    | {q} a, flags <- a n
 ```
 
-`length` is derived from it, where it used to be inferred by counting `$n`s in the *display* text —
-a human-facing string deciding how many bytes the CPU fetches. The fetch itself is now driven by
+`length` is derived from it, where it used to be inferred by counting `$n`s in the *display* text, a human-facing string deciding how many bytes the CPU fetches. The fetch itself is now driven by
 `row.immediate_bytes` too, so the encoding is the single source of truth for what is read.
 
 That collapses a redundancy: an immediate operand has one spelling, `n`, and the encoding says how
@@ -226,11 +225,11 @@ free: the row states left to right that the displacement precedes the opcode, so
 operands come in this order" declaration is needed.
 
 One known limitation to lift on the way: the execution path fetches a single immediate before any
-step runs, which cannot express `ld (ix+d), n` — two immediates read at different points. Fetching
+step runs, which cannot express `ld (ix+d), n`, two immediates read at different points. Fetching
 per-token, at the point the token appears, is the fix, and it is the same change that makes multiple
 pattern tokens work.
 
-### 2. Vocabulary members must be structured — the timing half is done
+### 2. Vocabulary members must be structured, the timing half is done
 
 A member was just a name. But in `r = b c d e h l (hl) a`, member 6 changes storage class, timing
 (`+1` T-state), and the flag inputs to `Alu::bit` (bus noise comes from `wz` when indirect).
@@ -254,7 +253,7 @@ The first attempt made the sequence explicit in the row, with a latch to hold th
 00110100 | inc (hl) | ld8 t <- (hl) ; inc8 t, flags <- t flags ; delay 1 ; ld8 (hl) <- t
 ```
 
-That works, and the mechanism cost nothing — **a latch is just a location**, so the CPU declares it
+That works, and the mechanism cost nothing, **a latch is just a location**, so the CPU declares it
 and the framework needs no support at all. But it produced four pairs of near-duplicate rows
 (`inc (hl)` beside `inc {r:y}`, and the same for `dec`, `res`, `set`), each differing only by a
 mechanical `ld8 t <- X ; … ; ld8 X <- t` bracket. That bracket is not information; it is a
@@ -282,7 +281,7 @@ containing `""`). Holes exist and are checked.
 6502 *every* member of `bbb` is an addressing mode that changes length, cycles and whether the row
 exists at all. Design the member record for the 6502 case and the Z80 becomes the easy instance.
 
-### 3. Rows need several slots, and slot ≠ letter — done
+### 3. Rows need several slots, and slot ≠ letter (done)
 
 `{vocab:slice}` decouples the vocabulary name from the slice letter, so `01yyyzzz | ld {r:y}, {r:z}`
 binds one vocabulary to two slices. Arity and parameter types are checked by reflecting
@@ -330,7 +329,7 @@ What this buys:
 - A typo in the `.cpu` is a compile error with a line number.
 - Display text can come off the enumerator via `identifier_of`, so even the name is stated once
   (case-folded for display, or kept as an explicit display column where the mnemonic differs from the
-  C++ spelling — `(hl)` has no enumerator).
+  C++ spelling, `(hl)` has no enumerator).
 
 **There is more than one kind of vocabulary**, and a member should declare what it binds to:
 
@@ -340,21 +339,21 @@ What this buys:
 | `alu` | a primitive function | `add8` → `Alu::add8` |
 | `bit`, `rst` | a plain number | `0..7`, `0x00..0x38 step 8` |
 | `cc` | a condition primitive plus display text | `nz` |
-| memory members | nothing nameable | `(hl)`, `(ix+d)` — display text plus a `mem:` kind |
+| memory members | nothing nameable | `(hl)`, `(ix+d)`, display text plus a `mem:` kind |
 
 This is the same axis as the structured-members decision in §2 and subsumes it: "is this member
 special?" and "what does this member bind to?" are one question. Design the member record to answer
 it once.
 
-### 4. Row is parse-time only — partly done
+### 4. Row is parse-time only (partly done)
 
 `decoded[table][256]` exists: it killed the runtime linear scan and is what precedence checking and
 coverage are computed from. Text is projected into `pieces` at parse time. Cycles and
-flags-affected are not projected — cost is resolved during execution from the addressing mode and
+flags-affected are not projected, cost is resolved during execution from the addressing mode and
 the step list, and nothing consumes a flags-affected table yet. The `line` field propagates
 everywhere, so every diagnostic reports `z80.cpu:N`.
 
-### 5. First-match-wins needs compile-time checking — done
+### 5. First-match-wins needs compile-time checking (done)
 
 `halt` (`01110110`) collides with `ld r,r'` (`01yyyzzz`), and the winner was decided by line order,
 silently. All three prior implementations treat this as a hazard needing an explicit statement.
@@ -362,7 +361,7 @@ silently. All three prior implementations treat this as a hazard needing an expl
 Implemented as `check_row_precedence()`, a `static_assert` over the winner array. Two rules:
 
 - a row must win at least one opcode
-- where two rows overlap, the earlier must be **wholly contained** in the later — that is an
+- where two rows overlap, the earlier must be **wholly contained** in the later, that is an
   override, and it is how `halt`, `cp` and `inc (hl)` all work. A partial overlap is an accident and
   is rejected.
 
@@ -381,7 +380,7 @@ count asserted by a test could only ever restate what the build already refuses 
 was there for a while and has been removed. Because precedence is checked too, coverage cannot be
 gained by silently shadowing another row.
 
-### 6. Timing attaches to the micro-op sequence — done, and it moved
+### 6. Timing attaches to the micro-op sequence, done, and it moved
 
 Landed, but not where this section predicted. Cost turned out to belong to the **addressing mode**
 for anything to do with an operand, with an explicit `delay` step only for idle cycles belonging to
@@ -390,24 +389,23 @@ The original argument, which still stands:
 
 - v3 has **no cycle numbers anywhere**. Timing emerges from the primitives (`read`/`write` = 3,
   opcode fetch = 4) plus `pass_time(n)` interleaved at the right points.
-- v1 *did* attach times to operands and it collapsed — `access_time(Operand)` carries the comments
+- v1 *did* attach times to operands and it collapsed, `access_time(Operand)` carries the comments
   "Doesn't make sense but I am just trying to fix up the bad timings" and "Heinous hack to make this
   flawed approach agree with reality".
 - Cost is conditional (`djnz` 8/13), depends on a vocabulary member (`y == 6` adds 1), and depends on
-  a per-row quirk (the DD/FD displacement prologue costs 5 normally but 2 for load-immediate rows —
-  v3 carries a whole `is_load_immediate` field just for this).
+  a per-row quirk (the DD/FD displacement prologue costs 5 normally but 2 for load-immediate rows, v3 carries a whole `is_load_immediate` field just for this).
 
 So: primitives declare their own cost, the semantic column is an **ordered list of steps** with
 explicit idle delays, and a row-level `t=` is an *assertion* checked at compile time rather than a
 definition. Conditional rows want `t=min/max`, which is also what a timing view wants.
 
-This is floooh/chips' micro-op model, and converging on it is fine — chips is cycle-exact and was
+This is floooh/chips' micro-op model, and converging on it is fine, chips is cycle-exact and was
 retargeted to the 6502, so it is evidence the model generalises. The difference is the mechanism:
 chips generates ~1600 numbered step cases from a Python script emitting C, with nothing type-checking
 the output until the next compiler run. Here the steps are a compile-time description, resolved
 against real C++ signatures by reflection, with errors pointing at the `.cpu` line.
 
-**Critically, the steps are unrolled away — nothing resembling a state machine survives into the
+**Critically, the steps are unrolled away, nothing resembling a state machine survives into the
 binary.** Verified rather than assumed: `DD CB d 00` built as an 8-step sequence dispatched through
 `template for`, each step spliced by reflection, produces assembly **byte-identical** to the
 hand-written equivalent at `-O2` (17 instructions), and the five separate `pass_time` contributions
@@ -417,7 +415,7 @@ fold too.
 Code size measured at 58.5 bytes/opcode unrolled, against **94 bytes/opcode that v3 already ships**
 (165 KB for its seven dispatch functions). Unrolling is smaller than the status quo, not larger.
 
-What unrolling forfeits is mid-instruction suspension — the ability to drive the CPU cycle by cycle,
+What unrolling forfeits is mid-instruction suspension, the ability to drive the CPU cycle by cycle,
 which is exactly why chips keeps its runtime state machine. specbolt has never had that: v1, v2 and
 v3 are all instruction-stepped with `pass_time` accumulating T-states, and there is no memory
 contention model anywhere in the repo. Contention stays reachable later, since each step carries its
@@ -425,7 +423,7 @@ cycle offset. What is genuinely given up is floating-bus reads and interrupt acc
 sub-instruction boundary.
 
 **The step model is for the semantic column only.** The encoding column stays a bit-pattern token
-sequence, because instruction length, `winner[256]` and coverage checking all need patterns — you
+sequence, because instruction length, `winner[256]` and coverage checking all need patterns, you
 cannot derive them from a step list without symbolically executing it. chips does not have this
 constraint because chips does not disassemble; v4 produces two artefacts from one table, which is the
 whole point.
@@ -434,18 +432,18 @@ It also retires v3's `is_load_immediate` boolean. The 5T-vs-2T displacement prol
 because the fetches of `d` and `n` interleave with the internal delay; as an ordered step list that
 is simply *stated* rather than special-cased.
 
-### 7. Flags come from the primitive signature — mostly
+### 7. Flags come from the primitive signature (mostly)
 
 The table never mentions F. The CPU holds the flags; `Alu` returns `ResultT<T>{result, flags}` and
 the framework routes the flags half into the register file. **Spiked and working** against the real
-`Alu` shapes — all four calling conventions fall out of reflection alone:
+`Alu` shapes, all four calling conventions fall out of reflection alone:
 
 | primitive | derived wiring |
 |---|---|
 | `R8 add8(u8, u8, bool)` | carry spliced in; result → destination, flags → F |
 | `R8 and8(u8, u8)` | no flag input at all |
 | `R16 add16(u16, u16, Flags)` | whole flag word spliced in |
-| `Flags bit(u8, u8, Flags, u8)` | flags only — destination untouched |
+| `Flags bit(u8, u8, Flags, u8)` | flags only, destination untouched |
 
 Parameter types decide what is read; the return type decides whether a value is written. Verified by
 `static_assert` that `bit` leaves A alone while `add8` writes it, purely from the signatures.
@@ -455,8 +453,7 @@ Parameter types decide what is read; the return type decides whether a value is 
 `sub8`/SUB/SBC. So "a `bool` parameter means splice the carry" is wrong half the time, and nothing in
 the signature distinguishes them.
 
-The policy belongs on the **vocabulary member**, which is where the encoding already puts it —
-`10ooozzz`'s `ooo` field *is* the add/adc/sub/sbc/and/xor/or/cp vocabulary. So a member binds to a
+The policy belongs on the **vocabulary member**, which is where the encoding already puts it, `10ooozzz`'s `ooo` field *is* the add/adc/sub/sbc/and/xor/or/cp vocabulary. So a member binds to a
 primitive **and** a calling policy for whatever the signature leaves ambiguous. Verified: `add` and
 `adc` route through the same `add8` and differ only in the member's carry source.
 
@@ -470,16 +467,16 @@ primitive.
 
 ### 8. WZ/MEMPTR is per-instruction data
 
-Cannot be inferred, and all three existing versions are incomplete — nothing sets WZ for `ld a,(nn)`,
+Cannot be inferred, and all three existing versions are incomplete, nothing sets WZ for `ld a,(nn)`,
 `ex (sp),hl`, `jp nn`, `call` or `out (n),a`, all of which the real chip updates and all observable
 through `bit n,(hl)`. An optional per-row attribute, defaulting to "a memory operand sets WZ to the
 effective address" (which is what all three versions already do).
 
 v4 does not model it either. `bit {b}, (hl)` names `h` as its bus-noise source, which is HL's high
-byte and therefore right for that one instruction — the same approximation v3 computes. The reason
+byte and therefore right for that one instruction, the same approximation v3 computes. The reason
 nobody notices is structural: the only regression test in the repo is **zexdoc**, and "doc" means
 documented flags. There is no zexall, so undocumented-flag behaviour is untested repo-wide apart
-from a handful of hand-written checks in `OpcodeTests.cpp` — which is exactly where v4's two
+from a handful of hand-written checks in `OpcodeTests.cpp`, which is exactly where v4's two
 failures showed up, and both are now fixed.
 
 ---
@@ -504,7 +501,7 @@ precedence checking and coverage are all per-table; the `(hl)` override rows ins
 for containment exactly as the ones in `base` are.
 
 `goto` is deliberately *not* a CPU primitive. Fetching the next byte is (`fetch_opcode`), but
-choosing a table is the framework's own job — it is the one verb the framework understands.
+choosing a table is the framework's own job, it is the one verb the framework understands.
 
 Scored on `z80/test/OpcodeTests.cpp`:
 
@@ -537,12 +534,12 @@ the things the suites do *not* catch, or catch only because we match an approxim
 - **A push writes its two bytes in the wrong order.** `write_memory16` goes low byte first, which is
   what `ld (nn), hl` does; hardware pushes high to sp-1 and then low to sp-2. The bytes end up in the
   same places, so nothing can see it until `Z80::bus` starts contending or something watches writes.
-  One function cannot serve both orders -- the fix is either a second one, or letting the description
+  One function cannot serve both orders, the fix is either a second one, or letting the description
   spell the two writes out, which `push`'s two `dec16 sp` steps already half do.
 
 Found by this audit and fixed rather than recorded: `scf` and `ccf` had `a` as a destination, but
 `Alu::scf`/`ccf` return the accumulator unchanged, so the rows claimed a write that never happened.
-They now discard, as `cp` does. Harmless in behaviour, wrong as documentation -- and the table is
+They now discard, as `cp` does. Harmless in behaviour, wrong as documentation, and the table is
 documentation.
 
 ### What DD/FD needs, in order
@@ -552,11 +549,11 @@ and the groundwork is this, roughly in the order it has to happen:
 
 1. ~~**The execution model, before any syntax.**~~ **Done.** `goto base with view=ix` re-enters the
    table it came from, and the old `check_no_goto_cycles` rejected that. The reason was never that
-   template instantiation would fail to terminate — `enter<Table>` was forward-declared and mutual
-   instantiation is fine — but that each goto was a real opcode fetch made by a *nested call*, so a
+   template instantiation would fail to terminate, `enter<Table>` was forward-declared and mutual
+   instantiation is fine, but that each goto was a real opcode fetch made by a *nested call*, so a
    cycle was unbounded C++ recursion, and `DD DD DD…` is legal Z80.
 
-   A handler now **returns** `Next` — the table to decode the next byte in, or nothing — and
+   A handler now **returns** `Next` (the table to decode the next byte in, or nothing) and
    `execute_instruction` loops on it. Every turn of that loop fetches a byte, so it always advances
    both PC and the clock: a cycle is progress, not recursion, and the check is gone along with its
    diagnostic. The handlers no longer instantiate each other at all, which is why the forward
@@ -565,7 +562,7 @@ and the groundwork is this, roughly in the order it has to happen:
    It costs one branch per instruction and nothing per prefix byte: `cb` compiles to
    `mov $0x101,%eax; ret`, and the two-dimensional dispatch folds into a single scaled load indexed
    by `table << 8 | opcode`.
-2. ~~**`goto` learns `with view=`.**~~ **Not needed — the item dissolved.** The sketch below spelled
+2. ~~**`goto` learns `with view=`.**~~ **Not needed, the item dissolved.** The sketch below spelled
    the same idea twice: `goto base with view=ix` *and* `table ix = base with hl->ix, …`. Only the
    second is necessary. If a view is a **derived table**, then `goto` never changes: it already takes
    a table name, and `ix` is one. `Next` stays a table index rather than becoming a (table, view)
@@ -573,11 +570,11 @@ and the groundwork is this, roughly in the order it has to happen:
 
    It also gets `ed` right for free. `ED` discards a pending `DD`, which the first spelling needed an
    explicit `with view=hl` to say. Under derived tables the inherited row is `goto ed`, a goto names
-   a table and a substitution rewrites *members*, not table names — so decoding lands in plain `ed`
+   a table and a substitution rewrites *members*, not table names, so decoding lands in plain `ed`
    with no rule to write.
 
    What exists now:
-   - `table ix = base with hl->ix, h->ixh, l->ixl` — either spacing round the arrow. The right-hand
+   - `table ix = base with hl->ix, h->ixh, l->ixl`, either spacing round the arrow. The right-hand
      side is parsed as a full vocabulary member, so a substitute brings its own primitive and its own
      `/delay=`.
    - `decode_tables` gives a derived table its parent's rows for every opcode it does not claim
@@ -588,18 +585,18 @@ and the groundwork is this, roughly in the order it has to happen:
      is the whole of the mechanism: **a view is a function from member to member, applied at the one
      point a `{field}` is resolved.** Literal text is untouched by construction, which is the rule
      stated below, now enforced by there being nowhere else for a rule to act.
-   - A derived table with no rows of its own is legal — it *is* its parent, renamed — so
+   - A derived table with no rows of its own is legal (it *is* its parent, renamed) so
      `check_tables_used` no longer demands rows of one.
 
    Not yet wired into `z80.cpu`: `(hl)` must become `(ix+d)`, which fetches a displacement byte, and
-   that is item 4. Adding `dd` before then would decode `inc (hl)` as `inc (hl)` under DD — a
-   knowingly wrong emulator — so the mechanism is tested on its own description in `DiagnosticsTest`
+   that is item 4. Adding `dd` before then would decode `inc (hl)` as `inc (hl)` under DD, a
+   knowingly wrong emulator, so the mechanism is tested on its own description in `DiagnosticsTest`
    instead, including that `dd dd` re-enters.
 3. ~~**References before views.**~~ **Done.** `Operand` and `Piece` each spelled a reference as two
    loose indices, and four places spelled out the lookup that follows one. Both now hold a
-   `Reference`, and `member_of` is the only place one is followed — which is the place a view will
+   `Reference`, and `member_of` is the only place one is followed, which is the place a view will
    have to intercept.
-4. ~~**Per-token fetching, and the latch it needs.**~~ **Done** — and it needed no multi-token
+4. ~~**Per-token fetching, and the latch it needs.**~~ **Done**, and it needed no multi-token
    encodings after all. See below.
 
 ### The displacement is derived, not declared
@@ -616,7 +613,7 @@ case Z80_DDFD_M1_T4:
     _goto(_z80_indirect_table[cpu->opcode] ? Z80_DDFD_D_T1 : cpu->opcode);
 ```
 
-That flag exists because his description does not resolve operands ahead of time — the generator
+That flag exists because his description does not resolve operands ahead of time, the generator
 cannot tell that `INC (HL)` touches memory except by being told, on about forty rows, correctly,
 for ever. **We already resolve every operand at compile time, so the same fact is derivable**:
 `displaced_through` asks what the operands resolve to under this table's rules and returns the one
@@ -624,14 +621,14 @@ they are displaced through, or nothing. No annotation, no table, nothing to forg
 must write is a `consteval` question for us.
 
 (His view is the runtime twin of ours: `hlx[3]` indexed by `hlx_idx`, so every generated case reads
-`cpu->hlx[cpu->hlx_idx].h`. Same idea, opposite trade — he pays an indexed load on every H access
+`cpu->hlx[cpu->hlx_idx].h`. Same idea, opposite trade, he pays an indexed load on every H access
 for ever, we pay compile time and table count.)
 
 Three things the exploration got wrong first, each caught by a test rather than by reasoning:
 
 - **The address must be formed once per instruction, not once per operand.** `inc (ix+d)` reads and
   writes through the same address; forming it per operand paid for the window twice. So `execute_one`
-  forms it up front and hands it to every operand that shares it — which is the "latch", arriving for
+  forms it up front and hands it to every operand that shares it, which is the "latch", arriving for
   a reason that has nothing to do with DDCB. A row may only be displaced through one base, and that
   is checked.
 - **The window absorbs the immediate.** `ld (ix+d), n` is 19 T-states, not 22: the `n` is read
@@ -640,7 +637,7 @@ Three things the exploration got wrong first, each caught by a test rather than 
   needs no special case.
 - **A rule names the vocabulary it rewrites.** It did not always: rules once matched on a member's
   text alone, so `h -> ixh` reached the `{real:y}` in `ld {real:y}, (ix+d)` and wrote IXH instead of
-  H — exactly the bug that row exists to avoid. A `Rule` now carries a vocabulary index and
+  H, exactly the bug that row exists to avoid. A `Rule` now carries a vocabulary index and
   `member_of` compares it, so `reg.h -> ixh` leaves `real.h` alone. Rules still apply to every row
   the table decodes, its own as well as inherited ones.
 
@@ -652,7 +649,7 @@ Three things the exploration got wrong first, each caught by a test rather than 
 ```
 
 It owns both how a base and an offset combine *and* what forming the address costs, because both are
-facts about the machine — a 6502 wraps within page zero for one mode and charges for a page crossing
+facts about the machine, a 6502 wraps within page zero for one mode and charges for a page crossing
 in another. Taking `Cpu &` is what lets the cost live there. Everything else the table already said.
 
 Verified in `ExecuteTest.cpp` against the counts `OpcodeTests.cpp` asserts of v1/v2/v3: 19 for
@@ -661,12 +658,12 @@ renames nothing; and `dd dd dd 23` at 4 T-states a prefix byte. Generated code f
 with `add`, reuses it for the read and the write, and folds both idles into constant clones.
 
 **The disassembler followed.** A member's text is now lowered into `Piece`s at parse time exactly as
-a row's mnemonic is — `lower_text` does both — with `Piece::Kind::Displacement` for the hole `+d`
+a row's mnemonic is (`lower_text` does both) with `Piece::Kind::Displacement` for the hole `+d`
 leaves. A row renders its pieces, and a member renders its own, so `inc (ix-0x01)` falls out without
 the disassembler parsing anything at runtime. The displacement is taken before the pieces are walked,
 because it precedes any immediate, which also makes the reported length right.
 5. ~~**Capacity.**~~ **Checked; nothing to change.** `Field::max_values` is 8 and the `ix` view's
-   register vocabulary is exactly 8 (`b c d e ixh ixl (ix+d) a`) — it fits, with no headroom.
+   register vocabulary is exactly 8 (`b c d e ixh ixl (ix+d) a`), it fits, with no headroom.
    `Rules` holds 6 and `ix` needs 4. `Row::max_steps` is 6, which DDCB might exceed, but bumping a
    limit before something reaches it is guessing.
 
@@ -688,14 +685,14 @@ Diffing `execute_one_dd` against `execute_one_base` in v3's generated code, case
 
 | | count |
 |---|---|
-| byte-identical — DD is a pure no-op | **169 / 256 (66%)** |
+| byte-identical, DD is a pure no-op | **169 / 256 (66%)** |
 | differ | **87 / 256 (34%)** |
 
 Of the 87, **86 are register renames and exactly one is a table switch** (`CB`). So "DD makes every
-opcode different" is emphatically false — two thirds are untouched.
+opcode different" is emphatically false, two thirds are untouched.
 
-The shape of the affected set decides the design. They are vocabulary slices — `r ∈ {4,5,6}`,
-`rp[2]`, `rp2[2]`, and the standalone index register — and **`{4,5,6}` is not maskable**. It is not a
+The shape of the affected set decides the design. They are vocabulary slices, `r ∈ {4,5,6}`,
+`rp[2]`, `rp2[2]`, and the standalone index register, and **`{4,5,6}` is not maskable**. It is not a
 bit-pattern family. `01yyyzzz` covers 64 opcodes of which 38 are affected and 26 are not, with no bit
 pattern separating them.
 
@@ -719,7 +716,7 @@ table ix = base with hl->ix, h->ixh, l->ixl, (hl)->(ix+d)
 An earlier sketch also gave `goto` a `with view=` clause. That was the same idea written twice; the
 declaration form is enough, and keeping only it means the decode state stays a single table index.
 
-A derived table may carry **override rows** that shadow the derived ones by first-match-wins — which
+A derived table may carry **override rows** that shadow the derived ones by first-match-wins, which
 §5 already requires anyway, so overrides cost no new mechanism. That is what removes the two
 special-purpose mechanisms an earlier sketch needed: no `view=` guard for routing DD CB, and no
 `view-rule` for half-register suppression. Both become rows a reader can see.
@@ -727,7 +724,7 @@ special-purpose mechanisms an earlier sketch needed: no `view=` guard for routin
 Stating DD as "re-enter the table you were already in" is also more honest than "set a mode": it
 makes clear a full opcode fetch follows, with its 4 T-states and R increment.
 
-State is one table index — seven of them, exactly v2's seven tables. Prefix chains (`DD DD FD`) fall
+State is one table index, seven of them, exactly v2's seven tables. Prefix chains (`DD DD FD`) fall
 out: `ix` inherits base's `goto iy` row, so each byte just re-enters, last wins.
 
 **One rule to keep: only `{field}` references are rewritten; literal text never is.** `ex de, hl`
@@ -744,7 +741,7 @@ reason as well: `real` has a hole where `reg` has `(hl)`, so `01yyy110` does not
 
 ### How DDCB was actually done
 
-`d` in the encoding column, which was reserved for this from the start — the old diagnostic already
+`d` in the encoding column, which was reserved for this from the start, the old diagnostic already
 said `'d' is not an encoding byte`. A row that reads one does not use it; it hands it to the table it
 goes to:
 
@@ -758,7 +755,7 @@ Everything else is derived from that one token:
 - **A table is *latched* if the gotos reaching it read a displacement.** Its rows use the incoming
   value instead of reading their own, and it is an error for a table to be reached both ways. Nothing
   is declared on the table itself.
-- **A latched table's opcode arrives as an operand read**, not an instruction fetch — three cycles
+- **A latched table's opcode arrives as an operand read**, not an instruction fetch, three cycles
   and no refresh, which is exactly what the real chip does for that byte and why `R` does not
   increment for it. The loop picks `fetch_immediate` over `fetch_opcode` on that one bit.
 - **The address window absorbs it.** The five-T-state window that forms `ix+d` contains the opcode
@@ -767,7 +764,7 @@ Everything else is derived from that one token:
 
 So the latch is `Next` carrying a byte, and it costs nothing: the displacement arrives in a register
 parameter. `set 4, (ix+d), b` compiles to sign-extend, `idle`, `add`, `read`, `or $0x10`, `idle`,
-`write`, `mov` — the primitive inlined and the undocumented copy a single store.
+`write`, `mov`, the primitive inlined and the undocumented copy a single store.
 
 Two small capabilities came with it, both general rather than DDCB-shaped: an operand written out in
 a row may carry `/delay=1` exactly as a vocabulary member can, and one result may name more than one
@@ -782,7 +779,7 @@ Still missing from these tables: the rotate family, because `cb` does not have i
 ### DDCB is different in kind, and substitution provably cannot express it
 
 CB and ED are pure table switches. DD and FD are re-readings of the same map. **DDCB is both, plus a
-fetch reordering** — the only encoding in the instruction set where the opcode byte is not the last
+fetch reordering**, the only encoding in the instruction set where the opcode byte is not the last
 byte read. It gets its own four-row table, and that is not a taste judgement:
 
 **v2 and v3 both build DDCB by substitution, and are wrong for 224 of 256 entries.** The generated
@@ -801,23 +798,22 @@ So the repo contains a working implementation of "DD is a view over the CB table
 224 times. Write down *why* `ddcb` is separate, or someone will fold it back into `cb`.
 
 The undocumented register copy is a second destination, and `z == 6` is a separate row reached by
-first-match-wins rather than a "no destination" member — `s` already has a hole at 6, so `10bbbzzz`
+first-match-wins rather than a "no destination" member, `s` already has a hole at 6, so `10bbbzzz`
 does not claim it and `10bbb110` does. No new vocabulary syntax was needed.
 
 **A second instance of the same class arrived while this was being written.** #39, fixed in #43:
 v2 and v3 both disassembled and executed `DD EB` as `ex de, ix`, because their prefix handling
 carries an index-register choice that every `hl` is read through. Real hardware ignores DD and FD
-here — `EX DE,HL` is `EX DE,HL` under any prefix.
+here, `EX DE,HL` is `EX DE,HL` under any prefix.
 
-v4 was right without anyone deciding it should be. A view renames *vocabulary members* —
-`pair.hl`, `spair.hl`, `reg.h`, `reg.l`, `reg.(hl)` — and `ex de, hl` names `hl` as literal text, so
+v4 was right without anyone deciding it should be. A view renames *vocabulary members*, `pair.hl`, `spair.hl`, `reg.h`, `reg.l`, `reg.(hl)`, and `ex de, hl` names `hl` as literal text, so
 there is nothing for the rename to reach. Every base row that writes `hl` literally and *does* want
-the index register under a prefix — `add hl, rr`, `ld (nn), hl`, `ld hl, (nn)`, `jp (hl)`,
-`ld sp, hl`, `ex (sp), hl` — carries an explicit override row in `indexed`, which is the same fact
+the index register under a prefix (`add hl, rr`, `ld (nn), hl`, `ld hl, (nn)`, `jp (hl)`,
+`ld sp, hl`, `ex (sp), hl`) carries an explicit override row in `indexed`, which is the same fact
 seen from the other side: substitution here is opt-in, and the default is to leave the instruction
 alone.
 
-Which is the argument for the whole design, in one opcode — though a smaller argument than it first
+Which is the argument for the whole design, in one opcode, though a smaller argument than it first
 looks. Both schemes can be wrong; what differs is which way they fail when nobody is paying
 attention. v2 and v3 substitute by default and must remember to stop, so a forgotten exception is a
 *changed* instruction. v4 substitutes only where asked, so a forgotten exception is an *unchanged*
@@ -834,7 +830,7 @@ should ever be rewritten.
 
 Giving DD its own full table is the obvious alternative and the repo already tried it.
 `v1/Decoder.cpp:191` is a whitelist override table covering **165 of 256**; the other **91 opcodes
-return `??`**, including `DD 00`. The failure mode is invisible — nothing in the file says a row is
+return `??`**, including `DD 00`. The failure mode is invisible, nothing in the file says a row is
 missing. Rows would go from ~87 to ~177, with 94 duplicated, and every semantic fix would need making
 in three places.
 
@@ -858,12 +854,12 @@ and ED because the chip really does encode them twice; `inc`/`dec` pairs; `view 
 
 v2 and v3 recurse on prefixes. A loop with an explicit state, where a handler returns the next state,
 means `DD DD DD…` cannot blow the C++ stack, and "are we mid-prefix?" becomes an inspectable value.
-That matters because **none of v1/v2/v3 model interrupt acceptance around prefixes** — all three
+That matters because **none of v1/v2/v3 model interrupt acceptance around prefixes**, all three
 sample `irq_pending_` once at the top and swallow the whole chain. With recursion it is not even
 expressible.
 
 v4 does this now: `execute_instruction` is the loop and `Next` is the state. The interrupt half is
-still not done, but it has somewhere to go — the top of the loop is exactly the point the Z80 will
+still not done, but it has somewhere to go, the top of the loop is exactly the point the Z80 will
 not accept an interrupt at, because a prefix and its opcode are one instruction. Knowing that
 requires the state to be a value, which it now is.
 
@@ -874,7 +870,7 @@ register). Aliasing those, plus folding `fdcb` into `ddcb` with the index regist
 value, leaves ~1200.
 
 Dispatch machinery floor on gcc 16.2 (`-O1 -freflection`, trivial bodies): 1×256 = 1.59 s / 114 MB;
-3×256 = 3.10 s / 154 MB; 7×256 = 4.80 s / 233 MB — roughly **0.53 s and 20 MB per additional
+3×256 = 3.10 s / 154 MB; 7×256 = 4.80 s / 233 MB, roughly **0.53 s and 20 MB per additional
 256-entry table**, linear in states. With real step bodies, ~+1 s and +22 MB per 256; 7×256
 extrapolates to about **12 s / 390 MB**.
 
@@ -883,7 +879,7 @@ extrapolates to about **12 s / 390 MB**.
 ### The parser reads whatever it is handed
 
 The parse functions used to read the `#embed`ed description directly, which meant the only way to
-see what a malformed table said was to damage the real one — done by hand four times before it was
+see what a malformed table said was to damage the real one, done by hand four times before it was
 obvious that it was a smell rather than a technique.
 
 They now take the description, the vocabularies and the table names as parameters, and are
@@ -909,22 +905,22 @@ identical program, so the ratio is relative interpreter throughput.
 | v1 | 262.2s | 2.45× slower |
 | v2 | **88.8s** | 1.20× faster |
 | v3 | 108.4s | 1.4% slower |
-| **v4** | **106.9s** | — |
+| **v4** | **106.9s** | n/a |
 
 The number that matters: **v4 is level with v3**, the code-generated one. Generating an interpreter
 from a table costs nothing against generating one from a C++ generator. And both are 2.4× faster than
 v1's decode-then-execute.
 
 **v2 is 20% faster than both, and it is not dispatch.** v2 does
-`impl::table<impl::build_execute_hl>[opcode](*this)` — a 256-entry function-pointer table, exactly
-v4's shape — and both keep `read`/`write` out of line. So the `template switch` theory (that
+`impl::table<impl::build_execute_hl>[opcode](*this)`, a 256-entry function-pointer table, exactly
+v4's shape, and both keep `read`/`write` out of line. So the `template switch` theory (that
 reflection cannot generate the jump table a hand-written `switch` gets) does not explain this: v2
 does not have one either.
 
 Where the difference actually is has not been established, and guessing is not worth much. The
 hypothesis worth testing first is that v4 routes *every* idle cycle through `Z80::bus`, an
 out-of-line call that switches on the access kind and stores the bus address, where v2 charges its
-internal cycles directly. That would be the price of *Time passes in exactly one place* — a design
+internal cycles directly. That would be the price of *Time passes in exactly one place*, a design
 choice made deliberately so contention has somewhere to live, and one worth knowing the cost of
 before the Spectrum needs it. **Profile before believing any of this.**
 
@@ -936,7 +932,7 @@ under-reports dispatch cost relative to a program doing more loads and jumps.
 The other half of the trade, and the one that is easy to forget because `ccache` hides it. Same
 compiler for all four (gcc 16.2, `-O0 -g`, `-freflection`), `ccache` bypassed, each translation unit
 compiled on its own. The sweep was run in both orders and the **minimum** of each TU taken, because
-this laptop moves a compile by 30% depending on what ran before it — v4's disassembler TU measured
+this laptop moves a compile by 30% depending on what ran before it, v4's disassembler TU measured
 15.5s running last and 23.1s running first, on identical input.
 
 | | how the decoder is written | compile | peak RSS | `.a` |
@@ -952,8 +948,8 @@ one with a program that writes C++ and one with the compiler itself, and **v4 co
 much wall clock and 4.3× the memory**.
 
 Almost all of it is one translation unit: `Z80.cpp` is 84s of the 100s and the whole 1.35 GB,
-because that is where the 1792 `execute_one` instantiations land. `Disassembler.cpp` — the same
-parse and every `static_assert`, but no handlers — is the other 15s.
+because that is where the 1792 `execute_one` instantiations land. `Disassembler.cpp`, the same
+parse and every `static_assert`, but no handlers, is the other 15s.
 
 Two things follow. Reflection is not free at this scale, and a talk that shows the technique without
 the number is selling it. And the cost is *concentrated*: it is per-instantiation, not per-line, so
@@ -970,10 +966,10 @@ indicative.
 instantiation and per function, which is exactly the tool this question wants; there is no gcc
 equivalent, and the option is not recognised. What gcc offers instead:
 
-- `-ftime-report` and `-ftime-report-details` — a table of *passes*, not of symbols. Useful, and
+- `-ftime-report` and `-ftime-report-details`, a table of *passes*, not of symbols. Useful, and
   used below, but it cannot tell you which instantiation or which `consteval` call was expensive.
-- `-fmem-report`, `-fpre-ipa-mem-report`, `-fpost-ipa-mem-report` — allocation by pass.
-- `-Q` — prints each function as it is compiled. Crude attribution, and it says nothing about the
+- `-fmem-report`, `-fpre-ipa-mem-report`, `-fpost-ipa-mem-report` (allocation by pass.
+- `-Q`) prints each function as it is compiled. Crude attribution, and it says nothing about the
   front end, which is where this workload lives.
 
 So on gcc the only way to see inside is to **profile `cc1plus` itself**. That works: the
@@ -981,7 +977,7 @@ compiler-explorer build carries no debug info, but it keeps 48,954 dynamic symbo
 for a flat profile. `perf record -F 199 -- g++ …` follows the driver's children automatically.
 
 The other way, which is what eventually gave the sharpest answers, is to get the thing building
-under clang and use `-ftime-trace` there — see "`-ftime-trace` finally answers the question" below.
+under clang and use `-ftime-trace` there. See "`-ftime-trace` finally answers the question" below.
 Everything between here and there is what could be established without it, and it is worth reading
 in that light: it took three separate experiments to bound what one traced clang run then measured
 directly.
@@ -996,8 +992,8 @@ gcc's own accounting for `Z80.cpp`:
 | **lang. deferred** (template instantiation and constant evaluation) | **41.3s** | **51%** |
 | **opt and generate** (the back end) | **26.1s** | **32%** |
 | last asm | 1.0s | 1% |
-| — *of which* overload resolution | 11.0s | 14% |
-| — *of which* garbage collection | 6.7s | 8% |
+| (*of which* overload resolution | 11.0s | 14% |
+|) *of which* garbage collection | 6.7s | 8% |
 
 5,400 MB allocated through the collector to compile one file.
 
@@ -1016,11 +1012,11 @@ And the profile of the compiler, sampled at 199Hz over the same build:
 **The headline, and it is not what one expects: reflection is not what costs.** The machinery that
 implements `^^`, `[: :]` and `std::meta` is a third of one percent. A third of the build is the back
 end compiling the 1792 functions we asked for, which would cost the same if a Python script had
-written them. Another seventh is overload resolution — every `cpu.read([:location:])` is an overload
+written them. Another seventh is overload resolution, every `cpu.read([:location:])` is an overload
 set to resolve, and there are thousands. Actual constant evaluation is under a tenth.
 
 One entry is worth calling out: `consteval_only_p_walker::walk` at 4.2%, roughly three and a half
-seconds, is gcc deciding *whether an expression contains an immediate call* — the analysis P2564's
+seconds, is gcc deciding *whether an expression contains an immediate call*, the analysis P2564's
 escalation rule requires. It is a tax levied in proportion to how much `consteval` you write, on
 code the standard is otherwise encouraging you to write.
 
@@ -1041,7 +1037,7 @@ is 86%. (The 1-table build additionally trips `-Werror=pointer-arith` in `execut
 which is an artefact of the cap; its time agrees with the line fitted through the other three.)
 
 That is the number to quote when someone asks what a second CPU costs. Not the size of the
-description — the size of the instruction set times the number of decoding tables.
+description, the size of the instruction set times the number of decoding tables.
 
 ### So what could reasonably change
 
@@ -1052,13 +1048,13 @@ asked to write, so the only changes that matter are ones that ask for fewer.**
    inventing anything. `fdcb` is `ddcb` with a different index register, and `iy` is `ix` with a
    different index register; both are written out separately today because a rule rewrites
    vocabulary references and not literal text. Making the index register a runtime value in those
-   two would take 7 tables to 5 — about **−22s and −0.25 GB, a 25% cut** — at the price of one
+   two would take 7 tables to 5 (about **−22s and −0.25 GB, a 25% cut**) at the price of one
    runtime indirection on the rarest instructions in the set. The 338 byte-identical duplicate
    handlers recorded above are the same observation from the other end, and aliasing them would be
    the same win by another route. This is the firmest number here: gcc's scaling curve says 11.2s a
    table and clang's per-instantiation trace independently says about 12s, so the saving is measured
    rather than estimated.
-2. **Split the translation unit — for wall clock only.** Seven TUs would each pay the 12.6s fixed
+2. **Split the translation unit, for wall clock only.** Seven TUs would each pay the 12.6s fixed
    cost, so total CPU goes *up*, to about 167s; but wall clock on four cores falls to roughly 45s
    and on sixteen to about 25s. Worth doing for a developer's edit-build loop, not for CI throughput.
    It needs a change first: `inline constexpr auto dispatches` is a namespace-scope variable, so
@@ -1071,7 +1067,7 @@ Worth stating because both are where one instinctively reaches first, and the me
 neither would repay the effort.
 
 - **Optimising the parse.** The whole of reading, checking and lowering the description is inside
-  the 12.6s fixed cost — 14% of the build — of which the `to_array` double evaluation is 3.2s.
+  the 12.6s fixed cost (14% of the build) of which the `to_array` double evaluation is 3.2s.
   Deleting the parser outright, checks and all, would leave 86% of the build standing. clang's trace
   later put a finer point on it: the six `to_array` instantiations that *are* the entire pipeline
   cost 6.1 of 126 seconds, and the dearest of them is `opcodes_of_each` rather than anything in the
@@ -1095,8 +1091,8 @@ clang forks, and the difference between them matters:
 
 Bloomberg's is the reference implementation and is two major versions behind; it also splits the
 feature across three switches, so the first two errors one hits are just missing flags. `template
-for` is P1306 rather than P2996 and has its own; parameter reflection — the whole mechanism by which
-an operation's signature decides what a row may say — has a third. **Barry Revzin's fork wants only
+for` is P1306 rather than P2996 and has its own; parameter reflection, the whole mechanism by which
+an operation's signature decides what a row may say, has a third. **Barry Revzin's fork wants only
 `-freflection`, exactly as gcc does**, with expansion statements and parameter reflection on by
 default. That is the one to reach for.
 
@@ -1126,11 +1122,11 @@ is `cmake --preset debug-reflection` with a different `CXX` and nothing else.
 | | compile | peak RSS | object |
 |---|---:|---:|---:|
 | gcc 16.2, libstdc++ | **85.6s** | 1.35 GB | 28.1 MB |
-| clang 23, libstdc++ 16.2 | 119.9s | 1.43 GB | — |
+| clang 23, libstdc++ 16.2 | 119.9s | 1.43 GB | n/a |
 | clang 23, libc++ | 144.7s | 1.43 GB | 36.9 MB |
 
 So **clang is about 1.4× slower than gcc on identical source and an identical standard library**,
-and the choice of standard library is worth another 20% on top — libc++ is dearer here than
+and the choice of standard library is worth another 20% on top, libc++ is dearer here than
 libstdc++, and produces a 31% larger object. A full project build with clang, everything, is 251s.
 
 Two implementations agreeing on the output while differing 1.4× on the cost of producing it is
@@ -1162,14 +1158,14 @@ clang bb:   error: constexpr variable 'bad' must be initialized by a constant ex
 ```
 
 clang points at the `throw` and never prints what it said. The text is right there in the source it
-quotes, so a human can read it — but nothing carries it to the top of the error, nothing puts it in
+quotes, so a human can read it, but nothing carries it to the top of the error, nothing puts it in
 a build log, and an editor jumping to the diagnostic shows "subexpression not valid in a constant
 expression" rather than the sentence written for the reader.
 
 **Both forks give that same answer**, so this is not the older one lagging: clang 21 and clang 23
 are identical here. **The technique this project uses to make bad tables legible is, today, a gcc
 feature.** Worth saying out loud in a talk that recommends it, and worth a bug against clang,
-because nothing in the standard prevents printing `what()` — gcc simply chose to.
+because nothing in the standard prevents printing `what()`, gcc simply chose to.
 
 ### And with clang building, `-ftime-trace` finally answers the question
 
@@ -1180,15 +1176,15 @@ instantiations*. Same TU, clang 23 with libstdc++, 126s traced:
 | phase | seconds | count |
 |---|---:|---:|
 | Frontend | **119.2** | |
-| — `PerformPendingInstantiations` | 85.2 | |
-| — `EvaluateAsConstantExpr` | 60.2 | **451,161** |
-| — `EvaluateAsInitializer` | 24.4 | 44,675 |
-| — `Source` (headers) | 27.9 | |
+| (`PerformPendingInstantiations` | 85.2 | |
+|) `EvaluateAsConstantExpr` | 60.2 | **451,161** |
+| (`EvaluateAsInitializer` | 24.4 | 44,675 |
+|) `Source` (headers) | 27.9 | |
 | Backend | **6.3** | |
-| — `CodeGen Function` | 5.9 | 13,982 |
+|, `CodeGen Function` | 5.9 | 13,982 |
 | `CheckConstraintSatisfaction` | 1.7 | 720,105 |
 
-Note the split: **95% front end, 5% back end** — where gcc spent 32% in "opt and generate". The two
+Note the split: **95% front end, 5% back end**, where gcc spent 32% in "opt and generate". The two
 are not measuring quite the same boundary, but the direction is stark, and 451,161 constant-
 expression evaluations to compile one file is a number that needs no interpretation.
 
@@ -1202,8 +1198,8 @@ Then the part gcc cannot do at all, time by template (inclusive, so `execute_one
 | `refract::operands_of` | 4.7 | 1230 |
 | `refract::store` | 4.0 | 321 |
 
-**Six instantiations of `to_array` are the entire compile-time pipeline** — the `#embed`, the parse,
-the checks, the coverage, the decode tables — and they cost 6.1 of 126 seconds. Individually:
+**Six instantiations of `to_array` are the entire compile-time pipeline**, the `#embed`, the parse,
+the checks, the coverage, the decode tables, and they cost 6.1 of 126 seconds. Individually:
 
 ```
 3.1s  to_array<Table.hpp:43>   row_opcodes -- opcodes_of_each, the cartesian product walk
@@ -1215,11 +1211,11 @@ the checks, the coverage, the decode tables — and they cost 6.1 of 126 seconds
 
 That is the "don't bother optimising the parse" claim, confirmed to the individual expression by a
 different compiler: **reading the description is 5% of the build.** And 1792 `execute_one`
-instantiations at 85.1s is 47ms each, so a 256-entry decoding table costs about 12s — against the
+instantiations at 85.1s is 47ms each, so a 256-entry decoding table costs about 12s, against the
 11.2s per table gcc's scaling curve gave. **Two compilers, two entirely different measurement
 techniques, agreeing to within 10% on what a decoding table costs.**
 
-The most expensive single handlers are the multi-step rows — `call nz,nn`, `call nn`, `rst` — at
+The most expensive single handlers are the multi-step rows (`call nz,nn`, `call nn`, `rst`) at
 about 0.3s each, six times the average. Nothing surprising, but it is the first time the question
 "which instruction is expensive to compile?" has had an answer at all.
 
@@ -1231,7 +1227,7 @@ To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang buil
 - **Give gcc a `-ftime-trace`.** The gcc half of this section is guesswork assembled from a
   pass-level table and a symbol profile of a stripped binary; neither can answer "which
   instantiation cost me a second", which is the only question an author actually has. Getting clang
-  building was worth it for this alone — it answered in one run what three gcc experiments had only
+  building was worth it for this alone, it answered in one run what three gcc experiments had only
   bounded, and it agreed with them. Nobody should have to port to a second compiler to find out
   where their build went.
 - **Make the escalation analysis cheaper.** 4.2% spent asking "is this consteval?" scales with
@@ -1242,7 +1238,7 @@ To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang buil
   that throws is the idiom the whole ecosystem is converging on for compile-time diagnostics, and
   half the implementations currently discard the message.
 - **Peak memory is the real ceiling.** 1.35 GB for one TU, growing 0.12 GB per table, is what stops
-  this scaling — a CI box running several of these in parallel runs out of memory long before it
+  this scaling, a CI box running several of these in parallel runs out of memory long before it
   runs out of patience.
 
 ## Done: a view is a parameter, not a copy
@@ -1264,14 +1260,14 @@ out twice because a rule rewrites vocabulary references and never literal text, 
 `(ix+d)` literally. `Operations::ex_sp_ix` and `ex_sp_iy` are a third instance of the same thing:
 two functions forwarding to one, existing only so a row can name each spelling.
 
-The bill is 2 table declarations, 10 rows where 5 would do, 2 redundant operations — and **512 of the
+The bill is 2 table declarations, 10 rows where 5 would do, 2 redundant operations, and **512 of the
 1792 handler instantiations**, which the scaling law prices at about 22 seconds and 0.25 GB.
 
 ### The one new idea
 
 A vocabulary member is chosen today by *a slice of the opcode*: `{reg:z}` means "vocabulary `reg`,
 selected by slice `z`". The whole proposal is that a member may instead be chosen by **a parameter
-of the table it is decoded in** — a selector that arrives with the decode state rather than in the
+of the table it is decoded in**, a selector that arrives with the decode state rather than in the
 instruction. Everything else is machinery that already exists.
 
 ```
@@ -1292,7 +1288,7 @@ table base
 
 `view` is declared as a parameter drawn from `index`; `{index_hi:view}` is an ordinary reference
 whose selector happens to be the parameter rather than an opcode slice. A `goto` supplies it by
-naming a member, and — the part that kills the second duplication — may also *forward* the parameter
+naming a member, and (the part that kills the second duplication) may also *forward* the parameter
 it was itself decoded under:
 
 ```
@@ -1309,10 +1305,10 @@ Ten rows become five, and `fdcb` disappears.
 ### What changes in the model
 
 - `Reference` gains a discriminator: the selector is an opcode slice or the table's parameter.
-- `TableDecl` gains an optional parameter — a name and the vocabulary it is drawn from.
+- `TableDecl` gains an optional parameter, a name and the vocabulary it is drawn from.
 - `Transfer` gains a byte, exactly as it already carries the DDCB displacement latch. The decode
   state becomes (table, displacement, parameter) instead of (table, displacement).
-- `member_of` — still the only place a reference is followed — takes the parameter alongside the
+- `member_of` (still the only place a reference is followed) takes the parameter alongside the
   opcode. That is the whole of the resolution change.
 
 ### How the interpreter lowers it, and this is the real decision
@@ -1322,15 +1318,14 @@ longer fold it away. Two ways out, and they differ in exactly the thing being op
 
 **(a) Machine-resolved.** The member's *location* becomes one the machine selects at run time: the
 CPU declares `read(IndexPair, std::uint8_t which)` and friends, and the framework splices the
-vocabulary's location, passing the ordinal. One body per opcode, no duplication at all — 256
+vocabulary's location, passing the ordinal. One body per opcode, no duplication at all, 256
 instantiations for `indexed` and 256 for `indexed_cb` against 1024 today. **This is the option that
 actually collects the 22 seconds.** It costs an indexed load on prefixed instructions, and it is
 precisely floooh/chips' `hlx[hlx_idx]` trade, which is evidence it generalises.
 
 **(b) Generated switch.** Expand the row body once per member of the parameter vocabulary under a
 runtime compare, using the `template for` the file already leans on. No change to the machine at
-all. But a row that names the parameter duplicates its body, so `indexed_cb` — where every row does
-— saves nothing, and `indexed` saves only the 169 of 256 opcodes that DD leaves alone. Roughly a
+all. But a row that names the parameter duplicates its body, so `indexed_cb`, where every row does, saves nothing, and `indexed` saves only the 169 of 256 opcodes that DD leaves alone. Roughly a
 third of the win for none of the machine changes.
 
 **(a) is what was built.** (b) is the tempting one because it changes less, and it is worth writing
@@ -1340,12 +1335,12 @@ most of them.
 A refinement worth taking with (a): in `indexed_cb` every row addresses through the same `(i+d)`,
 and the prefix already knows both the register and the displacement. If the prefix formed the
 effective address and `Transfer` carried *that*, `indexed_cb` would need no parameter at all for
-execution — only for display. That is also closer to the hardware, which forms the address before
+execution, only for display. That is also closer to the hardware, which forms the address before
 fetching the opcode, and it is why the opcode read counts inside the address window.
 
 ### The disassembler needs almost nothing
 
-It already resolves references at run time — `member_of` with the opcode it just read. A
+It already resolves references at run time, `member_of` with the opcode it just read. A
 parameter-selected reference is the same lookup with a different index, and it already tracks a
 displacement latch it can track a parameter beside. This is the half that usually costs the most in
 a change like this, and here it is nearly free.
@@ -1354,8 +1349,7 @@ a change like this, and here it is nearly free.
 
 - A `{v:param}` reference in a table with no parameter, or naming a parameter that is not the
   table's, is an error.
-- A `goto` into a parameterised table must supply a parameter — a literal member or a forwarded one —
-  and a `goto` into an unparameterised table must not.
+- A `goto` into a parameterised table must supply a parameter, a literal member or a forwarded one, and a `goto` into an unparameterised table must not.
 - Parallel vocabularies must have as many members as the parameter vocabulary, exactly as a
   slice-selected vocabulary must match its slice width today. `check_reference` already does this
   arithmetic; it needs a second source for the count.
@@ -1365,7 +1359,7 @@ a change like this, and here it is nearly free.
 ### What it does not solve
 
 Nothing about `ed`, `cb` or timing changes. `ex_sp_ix`/`ex_sp_iy` collapse into one operation only
-if their rows name `{index:view}` rather than spelling the register out — which is available, and is
+if their rows name `{index:view}` rather than spelling the register out, which is available, and is
 the same fix as everything else here. And it does not reduce `base`: DD/FD are rare, so the runtime
 cost lands where it is least felt, which is the whole reason the trade is worth making here and
 would not be worth making for `hl` itself.
@@ -1375,7 +1369,7 @@ would not be worth making for `hl` itself.
 Everything below is the same source, one change, measured both ways.
 
 **The description.** Seven tables became five, 127 rows became 111, and `Operations::ex_sp_ix` and
-`ex_sp_iy` -- two functions that forwarded to a third -- went with them. `ddcb` and `fdcb` are one
+`ex_sp_iy` (two functions that forwarded to a third) went with them. `ddcb` and `fdcb` are one
 `indexed_cb`, and `ix` and `iy` are one `indexed`.
 
 **Compile time.** Better than predicted, on both compilers:
@@ -1397,8 +1391,7 @@ Everything below is the same source, one change, measured both ways.
 
 1280 is exactly 5 × 256. Not one handler more than the two removed tables predicted.
 
-Two second-order effects worth having. Each surviving handler is *dearer* — 53ms against 47ms —
-because it now reads its index register through a selector. And `apply` fell further than the tables
+Two second-order effects worth having. Each surviving handler is *dearer*, 53ms against 47ms, because it now reads its index register through a selector. And `apply` fell further than the tables
 alone explain (1191 → 895, −25% against −29% for tables), because merging `ix` and `iy` made `Call`
 values that differed only in which register they named identical, so they share one instantiation.
 
@@ -1407,14 +1400,14 @@ The gcc saving (−38%) is larger than the scaling law's −22s prediction, and 
 more of it.
 
 **Run time, and here the design note was wrong.** zexdoc, interleaved on an idle 36-core machine,
-minimum of four: **9.07 ns/instruction before, 9.25 after -- about 2% slower**, consistently, in
+minimum of four: **9.07 ns/instruction before, 9.25 after, about 2% slower**, consistently, in
 three of four pairs. A game benchmark could not resolve it at all (0.083 to 0.176 ms/frame across
 three runs of the same binary).
 
 Two percent is more than expected, and the reason is a real design error rather than the index
 indirection. The note above argued the cost "lands where it is least felt", because only prefixed
 instructions read through the selector. But **the dispatch table's function pointers must all have
-one signature**, so every handler now takes the view whether it uses it or not -- and `nop` pays for
+one signature**, so every handler now takes the view whether it uses it or not, and `nop` pays for
 `ix` existing. The indirection is confined to prefixes; the *parameter* is not.
 
 Fixing that means not having a uniform handler signature, which means not having a function-pointer
@@ -1424,20 +1417,20 @@ trade to be able to state in both directions; for a shipping emulator it is a ju
 the honest framing is that it buys developer time with user time.
 
 **One more thing clang caught.** Two of the new lines had sign-conversion bugs that gcc's
-`-Wconversion` accepted -- a ternary yielding `int` used as an array index, and the earlier
+`-Wconversion` accepted, a ternary yielding `int` used as an array index, and the earlier
 relative-jump arithmetic. Having a second compiler on the same source paid for itself twice in one
 session.
 
 ## Done, and it did not pay: one function per instruction
 
-`execute_one` used to be generated per (table, opcode) -- 256 per table, always.
+`execute_one` used to be generated per (table, opcode), 256 per table, always.
 But a row's body is built only from the slices it *reads*. `ed`'s catch-all row claims 218 opcodes
 and reads none of them, so those are one instruction wearing 218 hats; `ld {reg:y}, {reg:z}` reads
 both its slices, so its 64 are genuinely 64. Generating per opcode cannot tell the difference.
 
 Generation now walks rows and splats each body across the opcodes it claims. The combinations of the
 slices a row reads enumerate its distinct bodies exactly once, so **nothing is deduplicated, because
-nothing is generated twice** -- and there is no search anywhere: the fill is a direct write.
+nothing is generated twice**, and there is no search anywhere: the fill is a direct write.
 `template for` is left doing only the thing it must, making the functions; filling 256 entries from
 them is an ordinary loop, because by then they are values.
 
@@ -1446,18 +1439,18 @@ them is an ordinary loop, because by then they are values.
 | | gcc `Z80.cpp` | peak | `execute_one` | `apply` | `operands_of` |
 |---|---:|---:|---:|---:|---:|
 | per (table, opcode) | **52.6s** | 1.02 GB | 1280 | 895 | 934 |
-| canonicalised, with a cross-table search | 56.5s | — | **864** | 895 | 934 |
+| canonicalised, with a cross-table search | 56.5s | n/a | **864** | 895 | 934 |
 | per instruction (this) | 68.9s | 1.17 GB | 1034 | 895 | 934 |
 
 Look at the last two columns. **`apply` and `operands_of` do not move.** They are keyed on
 `<Fn, Call>`, so the duplicate handlers were already sharing every expensive instantiation beneath
-them -- thin shells around work the template system had folded all along. Removing 246 of them saves
+them, thin shells around work the template system had folded all along. Removing 246 of them saves
 nothing, and the analysis that finds them costs. The linker folds the shells too, since gcc runs
 `-fipa-icf` at `-O2`, so they were never in the binary either.
 
 Three attempts, all slower: a cross-table search (+4s), a naive row walk that was `rows × 256` where
 `256` would do (+15s and a doubled peak), and this one (+16s). The conclusion is not "my
-implementation was bad" -- the third is O(256) per table with no search at all -- it is that
+implementation was bad" (the third is O(256) per table with no search at all) it is that
 **the instantiations this removes are nearly free, and finding them is not.**
 
 Kept anyway, for the shape: generation follows the description's own grain rather than sweeping an
@@ -1465,7 +1458,7 @@ opcode space, and the 256-entry `template for` is gone. That is a taste judgemen
 on it, which is the honest way to have one.
 
 The corollary matters more than the result. If duplicate *handlers* are free, the expensive thing is
-the `<Fn, Call>` instantiations underneath -- and those only collapse if two instructions genuinely
+the `<Fn, Call>` instantiations underneath, and those only collapse if two instructions genuinely
 agree about their operands. That is what a parameterised operand would do, and it is why `bit`,
 `res`, `set` and the ALU group are the interesting targets rather than `rst`.
 
@@ -1473,7 +1466,7 @@ agree about their operands. That is what a parameterised operand would do, and i
 
 `bit = 0 1 2 3 4 5 6 7` is eight numbers. Its members carry no operation to splice, no location to
 name and no addressing mode to pay for, so `bit 0, b` and `bit 7, b` are the same function given a
-different number -- and the opcode already contains that number. Nothing needs to be specialised on
+different number, and the opcode already contains that number. Nothing needs to be specialised on
 it; the handler can read the bits.
 
 Detected rather than declared: a vocabulary qualifies when every live member is a plain constant
@@ -1481,7 +1474,7 @@ Detected rather than declared: a vocabulary qualifies when every live member is 
 `rst = 0x00 0x08 ... 0x38` and `imode = 0 0 1 2 0 0 1 2` are just as numeric, but their member is a
 *function* of the slice rather than the slice, so reading the bits gives `rst 3` where `rst 0x18`
 was meant. The test suite said so immediately. They keep a function each, and between them are worth
-21 bodies of 1034 -- not worth a lookup table.
+21 bodies of 1034, not worth a lookup table.
 
 The cost is that the handler now needs the opcode at run time, which the dispatch loop already has.
 
@@ -1501,8 +1494,8 @@ handlers went, and 287 `apply`s went with them**, because demoting an operand is
 instructions genuinely agree about their operands. Deduplicating handlers removes shells;
 deduplicating operands removes the substance.
 
-Taken together the two changes are close to free in wall clock -- generating per instruction cost
-16s, demoting `bit` gave 17s back -- and leave 747 handlers where there were 1280, with a third
+Taken together the two changes are close to free in wall clock, generating per instruction cost
+16s, demoting `bit` gave 17s back, and leave 747 handlers where there were 1280, with a third
 fewer constant evaluations and the lowest peak memory yet.
 
 **What this ranks next.** Measured by demoting each vocabulary in turn and counting bodies, from a
@@ -1518,7 +1511,7 @@ base of 1034:
 
 `reg` is the biggest prize by a distance and the one that needs a decision: member 6 is `(hl)`,
 which is genuinely different code, so it is `mixed` and cannot be demoted as it stands. Splitting the
-memory case into its own row -- which `cb` already does for `01bbb110 | bit {bit:b}, (hl)` -- would
+memory case into its own row (which `cb` already does for `01bbb110 | bit {bit:b}, (hl)`) would
 make the rest uniform registers, and then `add a, b` through `add a, a` become one function given an
 index. That needs indexed register access on the machine, which `RegisterFile` can do cheaply.
 The operation vocabularies (`shift`, `arith`, `cond`, `logic`) can never be demoted: their members
@@ -1532,7 +1525,7 @@ undemotable and led to the idea of splitting fourteen rows.
 
 Seven of `reg`'s eight members share a *shape*: a plain 8-bit register, no indirection, no
 write-back delay, no operation of their own. They differ only in **which** register. The eighth,
-`(hl)`, is genuinely different code -- an address, a memory access, an idle cycle. So the question
+`(hl)`, is genuinely different code, an address, a memory access, an idle cycle. So the question
 is not "can this slice be a run-time value" but **"how many shapes does this slice have?"**
 
 ### The rule
@@ -1549,10 +1542,10 @@ It subsumes everything already built rather than sitting beside it:
 | `bit = 0 1 ... 7` | one, value *is* the ordinal | 8 -> 1 *(what is built today)* |
 | `reg` | two: the registers, and `(hl)` | 8 -> 2 |
 | `real` | one of seven; a hole is not a class | 8 -> 1 |
-| `shift`, `arith`, `cond`, `logic` | one **per member** -- each is a different function to splice | no change, and correctly so |
+| `shift`, `arith`, `cond`, `logic` | one **per member**, each is a different function to splice | no change, and correctly so |
 
 The operation vocabularies needing no special case is the sign the rule is the right one. So is
-`(hl)` earning its own class *because of its `/delay=1`* -- the member attribute §2 introduced to
+`(hl)` earning its own class *because of its `/delay=1`*, the member attribute §2 introduced to
 avoid splitting these rows is exactly what classifies them now.
 
 ### Where the cunning goes, and it is not in the body
@@ -1564,7 +1557,7 @@ opcodes agree on the key, everything downstream generates one shared body with n
 
 ### How a class names its location without the framework learning the CPU
 
-The obvious move -- have the machine offer `read(RegAt, n)` -- does not survive views. Under
+The obvious move (have the machine offer `read(RegAt, n)`) does not survive views. Under
 `indexed`, `reg` resolves to `b c d e ixh ixl (ix+d) a`, so the ordinal-to-register map differs per
 table, and `Operand` cannot hold a `RegisterFile::R8` because `refract` must not know what a Z80 is.
 
@@ -1581,7 +1574,7 @@ The array is built from the members *as that table resolves them*, so `base` get
 overload set: **no machine change at all**, where the view work needed four new accessors.
 
 **Correction, from building it: views do *not* fall out for nothing.** A `Call` is one non-type
-template parameter shared by both views, so `call_for` resolves at view 0 -- and an array frozen
+template parameter shared by both views, so `call_for` resolves at view 0, and an array frozen
 there pins every `iy` row to `ix`. The tests said so immediately, in the plainest possible way:
 
 ```
@@ -1600,10 +1593,10 @@ Two ways out, and they are not equal:
   plumbing a good deal of the row into a type that exists to be small.
 - **Do not shape-class a vocabulary the table rewrites.** One condition, no plumbing. Gives up the
   collapse in `indexed`/`indexed_cb` and keeps it in `base`, `cb` and `ed`, which is where `arith`,
-  `logic`, `ld r,r'` and the `cb` families live -- most of the prize.
+  `logic`, `ld r,r'` and the `cb` families live, most of the prize.
 
-**Called after a third correction.** The narrower fix -- do not shape-class a vocabulary the table
-rewrites -- was tried and also failed, and the failure moved from `iy` to `ix`, which is the tell:
+**Called after a third correction.** The narrower fix, do not shape-class a vocabulary the table
+rewrites, was tried and also failed, and the failure moved from `iy` to `ix`, which is the tell:
 
 ```
 CHECK( regs.ix() == 0x1300 )   with expansion:  4863 == 4864
@@ -1612,11 +1605,11 @@ CHECK( regs.ix() == 0x1300 )   with expansion:  4863 == 4864
 The diagnosis, which is the useful thing to keep: **`body_key` and `resolve` must agree about what a
 class is, and only `resolve` was taught the exclusion.** `body_key` went on folding ordinals 4 and 5
 onto the class's first member, so two opcodes shared a body while their operands resolved two
-different ways -- one through the runtime view, one as a plain register. One body, two answers.
+different ways, one through the runtime view, one as a plain register. One body, two answers.
 
 That is a ten-minute fix (give `body_key` the same condition) and the spike was dropped anyway,
 because three corrections in one sitting is the point at which a design is telling you something.
-What it is telling us is that **the class of a member is not a property of the member alone** -- it
+What it is telling us is that **the class of a member is not a property of the member alone**, it
 depends on the rules of the table that decoded it, and every place that computes it has to say so.
 Whoever picks this up should start by giving `body_key` and `resolve` a *shared* function that
 answers "what class is ordinal n here", rather than two conditions that have to be kept in step.
@@ -1626,7 +1619,7 @@ last two predictions in this file were 33% too optimistic and outright wrong res
 compile-time win from `bit` was real and measured; this one is arithmetic.
 
 At run time this is one load from a constant table where there used to be a constant. The class
-condition -- all members' locations of the same kind -- is what makes the array well-typed.
+condition (all members' locations of the same kind) is what makes the array well-typed.
 
 ### What it is worth, and what it costs
 
@@ -1636,29 +1629,29 @@ item on the board. `real` (-156), `pair` (-36) and `spair` (-12) come under the 
 description change either.
 
 Costs, honestly: the generator grows a partition step and a class-indexed key, which is more than
-`is_numeric` was. And **the description does not change by one row** -- which, after the last three
+`is_numeric` was. And **the description does not change by one row**, which, after the last three
 experiments, is the part worth caring about. The table is the artefact; the generator is machinery.
 
 ## Open: /INT is a level, and v4 has no way to release it
 
-v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it — which is
+v4 now holds an interrupt request raised while `iff1` is clear, instead of discarding it, which is
 right for the case that motivated it, a request arriving inside a one-instruction `di`/`ei` window.
 It is wrong for the case it created.
 
 `Z80Base` offers `interrupt()` and nothing else: there is no deassert. `Spectrum::video_line()`
 raises the request once a frame, and on real hardware /INT is held for about 32 T-states and then
-released. So a routine running under `di` across a frame boundary — loaders, multicolour, border
-effects all do this — leaves a request latched, and v4 takes it on the eventual `ei` where hardware,
+released. So a routine running under `di` across a frame boundary (loaders, multicolour, border
+effects all do this) leaves a request latched, and v4 takes it on the eventual `ei` where hardware,
 and v1/v2/v3, take nothing.
 
 Two ways out, both out of scope for the change that found it:
 
 1. **Give the request a release.** `Z80Base` grows a deassert, and `Spectrum` drops the line after
-   the documented window. Correct, and it fixes all four cores at once — but it changes shared
+   the documented window. Correct, and it fixes all four cores at once, but it changes shared
    framework and every front end that raises an interrupt.
 2. **Give the request a lifetime inside v4.** Record the cycle it was raised at, and expire it after
    ~32 T-states. Keeps the fix's benefit, needs no shared change, and puts a machine-specific number
-   inside the CPU where the machine cannot see it — which is the wrong place for it, but a small
+   inside the CPU where the machine cannot see it, which is the wrong place for it, but a small
    wrong place.
 
 Until one of them lands, v4 differs from the other three in a way real software could notice, and
@@ -1680,7 +1673,7 @@ artefacts followed prefixes by two separate pieces of code. The one thing genuin
 the assembler syntax `0x` and `+0x`/`-0x` are written in; if a second CPU wants `$1234` that becomes
 a parameter, and not before.
 
-What made it possible is `Description` — the five spans a consumer of a parsed table needs
+What made it possible is `Description`, the five spans a consumer of a parsed table needs
 (vocabularies, rows, tables, the decode tables, and where decoding starts) as one value. Passing
 "the table" rather than five of its parts is what keeps the signature honest.
 
@@ -1691,8 +1684,7 @@ The two things that stood in the way both went:
    `specbolt::v4` and includes what lives there. What the framework needs is written down as the
    `Machine` concept, so a machine missing a piece is told which piece rather than finding out
    inside a generated instruction. The one thing the concept cannot state is `read`/`write` for
-   locations — the shape of that overload set depends on the machine's own `location_scopes()` —
-   so a bad location name is diagnosed at the splice in `find_location` instead.
+   locations, the shape of that overload set depends on the machine's own `location_scopes()`, so a bad location name is diagnosed at the splice in `find_location` instead.
 2. **`SPECBOLT_CPU_TABLE` is a compile definition**, set by `z80/v4/CMakeLists.txt`, with a neutral
    default in `TableError.hpp`. The framework no longer names the description file.
 
@@ -1705,12 +1697,12 @@ is the limit, and it is what would have to change to test a second CPU alongside
 Not done, and half of the reason for it has since evaporated. A name in the table travels through
 three places:
 
-1. `z80.cpu` names something — `delay`, `ld8`, `ex_sp_hl`.
+1. `z80.cpu` names something, `delay`, `ld8`, `ex_sp_hl`.
 2. `find_operation` looks it up in `^^Operations` or `^^Alu`.
 3. Some of those static functions turn straight round and call a member of `v4::Z80`.
 
-The *worst* of the shims are gone: what the framework itself needs — `fetch_opcode`, `read_memory`,
-`delay`, `displaced_address` — is now stated as the `Machine` concept and called directly on the
+The *worst* of the shims are gone: what the framework itself needs (`fetch_opcode`, `read_memory`,
+`delay`, `displaced_address`) is now stated as the `Machine` concept and called directly on the
 chip, and location access is `Z80::read`/`Z80::write` rather than free functions. What is left in
 `Operations.hpp` is mostly real semantics, plus a handful that are still pure forwarding
 (`Operations::delay`, `ex_sp_ix`, `ex_sp_iy`).
@@ -1726,7 +1718,7 @@ Things to work out before committing to it:
   and gcc actually allow.
 - `takes_cpu` disappears, or inverts: a member has the machine implicitly, so the distinction between
   "wants the CPU" and "does not" stops being visible in the signature.
-- Access control does useful work today — `access_context::current()` at namespace scope hides the
+- Access control does useful work today, `access_context::current()` at namespace scope hides the
   private helpers in `Ops`, so a table cannot name them. The same trick should still work on a class,
   but it decides what a table may call, so check it.
 - The naming problem does not go away, it moves: `read`/`write` are overloaded on `Z80` for
@@ -1741,7 +1733,7 @@ works at all, and judge from there.
 ## What a second CPU would need
 
 The format has described exactly one processor, and an outside reader given only
-[CPU_FORMAT.md](CPU_FORMAT.md) — told to know 6502 and Z80 but not to look at the code — went
+[CPU_FORMAT.md](CPU_FORMAT.md) (told to know 6502 and Z80 but not to look at the code) went
 looking for the seams and found them. Recorded here because "not Z80-specific" is currently a design
 intent that has been half-tested, and it should either become true or stop being claimed.
 
@@ -1749,8 +1741,8 @@ Each of these is a concrete 6502 instruction that cannot be written today.
 
 ### 1. An addressing mode must be able to fetch its own operand
 
-The 6502's `aaabbbcc` puts the addressing mode in `bbb` — which is exactly what a vocabulary is
-for — but its members are different *lengths*: `#` and `zp` fetch one byte, `abs` two, accumulator
+The 6502's `aaabbbcc` puts the addressing mode in `bbb`, which is exactly what a vocabulary is
+for, but its members are different *lengths*: `#` and `zp` fetch one byte, `abs` two, accumulator
 mode none. The encoding column is per-row and fixed, and `parse_member` explicitly refuses:
 
 ```
@@ -1773,7 +1765,7 @@ main thing standing in the way, and it should probably go.
 ### 2. Indirection cannot nest
 
 `indirect = "(" , ( "n" | number | name ) , [ "+d" ] , ")"` is one level deep, so `LDA ($20),Y`
-(`B1`) — read a pointer from a fetched zero-page address, then index it — has nowhere to go. The
+(`B1`) (read a pointer from a fetched zero-page address, then index it) has nowhere to go. The
 escape is a CPU-supplied `lda_indirect_y` primitive, at which point the table has stopped naming
 general operations and the whole argument collapses for that CPU.
 
@@ -1781,14 +1773,14 @@ general operations and the whole argument collapses for that CPU.
 
 `(ix+d)` means "base plus one signed byte read from the instruction". `LDA $1234,X` (`BD`) is
 "16-bit immediate base plus the contents of a register", and there is no syntax for it. The two are
-the same idea — a base and an offset — with the offset coming from different places.
+the same idea (a base and an offset) with the offset coming from different places.
 
 ### 4. Cost that depends on the data
 
 The 6502 charges one extra cycle on `abs,X`, `abs,Y` and `(zp),Y` **when the index crosses a page
 boundary, and only on reads**: `LDA $1234,X` is 4 or 5 cycles, `STA $1234,X` is always 5.
 
-`displaced_address` takes the machine by reference, so it *can* charge conditionally — but it is not
+`displaced_address` takes the machine by reference, so it *can* charge conditionally, but it is not
 told whether the access it is forming will be a read or a write, so it cannot tell those two apart.
 That is a small signature change. The harder half is that we form the address **once per
 instruction** (§ *indexed addressing*), which is right for the Z80 and wrong for a machine where the
@@ -1799,7 +1791,7 @@ cost belongs to each access.
 Not a 6502 issue, but the same review raised it and it belongs here. Cost is a total per instruction,
 ordered by step; a multi-byte access is indivisible and nothing below a step can be scheduled. Good
 enough for totals and for contention at instruction granularity, not enough for a *schedule* of bus
-cycles at known offsets. The Spectrum's contention will decide whether this matters — see
+cycles at known offsets. The Spectrum's contention will decide whether this matters, see
 *Time passes in exactly one place*.
 
 ### What is already fine
@@ -1821,21 +1813,21 @@ are deferred rather than forgotten.
   materialised into a braced `std::tuple` first, whose initialisation is sequenced.
 - ~~**A mistyped line vanishes.**~~ **Fixed.** After blanks and `#`, every line must be a
   declaration or a row; `check_every_line_means_something` says so. Still true and unfixed:
-  `next_word` splits on spaces only, so a tab-indented `field` is not recognised at all — `trim`
+  `next_word` splits on spaces only, so a tab-indented `field` is not recognised at all, `trim`
   handles tabs, which shows they were meant to be whitespace.
 - ~~**`SPECBOLT_CPU_TABLE` lives in `TableError.hpp`**, so a framework header names the CPU
   description, and `Execute.hpp` includes the Z80's headers by name for the same reason.~~ **Both
-  fixed** — see "the line between the library and the Z80" above. What is left is that one binary
+  fixed**. See "the line between the library and the Z80" above. What is left is that one binary
   still cannot hold two descriptions.
 - ~~**`Operand` carries jobs that already have types.**~~ **Done.** `Reference` is a type, and
-  `write_back_delay` now lives only on `Operand` — `parse_member` writes it there directly, so
+  `write_back_delay` now lives only on `Operand`, `parse_member` writes it there directly, so
   `resolve` is a one-liner and there is nothing to keep in step.
 - **The write-back-delay rule compares only the name**, not that both ends are indirect, and two
   nameless indirect operands compare equal. Nothing exercises it today; the rule meant is "the
   destination is the same addressing mode as one of the operands".
 - ~~**`Matched::matches` is test-only and misleading**~~ **Fixed by deleting it**, along with
   `fixed_mask` and `variable_mask`, which existed only to serve it. It was the obvious way to decode
-  — AND with a mask, compare — sitting in the first file a reader opens, in a design that
+  (AND with a mask, compare) sitting in the first file a reader opens, in a design that
   deliberately does the opposite: `opcodes_of` *generates* a row's opcodes and decoding is a
   precomputed table. A decoy in production code, kept alive by nothing but its own test.
 - **Naming.** "field" means the `.cpu` keyword, the C++ `Field`, a `BitSlice` (in one error message),
@@ -1844,7 +1836,7 @@ are deferred rather than forgotten.
 - **The v4 `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so every
   `SPECBOLT_MODULES` branch in v4 is unbuildable by construction, and the partitions do not include
   the headers they would need. They look maintained and are not.
-- ~~**`DisassemblerTest` understates coverage.**~~ **Stale — no commented-out `CHECK`s remain**; the
+- ~~**`DisassemblerTest` understates coverage.**~~ **Stale, no commented-out `CHECK`s remain**; the
   only markers left say "tested elsewhere". What is genuinely missing is a test that the *two
   artefacts agree*: for every (table, opcode), that `disassemble(...).length` equals how far the
   interpreter moved PC, and that nothing renders `??`. The format's headline claim is "one
@@ -1858,7 +1850,7 @@ reflection was earning its keep, simplicity and teachability, and API design and
 library claims below were checked against the gcc 16.2 this builds against rather than assumed.
 
 **The worst finding was a hole in the checking, not a bug in the code.** `Model.hpp` said a view
-vocabulary's members "are required to share a shape" — and nothing required it. Only member *count*
+vocabulary's members "are required to share a shape", and nothing required it. Only member *count*
 was checked. Three separate mechanisms resolve a view reference at member 0 and apply the answer to
 every view, and one of them, `displaced_through`, does not take a view at all; so
 `check_displacement_rendered`, whose whole job is catching a mnemonic that disagrees with what runs,
@@ -1875,7 +1867,7 @@ coverage, which is the wrong way round. They have cases now, and so does the new
 
 - No bound on the prefix loop. `dd` reaches its own table, `offset` is a `std::size_t`, and
   `byte_at` wraps at 16 bits, so a region of `0xdd` was walked to its end before one line was
-  rendered — quadratic for a listing, unbounded for a 64K image of it. Note the asymmetry with the
+  rendered, quadratic for a listing, unbounded for a 64K image of it. Note the asymmetry with the
   interpreter, which is *right* to loop forever there: the chip really does spend 4T a byte on
   `dd dd dd …`. A disassembler is asked what is at an address and has to answer.
 - `opcode` was read back as `byte_at(offset - 1)` after the loop, which is the *displacement* for
@@ -1888,7 +1880,7 @@ width was `std::same_as<std::uint16_t>` with everything else falling through to 
 operation declaring `unsigned` would have read half of what it asked for and zero-extended the rest.
 Two `static_assert`s.
 
-**`check_tables_used` proved the wrong thing** — "some goto names this table", not "reachable from
+**`check_tables_used` proved the wrong thing**, "some goto names this table", not "reachable from
 the entry table". Two tables that only reach each other passed, and were then forced to be total and
 generated in full: 512 handlers of dead code from a typo. It walks the decoded tables from `entry`
 now, which also accounts for inheritance.
@@ -1903,21 +1895,21 @@ Simplifications taken, all verified by building:
   `split | enumerate | transform` pipeline, the counter and its per-token scan are gone, and four
   copies of the same loop became four range-`for`s.
 - `location_scopes()` was the one list in the project that mirrored a set of declarations with
-  nothing holding them together — and `Z80.hpp` says the enums exist *for* it. It is now every enum
+  nothing holding them together, and `Z80.hpp` says the enums exist *for* it. It is now every enum
   the namespace declares. A new location enum is a location; forgetting to list it is not a thing
   that can happen. `Bus` is swept up too, harmlessly, and if a name ever did collide `only_match`
-  says so — with both scopes named, which it did not before.
+  says so, with both scopes named, which it did not before.
 - `Pattern::matches` and its two mask helpers deleted; `decoded_count` deleted (it restated what
   `check_tables_total` already refuses to build without); `Vector::back()` deleted (no callers, and
   it would have underflowed on an empty one).
 - Three `static_assert(std::meta::is_structural_type(…))` where fifteen lines of comment used to
   explain the requirement and nothing enforced it.
 
-**Deliberately not done.** `std::expected` for parse failures — it would destroy the throwing-
+**Deliberately not done.** `std::expected` for parse failures, it would destroy the throwing-
 `consteval` diagnostic, which is the best idea in the file. `std::generator` for the lowering
-passes — coroutines cannot be constant-evaluated at all, which makes it a better slide than a
-change. `std::optional<T&>` for `row_for` — not in libstdc++ 16.2, checked. `views::concat` to
-unify the "operands then destinations" loops — absent from libc++ 21, and v4 is libstdc++-only
+passes, coroutines cannot be constant-evaluated at all, which makes it a better slide than a
+change. `std::optional<T&>` for `row_for` (not in libstdc++ 16.2, checked. `views::concat` to
+unify the "operands then destinations" loops) absent from libc++ 21, and v4 is libstdc++-only
 today, but not worth the portability question for five loops. Splitting `Operand` into parsed and
 resolved halves, and bundling the `(vocabularies, matched, opcode, rules, view)` tuple that nine
 functions thread: both real, both structural, neither obvious enough to do without deciding what
@@ -1931,18 +1923,18 @@ define". The throw stays as a guard, but no test can reach it.
 ## Follow-up work, in order
 
 1. ~~**Multi-slot rows.**~~ Done.
-2. ~~**Compile-time overlap and coverage checking.**~~ Done — see §5.
+2. ~~**Compile-time overlap and coverage checking.**~~ Done. See §5.
 3. **Encoding as a byte sequence.** Immediates and length derived: done. Multiple pattern tokens
    per row, which is what expresses the DDCB fetch order: folded into 4, because it is the same work.
 4. **Prefixes.** Table switch and override rows: done, CB works; the goto cycle a view needs is now
-   legal, decoding being a loop. Still to do, and the hard half: DD/FD as *views* and DDCB — see the
+   legal, decoding being a loop. Still to do, and the hard half: DD/FD as *views* and DDCB. See the
    Prefixes section.
 5. ~~**Timing**~~ Done, though not as this list expected: cost belongs to the addressing mode, with
    an explicit `delay` step only for idle cycles belonging to the operation. `t=` assertions still
    want static per-step costs, which do not exist: cost is resolved inside `Z80::bus`.
 6. **Interrupts.** Absent entirely. jsbeeb samples the interrupt at a named position in the cycle
    schedule rather than at the top of the instruction, which is the difference between exact and
-   approximate — worth deciding before writing the easy version.
+   approximate, worth deciding before writing the easy version.
 7. **WZ**, flags cross-checks, `undoc` marking. Nothing will catch a regression here until there is
    a zexall run; zexdoc tests documented flags only.
 8. **Conditional cycle schedules.** `djnz` 8/13 has no expression today. jsbeeb's `split(condition)`
@@ -1953,27 +1945,26 @@ Parallel, not blocking: make `RegisterFile` header-only and `constexpr` so execu
 `STATIC_CHECK`. `static_assert(run(0x21, 0x4000).get(R16::HL) == 0x4000)` is the slide the talk
 wants, and it is currently impossible only because the accessors are defined in a `.cpp`.
 
-Also parallel: ~~**write a small compile-time vector**~~ — done, `Vector.hpp`, and it is used by
+Also parallel: ~~**write a small compile-time vector**~~, done, `Vector.hpp`, and it is used by
 `Field::values`, `Matched::slices`, `Row::pieces` and `Row::steps`. It carries its own count, throws
 its caller's message on overflow, and is structural so it can be a template argument.
 
 Worth considering a structural fixed-capacity **string** at the same time. `string_view` being
-non-structural has now blocked three separate things — `Row` as an NTTP, `Piece` in an
-`inplace_vector`, and a vocabulary member as a template argument — and each time the workaround is to
+non-structural has now blocked three separate things, `Row` as an NTTP, `Piece` in an
+`inplace_vector`, and a vocabulary member as a template argument, and each time the workaround is to
 pass an *index* and look the object up inside. That works, but a structural string type would remove
 the class of problem rather than the instances.
 
 The obvious answer for the vector is `std::inplace_vector`, and it is the wrong one *for now*: gcc 16.2 ships
-`<inplace_vector>` but its constexpr path supports **trivial types only** —
-`__builtin_unreachable(); // only trivial types are supported at compile time`. `Piece` holds a
+`<inplace_vector>` but its constexpr path supports **trivial types only**, `__builtin_unreachable(); // only trivial types are supported at compile time`. `Piece` holds a
 `std::string_view`, which is trivially copyable but not trivially default constructible, so it does
 not qualify. Verified both ways. This is a libstdc++ limitation rather than a language one, so
 revisit and delete our version when it lifts.
 
 ### Does the table need to survive constant evaluation at all?
 
-Currently yes, and that is worth being deliberate about. `rows` is read **at runtime** — the
-disassembler does `rows[*index]` per instruction — so the table is static data, which is exactly why
+Currently yes, and that is worth being deliberate about. `rows` is read **at runtime**, the
+disassembler does `rows[*index]` per instruction, so the table is static data, which is exactly why
 it cannot hold a `std::vector` and needs the fixed-capacity idiom above.
 
 That is only true because disassembly is *interpreted* while execution is *generated*. Generate
@@ -1987,7 +1978,7 @@ debugger view can ask questions of the table at runtime.
 ## What the real Z80 buys, measured
 
 The description targets `v4::Z80 : Z80Base` rather than a stand-in struct, so v4 can be dropped
-straight into `z80/test/OpcodeTests.cpp` — that suite is already a template over the
+straight into `z80/test/OpcodeTests.cpp`, that suite is already a template over the
 implementation, which makes it the scoreboard. Two measurements, before and after memory operands:
 
 | | rows | opcodes decoded | unprefixed suite | wrong answers |
@@ -2009,7 +2000,7 @@ All four wrong answers are the same bug, and it is the one predicted below:
 | `inc (hl)`, `dec (hl)` | 11 | 10 |
 
 **Timing is otherwise free.** It falls out of the fetch cycle rather than being data the table
-carries: `nop` 4, `add a, b` 4, `add a, n` 7, `ld bc, nn` 10, `ld c, (hl)` 7, `ld (hl), n` 10 — all
+carries: `nop` 4, `add a, b` 4, `add a, n` 7, `ld bc, nn` 10, `ld c, (hl)` 7, `ld (hl), n` 10, all
 correct without the table saying anything about cycles. What is missing is only the *internal*
 cycles, which belong to no bus operation and therefore to no step the fetch cycle knows about. That
 is exactly the micro-op sequence argument, arriving from the direction of timing rather than of
@@ -2025,7 +2016,7 @@ surface: `fetch_immediate`, `read_memory`, `write_memory`.
 
 ### Timing: steps, verified
 
-Implemented as design decision 6 says — cost lives in an ordered step list, not in an annotation on
+Implemented as design decision 6 says, cost lives in an ordered step list, not in an annotation on
 the row. The mechanism is one separator:
 
 ```
@@ -2035,18 +2026,18 @@ the row. The mechanism is one separator:
 
 `delay` is not a framework concept: it is an ordinary primitive in the CPU's `Ops`, and the only
 new framework rule is that **a primitive may take `Cpu &` as its first parameter**, which the
-framework supplies. That is not the `is_supplied_by_framework` mistake returning — that one
+framework supplies. That is not the `is_supplied_by_framework` mistake returning, that one
 special-cased `Flags`, a *domain* type. `Cpu` is the single type the framework is parameterised on,
 so it is the one thing it can always hand over, and it is what `jp`, `call`, `push` and `in`/`out`
 will all need.
 
-The conditional part — `inc (hl)` costs one more than `inc r`, and `{4,5,6}` is not maskable — needs
+The conditional part (`inc (hl)` costs one more than `inc r`, and `{4,5,6}` is not maskable) needs
 no mechanism either. A specific row placed before the general one wins by first-match-wins, which
 §5 already requires. This is the same override mechanism the prefix design depends on, so prefixes
 now have a working precedent rather than a promise.
 
 Result: the four timing failures are gone. On the unprefixed suite the failure count is now exactly
-equal to the undecoded-opcode count — **zero wrong answers of any kind**.
+equal to the undecoded-opcode count, **zero wrong answers of any kind**.
 
 ### Time passes in exactly one place
 
@@ -2061,13 +2052,13 @@ enum class Bus : std::uint8_t { opcode, operand, read, write, io_read, io_write,
 
 The enum is **per-CPU**, declared in `Z80.hpp` rather than the framework. A 6502 declares its own,
 and would add the one kind the Z80 has no use for: a dummy cycle the bus sees but whose value is
-discarded — a *write* on the NMOS 6502 and a *read* on the 65C12. I/O is in, because the Z80
+discarded, a *write* on the NMOS 6502 and a *read* on the 65C12. I/O is in, because the Z80
 genuinely has a separate address space with its own wait state, and separate address spaces are not
 unusual.
 
 Contention and cycle stretching are one commented line inside `bus`. Everything they need is already
 there: the kind, the address, and `cycle_count()`, from which frame position is `% 70000`. Nothing in
-the repo models either today — the Spectrum contends `0x4000-0x7fff` while the display is drawn, and
+the repo models either today, the Spectrum contends `0x4000-0x7fff` while the display is drawn, and
 none of v1, v2 or v3 attempt it.
 
 ### What jsbeeb does, and what is worth taking
@@ -2084,7 +2075,7 @@ What it validates:
   `readmem`/`writemem` do no timing at all. Ours matches: `Z80::bus` charges, `Memory::read`
   transfers.
 - **The minimum information really is (cycles, address, is-write).** jsbeeb needs no enum of kinds.
-  Ours is a didactic layer over the same three facts — worth knowing it is a convenience, not a
+  Ours is a didactic layer over the same three facts, worth knowing it is a convenience, not a
   requirement.
 - **Cycles that cannot stretch pass no address.** jsbeeb uses plain `polltime` for zero-page and
   stack, which are always fast. The Spectrum differs: an internal cycle still contends on whatever
@@ -2092,10 +2083,10 @@ What it validates:
 
 Two ideas worth stealing that we have no answer for yet:
 
-- **`split(condition)`** forks the remaining cycle schedule on a runtime condition — page crossing on
+- **`split(condition)`** forks the remaining cycle schedule on a runtime condition, page crossing on
   the 6502, and exactly the shape of `djnz` 8/13. Better than the `t=min/max` sketch in §6, because
   the two schedules are both stated rather than a range being asserted.
-- **The interrupt is sampled at a named position in the schedule** — jsbeeb injects `checkInt()`
+- **The interrupt is sampled at a named position in the schedule**, jsbeeb injects `checkInt()`
   before the penultimate cycle. Since v4 does not handle interrupts at all yet, that is the detail
   that makes them exact rather than approximate, and it argues for adding them as a step position
   rather than a check at the top of `execute_one`.
@@ -2108,7 +2099,7 @@ Three places, and none of them is a number written on a row:
 - **the addressing mode**, via `read`/`write` costing 3 and `/delay=1` for the idle cycle in a
   read-modify-write
 - **an explicit `delay` step**, for an idle cycle that belongs to the operation rather than to an
-  operand — `inc {p} ; delay 2`, and `bit {b}, (hl)`
+  operand, `inc {p} ; delay 2`, and `bit {b}, (hl)`
 
 A row states a number only in the third case, which is the case where the number is genuinely a
 property of that instruction. Everything else falls out.
@@ -2128,8 +2119,7 @@ No loop over steps, no function pointer, no `Step` data anywhere in the output. 
 `lea [rax+2]` on the cycle counter.
 
 The one qualification, which the earlier spike measurement missed because everything in it was
-trivial: when a step's primitive is itself out-of-line — `Alu::inc8`, `Z80::read`, `Z80::write` —
-gcc declines to inline the `apply<…>` specialisation into the handler, so `inc (hl)` pays one extra
+trivial: when a step's primitive is itself out-of-line, `Alu::inc8`, `Z80::read`, `Z80::write`, gcc declines to inline the `apply<…>` specialisation into the handler, so `inc (hl)` pays one extra
 call boundary. The body is still fully specialised straight-line code with no branches; it is just
 not merged. Whether to force it with `always_inline` is a tuning question, not a design one, and
 the 94 bytes/opcode v3 already ships is the number to beat.
@@ -2137,7 +2127,7 @@ the 94 bytes/opcode v3 already ships is the number to beat.
 ### Addresses are a modifier, not a kind
 
 `(hl)` is not a fifth kind of operand alongside constant, immediate, name and field reference. It is
-any of those with `indirect` set — "work out the operand, then use it as an address". That
+any of those with `indirect` set, "work out the operand, then use it as an address". That
 composes for free: `(bc)`, `(de)` and eventually `(nn)` need no new mechanism, and a vocabulary
 member may be written `(hl)` because a member's text is parsed by the same function that parses an
 operand in a row. Filling the `-` hole in `field r` with `(hl)` was therefore a one-word change to
@@ -2150,16 +2140,16 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 `Operations.hpp`, `Locations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting means
 writing these and nothing else:
 
-- `Cpu` and `Operations` — the machine state and its non-ALU primitives
-- `operation_scopes()` — where the table may name operations from
-- `location_scopes()` — where it may name storage
-- `read`/`write` overloads — how to touch that storage
-- `read_memory`/`write_memory` — how to touch memory through an address
-- `fetch_opcode`/`fetch_immediate` — how to read the instruction stream
-- `delay` — how to spend an idle cycle
+- `Cpu` and `Operations`, the machine state and its non-ALU primitives
+- `operation_scopes()` (where the table may name operations from
+- `location_scopes()`) where it may name storage
+- `read`/`write` overloads (how to touch that storage
+- `read_memory`/`write_memory`) how to touch memory through an address
+- `fetch_opcode`/`fetch_immediate` (how to read the instruction stream
+- `delay`) how to spend an idle cycle
 
 A primitive may take `Cpu &` as its first parameter, which the framework supplies. That is the one
-type it is parameterised on, so it is the one thing it can always hand over — and it is what `jp`,
+type it is parameterised on, so it is the one thing it can always hand over, and it is what `jp`,
 `call`, `push` and `in`/`out` will need.
 
 The framework names no CPU type at all: not `RegisterFile`, not `Alu`, not `Flags`. It knows only
@@ -2167,7 +2157,7 @@ that a row has a verb, some operands and some destinations, and that the CPU can
 
 ### The collapse that got us here
 
-Three Z80-isms used to live in the framework, and all three were the same mistake — inferring
+Three Z80-isms used to live in the framework, and all three were the same mistake, inferring
 meaning from a C++ type rather than reading it off the row:
 
 - `Operand::Kind::Accumulator` presumed a CPU has one.
@@ -2175,18 +2165,17 @@ meaning from a C++ type rather than reading it off the row:
   `Alu::iff2_flags_for(u8, Flags, bool iff2)`, whose `bool` is not carry.
 - `is_supplied_by_framework` did the same for `Flags` and `Cpu &`.
 
-All three became one operand concept — constant, immediate, name, field reference, or discard —
-where `a`, `carry` and `flags` are just names the CPU resolves. Vocabulary members may append an
+All three became one operand concept, constant, immediate, name, field reference, or discard, where `a`, `carry` and `flags` are just names the CPU resolves. Vocabulary members may append an
 operand (`add:add8+0`, `adc:add8+carry`), so the carry policy is data in the table. Destinations
 are a list, so `{q} a, flags <- a {r:z}` destructures whatever the primitive returns, and the last
-assumption — that a result type has a member called `flags` — went with it.
+assumption (that a result type has a member called `flags`) went with it.
 
 ### What the framework relies on instead
 
 Three properties of the primitive, all read by reflection, none of them Z80-specific:
 
 - its arity, checked against the number of operands the row supplies
-- its parameter types, which each operand converts to — so a 16-bit location handed to an 8-bit
+- its parameter types, which each operand converts to, so a 16-bit location handed to an 8-bit
   parameter is a `-Wconversion` error, not a truncation
 - its return type: `void` means the row may name no destination, a scalar means exactly one, and a
   class means one destination per non-static data member, in declaration order

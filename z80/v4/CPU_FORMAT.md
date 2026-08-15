@@ -26,7 +26,7 @@ and installed on that end; the extension's README says how.
 
 A `.cpu` file describes an instruction set as data. It is `#embed`ed into the
 build, parsed during constant evaluation, and used to generate two things: a
-disassembler and an interpreter. Nothing in it is read at run time — by the time
+disassembler and an interpreter. Nothing in it is read at run time. By the time
 the program starts, the file has become code.
 
 Every example here is drawn from `z80.cpu`, the only description this repository
@@ -38,7 +38,7 @@ which.
 framework knows no Z80 instruction. But the format has so far only ever had to
 describe one processor, and it shows: indexed addressing is fixed at *base plus
 one signed displacement byte*, indirection cannot nest, and an addressing mode
-cannot fetch its own operand — so a 6502's `LDA ($20),Y` and `LDA $1234,X`
+cannot fetch its own operand, so a 6502's `LDA ($20),Y` and `LDA $1234,X`
 cannot be written today, and its `bbb` addressing-mode field cannot be a
 vocabulary. Those are limits of what has been needed, not of the approach; they
 are recorded as work in [NOTES.md](NOTES.md). Treat "not Z80-specific" as a
@@ -47,9 +47,9 @@ design intent that has been half-tested, not as a promise.
 The file has three kinds of line. Vocabularies and tables are collected in
 whole-file passes before any row is read, so a row may name either before its
 declaration appears; `z80.cpu` does exactly that, jumping to a table declared
-further down. What order *does* decide is which table a row lands in — a row
+further down. What order *does* decide is which table a row lands in (a row
 belongs to the nearest `table` line above it, and a row above the first one is
-an error — and, within a table, which of two overlapping rows wins.
+an error) and, within a table, which of two overlapping rows wins.
 
 - **`vocab`** declares a *vocabulary*: the list of things a group of opcode bits
   can select between.
@@ -75,7 +75,7 @@ renders a different number of immediate bytes than the encoding fetches, or the
 action uses an immediate the encoding never read, the build fails with the line
 number.
 
-That check covers *immediates* — the `n` bytes. It is not a check on total
+That check covers *immediates*, the `n` bytes. It is not a check on total
 instruction length, because a displacement is not declared by the encoding at
 all (see [Displacement](#displacement)): under a view, an inherited row can
 match a longer instruction than its own encoding column describes.
@@ -95,21 +95,21 @@ shape. It comes in three parts: what a row's verbs mean, what its names mean,
 and how the framework drives the chip. For the Z80 the verbs are in
 `Operations.hpp`, the scopes the names are looked up in come from
 `Locations.hpp`, and the machine
-itself supplies the rest as member functions — `Machine.hpp` states that half of
+itself supplies the rest as member functions. `Machine.hpp` states that half of
 the contract as a concept. Be warned that the verbs are not a small file: the
 easy majority of an instruction set becomes rows, and what stays behind is the
 awkward remainder: the block moves, the exchanges, the flag minutiae.
 
 | the table writes | the CPU supplies |
 |---|---|
-| an **operation** — `inc8`, `add16` | a function of that name, found by reflection |
-| a **location** — `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` members taking it |
-| a **view reference** — `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
-| an **indirect operand** — `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
-| an **immediate** — `n` | `fetch_immediate` |
+| an **operation**: `inc8`, `add16` | a function of that name, found by reflection |
+| a **location**: `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` members taking it |
+| a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
+| an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
+| an **immediate**: `n` | `fetch_immediate` |
 | any **opcode fetch** | `fetch_opcode` |
 | `delay`, and any `/delay=` | `delay` |
-| a **displacement** — `(ix+d)` | `displaced_address` |
+| a **displacement**: `(ix+d)` | `displaced_address` |
 
 An operation's signature is the interface:
 
@@ -204,7 +204,7 @@ identifier      = ? no space. Resolved against the CPU's operations, ignoring
                     case ? ;
 table-name      = ? no space ? ;
 display-text    = ? a member's text as the vocabulary writes it, up to the ":"
-                    or "/" — so a rule matches `q.adc`, not `q.adc:add8+carry` ? ;
+                    or "/", so a rule matches `q.adc`, not `q.adc:add8+carry` ? ;
 literal         = ? mnemonic text containing no "{", "$" or "+d" ? ;
 ```
 
@@ -214,7 +214,7 @@ Three things the grammar is stricter about than it may look:
   indirection through a vocabulary comes from the *member* being written `(hl)`,
   not from parenthesising the reference.
 - **Numbers are unsigned.** There is no `-2`. Where a row means a signed value
-  it writes the byte — `relative pc <- pc 0xfe` — and the operation it feeds
+  it writes the byte, as in `relative pc <- pc 0xfe`, and the operation it feeds
   decides how to read it. A constant is checked against the parameter's type, so
   `0xfe` fits an 8-bit parameter and `0x1ff` does not.
 - **`n` is the row's whole immediate**, not one byte of it. A row that fetches
@@ -224,8 +224,8 @@ Three things the grammar is stricter about than it may look:
 **Commas are decoration.** A trailing comma is stripped from any word in a step,
 so `inc8 {reg:y}, flags` and `inc8 {reg:y} flags` mean the same thing. They are
 there so a row can be punctuated the way assembly is, and they carry no meaning:
-in particular a comma does *not* separate destinations from operands — `<-` does
-— and it does not separate steps — `;` does.
+in particular a comma does *not* separate destinations from operands, which is
+`<-`'s job, and it does not separate steps, which is `;`'s.
 
 ---
 
@@ -264,7 +264,7 @@ vocab logic = and:and8 xor:xor8 or:or8 -      # slot 3 is `cp`, which returns fl
 
 **A member may not be an immediate**: only the encoding column fetches those.
 This is the rule that stops an addressing mode from carrying its own operand,
-and it is the one that a 6502 would want lifted — see the note on generality in
+and it is the one that a 6502 would want lifted. See the note on generality in
 the overview.
 
 ---
@@ -325,7 +325,7 @@ its own is legal: it *is* its parent, renamed.
 
 (The example above is what `DD` looks like on its own. `z80.cpu` does not write
 it that way, because `FD` would then be the same thing again with two letters
-changed — see views, next.)
+changed: see views, next.)
 
 ### Views: a table that takes a parameter
 
@@ -334,7 +334,7 @@ table indexed(view:index) = base with pair.hl -> {index:view}, reg.h -> {index_h
 ```
 
 `DD` and `FD` differ in one thing only: which index register they mean. Written
-as two derivations that is two of everything — two tables, two sets of rules,
+as two derivations that is two of everything: two tables, two sets of rules,
 and two generated copies of every instruction on the prefixed page.
 
 A **view** says it once. `(view:index)` declares that this table takes a
@@ -362,7 +362,7 @@ parameterised table without saying which member, or supplying one to a table
 that takes none, is an error rather than a default.
 
 Derivation and parameterisation are **separate mechanisms**. `z80.cpu` happens
-to use both on one line — `indexed` is derived from `base` *and* takes a view —
+to use both on one line, since `indexed` is derived from `base` *and* takes a view,
 but `indexed_cb` takes a view and derives from nothing, and every other derived
 table in the file takes no view at all.
 
@@ -382,7 +382,7 @@ vocab index_mem = (ix+d)/delay=1  (iy)
 ```
 
 Without the check it would compile, and the `FD` page would *execute* `(iy+d)`
-while *printing* `(iy)` — the one mistake in this format that would otherwise
+while *printing* `(iy)`, the one mistake in this format that would otherwise
 produce a wrong emulator rather than a line number.
 
 A hole is excluded for the same reason. A hole exists so a general row can leave
@@ -405,7 +405,7 @@ Eight characters, then zero or more byte tokens.
 - Any other character names a **slice**: a run of bits a vocabulary is selected
   by. Bits sharing a letter must be contiguous.
 - A slice need not be referenced. `01yyy100 | neg` uses `yyy` only to say those
-  bits are ignored — all eight encodings mean `neg`.
+  bits are ignored, and all eight encodings mean `neg`.
 - A pattern of nothing but one repeated letter is therefore the idiom for a
   **catch-all**: it matches every opcode, so it must come last, where it picks
   up whatever the rows above did not claim.
@@ -416,7 +416,7 @@ Eight characters, then zero or more byte tokens.
 
   This is how a table says what an undefined encoding does. (`z80.cpu` ends its
   `ed` table with exactly this row, because on real hardware an undefined `ED`
-  encoding behaves as a do-nothing instruction two bytes long — the `ed` prefix
+  encoding behaves as a do-nothing instruction two bytes long, because the `ed` prefix
   having already been fetched by the row that transferred here.)
 
 Trailing tokens say what follows the opcode:
@@ -424,7 +424,7 @@ Trailing tokens say what follows the opcode:
 | token | meaning |
 |---|---|
 | `n` | one immediate byte; two of them make a 16-bit immediate |
-| `d` | a displacement byte this row reads but does not use — see *latched tables* |
+| `d` | a displacement byte this row reads but does not use. See *latched tables* |
 
 At most two `n` and one `d`.
 
@@ -432,7 +432,7 @@ At most two `n` and one `d`.
 but they are not the same statement and rarely appear together:
 
 - `+d` in `(ix+d)` says **this operand is displaced**. Whether a byte is fetched
-  for it is worked out from the operands, not declared — see below.
+  for it is worked out from the operands, not declared. See below.
 - `d` in the encoding column says **this row reads a displacement it will not
   use itself**, and hands it to the table it transfers to. Only a prefix row
   needs it, and `check_immediates` ignores it: the "the action must use them"
@@ -447,7 +447,7 @@ Literal text, plus:
 | `{reg:z}` | the vocabulary member the slice selects |
 | `$nn` | an 8-bit immediate, as `0x3f` |
 | `$nnnn` | a 16-bit immediate, as `0x1234` |
-| `$e` | a **relative** target: the address the jump lands on, not the offset. Measured from the end of the instruction, so it must be the last byte the row reads — which is not checked |
+| `$e` | a **relative** target: the address the jump lands on, not the offset. Measured from the end of the instruction, so it must be the last byte the row reads, which is not checked |
 | `+d` | an index displacement, as `+0x02` or `-0x01` |
 
 The mnemonic is lowered into a fixed array of pieces at parse time, so the
@@ -468,7 +468,7 @@ Three pieces of punctuation, and only two of them mean anything:
 |---|---|
 | `;` | separates one step from the next |
 | `<-` | separates destinations from operands. Without it, everything after the operation is an operand |
-| `,` | **nothing at all** — stripped from the end of a word, so a row can be punctuated like assembly |
+| `,` | **nothing at all**, stripped from the end of a word, so a row can be punctuated like assembly |
 
 So `inc8 {reg:y}, flags <- {reg:y} flags` has one step, two destinations
 (`{reg:y}` and `flags`) and two operands (`{reg:y}` and `flags`); the comma could be
@@ -483,7 +483,7 @@ left out and the meaning would not change.
 | condition | `if {cond:y}` |
 | idle | `delay 2` |
 
-`delay` is an ordinary operation — an operation the CPU supplies — and takes a whole
+`delay` is an ordinary operation, one the CPU supplies, and takes a whole
 number. The `/delay=` attribute on an addressing mode is a different thing that
 happens to charge the same way, and it takes a single digit.
 
@@ -504,7 +504,7 @@ from the vocabulary member the opcode selects, so one row is the whole
 
 **`if` guards the rest of the row.** It applies an operation that yields a bool
 and abandons the remaining steps when it is false. There is no `else`, and none
-is needed for a conditional whose conditional part comes last — which is every
+is needed for a conditional whose conditional part comes last, which is every
 conditional on the Z80.
 
 The pay-off is that the extra cycles of a taken branch come from the steps the
@@ -548,7 +548,7 @@ business. For the Z80 it is T-states, which is why this document says both
 
 **Everything the encoding names is fetched before any step runs**, in the order
 the bytes appear: displacement first, then immediates. A step list can therefore
-never make a fetch cheaper — which is correct, since the machine has to read the
+never make a fetch cheaper, which is correct, since the machine has to read the
 bytes before it can know it did not need them. This is why `jr nz` costs seven
 T-states even when not taken: the displacement was read before the `if`.
 
@@ -579,7 +579,7 @@ follow, and both matter to anyone building a cycle-exact core:
 
 For total cycle counts, and for a machine that contends on the address bus at
 instruction granularity, that is enough. For one that needs a *schedule* of bus
-cycles — every access placed at a known offset within the instruction — it is
+cycles, with every access placed at a known offset within the instruction, it is
 not, and the format would need to grow. See NOTES for where that stands.
 
 ### What this model does not cover at all
@@ -608,7 +608,7 @@ interrupt has somewhere to land.
 | discard | `-` | destination only |
 
 Parentheses are a modifier, not a kind: `(hl)` is `hl` used as an address. How
-wide the access is comes from the parameter it feeds — `ld16 hl <- (n)` reads
+wide the access is comes from the parameter it feeds, so `ld16 hl <- (n)` reads
 two bytes and `ld8 a <- (n)` one, with the row saying neither.
 
 An operand may carry `/delay=1` exactly as a vocabulary member can, for an
@@ -619,11 +619,11 @@ addressing mode written out in a row rather than named by one.
 `(ix+d)` is an address formed from a base and a signed byte. **Nothing declares
 that the byte is fetched**: the row says `{reg:z}`, a view says that member is now
 `(ix+d)`, and the framework asks what the operands resolve to. One displacement
-per instruction, shared by every operand that uses it — `inc (ix+d)` reads and
+per instruction, shared by every operand that uses it: `inc (ix+d)` reads and
 writes through one address, formed once.
 
 The CPU description decides how a base and an offset combine *and what forming
-the address costs* — a processor that wraps within a page for one mode and
+the address costs*. A processor that wraps within a page for one mode and
 charges for crossing one in another says so there, not here. It is told how many
 bytes the instruction has already read, because on some machines those reads
 happen inside the same window. (That is why the Z80's `ld (ix+d), n` is 19
@@ -643,8 +643,8 @@ assumption [NOTES.md](NOTES.md) records as the first thing a 6502 would break.
 ## Latched tables
 
 Most encodings put their opcode first and their operands after. Where an
-encoding interleaves them — a byte that must be read *before* the opcode that
-decides what to do with it — the row that meets that byte reads it and hands it
+encoding interleaves them, with a byte that must be read *before* the opcode
+that decides what to do with it, the row that meets that byte reads it and hands it
 on to the table it transfers to.
 
 The Z80 has exactly one such encoding, `DD CB d op`:
@@ -659,7 +659,7 @@ displacement is *latched*, and two things follow without being declared:
 
 - its rows use the incoming displacement instead of reading their own;
 - its opcode arrives by an **operand read** rather than an instruction fetch,
-  because the machine has already committed to an instruction — it is no longer
+  because the machine has already committed to an instruction, and it is no longer
   deciding what to run. On the Z80 that is three cycles instead of four, and is
   why the refresh register does not increment for that byte.
 
@@ -673,9 +673,9 @@ All of this happens during constant evaluation, and each of these failures names
 the line in the `.cpu` file:
 
 - **Precedence.** Where two rows in a table overlap, the earlier must be wholly
-  contained in the later — that is an override. A partial overlap is an
+  contained in the later, which is an override. A partial overlap is an
   accident. A row that would be completely shadowed is rejected, as is one that
-  matches no opcode at all — which can only happen through holes, since every
+  matches no opcode at all, which can only happen through holes, since every
   eight-bit pattern matches something otherwise.
 - **Column agreement.** The mnemonic must render exactly the immediate bytes the
   encoding fetches, and the action must use them. The displacement is checked
@@ -685,8 +685,8 @@ the line in the `.cpu` file:
 - **Vocabulary size** against the slice that selects it.
 - **Names.** Every operation and every location must resolve to exactly one
   thing the CPU supplies. That lookup ignores case, because a table is written
-  the way assembly is written. Names *inside* the format — vocabularies, slice
-  letters, table names — are compared exactly, so `vocab pair` and `vocab P` would
+  the way assembly is written. Names *inside* the format (vocabularies, slice
+  letters, table names) are compared exactly, so `vocab pair` and `vocab P` would
   be two different vocabularies.
 - **Arity and shape.** The operands a row supplies must match the operation's
   parameters, and its destinations must match what the operation returns.
@@ -696,7 +696,7 @@ the line in the `.cpu` file:
   catch-all row is for.
 - **Reachability.** Every table must be reachable from the entry table by
   following gotos. One that is not is still generated, and still checked, so it
-  is rejected as a mistake — as is a non-derived table with no rows. Reachable
+  is rejected as a mistake, as is a non-derived table with no rows. Reachable
   *from the entry*, rather than merely named by some goto: two tables that only
   reach each other are as dead as one nothing names at all.
 - **Views.** A table takes a view or it does not, and every goto entering it must
@@ -711,7 +711,7 @@ the line in the `.cpu` file:
 - **Latch consistency**, as above.
 - **Renamed names spelled out.** A derived table renames vocabulary members and
   never literal text. A row that spells a renamed name out, and is inherited
-  unchanged by the table that renames it, is rejected — writing that row *in*
+  unchanged by the table that renames it, is rejected. Writing that row *in*
   the derived table is how one says the literal was meant. This is what forces
   the override rows in `z80.cpu`'s `indexed` table, and it was added after
   a missing one made `dd e3` do `ex (sp), hl` where the chip does `ex (sp), ix`.
@@ -722,19 +722,19 @@ the line in the `.cpu` file:
 One phase is less well-mannered. Types are checked when the interpreter is
 generated, so a row handing a 16-bit location to an 8-bit parameter is caught by
 the compiler's own narrowing diagnostics, and a row whose operands do not fit its
-operation by a `static_assert` — both correct, neither carrying the `.cpu` line
+operation by a `static_assert`: both correct, neither carrying the `.cpu` line
 number that everything above does.
 
 ### How rows are ordered
 
 Precedence is by position in the file, and a derived table's own rows all come
 **before** everything it inherits, whatever line they are written on. So a
-derived table's row always wins over the parent row it overlaps — that is what
+derived table's row always wins over the parent row it overlaps, which is what
 makes it an override.
 
 Which raises a question the derivation example does not answer on its own: `DD 76` is
 `halt` on real hardware, so how does the parent's `01110110` survive the derived
-`01yyy110`? Not by precedence — it would lose. It survives because `real`, the
+`01yyy110`? Not by precedence, which it would lose. It survives because `real`, the
 vocabulary that row selects with, has a **hole** at slot 6, so `01yyy110` does
 not match `0x76` at all and the opcode falls through to the inherited row. Holes
 are what make a match set non-rectangular, and containment is computed over the
@@ -789,7 +789,7 @@ vocabulary, selected by different slices.
 
 Slot 6 of `reg` is `(hl)`, so this row also covers `ld b,(hl)` and `ld (hl),b`,
 with their memory access and its timing, and nothing says so twice. `01110110`
-would be `ld (hl),(hl)`, which is really `halt` — declared earlier, so it wins.
+would be `ld (hl),(hl)`, which is really `halt`, declared earlier, so it wins.
 
 **The operation from the vocabulary.**
 
@@ -808,8 +808,8 @@ vocab reg = b c d e h l (hl)/delay=1 a
 00yyy100 | inc {reg:y} | inc8 {reg:y}, flags <- {reg:y} flags
 ```
 
-`inc b` is 4 T-states and `inc (hl)` is 11 — four to fetch, three to read, one
-idle, three to write — with the row mentioning no numbers at all.
+`inc b` is 4 T-states and `inc (hl)` is 11 (four to fetch, three to read, one
+idle, three to write) with the row mentioning no numbers at all.
 
 **A conditional, and where its extra cycles come from.**
 
@@ -838,5 +838,5 @@ rewrites.
 10110000 | ldir | block_load flags <- 1 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
 ```
 
-The rewind is what the chip actually does — re-execute the opcode — which is why
+The rewind is what the chip actually does, re-executing the opcode, which is why
 an interrupt can land in the middle of an `ldir`.
