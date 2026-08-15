@@ -628,20 +628,26 @@ template<std::meta::info Fn, Call C>
 // it must cost 4T a byte, not a stack frame a byte. The displacement rides
 // along because `dd cb d op` reads its displacement one table before the row
 // that uses it.
-struct Transfer {
-  std::uint8_t table{};
-  std::uint8_t displacement{};
-  // Which member of the target table's view vocabulary it is to decode under.
-  // Carried for exactly the reason the displacement is: chosen by the prefix,
-  // needed by the row, and not in the row's own bytes.
-  std::uint8_t view{};
-};
+// A handler does not report where to go next; it goes there. A `goto` step ends
+// in a tail call to the next table's handler, so a prefix chain is one call
+// deep however long it is, and `dd dd dd ...` no more grows the stack than it
+// grows the instruction.
+//
+// The displacement and the view travel as arguments for the reason they always
+// did: both are chosen by the prefix, needed by the row, and in neither's own
+// bytes.
 // Every handler has one signature, because a table of function pointers can
 // only have one. So `view` is a parameter of all 747 of them and not merely of
 // the ones a prefix can reach: `nop` pays a register's worth for `ix` existing.
 // That is about 2% of run time, bought with 38% of the build. See NOTES.md,
 // which has the measurements and the alternative that was rejected.
-using Handler = std::optional<Transfer> (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
+using Handler = void (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
+
+// A handler tail-calls into another table's dispatch, and a dispatch is built
+// out of handlers, so one of the two has to be named before it is defined. A
+// function template can be; the variable template it returns cannot.
+template<std::uint8_t Table>
+[[nodiscard]] const std::array<Handler, 256> &dispatch_for();
 
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
 // table surviving into the generated code. There is one of these per (table,
@@ -652,8 +658,7 @@ using Handler = std::optional<Transfer> (*)(Cpu &, std::uint8_t latch, std::uint
 // so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules are all
 // constants here.
 template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
-std::optional<Transfer> execute_one(
-    Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
+void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
   // `static` is not an optimisation here: the expansion statement below walks
   // this as a range, and a range's *address* has to be a constant. A local
   // `constexpr` has a constant value but not a constant address.
@@ -661,7 +666,7 @@ std::optional<Transfer> execute_one(
   // A renaming applies to every row this table decodes, inherited or its own: a
   // rule names the vocabulary it rewrites, so `ld {real:y}, (ix+d)` keeps the real
   // h by naming a vocabulary no rule mentions.
-  constexpr auto rules = target::tables[Table].rules;
+  static constexpr auto rules = target::tables[Table].rules;
   // The displacement is read before any immediate, which is the order the bytes
   // appear in: `dd 36 d n` is `ld (ix+d), n`.
   // Unless this table was entered with a displacement already read, in which
@@ -669,58 +674,74 @@ std::optional<Transfer> execute_one(
   // A `constexpr std::optional` used two ways: contextually converted to `bool`
   // by `if constexpr`, and then dereferenced to give a template argument. Both
   // work because `optional`'s members are `constexpr`.
-  constexpr auto displaced = displaced_through(target::vocabularies, row, Opcode, rules);
+  // `static` for the same reason `row` is: a tail call abandons the frame, so
+  // anything the compiler thinks lives in it blocks one.
+  static constexpr auto displaced = displaced_through(target::vocabularies, row, Opcode, rules);
   constexpr bool entered_latched = target::latched[Table];
   const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
                                         ? static_cast<std::uint8_t>(cpu.fetch_immediate(1))
                                         : latch;
-  // The encoding column says what is fetched, and it is fetched once before any
-  // step: argument order within a call is unspecified, and a later step may
-  // store through an address an earlier one read.
-  const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : cpu.fetch_immediate(row.immediate_bytes);
-  // Formed once, after both, and handed to every operand that shares it. The
-  // machine is told what else was read first, because on a Z80 those reads
-  // happen *inside* the window that forms the address rather than before it.
-  const std::uint16_t indexed = [&] -> std::uint16_t {
-    if constexpr (displaced) {
-      // A latched table read its opcode inside the same window, so that byte
-      // counts too: it is why `dd cb d op` spends five cycles and not eight.
-      //
-      // The machine is told the count and works out what is left of the window
-      // from it, so a count the window cannot hold asks it for a negative delay.
-      // Caught here, where the number is a constant, rather than at run time as
-      // an enormous unsigned one.
-      constexpr auto read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
-      static_assert(
-          read_inside <= 1, "this row reads more inside the window that forms its address than the window can hold");
-      return cpu.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate, view, opcode),
-          displacement, static_cast<std::uint8_t>(read_inside));
-    }
-    else
-      return 0;
-  }();
-  // Expanded, not looped: the body is instantiated once per step, and `step` is
-  // `constexpr` inside it, which is what lets its contents be template
-  // arguments. A `return` here leaves `execute_one`, not the expansion.
-  template for (constexpr auto step: row.steps) {
-    if constexpr (step.kind == Step::Kind::Goto)
-      return Transfer{
-          .table = step.target, .displacement = displacement, .view = step.forwards_view ? view : step.target_view};
-    else {
-      constexpr auto member = member_for(step, row.matched, Opcode, rules);
-      constexpr auto operation = step.operation_reference ? member.operation : step.operation;
-      constexpr auto call = call_for(step, row.matched, Opcode, row.line, rules);
-      if constexpr (step.kind == Step::Kind::If) {
-        // The rest of the row is the conditional half, which is where the
-        // extra cycles of a taken branch come from too.
-        if (!evaluate<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode))
-          return std::nullopt;
+  // A `goto` is the whole of its row: a prefix reads no operands and has no
+  // immediate, so nothing below this line applies to one. It is also why the
+  // hand-over happens *here* rather than among the steps: a tail call abandons
+  // the frame, and gcc will not allow one out of a function whose locals have
+  // had their address taken. The lambda that forms `indexed` takes several.
+  if constexpr (row.steps.size() == 1 && row.steps[0].kind == Step::Kind::Goto) {
+    constexpr auto step = row.steps[0];
+    constexpr std::uint8_t next_table = step.target;
+    const auto next_view = static_cast<std::uint8_t>(step.forwards_view ? view : step.target_view);
+    // The fetch the loop used to do, now done by whoever hands over. A latched
+    // table's opcode arrives as an operand read: three cycles, and no refresh.
+    const auto next_opcode =
+        static_cast<std::uint8_t>(target::latched[next_table] ? cpu.fetch_immediate(1) : cpu.fetch_opcode());
+    [[gnu::musttail]] return dispatch_for<next_table>()[next_opcode](cpu, displacement, next_view, next_opcode);
+  }
+  else {
+
+    // The encoding column says what is fetched, and it is fetched once before any
+    // step: argument order within a call is unspecified, and a later step may
+    // store through an address an earlier one read.
+    const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : cpu.fetch_immediate(row.immediate_bytes);
+    // Formed once, after both, and handed to every operand that shares it. The
+    // machine is told what else was read first, because on a Z80 those reads
+    // happen *inside* the window that forms the address rather than before it.
+    const std::uint16_t indexed = [&] -> std::uint16_t {
+      if constexpr (displaced) {
+        // A latched table read its opcode inside the same window, so that byte
+        // counts too: it is why `dd cb d op` spends five cycles and not eight.
+        //
+        // The machine is told the count and works out what is left of the window
+        // from it, so a count the window cannot hold asks it for a negative delay.
+        // Caught here, where the number is a constant, rather than at run time as
+        // an enormous unsigned one.
+        constexpr auto read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
+        static_assert(
+            read_inside <= 1, "this row reads more inside the window that forms its address than the window can hold");
+        return cpu.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(cpu, immediate, view, opcode),
+            displacement, static_cast<std::uint8_t>(read_inside));
       }
       else
-        apply<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode);
+        return 0;
+    }();
+    // Expanded, not looped: the body is instantiated once per step, and `step` is
+    // `constexpr` inside it, which is what lets its contents be template
+    // arguments. A `return` here leaves `execute_one`, not the expansion.
+    template for (constexpr auto step: row.steps) {
+      {
+        constexpr auto member = member_for(step, row.matched, Opcode, rules);
+        constexpr auto operation = step.operation_reference ? member.operation : step.operation;
+        constexpr auto call = call_for(step, row.matched, Opcode, row.line, rules);
+        if constexpr (step.kind == Step::Kind::If) {
+          // The rest of the row is the conditional half, which is where the
+          // extra cycles of a taken branch come from too.
+          if (!evaluate<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode))
+            return;
+        }
+        else
+          apply<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode);
+      }
     }
   }
-  return std::nullopt;
 }
 
 // ---------------------------------------------------------------------------
@@ -842,21 +863,14 @@ inline constexpr auto dispatches = all_dispatches(std::make_index_sequence<targe
 // Fetch, decode, run; and go round again while what ran was a prefix. Each turn
 // of the loop is a real opcode fetch, so the loop always advances time and
 // always advances PC, which is why a table may now reach itself.
+template<std::uint8_t Table>
+[[nodiscard]] const std::array<Handler, 256> &dispatch_for() {
+  return dispatch<Table>;
+}
+
 inline void execute_instruction(Cpu &cpu) {
-  auto table = target::entry_table;
-  std::uint8_t latch = 0;
-  std::uint8_t view = 0;
-  while (true) {
-    // A latched table's opcode is not the instruction's first unknown byte, so
-    // it arrives as an operand read: three cycles, and no refresh.
-    const auto opcode = target::latched[table] ? static_cast<std::uint8_t>(cpu.fetch_immediate(1)) : cpu.fetch_opcode();
-    const auto next = dispatches[table][opcode](cpu, latch, view, opcode);
-    if (!next)
-      return;
-    table = next->table;
-    latch = next->displacement;
-    view = next->view;
-  }
+  const auto opcode = cpu.fetch_opcode();
+  dispatch_for<target::entry_table>()[opcode](cpu, 0, 0, opcode);
 }
 
 } // namespace specbolt::refract
