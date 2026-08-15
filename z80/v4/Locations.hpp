@@ -33,7 +33,7 @@ namespace specbolt::v4 {
 // is in. A scope declared later than that would not be found.
 [[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
   std::vector scopes{^^RegisterFile::R8, ^^RegisterFile::R16};
-  for (const auto member: std::meta::members_of(^^specbolt::v4, std::meta::access_context::current()))
+  for (const auto member: std::meta::members_of(^^specbolt::v4::locations, std::meta::access_context::current()))
     if (std::meta::is_type(member) && std::meta::is_enum_type(member))
       scopes.push_back(member);
   return scopes;
