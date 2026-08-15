@@ -649,6 +649,8 @@ using Handler = void (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint
 template<std::uint8_t Table>
 [[nodiscard]] const std::array<Handler, 256> &dispatch_for();
 
+void continue_running(Cpu &cpu, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
+
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
 // table surviving into the generated code. There is one of these per (table,
 // opcode), 1792 for a complete Z80, and each is typically a handful of
@@ -705,7 +707,7 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     // Formed once, after both, and handed to every operand that shares it. The
     // machine is told what else was read first, because on a Z80 those reads
     // happen *inside* the window that forms the address rather than before it.
-    const std::uint16_t indexed = [&] -> std::uint16_t {
+    const std::uint16_t indexed = [&cpu, immediate, displacement, view, opcode] -> std::uint16_t {
       if constexpr (displaced) {
         // A latched table read its opcode inside the same window, so that byte
         // counts too: it is why `dd cb d op` spends five cycles and not eight.
@@ -733,15 +735,23 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
         constexpr auto call = call_for(step, row.matched, Opcode, row.line, rules);
         if constexpr (step.kind == Step::Kind::If) {
           // The rest of the row is the conditional half, which is where the
-          // extra cycles of a taken branch come from too.
+          // extra cycles of a taken branch come from too. `break` rather than
+          // `return`, because abandoning the rest of a row is not abandoning
+          // the run: the hand-over below still has to happen, and a `return`
+          // here stops the machine at the first untaken branch. It cannot tail
+          // call from in here either, since the expansion's own induction
+          // variable lives in the frame a tail call would abandon.
           if (!evaluate<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode))
-            return;
+            break;
         }
         else
           apply<find_operation(operation, row.line), call>(cpu, immediate, indexed, view, opcode);
       }
     }
   }
+  // The row is done, so hand on to the next instruction rather than returning.
+  // This is the whole of the run loop: it used to be a `while` in the caller.
+  [[gnu::musttail]] return continue_running(cpu, 0, 0, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -868,9 +878,23 @@ template<std::uint8_t Table>
   return dispatch<Table>;
 }
 
-inline void execute_instruction(Cpu &cpu) {
+// Where one instruction becomes the next. Every handler ends here, and this
+// ends in the next handler, so a run of instructions is a chain of tail calls
+// and the stack never grows. The machine decides whether there is a next one:
+// `start_instruction` is where a Z80 takes its interrupt and idles its halt,
+// none of which is the framework's business.
+//
+// Handler-shaped so that the tail call out of a handler is a tail call: the
+// three arguments a fresh instruction has no use for are passed as zero.
+inline void continue_running(Cpu &cpu, std::uint8_t, std::uint8_t, std::uint8_t) {
+  if (!cpu.start_instruction())
+    return;
   const auto opcode = cpu.fetch_opcode();
-  dispatch_for<target::entry_table>()[opcode](cpu, 0, 0, opcode);
+  [[gnu::musttail]] return dispatch_for<target::entry_table>()[opcode](cpu, 0, 0, opcode);
 }
+
+// The whole of the run loop. What used to be a `while (true)` around a dispatch
+// is now the handlers themselves, and this only starts them off.
+inline void execute_instruction(Cpu &cpu) { continue_running(cpu, 0, 0, 0); }
 
 } // namespace specbolt::refract

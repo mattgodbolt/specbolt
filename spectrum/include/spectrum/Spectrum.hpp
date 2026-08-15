@@ -80,6 +80,15 @@ public:
     const auto initial_cycles = z80_.cycle_count();
     const auto end_cycles = initial_cycles + cycles;
     const bool might_need_tracing = trace_next_instructions_ > 0;
+    // Nothing to do between instructions, so let the CPU run the whole stretch
+    // itself. On an implementation whose handlers tail-call each other that is
+    // the difference between a dispatch per instruction and a chain of jumps.
+    if constexpr (requires { z80_.run_until(end_cycles); }) {
+      if (!keep_history && !might_need_tracing) {
+        z80_.run_until(end_cycles);
+        return z80_.cycle_count() - initial_cycles;
+      }
+    }
     while (z80_.cycle_count() < end_cycles) {
       if (keep_history) {
         reg_history_[current_reg_history_index_ % RegHistory] = z80_.regs();

@@ -3,6 +3,7 @@
 
 #include "refract/Execute.hpp"
 
+#include <limits>
 #include <utility>
 #endif
 
@@ -10,18 +11,37 @@ namespace specbolt::v4 {
 
 using refract::execute_instruction;
 
-void Z80::execute_one() {
-  if (const auto deferred = std::exchange(interrupts_deferred_, false); irq_pending_ && !deferred) [[unlikely]]
-    handle_interrupt();
-  if (halted_) [[unlikely]] {
+void Z80::execute_one() { run(1); }
+
+void Z80::run(const std::size_t instructions) {
+  remaining_ = instructions;
+  until_ = std::numeric_limits<std::size_t>::max();
+  execute_instruction(*this);
+}
+
+void Z80::run_until(const std::size_t cycle_count) {
+  remaining_ = std::numeric_limits<std::size_t>::max();
+  until_ = cycle_count;
+  execute_instruction(*this);
+}
+
+bool Z80::start_instruction() {
+  // A loop rather than a test, because a halted chip consumes instructions
+  // without executing any, and the run has to end whether it wakes or not.
+  while (true) {
+    if (remaining_ == 0 || cycle_count() >= until_)
+      return false;
+    --remaining_;
+    if (const auto deferred = std::exchange(interrupts_deferred_, false); irq_pending_ && !deferred) [[unlikely]]
+      handle_interrupt();
+    if (!halted_) [[likely]]
+      return true;
     // A halted Z80 is executing internal NOPs, not stopped: it still fetches
-    // at the address it parked on, without advancing, so it still spends
-    // an opcode cycle on the bus and still refreshes.
+    // at the address it parked on, without advancing, so it still spends an
+    // opcode cycle on the bus and still refreshes.
     bus(Bus::opcode, pc());
     refresh();
-    return;
   }
-  execute_instruction(*this);
 }
 
 // The one sequence the table cannot describe: no opcode encodes it, and the
