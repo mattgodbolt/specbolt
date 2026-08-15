@@ -13,8 +13,8 @@
   ],
   "repository": {
     "continuation": {
-      "comment": "A trailing backslash joins this line to the next, and the two are read as one.",
-      "match": "\\\\\\s*$",
+      "comment": "A trailing backslash joins this line to the next, and the two are read as one. It swallows the newline, which is what keeps the enclosing block open: every `end` here is a lookahead at that newline, so once it is eaten there is nothing left on the line for any of them to match, and the whole nest of rules carries on to the next line. The blanks are the ones `lines_of` skips looking for the backslash.",
+      "match": "\\\\[ \\t\\r]*\\n",
       "name": "keyword.operator.continuation.cpu"
     },
 
@@ -25,9 +25,9 @@
     },
 
     "unrecognised-line": {
-      "comment": "Every line must mean something. What is neither blank, comment, declaration nor row is a mistyped one of them.",
+      "comment": "Every line must mean something. What is neither blank, comment, declaration nor row is a mistyped one of them. A line asking to be continued is judged with the one below it, so it is left to the rule that joins them.",
       "name": "invalid.illegal.unrecognised-line.cpu",
-      "match": "^(?!\\s*(?:#|vocab\\s|table\\s|$))[^|]*(?<!\\\\)$"
+      "match": "^(?!\\s*(?:#|vocab\\s|table\\s|$))(?!.*\\\\[ \\t\\r]*\\n)[^|]*(?=\\n)"
     },
 
     "vocab-decl": {
@@ -38,7 +38,7 @@
         "2": { "name": "entity.name.type.vocab.cpu" },
         "3": { "name": "keyword.operator.assignment.cpu" }
       },
-      "end": "(?<!\\\\)\\n",
+      "end": "(?=\\n)",
       "patterns": [{ "include": "#continuation" }, { "include": "#member" }]
     },
 
@@ -49,7 +49,7 @@
         "1": { "name": "keyword.control.table.cpu" },
         "2": { "name": "entity.name.type.table.cpu" }
       },
-      "end": "(?<!\\\\)\\n",
+      "end": "(?=\\n)",
       "patterns": [
         { "include": "#view-decl" },
         { "include": "#derivation" },
@@ -127,7 +127,7 @@
         },
         "2": { "patterns": [{ "include": "#encoding-bytes" }] }
       },
-      "end": "(?<!\\\\)\\n",
+      "end": "(?=\\n)",
       "patterns": [{ "include": "#mnemonic-column" }]
     },
 
@@ -138,7 +138,7 @@
       "beginCaptures": {
         "1": { "name": "invalid.illegal.encoding.cpu" }
       },
-      "end": "(?<!\\\\)\\n",
+      "end": "(?=\\n)",
       "patterns": [{ "include": "#mnemonic-column" }]
     },
 
@@ -153,7 +153,7 @@
       "name": "meta.mnemonic.cpu",
       "begin": "\\|",
       "beginCaptures": { "0": { "name": "punctuation.separator.column.cpu" } },
-      "end": "(?<!\\\\)\\n",
+      "end": "(?=\\n)",
       "patterns": [
         { "include": "#action-column" },
         { "include": "#continuation" },
@@ -173,7 +173,7 @@
       "name": "meta.action.cpu",
       "begin": "\\|",
       "beginCaptures": { "0": { "name": "punctuation.separator.column.cpu" } },
-      "end": "(?<!\\\\)\\n",
+      "end": "(?=\\n)",
       "patterns": [
         { "include": "#continuation" },
         { "include": "#step-goto" },

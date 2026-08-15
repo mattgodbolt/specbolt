@@ -56,6 +56,7 @@ languages sharing a line.
 | `{vocab:selector}` | vocabulary as a type, selector as a parameter |
 | `/delay=N` | `storage.modifier.delay` |
 | a hole, and a `-` discard | `constant.language` |
+| a trailing `\`, joining a line to the next | `keyword.operator.continuation` |
 
 Because the mnemonic column is a format string and the action column is code,
 they read differently in any theme: the mnemonic is string-coloured throughout,
@@ -93,6 +94,19 @@ node tokenize.mjs ../../z80/v4/z80.cpu '<unscoped>'
 node tokenize.mjs ../../z80/v4/z80.cpu invalid
 ```
 
+A filter only shows what you asked about, so "nothing came out" can also mean a
+`begin`/`end` block ran away and ate the rest of the file, and nothing inside it
+was ever judged. Two checks run whatever the filter says, and make the exit
+status non-zero:
+
+- **no line ends inside a block**, unless it ended in a `\` and asked to be
+  continued. This is the one that catches a runaway rule.
+- **the tokens do not depend on the line terminator.** vscode-textmate appends
+  a `\n` to every line it is given, so the editor hands one over without it. A
+  grammar that matches newlines can be right one way and wrong the other, so
+  both are tried and compared — except across a continuation, where keeping the
+  block open is precisely a decision about that newline.
+
 ## Limits
 
 This is a grammar, not a parser. It knows the shape of the format but none of
@@ -100,3 +114,10 @@ its checks: it cannot tell you that a vocabulary has the wrong number of members
 for the slice that selects it, that two rows overlap partially, or that a name
 does not resolve — those need the CPU description, and they are what the build
 is for. What it can see is one line at a time.
+
+A wrapped line stays inside its declaration or row, so its members and operands
+are coloured as they would be unwrapped. What does not survive the wrap is
+anything decided by looking backwards along the line: the first word of a step
+is an operation because a `|` or `;` precedes it, and after a wrap that
+separator is on the line above, so it colours as a location instead. The rows
+in `z80.cpu` all fit on a line; wrap one at a `;` and this is what you will see.
