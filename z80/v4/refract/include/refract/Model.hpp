@@ -251,8 +251,10 @@ inline constexpr std::size_t max_operands = 4;
 // delay is a step like any other.
 struct Step {
   // `If` applies an operation that yields a bool and abandons the rest of the
-  // row when it is false. Every Z80 conditional puts its conditional half last,
-  // so guarding the remainder is all a condition ever has to do.
+  // row when it is false. That is the whole of what a condition can do here:
+  // there is no way to guard a step in the middle and resume after it, so a
+  // description whose conditionals are not a tail cannot be written. (Every
+  // Z80 conditional is, which is why this has been enough.)
   enum class Kind : std::uint8_t { Apply, Goto, If };
   Kind kind{};
   std::uint8_t target{};
@@ -275,7 +277,8 @@ struct Row {
   Vector<Piece, max_pieces> pieces{};
   std::uint8_t immediate_bytes{};
   // `d` in the encoding: this row reads a displacement it does not use itself,
-  // and hands it to the table it goes to. Only `dd cb` needs this.
+  // and hands it to the table it goes to. What it is for is an encoding whose
+  // opcode byte is not its last, which on the Z80 is `dd cb` and nothing else.
   bool reads_displacement{};
   std::uint8_t table{};
   Vector<Step, max_steps> steps{};

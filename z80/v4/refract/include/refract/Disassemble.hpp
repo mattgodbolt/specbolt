@@ -24,10 +24,10 @@ struct Disassembly {
   std::size_t length{};
 };
 
-// How far a chain of prefixes is followed before the answer is "??". Nothing in
-// the description bounds one -- a prefix may reach its own table -- and a
-// listing that walks a kilobyte of `0xdd` before rendering one line is no use
-// to the caller even where it terminates.
+// How far a chain of table transfers is followed before the answer is "??".
+// Nothing in the description bounds one -- a table may reach itself -- and a
+// listing that walks a kilobyte before rendering a line is no use to the caller
+// even where it terminates. (On the Z80 the unbounded chain is a run of `0xdd`.)
 inline constexpr std::size_t max_instruction_bytes = 8;
 
 // `byte_at(n)` is the nth byte of the instruction, counting from `address`.
