@@ -98,7 +98,7 @@
 
     "member": {
       "comment": "display[:operation[+operand]][/delay=N], or `-` for a hole.",
-      "match": "(?<![^\\s=,])(?:(-)|(0[xX][0-9a-fA-F]+|[0-9]+)|(\\([^)\\s]*\\))|([^\\s:/+,]+))(?:(:)([A-Za-z_][A-Za-z0-9_]*))?(?:(\\+)([^\\s/,]+))?(?:(/)(delay)(=)([0-9]))?(?=[\\s,]|$)",
+      "match": "(?<![^\\s=,])(?:(-)|(0[xX][0-9a-fA-F]+|[0-9]+)|(\\([^)\\s]*\\))|([^\\s:/(,]+))(?:(:)([A-Za-z_][A-Za-z0-9_]*))?(?:(\\()([^)]*)(\\)))?(?:(/)(delay)(=)([0-9]))?(?=[\\s,]|$)",
       "captures": {
         "1": { "name": "constant.language.hole.cpu" },
         "2": { "name": "constant.numeric.cpu" },
@@ -106,12 +106,20 @@
         "4": { "name": "variable.other.location.cpu" },
         "5": { "name": "punctuation.separator.member.cpu" },
         "6": { "name": "support.function.operation.cpu" },
-        "7": { "name": "keyword.operator.append.cpu" },
-        "8": { "patterns": [{ "include": "#number" }, { "include": "#location" }] },
-        "9": { "name": "punctuation.separator.attribute.cpu" },
-        "10": { "name": "storage.modifier.delay.cpu" },
-        "11": { "name": "punctuation.separator.key-value.cpu" },
-        "12": { "name": "constant.numeric.cpu" }
+        "7": { "name": "punctuation.section.arguments.begin.cpu" },
+        "8": {
+          "patterns": [
+            { "include": "#keyword-operand" },
+            { "include": "#separator-comma" },
+            { "include": "#number" },
+            { "include": "#location" }
+          ]
+        },
+        "9": { "name": "punctuation.section.arguments.end.cpu" },
+        "10": { "name": "punctuation.separator.attribute.cpu" },
+        "11": { "name": "storage.modifier.delay.cpu" },
+        "12": { "name": "punctuation.separator.key-value.cpu" },
+        "13": { "name": "constant.numeric.cpu" }
       }
     },
 

@@ -141,6 +141,28 @@ namespace specbolt::refract {
 
 // `bc` is display only; `adc:add8+carry` binds an operation and appends an
 // operand; `(hl)/delay=1` states the access sequence of an addressing mode.
+// `value=(hl)`: an operand may name the parameter it feeds instead of relying on
+// its position. A keyword is an identifier followed by `=`, and nothing else is,
+// which is what stops `(hl)/delay=1` from looking like one: everything before
+// its `=` is punctuation.
+[[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(
+    const std::string_view word, const std::size_t line) {
+  const auto at = word.find('=');
+  if (at == std::string_view::npos || at == 0)
+    return {{}, word};
+  const auto keyword = word.substr(0, at);
+  const auto in_identifier = [](const char c) {
+    return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+  };
+  if (!std::ranges::all_of(keyword, in_identifier))
+    return {{}, word};
+  if (keyword.size() > Name::capacity)
+    throw table_error(line, "'" + std::string(keyword) + "' is too long to be a parameter name");
+  if (at + 1 == word.size())
+    throw table_error(line, "'" + std::string(keyword) + "=' names a parameter but gives it no operand");
+  return {Name{keyword}, word.substr(at + 1)};
+}
+
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);
   Parser parser(whole.take_until('/'));
@@ -170,11 +192,26 @@ namespace specbolt::refract {
   if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
     throw table_error(line, "a vocabulary member must name something the CPU can resolve");
   Parser operation(member.operation);
-  member.operation = operation.take_until('+');
-  if (const auto appended = operation.rest(); !appended.empty()) {
-    member.appended = parse_simple_operand(appended, line, 0);
-    if (member.appended->kind == Operand::Kind::Immediate)
-      throw table_error(line, "a vocabulary member cannot append an immediate; only the encoding fetches those");
+  member.operation = operation.take_until('(');
+  if (auto arguments = operation.rest(); !arguments.empty()) {
+    if (!arguments.ends_with(')'))
+      throw table_error(line, "a member's argument list is not closed");
+    arguments.remove_suffix(1);
+    Parser list(arguments);
+    while (!list.eof()) {
+      const auto word = trim_comma(list.take_until(','));
+      if (word.empty())
+        continue;
+      const auto [parameter, rest] = split_keyword(word, line);
+      auto argument = parse_simple_operand(rest, line, 0);
+      argument.parameter = parameter;
+      if (argument.kind == Operand::Kind::Immediate)
+        throw table_error(line, "a member cannot pass an immediate; only the encoding fetches those");
+      if (!member.arguments.try_push_back(argument))
+        throw table_error(line, "a member passes more arguments than an operation can take");
+    }
+    if (member.arguments.empty())
+      throw table_error(line, "a member's argument list is empty; leave it off rather than writing '()'");
   }
   return member;
 }

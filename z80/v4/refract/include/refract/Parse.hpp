@@ -225,7 +225,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   const auto &first = vocabulary.members[0];
   const auto shape_of = [](const Member &member) {
     return std::tuple{member.hole, member.operand.indirect, member.operand.displaced, member.operand.write_back_delay,
-        member.operand.kind, member.operation.empty(), member.appended.has_value(), member.pieces.size()};
+        member.operand.kind, member.operation.empty(), member.arguments.size(), member.pieces.size()};
   };
   for (const auto &member: vocabulary.members) {
     if (shape_of(member) != shape_of(first))
@@ -275,28 +275,6 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   if (!text.starts_with('{') || !text.ends_with('}'))
     throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
   return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, line, table);
-}
-
-// `value=(hl)`: an operand may name the parameter it feeds instead of relying on
-// its position. A keyword is an identifier followed by `=`, and nothing else is,
-// which is what stops `(hl)/delay=1` from looking like one: everything before
-// its `=` is punctuation.
-[[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(
-    const std::string_view word, const std::size_t line) {
-  const auto at = word.find('=');
-  if (at == std::string_view::npos || at == 0)
-    return {{}, word};
-  const auto keyword = word.substr(0, at);
-  const auto in_identifier = [](const char c) {
-    return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
-  };
-  if (!std::ranges::all_of(keyword, in_identifier))
-    return {{}, word};
-  if (keyword.size() > Name::capacity)
-    throw table_error(line, "'" + std::string(keyword) + "' is too long to be a parameter name");
-  if (at + 1 == word.size())
-    throw table_error(line, "'" + std::string(keyword) + "=' names a parameter but gives it no operand");
-  return {Name{keyword}, word.substr(at + 1)};
 }
 
 [[nodiscard]] constexpr Operand parse_operand(const std::span<const Vocabulary> vocabularies,

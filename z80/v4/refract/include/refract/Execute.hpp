@@ -721,8 +721,8 @@ template<std::meta::info Fn, Call C>
       throw table_error(line, "too many destinations");
   }
   // A vocabulary member may append an operand the encoding does not carry.
-  if (member.appended)
-    if (!result.operands.try_push_back(*member.appended))
+  for (const auto &argument: member.arguments)
+    if (!result.operands.try_push_back(argument))
       throw table_error(line, "too many operands");
   return result;
 }

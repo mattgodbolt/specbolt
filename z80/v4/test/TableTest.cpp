@@ -49,10 +49,10 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(alu.name == "arith");
     STATIC_CHECK(alu.members[0].display == "add");
     STATIC_CHECK(alu.members[0].operation == "add8");
-    STATIC_CHECK(alu.members[0].appended->kind == Operand::Kind::Constant);
+    STATIC_CHECK(alu.members[0].arguments[0].kind == Operand::Kind::Constant);
     STATIC_CHECK(alu.members[1].display == "adc");
     STATIC_CHECK(alu.members[1].operation == "add8");
-    STATIC_CHECK(alu.members[1].appended->name == Name{"carry"});
+    STATIC_CHECK(alu.members[1].arguments[0].name == Name{"carry"});
     STATIC_CHECK(vocabularies[3].members[3].hole);
     STATIC_CHECK(vocabularies[0].members[0].operation.empty());
   }

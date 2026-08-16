@@ -92,8 +92,12 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("vocab r = a/wat=1 b\ntable t\n"),
         Equals("z80.cpu:1: 'wat' is not a member attribute; expected 'delay'"));
     CHECK_THROWS_WITH(parse("vocab r = a/delay=xx b\ntable t\n"), Equals("z80.cpu:1: delay must be a single digit"));
-    CHECK_THROWS_WITH(parse("vocab r = a:add8+n b\ntable t\n"),
-        Equals("z80.cpu:1: a vocabulary member cannot append an immediate; only the encoding fetches those"));
+    CHECK_THROWS_WITH(parse("vocab r = a:add8(n) b\ntable t\n"),
+        Equals("z80.cpu:1: a member cannot pass an immediate; only the encoding fetches those"));
+    CHECK_THROWS_WITH(
+        parse("vocab r = a:add8(0 b\ntable t\n"), Equals("z80.cpu:1: a member's argument list is not closed"));
+    CHECK_THROWS_WITH(parse("vocab r = a:add8() b\ntable t\n"),
+        Equals("z80.cpu:1: a member's argument list is empty; leave it off rather than writing '()'"));
   }
   SECTION("References") {
     CHECK_THROWS_WITH(parse("table t\n00yyy000 | inc {q:y} | nop\n"),

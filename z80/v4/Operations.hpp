@@ -88,22 +88,6 @@ public:
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
-  // `rl` and `rr` take the carry in the middle of the argument list, where an
-  // appended operand cannot reach.
-  static Alu::R8 rl8(const std::uint8_t v, const bool carry) { return Alu::rotate8(v, Alu::Direction::Left, carry); }
-  static Alu::R8 rr8(const std::uint8_t v, const bool carry) { return Alu::rotate8(v, Alu::Direction::Right, carry); }
-
-  // The accumulator forms keep sign, zero and parity rather than recomputing
-  // them, which is the whole difference between `rlca` and `rlc a`.
-  static Alu::R8 rlca8(const std::uint8_t v, const Flags f) {
-    return Alu::fast_rotate_circular8(v, Alu::Direction::Left, f);
-  }
-  static Alu::R8 rrca8(const std::uint8_t v, const Flags f) {
-    return Alu::fast_rotate_circular8(v, Alu::Direction::Right, f);
-  }
-  static Alu::R8 rla8(const std::uint8_t v, const Flags f) { return Alu::fast_rotate8(v, Alu::Direction::Left, f); }
-  static Alu::R8 rra8(const std::uint8_t v, const Flags f) { return Alu::fast_rotate8(v, Alu::Direction::Right, f); }
-
   // Conditions. A vocabulary member binds one of these and appends the flag it
   // asks about, exactly as `adc` binds `add8` and appends the carry.
   static bool is_set(const bool flag) { return flag; }

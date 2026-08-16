@@ -12,7 +12,7 @@ vocab reg = b c d e h l (hl)/delay=1 a
 
 # The arithmetic group. Each member binds the primitive that does the work and
 # appends the carry it wants, so `adc` is `add8` with the carry flag on the end.
-vocab arith = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
+vocab arith = add:add8(0) adc:add8(carry) sub:sub8(0) sbc:sub8(carry)
 
 # The logical group. `cp` shares their encoding but returns flags only, so it
 # has its own rows and leaves a hole here.
@@ -24,14 +24,15 @@ vocab bit = 0 1 2 3 4 5 6 7
 # The rotates and shifts of the cb table. `rl` and `rr` take the carry in the
 # same way the arithmetic group does. `sll` is undocumented, and shifts a one in
 # where `sla` shifts a zero.
-vocab shift = rlc:rotate_circular8+left  rrc:rotate_circular8+right \
-              rl:rl8+carry               rr:rr8+carry \
-              sla:shift_arithmetic8+left sra:shift_arithmetic8+right \
-              sll:shift_logical8+left    srl:shift_logical8+right
+vocab shift = rlc:rotate_circular8(left)  rrc:rotate_circular8(right) \
+              rl:rotate8(left,carry)      rr:rotate8(right,carry) \
+              sla:shift_arithmetic8(left) sra:shift_arithmetic8(right) \
+              sll:shift_logical8(left)    srl:shift_logical8(right)
 
 # The accumulator-only rotates, which keep sign, zero and parity where the cb
 # forms above recompute them.
-vocab arot = rlca:rlca8 rrca:rrca8 rla:rla8 rra:rra8
+vocab arot = rlca:fast_rotate_circular8(direction=left)  rrca:fast_rotate_circular8(direction=right) \
+             rla:fast_rotate8(direction=left)            rra:fast_rotate8(direction=right)
 
 # The real eight-bit registers, which no view renames: in `ld r, (ix+d)` the
 # register half is the true h or l. A rule names the vocabulary it rewrites, and
@@ -60,13 +61,13 @@ vocab rst = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
 
 # The conditions. Each binds a test and appends the flag it asks about, so the
 # vocabulary is the whole of what `nz` means.
-vocab cond = nz:is_clear+zero   z:is_set+zero \
-             nc:is_clear+carry  c:is_set+carry \
-             po:is_clear+parity pe:is_set+parity \
-             p:is_clear+sign    m:is_set+sign
+vocab cond = nz:is_clear(zero)   z:is_set(zero) \
+             nc:is_clear(carry)  c:is_set(carry) \
+             po:is_clear(parity) pe:is_set(parity) \
+             p:is_clear(sign)    m:is_set(sign)
 
 # The four conditions a relative jump has room to encode.
-vocab jcond = nz:is_clear+zero z:is_set+zero nc:is_clear+carry c:is_set+carry
+vocab jcond = nz:is_clear(zero) z:is_set(zero) nc:is_clear(carry) c:is_set(carry)
 
 # Which way a block operation walks memory. Its members are neither locations
 # nor constants but the spellings `BlockDirection` declares for itself.
@@ -91,7 +92,7 @@ table base
 00011010     | ld a, (de)           | ld8 a <- (de)
 00pp0011     | inc {pair:p}         | inc16 {pair:p} <- {pair:p} ; delay 2
 00pp1011     | dec {pair:p}         | dec16 {pair:p} <- {pair:p} ; delay 2
-000ff111     | {arot:f}             | {arot:f} a, flags <- a flags
+000ff111     | {arot:f}             | {arot:f} a, flags <- lhs=a flags=flags
 00100111     | daa                  | daa a, flags <- a flags
 00101111     | cpl                  | cpl a, flags <- a flags
 00110111     | scf                  | scf -, flags <- a flags

@@ -170,7 +170,8 @@ line            = comment | vocab-decl | table-decl | row | empty ;
 comment         = "#" , { any } ;
 
 vocab-decl      = "vocab" , vocab-name , [ ":" , scope-name ] , "=" , member , { member } ;
-member          = hole | ( operand , [ ":" , identifier , [ "+" , operand ] ] ) ;
+member          = hole | ( operand , [ ":" , identifier , [ arguments ] ] ) ;
+arguments       = "(" , operand , { "," , operand } , ")" ;
 hole            = "-" ;
 
 table-decl      = "table" , table-name , [ view-decl ] ,
@@ -290,7 +291,7 @@ CPU resolves, a constant, or either of those as an address.
 |---|---|---|
 | plain | `bc` | the member is that operand |
 | bound operation | `and:and8` | naming this member as a *operation* applies `and8` |
-| with appended operand | `adc:add8+carry` | …and passes `carry` as a final argument |
+| with arguments | `adc:add8(carry)` | …and passes `carry`, the row filling the rest |
 | with an access cost | `(hl)/delay=1` | reading through it and writing back idles one cycle |
 | hole | `-` | **the row does not cover that opcode at all** |
 
@@ -302,7 +303,26 @@ vocab logic = and:and8 xor:xor8 or:or8 -      # slot 3 is `cp`, which returns fl
 10111zzz | cp {reg:z}   | cmp8 -, flags <- a {reg:z}
 ```
 
-**A member may not be an immediate**: only the encoding column fetches those.
+### What a member decides
+
+A member names an operation and may decide some of its arguments. The row fills
+the ones the encoding varies; these are the rest, and they are written as a call
+because that is what they are:
+
+```
+adc:add8(carry)                       the row gives two, this gives the third
+rl:rotate8(left,carry)                the row gives one, this gives two
+rlca:fast_rotate_circular8(direction=left)     …and this one lands in the middle
+```
+
+Arguments may be named, exactly as a row's may be, which is what lets a member
+supply an argument that is not the last one. Naming is all or nothing across the
+whole call, so a row whose member names one must name its own too.
+
+A member is a single *word*, so an argument list contains no spaces. `,` is a
+separator here rather than the decoration it is in a step.
+
+**A member may not pass an immediate**: only the encoding column fetches those.
 This is the rule that stops an addressing mode from carrying its own operand,
 and it is the one that a 6502 would want lifted. See the note on generality in
 the overview.

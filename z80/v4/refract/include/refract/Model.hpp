@@ -124,7 +124,10 @@ struct Member {
   // rather than parses.
   Vector<Piece, max_pieces> pieces{};
   std::string_view operation{};
-  std::optional<Operand> appended{};
+  static constexpr std::size_t max_arguments = 3;
+  // What this member decides about the operation it names, as a call: the row
+  // fills the arguments the encoding varies, and these are the rest.
+  Vector<Operand, max_arguments> arguments{};
   // The text is an operand, parsed once here rather than per opcode at splice time.
   Operand operand{};
   bool hole{};
@@ -177,7 +180,7 @@ using Rules = Vector<Rule, 6>;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
     if (member.hole)
       continue;
-    if (member.operand.kind != Operand::Kind::Constant || !member.operation.empty() || member.appended)
+    if (member.operand.kind != Operand::Kind::Constant || !member.operation.empty() || !member.arguments.empty())
       return false;
     if (member.operand.constant != at)
       return false;
