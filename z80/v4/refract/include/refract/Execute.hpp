@@ -433,6 +433,17 @@ static_assert(std::meta::is_structural_type(^^Name));
 static_assert(std::meta::is_structural_type(^^Resolved));
 static_assert(std::meta::is_structural_type(^^Call));
 
+// `as_resolved` copies `Operand` into `Resolved` field by field, so a field
+// added to either would arrive default-constructed with nothing said, which is
+// a wrong emulator rather than a compile error. These are the counts it was
+// written against. The check is here rather than beside it because `Model.hpp`
+// is plain data and reflects on nothing; if one of these fires, read
+// `as_resolved` and `resolve` and decide which of them owns the new field.
+static_assert(std::meta::nonstatic_data_members_of(^^Operand, std::meta::access_context::current()).size() == 9,
+    "Operand has gained or lost a field; `as_resolved` may no longer copy all of it");
+static_assert(std::meta::nonstatic_data_members_of(^^Resolved, std::meta::access_context::current()).size() == 13,
+    "Resolved has gained or lost a field; `as_resolved` and `resolve` may no longer fill all of it");
+
 // An operand becomes the type the parameter it feeds asks for. A constant is
 // checked here, because the table wrote it and a value too big for its
 // parameter is a mistake worth naming. A location converts the ordinary way, so
