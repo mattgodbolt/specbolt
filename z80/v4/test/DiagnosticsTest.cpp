@@ -5,7 +5,12 @@
 
 // The parser reads whatever description it is handed, so these drive it with
 // their own tables rather than damaging the real one to see what it says. Every
-// message a malformed table can produce should have a case here.
+// message the *parse* can produce should have a case here.
+//
+// The generator's messages cannot: `find_location`, `find_operation` and
+// `operand_for_parameter` are `consteval`, so a description they reject is a
+// compile error rather than something a test can catch. Their messages are
+// covered by the description compiling at all, and by reading them.
 
 namespace specbolt::v4 {
 
@@ -37,7 +42,16 @@ Parsed parse(const std::string_view text) {
   check_derived_rows_override(description, opcodes);
   check_tables_used(description);
   check_inherited_literals(description);
+  check_displacement_rendered(description);
   return parsed;
+}
+
+// Totality is the one check a description here has to opt into: a table is only
+// total once it answers for all 256 opcodes, and a case making some other point
+// would have to say so in full before it could say anything else.
+void check_total(const std::string_view text) {
+  const auto parsed = parse(text);
+  check_tables_total({parsed.vocabularies, parsed.rows, parsed.tables, parsed.decoded, entry_table});
 }
 
 using Catch::Matchers::Equals;
@@ -204,6 +218,71 @@ TEST_CASE("Table diagnostics") {
         Equals("z80.cpu:2: operand name 'averyverylongname' is too long"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- -\n"),
         Equals("z80.cpu:2: '-' discards a result, so it can only be a destination"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- ((hl))\n"),
+        Equals("z80.cpu:2: an address cannot itself be indirect"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- hl+d\n"),
+        Equals("z80.cpu:2: a displacement only makes sense inside '(...)'"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | nop | ld8 a <- nn\n"),
+        Equals("z80.cpu:2: write 'n'; the encoding column says how many bytes it occupies"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- (hl)/wobble=1\n"),
+        Equals("z80.cpu:2: 'wobble=1' is not an operand attribute"));
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | ld8 a <- (hl)/delay=12\n"), Equals("z80.cpu:2: delay must be a single digit"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | \n"), Equals("z80.cpu:2: row has no action"));
+  }
+  SECTION("Steps") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | if\n"), Equals("z80.cpu:2: 'if' needs something to test"));
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | goto t u\n"), Equals("z80.cpu:2: goto takes a single table name"));
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix\ntable u(view:i)\n"
+                            "00000000 | frob | nop\n"),
+        Equals("z80.cpu:3: unterminated '(' in goto"));
+  }
+  SECTION("Mnemonics") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | ld a, $x | ld8 a <- n\n"),
+        Equals("z80.cpu:2: expected $nn, $nnnn or $e in mnemonic"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 n n | ld ($nnnn), $nnnn | ld8 (n) <- n\n"),
+        Equals("z80.cpu:2: a row renders at most one immediate; the encoding only fetches one"));
+  }
+  SECTION("Vocabulary members and their scopes") {
+    CHECK_THROWS_WITH(parse("vocab r = b :add8\ntable t\n"), Equals("z80.cpu:1: a vocabulary member has no name"));
+    // The scope is the next word, so this only fires when the `:` ends the line;
+    // `vocab r : = b c` takes `=` for the scope and complains about the missing one.
+    CHECK_THROWS_WITH(parse("vocab r :\ntable t\n"),
+        Equals("z80.cpu:1: ':' introduces the scope a vocabulary's members come from, and none was given"));
+    CHECK_THROWS_WITH(parse("vocab r : = b c\ntable t\n"), Equals("z80.cpu:1: expected '=' in vocabulary declaration"));
+    CHECK_THROWS_WITH(parse("vocab r = b:add8(0,1,2,3)\ntable t\n"),
+        Equals("z80.cpu:1: a member passes more arguments than an operation can take"));
+    CHECK_THROWS_WITH(parse("vocab r = b:add8(n)\ntable t\n"),
+        Equals("z80.cpu:1: a member cannot pass an immediate; only the encoding fetches those"));
+  }
+  SECTION("Derived tables, further") {
+    constexpr std::string_view base = "vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n";
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with q.b -> c\n"),
+        Equals("z80.cpu:5: substitution names a vocabulary that does not exist"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b - c\n"),
+        Equals("z80.cpu:5: expected '->' in table substitution 'r.b - c'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with rb -> c\n"),
+        Equals("z80.cpu:5: a table substitution names the vocabulary it rewrites, as in "
+               "'vocabulary.member -> replacement'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> {r:y}\n"),
+        Equals("z80.cpu:5: only a table that takes a view may substitute a view reference"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with\n"),
+        Equals("z80.cpu:5: a derived table declares no substitutions, so it is its parent"));
+    // A substitution's right side is parsed against an empty pattern, so a
+    // reference that is not the table's view fails for want of a slice first.
+    CHECK_THROWS_WITH(parse("vocab r = b c\nvocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n"
+                            "table u(view:i) = t with r.b -> {r:y}\n0000000y | ld {r:y} | nop\n"),
+        Equals("z80.cpu:5: reference names a slice the opcode pattern does not define"));
+  }
+  SECTION("Immediates and displacements are counted, not guessed") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 n n n | ld a, $nnnn | ld8 a <- n\n"),
+        Equals("z80.cpu:2: an instruction may carry at most two immediate bytes"));
+    CHECK_THROWS_WITH(parse("vocab m = (ix+d) (iy+d)\ntable t\n0000000y | ld {m:y} | ld8 {m:y} <- (hl+d)\n"),
+        Equals("z80.cpu:3: an instruction may only be displaced through one base"));
+    CHECK_THROWS_WITH(parse("vocab r = b $nn\ntable t\n"),
+        Equals("z80.cpu:1: a vocabulary member cannot render an immediate; only the encoding fetches those"));
+    CHECK_THROWS_WITH(parse("vocab r = b (a+d)+d\ntable t\n"), Equals("z80.cpu:1: member text is too complicated"));
   }
   SECTION("Immediates count wherever they appear") {
     // An immediate destination is how `ld (nn), a` is written, and it used to be
@@ -215,6 +294,12 @@ TEST_CASE("Table diagnostics") {
   SECTION("A vocabulary member must name something resolvable") {
     CHECK_THROWS_WITH(parse("vocab s = bc de hl n\ntable t\n"),
         Equals("z80.cpu:1: a vocabulary member must name something the CPU can resolve"));
+  }
+  SECTION("Every opcode of every table must decode to something") {
+    CHECK_THROWS_WITH(check_total("table t\n00000000 | nop | nop\n"),
+        Equals("z80.cpu:1: table 't' does not say what opcode 1 does; add a row, or `xxxxxxxx` last to catch the "
+               "rest"));
+    CHECK_NOTHROW(check_total("table t\n00000000 | nop | nop\nxxxxxxxx | ?? | nop\n"));
   }
   SECTION("Tables must be reachable and non-empty") {
     CHECK_THROWS_WITH(
