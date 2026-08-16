@@ -1,6 +1,5 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 #include "refract/TableError.hpp"
 #include "refract/Vector.hpp"
 
@@ -8,11 +7,10 @@
 #include <array>
 #include <cstdint>
 #include <string_view>
-#endif
 
 namespace specbolt::refract {
 
-SPECBOLT_EXPORT struct BitSlice {
+struct BitSlice {
   char name{};
   std::uint8_t shift{};
   std::uint8_t mask{};
@@ -26,7 +24,7 @@ SPECBOLT_EXPORT struct BitSlice {
   constexpr bool operator==(const BitSlice &) const = default;
 };
 
-SPECBOLT_EXPORT struct Pattern {
+struct Pattern {
   static constexpr std::size_t max_slices = 4;
   static constexpr std::size_t num_bits = 8;
 
@@ -34,7 +32,7 @@ SPECBOLT_EXPORT struct Pattern {
   Vector<BitSlice, max_slices> slices{};
 };
 
-SPECBOLT_EXPORT [[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
+[[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
   if (bits.size() != Pattern::num_bits)
     throw table_error(line, "opcode pattern must be 8 characters");
   Pattern result;

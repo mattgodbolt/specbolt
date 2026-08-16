@@ -1,12 +1,10 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 #include <array>
 #include <charconv>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#endif
 
 // The description this build compiles, named by whoever is compiling one. The
 // library never names a particular machine's file; diagnostics quote whatever

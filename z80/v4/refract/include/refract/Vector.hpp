@@ -1,9 +1,7 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 #include <array>
 #include <cstddef>
-#endif
 
 namespace specbolt::refract {
 
@@ -18,7 +16,7 @@ namespace specbolt::refract {
 // what a full container means to the caller: overflowing is a description
 // asking for more than the format allows, and only the caller knows which
 // limit was reached and on which line.
-SPECBOLT_EXPORT template<typename T, std::size_t N>
+template<typename T, std::size_t N>
 struct Vector {
   std::array<T, N> storage{};
   std::size_t count{};

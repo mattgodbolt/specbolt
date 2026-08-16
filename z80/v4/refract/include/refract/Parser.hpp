@@ -1,17 +1,15 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 #include <ranges>
 #include <string_view>
 #include <vector>
-#endif
 
 namespace specbolt::refract {
 
 // A cursor over one line of the description, consuming it from the front.
 // Ordinary text handling: everything it hands back is a `std::string_view` into
 // the original, and the position is the whole of its state.
-SPECBOLT_EXPORT class Parser {
+class Parser {
 public:
   constexpr explicit Parser(const std::string_view buf) : buf_(buf) {}
 
@@ -73,7 +71,7 @@ private:
 };
 
 // A line, and the number a diagnostic names it by.
-SPECBOLT_EXPORT struct Line {
+struct Line {
   std::size_t number{};
   std::string_view text{};
 };
@@ -89,7 +87,7 @@ SPECBOLT_EXPORT struct Line {
 //
 // A continued line is reported at the number it *started* on, which is where a
 // reader would look for it.
-SPECBOLT_EXPORT [[nodiscard]] constexpr std::vector<Line> lines_of(const std::string_view description) {
+[[nodiscard]] constexpr std::vector<Line> lines_of(const std::string_view description) {
   // Asked of the untrimmed text, because `trim` would take the `\` away.
   const auto continues = [](const std::string_view raw) {
     const auto last = raw.find_last_not_of(" \t\r");

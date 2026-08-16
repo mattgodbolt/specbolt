@@ -1,6 +1,5 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 // The consumer provides this: it must define `Cpu`, the scope functions, and
 // the table constants this generates from. See Machine.hpp for the contract.
 #include "refract_binding.hpp"
@@ -20,7 +19,6 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#endif
 
 namespace specbolt::refract {
 
