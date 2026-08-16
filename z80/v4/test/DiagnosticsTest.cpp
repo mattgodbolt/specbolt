@@ -408,6 +408,21 @@ TEST_CASE("Table diagnostics") {
         Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so each of its members may only name "
                "a location, since a view is chosen long after the operation has been spliced; 'ix' does not"));
   }
+  SECTION("A view named like a slice letter is an ambiguity, not a silent win") {
+    // The view is matched by name before a slice is looked for, so `{r:y}` in a
+    // table whose view is `y` would resolve to the view: the opcode's `y` bits
+    // would be read by nothing, the row would still claim both opcodes, and both
+    // would decode to whichever member the prefix chose.
+    constexpr std::string_view prefix = "vocab r = b c\nvocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n";
+    CHECK_THROWS_WITH(parse(std::string(prefix) + "table u(y:i)\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"),
+        Equals("z80.cpu:6: 'y' is this table's view and also a slice of this opcode, so this reference could mean "
+               "either; rename one of them"));
+    // Naming the view something no pattern uses is what the Z80's own table does.
+    CHECK_NOTHROW(parse(std::string(prefix) + "table u(view:i)\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
+    // A view may still share its name with a slice the *pattern does not define*:
+    // nothing is ambiguous there, and the reference means the view.
+    CHECK_NOTHROW(parse(std::string(prefix) + "table u(y:i)\n00000000 | ld {r:y} | ld8 {r:y} <- a\n"));
+  }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("vocab r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
   }

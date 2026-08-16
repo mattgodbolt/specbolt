@@ -270,6 +270,15 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   if (!field)
     throw table_error(line, "reference names a vocabulary that does not exist");
   if (table.takes_view() && slice == table.view_name) {
+    // A view is matched by name before a slice is looked for, so a view named
+    // like a slice letter would take every reference meant for the opcode's
+    // bits, and take them in silence: the bits would be read by nothing and the
+    // prefix would answer for all of them. Neither reading is obviously right,
+    // so neither is chosen.
+    if (slice.size() == 1 && find_slice(matched, slice.front()))
+      throw table_error(line, "'" + std::string(slice) +
+                                  "' is this table's view and also a slice of this opcode, so this reference could "
+                                  "mean either; rename one of them");
     if (vocabularies[*field].members.size() != vocabularies[table.view_vocabulary].members.size())
       throw table_error(line, "vocabulary has a different number of members than the table's view");
     check_view_vocabulary(vocabularies[*field], line);
