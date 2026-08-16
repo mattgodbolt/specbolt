@@ -102,10 +102,10 @@ static_assert(
 //
 // **`std::meta::access_context::current()`** means the context of the function
 // that names it, namespace scope here rather than the caller's. Load-bearing twice:
-// it is why a machine's flags type can count as one value rather than a struct
-// to destructure (the Z80's keeps its byte private, so this file cannot see
-// it), and why a private helper in an operation scope cannot be named by a
-// table.
+// it is why asking what a result decomposes into gives the same answer here as
+// a structured binding would give anywhere (a machine's flags type keeps its
+// byte private, so it is one value and not a pair), and why a private helper in
+// an operation scope cannot be named by a table.
 //
 // ---------------------------------------------------------------------------
 // Why the data looks the way it does
@@ -325,7 +325,7 @@ template<Resolved Op, std::size_t Line>
 
 // Arity and parameter types live in the template system rather than in a local
 // `constexpr`, and the reason is narrower than "reflection cannot go in a
-// local": `takes_cpu` and `destructures_into` are both called into locals
+// local": `takes_cpu` and `decomposes_into` are both called into locals
 // further down, and both are fine.
 //
 // What is not fine is `parameters_of` specifically: it returns a `std::vector`,
@@ -344,12 +344,16 @@ inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
-// What a result destructures into. Returns nothing for a non-class type, and
-// also for a class whose members are all inaccessible from here:
-// `access_context::current()` is this namespace, so a type keeping its state
-// private looks empty. `apply` reads an empty answer as "one value, stored
-// whole", which is what makes such a type a value rather than a pair.
-[[nodiscard]] consteval std::span<const std::meta::info> destructures_into(const std::meta::info type) {
+// The parts a result comes apart into, or nothing if it does not come apart.
+//
+// This is the language's own rule, asked with reflection rather than by writing
+// `auto [a, b] =`: a class is decomposable only if all its non-static data
+// members are public members of the same class ([dcl.struct.bind]), which is
+// why `access_context::current()` is the right context to ask from. A type
+// whose state is private is not decomposable by anyone, here or anywhere, and
+// `apply` stores such a result whole. A non-class type has no parts either, and
+// arrives at the same answer by a shorter road.
+[[nodiscard]] consteval std::span<const std::meta::info> decomposes_into(const std::meta::info type) {
   if (!std::meta::is_class_type(type))
     return {};
   return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
@@ -665,12 +669,16 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   // Unevaluated, despite everything just said about operands having effects:
   // `decltype` asks for the type and calls nothing.
   using Result = decltype(call(operands_of<Fn, C>(cpu, decoded, indexed)));
-  // A `std::span`, and safe to hold: `destructures_into` promotes its contents
+  // A `std::span`, and safe to hold: `decomposes_into` promotes its contents
   // with `define_static_array`, so what this points at has static storage and
   // `members[at]` is a constant expression a splice can use.
-  static constexpr auto members = destructures_into(^^Result);
+  static constexpr auto members = decomposes_into(^^Result);
+  // The language would decompose a one-member class quite happily; refusing to
+  // is this framework's own policy, because such a result is as good a
+  // description of one value as of a bundle holding one, and a row would be
+  // written differently depending on which was meant.
   static_assert(members.size() != 1,
-      "a result with exactly one accessible member is ambiguous: it is neither a value nor a pair");
+      "a result with one part is ambiguous: give it a second part, or keep its state to itself and be one value");
   if constexpr (std::is_void_v<Result>) {
     static_assert(C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
     call(operands_of<Fn, C>(cpu, decoded, indexed));
