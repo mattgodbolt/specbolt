@@ -383,13 +383,18 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 // An operation may ask for the machine itself, and if it does it must ask first:
 // the framework supplies argument zero and the row supplies the rest, so which
 // argument is which stays a property of the signature rather than of the row.
+//
+// A variable template rather than a function because five call sites read
+// better without the parentheses. Not for the reason `arity_of` gives for
+// being one: memoising these was measured and bought nothing, gcc apparently
+// folding the repeated `consteval` calls already.
 template<std::meta::info Fn>
-[[nodiscard]] consteval bool takes_cpu() {
+inline constexpr bool takes_cpu = [] {
   if constexpr (arity_of<Fn> == 0)
     return false;
   else
     return std::is_same_v<parameter_type<Fn, 0>, Cpu &>;
-}
+}();
 
 // What the instruction carries: the immediate its encoding fetched, the view a
 // prefix chose, and the opcode itself. Fixed for the whole of one instruction.
@@ -579,7 +584,7 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
 // there is no such rule to remember.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
-  constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
+  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
   std::array<std::size_t, C.operands.size()> written{};
   std::size_t named = 0;
   for (const auto &operand: C.operands)
@@ -657,7 +662,7 @@ template<std::meta::info Fn, Call C>
 // elements. The two C++26 features do not substitute for each other here.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] auto operands_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
-  constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
+  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
   constexpr auto parameter = parameter_for_operand<Fn, C>();
   return [&]<std::size_t... I>(std::index_sequence<I...>) {
     return std::tuple{
@@ -672,7 +677,7 @@ template<std::meta::info Fn, Call C>
 [[nodiscard]] auto call_with(Cpu &cpu, const auto &arguments) {
   constexpr auto operand = operand_for_parameter<Fn, C>();
   return [&]<std::size_t... S>(std::index_sequence<S...>) {
-    if constexpr (takes_cpu<Fn>())
+    if constexpr (takes_cpu<Fn>)
       return [:Fn:](cpu, std::get<operand[S]>(arguments)...);
     else
       return [:Fn:](std::get<operand[S]>(arguments)...);
@@ -691,7 +696,7 @@ template<std::meta::info Member>
 // destinations destructure the result in declaration order.
 template<std::meta::info Fn, Call C>
 void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
-  constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
+  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
   // Gating the body on the same condition, rather than only asserting it,
   // keeps a wrong count from being one message followed by twenty. The
   // `decltype` below asks for the operation's return type, which instantiates
@@ -751,7 +756,7 @@ template<std::meta::info Fn, Call C>
 [[nodiscard]] bool evaluate(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   static_assert(C.operands.size() == arity_of<Fn>, "the row supplies the wrong number of operands for this condition");
   static_assert(C.destinations.size() == 0, "a condition names no destination; it decides whether the rest happens");
-  static_assert(!takes_cpu<Fn>(), "a condition may not ask for the machine; it only reads what the row hands it");
+  static_assert(!takes_cpu<Fn>, "a condition may not ask for the machine; it only reads what the row hands it");
   static_assert(std::is_same_v<typename[:std::meta::return_type_of(Fn):], bool>, "a condition must answer yes or no");
   return call_with<Fn, C>(cpu, operands_of<Fn, C>(cpu, decoded, indexed));
 }

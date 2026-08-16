@@ -513,3 +513,42 @@ operand in a row. Filling the `-` hole in `field r` with `(hl)` was therefore a 
 the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/`dec r`.
 
 ---
+
+## Memoising the reflection queries buys nothing, and nearly said otherwise
+
+`arity_of<Fn>` is a variable template rather than a function, with a comment saying the point is that
+the answer is computed once. `takes_cpu<Fn>()` and `operand_for_parameter<Fn, C>()` were not, and
+were called five and three times per step, so making them variable templates too looked like free
+speed on a translation unit that costs a minute and a half.
+
+Three runs before, three after, of `Z80.cpu`'s own compile with ccache bypassed:
+
+| | run 1 | run 2 | run 3 | mean |
+|---|---|---|---|---|
+| before | 124.45 | 116.56 | 110.20 | 117.1 |
+| after | 92.33 | 95.44 | 96.31 | 94.7 |
+
+Nineteen per cent, and false. The three "before" runs were simply the first three runs of the
+session. Alternating the two builds instead, one after the other:
+
+| round | baseline | memoised |
+|---|---|---|
+| A | 94.66 | 93.31 |
+| B | 90.83 | 96.18 |
+| C | 94.25 | 96.82 |
+
+Mean 93.2 against 95.4, the memoised build marginally *slower*, everything inside the spread. Peak
+RSS is 1.1324 GB either way, to 0.02%. So gcc is already folding the repeated `consteval` calls, or
+their cost is far below what this measurement can see.
+
+**This is the third time the same trap has been walked into on this machine**, after the LTO
+inlining lottery and the two generation schemes, and the shape is identical every time: a sequence
+of A-runs followed by a sequence of B-runs, on a laptop whose first runs of a session are its
+slowest. The rule that keeps working is to interleave, and to distrust any wall-clock difference
+that a reordering can produce.
+
+`takes_cpu` kept its variable-template form, because five call sites read better without the
+parentheses, which is a reason that survives the measurement. `operand_for_parameter` went back to
+being a function: memoising it needed a second name, `compute_operand_for_parameter`, and paying a
+name for nothing is a bad trade. The claim in `arity_of`'s own comment is now unproven, and is left
+standing only because nothing argues against the form it already has.
