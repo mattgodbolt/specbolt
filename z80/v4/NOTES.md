@@ -2535,3 +2535,38 @@ happen: `parameter` has to stay on the resolved side, because
 `operand_for_parameter` reads it off `C.operands` to work out the argument
 order, and it is the only field two otherwise-identical operands are likely to
 differ in.
+
+## Answered: member-function splicing works, and the idea it was gating still fails
+
+A recurring thought has been to delete the text format and let the C++ class *be*
+the description: annotate member functions with their encodings, reflect over the
+class, and drop the parser, the `#embed` and every hand-written diagnostic.
+
+Everything that idea needs from the language turned out to be there. gcc 16.2
+takes a non-static member function found by `members_of`, carries it as a
+template parameter, and splices it in member-access position:
+
+```cpp
+template<std::meta::info Fn, typename... Args>
+auto call_on(Cpu &cpu, Args... args) { return cpu.[:Fn:](args...); }
+```
+
+`parameters_of` reports 1 for `ld8(std::uint8_t)` and 0 for `twice()`, so **the
+implicit object parameter is not counted** and none of the arity arithmetic in
+`Execute.hpp` would shift. `is_static_member` separates the two kinds, so both
+could be supported at once.
+
+The idea still fails, on a limit no spike can lift: **reflection sees
+declarations, not bodies.** A member function cannot describe an instruction by
+being written as one, so the behaviour has to live in an annotation string
+anyway. That is the same DSL, in the same syntax, with the table's columns
+broken up by a function declaration per row that exists only to carry
+attributes, and nothing gained: the diagnostics already carry `z80.cpu:N`, the
+editor support already exists, and the parser being deleted is 5% of the build.
+
+The narrower use, making *operations* member functions rather than static
+functions taking `Cpu &`, is also declined, and for a design reason rather than
+a language one. An operation that needs the machine currently has to say so in
+its signature, where `takes_cpu` finds it and hands the machine over as argument
+zero. A member function reaches the whole machine implicitly, so a row's `<-`
+would quietly stop being the whole truth about what an instruction touches.
