@@ -442,21 +442,26 @@ template<Resolved Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter direct_value_of(Cpu &cpu, const Decoded decoded) {
   static_assert(!std::is_reference_v<Parameter>,
       "an operation takes its operands by value; there is nothing here for a reference to bind to");
-  if constexpr (Op.kind == Resolved::Kind::Constant && Op.from_opcode)
-    // The instruction carries the number and the slice says where. Nothing to
-    // check against the parameter: the mask already bounds it.
-    return static_cast<Parameter>(Op.slice.extract(decoded.opcode));
-  else if constexpr (Op.kind == Resolved::Kind::Constant) {
+  if constexpr (Op.kind == Resolved::Kind::Constant) {
     // A parameter that is an enum has names for its values, and those names are
     // what a spelling annotation exists to expose. Casting a number into one
     // would get past every check the enum was introduced to impose, so this is
-    // where a description is made to name a value rather than encode one.
+    // where a description is made to name a value rather than encode one. It
+    // holds however the number arrived: a vocabulary that *is* its slice is
+    // read from the opcode rather than written in the row, and is still a
+    // number being cast into a type that has names.
     static_assert(!std::is_enum_v<Parameter>,
         "this parameter is an enum, so name one of its spellings rather than passing a number");
-    if constexpr (std::integral<Parameter>)
-      static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
-          "this constant does not fit the parameter it is passed to");
-    return static_cast<Parameter>(Op.constant);
+    if constexpr (Op.from_opcode)
+      // The instruction carries the number and the slice says where. Nothing to
+      // check against the parameter: the mask already bounds it.
+      return static_cast<Parameter>(Op.slice.extract(decoded.opcode));
+    else {
+      if constexpr (std::integral<Parameter>)
+        static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
+            "this constant does not fit the parameter it is passed to");
+      return static_cast<Parameter>(Op.constant);
+    }
   }
   else if constexpr (Op.kind == Resolved::Kind::Immediate) {
     if constexpr (Op.width == 1)
