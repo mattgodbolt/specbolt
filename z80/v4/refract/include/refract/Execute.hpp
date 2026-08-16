@@ -1020,20 +1020,10 @@ inline constexpr auto dispatch = [] {
   return handlers;
 }();
 
-// The loop's table is not a constant after the first byte, so every table's
-// dispatch has to be reachable by index. A pack rather than a `template for`:
-// gcc 16.2 still reports an expansion variable in a non-dependent context as
-// shadowing itself (PR c++/124197).
-template<std::size_t... Table>
-[[nodiscard]] consteval auto all_dispatches(std::index_sequence<Table...>) {
-  return std::array{dispatch<static_cast<std::uint8_t>(Table)>...};
-}
-
-inline constexpr auto dispatches = all_dispatches(std::make_index_sequence<target::tables.size()>{});
-
-// Fetch, decode, run; and go round again while what ran was a prefix. Each turn
-// of the loop is a real opcode fetch, so the loop always advances time and
-// always advances PC, which is why a table may now reach itself.
+// A table is always named by a constant: a `goto` names one, and the run loop
+// starts at the entry table. So the variable template above is reached
+// directly, and this exists only to give the forward declaration something to
+// define, since a variable template cannot be declared ahead of its definition.
 template<std::uint8_t Table>
 [[nodiscard]] const std::array<Handler, 256> &dispatch_for() {
   return dispatch<Table>;
