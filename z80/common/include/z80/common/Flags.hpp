@@ -41,6 +41,11 @@ public:
 
   constexpr bool operator==(const Flags &rhs) const = default;
 
+  // Private, and load-bearing beyond the usual reason. v4's generator counts a
+  // return type's *accessible* members to decide how many destinations a row
+  // must name, so exposing this byte would make `Flags` a struct to
+  // destructure and change the required shape of every arithmetic row in
+  // `z80.cpu`.
 private:
   std::uint8_t value_{};
 

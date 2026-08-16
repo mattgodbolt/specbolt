@@ -35,6 +35,9 @@ enum class BlockDirection : std::uint8_t {
 };
 
 struct Operations {
+  // Not nameable from a description: `find_operation` looks with
+  // `access_context::current()`, which is the framework's, so what a row may
+  // call is exactly what is public here.
 private:
   // What every block operation does to the flags it does not otherwise touch:
   // parity stands in for "bc has not run out", and flags 3 and 5 come from a

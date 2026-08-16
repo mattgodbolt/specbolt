@@ -547,7 +547,7 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
 // rule about what "the next one" means, and a description is easier to read if
 // there is no such rule to remember.
 template<std::meta::info Fn, Call C>
-[[nodiscard]] consteval std::array<std::size_t, C.operands.size()> operand_order() {
+[[nodiscard]] consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
   std::array<std::size_t, C.operands.size()> written{};
   std::size_t named = 0;
@@ -595,12 +595,12 @@ template<std::meta::info Fn, Call C>
 // ends up feeding. Needed because an operand is *read* where the row put it and
 // *passed* where the signature wants it, and its type comes from the latter.
 template<std::meta::info Fn, Call C>
-[[nodiscard]] consteval std::array<std::size_t, C.operands.size()> slot_of_operand() {
-  constexpr auto written = operand_order<Fn, C>();
-  std::array<std::size_t, C.operands.size()> slots{};
-  for (std::size_t slot = 0; slot < written.size(); ++slot)
-    slots[written[slot]] = slot;
-  return slots;
+[[nodiscard]] consteval std::array<std::size_t, C.operands.size()> parameter_for_operand() {
+  constexpr auto operand = operand_for_parameter<Fn, C>();
+  std::array<std::size_t, C.operands.size()> parameter{};
+  for (std::size_t slot = 0; slot < operand.size(); ++slot)
+    parameter[operand[slot]] = slot;
+  return parameter;
 }
 
 // The row's operands, resolved in the order the row wrote them, because
@@ -614,10 +614,10 @@ template<std::meta::info Fn, Call C>
 template<std::meta::info Fn, Call C>
 [[nodiscard]] auto operands_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
-  constexpr auto slots = slot_of_operand<Fn, C>();
+  constexpr auto parameter = parameter_for_operand<Fn, C>();
   return [&]<std::size_t... I>(std::index_sequence<I...>) {
     return std::tuple{
-        value_of<C.operands[I], C.line, parameter_type<Fn, slots[I] + supplied>>(cpu, decoded, indexed)...};
+        value_of<C.operands[I], C.line, parameter_type<Fn, parameter[I] + supplied>>(cpu, decoded, indexed)...};
   }(std::make_index_sequence<C.operands.size()>{});
 }
 
@@ -626,13 +626,21 @@ template<std::meta::info Fn, Call C>
 // order the parameters want them.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] auto call_with(Cpu &cpu, const auto &arguments) {
-  constexpr auto written = operand_order<Fn, C>();
+  constexpr auto operand = operand_for_parameter<Fn, C>();
   return [&]<std::size_t... S>(std::index_sequence<S...>) {
     if constexpr (takes_cpu<Fn>())
-      return [:Fn:](cpu, std::get<written[S]>(arguments)...);
+      return [:Fn:](cpu, std::get<operand[S]>(arguments)...);
     else
-      return [:Fn:](std::get<written[S]>(arguments)...);
+      return [:Fn:](std::get<operand[S]>(arguments)...);
   }(std::make_index_sequence<C.operands.size()>{});
+}
+
+// One member of a returned struct. A splice in member-access position is
+// legitimate and reads as a typo, so it appears once, here, rather than inline
+// at the only place that wants it.
+template<std::meta::info Member>
+[[nodiscard]] constexpr decltype(auto) member_of_result(const auto &result) {
+  return result.[:Member:];
 }
 
 // Arguments are supplied positionally, or by name where the row said so;
@@ -667,7 +675,7 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
         C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
     const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
     template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
-        store<C.destinations[at], C.line>(cpu, decoded, indexed, result.[:members[at]:]);
+        store<C.destinations[at], C.line>(cpu, decoded, indexed, member_of_result<members[at]>(result));
   }
   else {
     static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
