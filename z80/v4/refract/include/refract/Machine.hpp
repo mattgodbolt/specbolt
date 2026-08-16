@@ -4,9 +4,13 @@
 //
 // A `.cpu` description names operations and locations; this says how the
 // framework fetches, accesses memory, forms an indexed address and spends time.
-// Where the *names* are resolved is a separate question, answered by the
-// `operation_scopes()` and `location_scopes()` the target supplies, since they take
-// no argument, so no concept can reach them by lookup.
+//
+// Where *operation* names are resolved is a separate question, answered by the
+// `operation_scopes()` the target supplies, since it takes no argument and no
+// concept can reach it by lookup. Where *location* names are resolved is not a
+// question the target answers at all: a location is a thing the machine can
+// read, so the pool is its own `read` overloads. See `location_scopes` in
+// Execute.hpp.
 //
 // This is what the *framework* calls, not everything the machine is asked for:
 // an operation is free to use whatever the machine offers, and the Z80's use
@@ -27,8 +31,15 @@
 
 #include <concepts>
 #include <cstdint>
+#include <string_view>
 
 namespace specbolt::refract {
+
+// `read` is named here because two things depend on the spelling: the concept
+// below, and the scan that derives the location scopes from the overloads of
+// that name.
+inline constexpr std::string_view read_verb = "read";
+
 
 // Everything the framework does *to* a machine. `delay` is separate from the
 // accesses because an idle cycle is not a transfer, and `displaced_address` is

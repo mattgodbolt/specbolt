@@ -93,9 +93,10 @@ This document describes the table. The other half of the contract lives in the
 CPU description, and a `.cpu` file is meaningless without it, so here is its
 shape. It comes in three parts: what a row's verbs mean, what its names mean,
 and how the framework drives the chip. For the Z80 the verbs are in
-`Operations.hpp`, the scopes the names are looked up in come from
-`Locations.hpp`, and the machine
-itself supplies the rest as member functions. `Machine.hpp` states that half of
+`Operations.hpp`, and the machine itself supplies the rest as member functions.
+Where *location* names are looked up is not part of the contract at all: a
+location is a thing the machine can read, so the framework derives the set from
+the machine's own `read` overloads. `Machine.hpp` states that half of
 the contract as a concept. Be warned that the verbs are not a small file: the
 easy majority of an instruction set becomes rows, and what stays behind is the
 awkward remainder: the block moves, the exchanges, the flag minutiae.
@@ -103,7 +104,7 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 | the table writes | the CPU supplies |
 |---|---|
 | an **operation**: `inc8`, `add16` | a function of that name, found by reflection |
-| a **location**: `a`, `hl`, `pc` | an enumerator of that name, plus `read`/`write` members taking it |
+| a **location**: `a`, `hl`, `pc` | an enumerator of that name, and a `read` taking its enum, which is what makes it a location |
 | a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
 | an **immediate**: `n` | `fetch_immediate` |

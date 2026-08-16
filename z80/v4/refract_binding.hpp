@@ -11,7 +11,6 @@
 // binary, because the table constants and `Cpu` are definitions rather than
 // parameters. That is the limit of this arrangement.
 
-#include "Locations.hpp"
 #include "Operations.hpp"
 #include "Table.hpp"
 

@@ -34,10 +34,8 @@ using Cpu = target::Cpu;
 // generated instruction three hundred lines away.
 static_assert(Machine<Cpu>, "this machine does not supply everything the framework needs; see Machine.hpp");
 static_assert(
-    requires {
-      target::operation_scopes();
-      target::location_scopes();
-    }, "the target must say where a description's operation and location names are to be resolved");
+    requires { target::operation_scopes(); },
+    "the target must say where a description's operation names are to be resolved");
 
 // This file turns a parsed instruction table into an interpreter. `Table.hpp`
 // has already read the description and lowered it to `constexpr` data; nothing here
@@ -124,6 +122,69 @@ static_assert(
 // element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what
 // stands in its place.
 
+// Where a location name may come from: the machine's own `read` overloads. A
+// location is a thing the machine can read, so the pool is not a list, a
+// namespace or an annotation but the capability itself. An enum with no `read`
+// taking it is not a location, which is why a bus cycle kind cannot be one.
+//
+// `read_memory` is excluded by name and `bus` by name; an overload taking more
+// than the location is excluded by arity.
+[[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
+  std::vector<std::meta::info> scopes;
+  for (const auto member: std::meta::members_of(^^Cpu, std::meta::access_context::current())) {
+    if (!std::meta::is_function(member) || !std::meta::has_identifier(member))
+      continue;
+    if (std::meta::identifier_of(member) != read_verb)
+      continue;
+    const auto parameters = std::meta::parameters_of(member);
+    if (parameters.size() != 1)
+      continue;
+    if (const auto type = std::meta::type_of(parameters[0]); std::meta::is_enum_type(type))
+      scopes.push_back(type);
+  }
+  return scopes;
+}
+
+// Where a *value* may come from, for a vocabulary that names its scope: any
+// enum an operation takes. Derived the same way and for the same reason, from
+// what the CPU can be asked to do rather than from anything it declares about
+// itself.
+[[nodiscard]] consteval std::vector<std::meta::info> named_scopes() {
+  auto scopes = location_scopes();
+  for (const auto scope: target::operation_scopes())
+    for (const auto member: std::meta::members_of(scope, std::meta::access_context::current())) {
+      if (!std::meta::is_function(member))
+        continue;
+      for (const auto parameter: std::meta::parameters_of(member))
+        if (const auto type = std::meta::type_of(parameter);
+            std::meta::is_enum_type(type) && !std::ranges::contains(scopes, type))
+          scopes.push_back(type);
+    }
+  return scopes;
+}
+
+// Every location name means exactly one thing, checked over the whole pool
+// rather than as each name happens to be looked up. `only_match` would catch an
+// ambiguity, but only for a name some description writes; this makes it a
+// property of the machine, so a CPU that grows a second `carry` is told at once
+// rather than whenever a row first wants one.
+[[nodiscard]] consteval bool location_names_are_unique() {
+  std::vector<std::string> seen;
+  for (const auto scope: location_scopes())
+    for (const auto enumerator: std::meta::enumerators_of(scope)) {
+      auto name = std::string(std::meta::identifier_of(enumerator));
+      for (auto &character: name)
+        character = character >= 'A' && character <= 'Z' ? static_cast<char>(character - 'A' + 'a') : character;
+      if (std::ranges::contains(seen, name))
+        return false;
+      seen.push_back(name);
+    }
+  return true;
+}
+
+static_assert(location_names_are_unique(),
+    "two of this machine's readable locations are spelled the same, so a description could not say which it meant");
+
 // The table is written the way assembler is written, so every name in it is
 // matched without regard to case.
 [[nodiscard]] constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
@@ -170,7 +231,7 @@ static_assert(
 // something written the way assembly is written.
 [[nodiscard]] consteval std::meta::info find_scope(const std::string_view name, const std::size_t line) {
   std::string offered;
-  for (const auto scope: target::named_scopes()) {
+  for (const auto scope: named_scopes()) {
     if (std::meta::identifier_of(scope) == name)
       return scope;
     offered += (offered.empty() ? " (this CPU offers " : ", ") + std::string(std::meta::identifier_of(scope));
@@ -188,7 +249,7 @@ static_assert(
         candidates.push_back(enumerator);
     return only_match(candidates, name, line);
   }
-  for (const auto everywhere: target::location_scopes())
+  for (const auto everywhere: location_scopes())
     for (const auto enumerator: std::meta::enumerators_of(everywhere))
       if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
         candidates.push_back(enumerator);
@@ -380,12 +441,13 @@ template<Operand Op, std::size_t Line, typename Parameter>
     return cpu.read(locations[decoded.view]);
   }
   else if constexpr (std::is_enum_v<Parameter>)
-    // The parameter asks for an enum, so the name is one of *its* members
-    // rather than a place to read from: spliced as a value, with nothing
-    // fetched. `Parameter` is the scope, which is the whole trick: the same
-    // rule that already lets a parameter's type decide how wide an access is
-    // now decides which enum a bare name belongs to.
-    return [:find_spelling(^^Parameter, Op.name.view(), Line):];
+    // The name is one of the enum's members rather than a place to read from:
+    // spliced as a value, with nothing fetched. Which enum comes from the
+    // vocabulary if it named one, and otherwise from the parameter. Saying it
+    // is what stops the meaning of a name depending on a signature elsewhere;
+    // the parameter remains the answer for an operand no vocabulary owns, such
+    // as one a member appends.
+    return [:find_spelling(Op.scope.empty() ? ^^Parameter : find_scope(Op.scope.view(), Line), Op.name.view(), Line):];
   else
     // An *enumerator* splice: this yields a prvalue whose type is the enum the
     // name was found in, so the machine's overload set decides what reading it

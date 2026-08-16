@@ -1709,7 +1709,7 @@ short ones.
 The CPU-agnostic half is now `refract/`, in `namespace specbolt::refract`: `Model.hpp`,
 `Lexical.hpp`, `Parse.hpp`, `ToArray.hpp`, `Coverage.hpp`, `Pattern.hpp`, `Parser.hpp`, `Vector.hpp`,
 `TableError.hpp`, `Machine.hpp`, `Execute.hpp` and `Disassemble.hpp`. The Z80 half is `z80.cpu`,
-`Operations.hpp`, `Locations.hpp`, `Table.hpp`, `Disassembler.cpp` and `Z80.hpp`/`Z80.cpp`.
+`Operations.hpp`, `Table.hpp`, `Disassembler.cpp` and `Z80.hpp`/`Z80.cpp`.
 
 **Both artefacts are now the library's.** `Disassemble.hpp` renders any description, so
 `Disassembler.cpp` is four lines: it says where the bytes come from and nothing else. Following
@@ -2183,13 +2183,12 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 
 ## Where the framework/CPU boundary sits
 
-`Operations.hpp`, `Locations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting means
+`Operations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting means
 writing these and nothing else:
 
 - `Cpu` and `Operations`, the machine state and its non-ALU primitives
-- `operation_scopes()` (where the table may name operations from
-- `location_scopes()`) where it may name storage
-- `read`/`write` overloads (how to touch that storage
+- `operation_scopes()`, where the table may name operations from
+- `read`/`write` overloads (how to touch storage, and, for `read`, what storage there is
 - `read_memory`/`write_memory`) how to touch memory through an address
 - `fetch_opcode`/`fetch_immediate` (how to read the instruction stream
 - `delay`) how to spend an idle cycle
@@ -2403,3 +2402,59 @@ Worth noting what got *smaller*, since the usual expectation of a performance
 change is the reverse. `Transfer`, the `std::optional` it was returned in, and
 the entire dispatch loop are gone: the loop is now the chain of tail calls
 itself, and `execute_instruction` is one line.
+
+## Done: a location is a thing the machine can read
+
+Which names a description may write was decided, for most of this project, by a
+list. `location_scopes()` named the enums a name could come from, and the
+framework searched all of them.
+
+The list became a scan: every enum in the CPU's namespace, so that declaring one
+was enough and forgetting to list it could not happen. That was better and still
+wrong, in a way that took a while to see. The scan swept up `Bus`, whose
+enumerators are `opcode`, `operand`, `read`, `write`, and a description could
+name any of them. Nothing collided, so nothing failed, but `ld8 a <- read`
+resolved cleanly to a bus cycle kind and then died inside a splice with no line
+number at all.
+
+Two fixes were tried. An annotation marking the enums that are *not* locations,
+which tags a thing by what it is not. Then a `locations` namespace, so the scan
+walked a scope declared for the purpose, which works and cost a namespace and a
+using-directive.
+
+The answer was already in the machine. **A location is a thing you can read**,
+so the pool is the `read` overloads:
+
+```cpp
+for (const auto member: std::meta::members_of(^^Cpu, std::meta::access_context::current())) {
+  if (std::meta::identifier_of(member) != read_verb) continue;
+  const auto parameters = std::meta::parameters_of(member);
+  if (parameters.size() != 1) continue;
+  if (const auto type = std::meta::type_of(parameters[0]); std::meta::is_enum_type(type))
+    scopes.push_back(type);
+}
+```
+
+`Bus` is excluded because nothing reads a bus cycle kind. Not by a list, a
+namespace or an annotation, but because it is not one. `read_memory` is excluded
+by name and an overload taking more than the location by arity.
+
+The same trick answers the other pool. A vocabulary may name the scope its
+members come from, and that scope need not be a location: `BlockDirection` is a
+*value*. A value scope is an enum some operation takes as a parameter, derived
+from `operation_scopes()` exactly as the locations are derived from `read`.
+
+So `Locations.hpp` is gone, the `locations` namespace with it, and the contract
+lost a function: a target says where its *operations* live and nothing about its
+locations, because it has already said what it can read.
+
+**What this is really an instance of.** Three attempts encoded "these are
+locations" as a convention: a list, then a namespace, then an annotation. The
+machine had been declaring it all along in the only way that cannot drift, by
+being able to do it. Ask what a thing *can do*, not what it says about itself.
+
+Ambiguity is now checked over the whole pool rather than per lookup.
+`only_match` catches two locations spelled the same, but only for a name some
+description happens to write; a `static_assert` over the derived scopes makes it
+a property of the machine. The Z80's 51 names are unique, which is the sort of
+thing worth knowing rather than assuming.

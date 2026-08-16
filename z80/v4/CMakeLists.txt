@@ -26,7 +26,6 @@ else ()
             Z80.cpp
     )
     target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
-            Locations.hpp
             Operations.hpp
             include/z80/v4/Disassembler.hpp
             include/z80/v4/Z80.hpp

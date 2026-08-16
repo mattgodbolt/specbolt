@@ -39,13 +39,9 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 // invisible to that search, and an enumerator is what carries the spelling a
 // row writes.
 //
-// They are in a namespace of their own because that is what makes them
-// locations. `Locations.hpp` walks this scope and nothing else, so an enum
-// declared here is nameable by a description and one declared outside it is
-// not, with no list to maintain and nothing to remember. `Bus` above is the
-// case in point: its enumerators are bus cycle kinds, and a row has no business
-// naming them.
-namespace locations {
+// What makes them locations is that the machine can `read` one: the framework
+// derives the set from those overloads, so `Bus` above is not a location for
+// the plain reason that nothing reads a bus cycle kind.
 
 // Individually addressable flag bits, so `carry` is a location like any other.
 // The ordinal is the bit position, which is what `read` shifts by; the
@@ -93,14 +89,6 @@ SPECBOLT_EXPORT enum class Interrupt : std::uint8_t { i, im };
 // The memory refresh register, which the chip increments on every opcode fetch
 // whether or not a description ever names it.
 SPECBOLT_EXPORT enum class Refresh : std::uint8_t { r };
-
-} // namespace locations
-
-// So that the machine's own code says `FlagBit` rather than
-// `locations::FlagBit`. A using-directive does not make these members of
-// `specbolt::v4`, which is the whole point: `members_of` cannot see them
-// through it, so they stay findable only by whoever walks `locations`.
-using namespace locations;
 
 // The index registers, named once rather than twice. A DD or FD prefix decodes
 // the same table under a different *view*, and these are the locations that
