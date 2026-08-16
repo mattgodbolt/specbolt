@@ -133,9 +133,10 @@ std::uint8_t Z80::read_immediate() {
 
 // An internal cycle presents whatever address the last access left on the bus,
 // so a run of them re-latches the same value every time and only the clock
-// actually moves. Spending them in one go is exactly equivalent, because `tick(n)`
-// and n `tick(1)`s leave the same cycle count and fire the same tasks at the
-// covers the same cycles, and it is worth 6% of v4, because `delay 7` was seven calls.
+// actually moves. Spending them in one go is exactly equivalent, because
+// `tick(n)` and n `tick(1)`s leave the same cycle count and fire the same tasks
+// at the same cycles. It was worth 6% of v4 when it was measured, because
+// `delay 7` had been seven calls.
 //
 // This is the line contention will have to undo. A contended machine can
 // stretch each internal cycle separately, so it would want the loop back, with

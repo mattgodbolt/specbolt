@@ -88,11 +88,6 @@ SPECBOLT_EXPORT enum class Interrupt : std::uint8_t { i, im };
 // whether or not a description ever names it.
 SPECBOLT_EXPORT enum class Refresh : std::uint8_t { r };
 
-// The index registers, named once rather than twice. A DD or FD prefix decodes
-// the same table under a different *view*, and these are the locations that
-// view selects between at run time, so `ix` and `iy` cost one description,
-// one set of rows and one set of generated handlers between them. Each
-// enumerator is named for the vocabulary in `z80.cpu` that resolves to it.
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}

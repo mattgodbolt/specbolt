@@ -90,7 +90,7 @@ static_assert(
 // **`consteval` functions that throw.** Nothing catches them. Throwing makes
 // the call not a constant expression, and *that* is the diagnostic: a mistake
 // in the description becomes a compile error carrying its line number. This is
-// most surprising idiom in the file, and it is used everywhere.
+// the most surprising idiom in the file, and it is used everywhere.
 //
 // **`std::define_static_array`.** `nonstatic_data_members_of` returns a
 // `std::vector`, whose allocation cannot survive constant evaluation. This
@@ -211,10 +211,6 @@ static_assert(location_names_are_unique(),
   return candidates.front();
 }
 
-// An enumerator in one of the scopes the CPU offers, such as the Z80's `a`,
-// `hl`, `carry` and `pc`.
-// The `std::vector` here is fine, because it is created and destroyed within
-// one constant evaluation, which is allowed; what it must not do is escape.
 // What a description calls one enumerator: the `Spelling` it declares, or its
 // own identifier when it declares none. The annotation is an override, so only
 // a name the description and C++ disagree about has to be written down.
@@ -239,6 +235,12 @@ static_assert(location_names_are_unique(),
   throw table_error(line, "no scope named '" + std::string(name) + "'" + offered + ")");
 }
 
+// An enumerator in one of the scopes the CPU offers, such as the Z80's `a`,
+// `hl`, `carry` and `pc`. A vocabulary that named a scope searches that one and
+// no other; everything else searches them all.
+//
+// The `std::vector` here is fine, because it is created and destroyed within
+// one constant evaluation, which is allowed; what it must not do is escape.
 [[nodiscard]] consteval std::meta::info find_location(
     const std::string_view name, const std::size_t line, const std::string_view scope = {}) {
   std::vector<std::meta::info> candidates;
@@ -551,23 +553,6 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
   }
 }
 
-// Resolving an operand is not a pure act: it can read memory, advance the clock
-// and move the address bus. So the order matters, and the order a function's
-// arguments are evaluated in is *unspecified*, and gcc evaluates them right to
-// left. Braced initialisation is sequenced left to right ([dcl.init.list]/4),
-// so the values are materialised into a tuple first and the call made from
-// that.
-//
-// The rows that prove this is not pedantry are the ones that read memory and
-// then ask for the address that read left on the bus. The Z80's `bit n, (ix+d)`
-// is one, and getting those two the wrong way round takes its undocumented
-// flags from the wrong place.
-//
-// [dcl.init.list] says the guarantee survives CTAD and constructor selection,
-// which is the part worth checking rather than assuming. Storing needs no such
-// rescue: `template for` sequences its iterations, so destinations were never
-// at risk.
-
 // Which of the row's operands feeds each of the operation's parameters. By
 // position, unless the row said otherwise: an operand written `value=…` goes to
 // the parameter *called* `value`, and what the parameters are called is asked
@@ -641,6 +626,19 @@ template<std::meta::info Fn, Call C>
 // The row's operands, resolved in the order the row wrote them, because
 // resolving one can read memory and move the address bus. Naming a parameter
 // changes which argument an operand becomes, never when it is read.
+//
+// The order a function's arguments are evaluated in is *unspecified*, and gcc
+// evaluates them right to left. Braced initialisation is sequenced left to
+// right ([dcl.init.list]/4), so the values are materialised into a tuple first
+// and the call made from that, and [dcl.init.list] says that guarantee survives
+// CTAD and constructor selection, which is the part worth checking rather than
+// assuming. Storing needs no such rescue: `template for` sequences its
+// iterations, so destinations were never at risk.
+//
+// The rows that prove this is not pedantry are the ones that read memory and
+// then ask for the address that read left on the bus. The Z80's `bit n, (ix+d)`
+// is one, and getting those two the wrong way round takes its undocumented
+// flags from the wrong place.
 //
 // The generic-lambda-plus-`index_sequence` dance is here because this is the
 // one job `template for` cannot do: expanding into a *call's argument list*
@@ -787,19 +785,17 @@ template<std::meta::info Fn, Call C>
 }
 
 // What a row says to do once it has run: nothing, or fetch another byte and
-// decode it in the table named. A prefix *returns* where to go rather than
-// going there, because `dd dd dd ...` is a legal and unbounded Z80 instruction:
-// it must cost a fetch a byte, not a stack frame a byte. The displacement rides
-// along because `dd cb d op` reads its displacement one table before the row
-// that uses it.
-// A handler does not report where to go next; it goes there. A `goto` step ends
-// in a tail call to the next table's handler, so a prefix chain is one call
-// deep however long it is, and `dd dd dd ...` no more grows the stack than it
-// grows the instruction.
+// What runs one row. A handler does not report where to go next; it goes
+// there. A `goto` step ends in a tail call to the next table's handler, so a
+// prefix chain is one call deep however long it is: a run of prefix bytes is a
+// legal and unbounded instruction on some machines, and it must cost a fetch a
+// byte rather than a stack frame a byte.
 //
-// The displacement and the view travel as arguments for the reason they always
-// did: both are chosen by the prefix, needed by the row, and in neither's own
-// bytes.
+// The displacement and the view are arguments because both are chosen by a
+// prefix, needed by the row, and carried in neither's own bytes: an encoding
+// may read its displacement one table before the row that uses it, as the
+// Z80's `dd cb d op` does.
+//
 // Every handler has one signature, because a table of function pointers can
 // only have one. So `view` is a parameter of every handler and not merely of
 // the ones a prefix can reach: a machine's simplest instruction pays a
@@ -843,8 +839,8 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
   // A `constexpr std::optional` used two ways: contextually converted to `bool`
   // by `if constexpr`, and then dereferenced to give a template argument. Both
   // work because `optional`'s members are `constexpr`.
-  // `static` for the same reason `row` is: a tail call abandons the frame, so
-  // anything the compiler thinks lives in it blocks one.
+  // `static` for a second reason, on top of the one above: a tail call abandons
+  // the frame, so anything the compiler thinks lives in it blocks one.
   static constexpr auto displaced = displaced_through(target::vocabularies, row, Opcode, rules);
   constexpr bool entered_latched = target::latched[Table];
   const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)

@@ -481,7 +481,7 @@ Eight characters, then zero or more byte tokens.
 
   This is how a table says what an undefined encoding does. (`z80.cpu` ends its
   `ed` table with exactly this row, because on real hardware an undefined `ED`
-  encoding behaves as a do-nothing instruction two bytes long, because the `ed` prefix
+  encoding behaves as a do-nothing instruction two bytes long, the `ed` prefix
   having already been fetched by the row that transferred here.)
 
 Trailing tokens say what follows the opcode:

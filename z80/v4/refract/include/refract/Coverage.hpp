@@ -316,9 +316,10 @@ constexpr bool check_derived_rows_override(const Description &description, const
 }
 
 // `check_immediates` cross-checks the three columns about `n`; this is the same
-// question for a displacement. It needs an opcode, since whether a row is displaced
-// depends on which vocabulary member the opcode picks, and on the renaming of
-// depends on the table it was decoded in, so it belongs here, not beside the row.
+// question for a displacement. It needs an opcode, since whether a row is
+// displaced depends on which vocabulary member the opcode picks, and on the
+// renaming the table it was decoded in applies, so it belongs here rather than
+// beside the row.
 //
 // A mismatch is not a length error: both the interpreter and the disassembler
 // take the length from `displaced_through`, so they agree about how many bytes
