@@ -277,9 +277,10 @@ constexpr bool check_inherited_literals(const Description &description) {
 // taking opcodes the parent meant to keep.
 //
 // This is the check that would have caught a mistake made while writing the
-// Z80's description: `{reg:y}` for `{real:y}` in the `ix` table, where `reg`
-// has no hole at slot 6, so the row would claim `0x76` and `halt` would quietly
-// vanish from the prefixed pages.
+// Z80's description: naming the vocabulary a rule rewrites where the one it
+// leaves alone was meant, so the row claimed an opcode the parent had reserved
+// for something else and that instruction quietly vanished from the derived
+// pages.
 constexpr bool check_derived_rows_override(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
   const auto tables = description.tables;

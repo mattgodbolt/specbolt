@@ -215,7 +215,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 
 // A view is chosen by a prefix, long after everything about the instruction
 // that a compile-time check can see has been settled. So every check resolves
-// such a reference at member 0 and applies the answer to all of them --
+// such a reference at member 0 and applies the answer to all of them;
 // `displaced_through` does not even take a view, which is only sound if the
 // members agree about everything except which location they name.
 //

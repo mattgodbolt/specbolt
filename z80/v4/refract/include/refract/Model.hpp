@@ -184,8 +184,8 @@ using Rules = Vector<Rule, 6>;
 // as numeric, and reading the bits would answer with the index instead of the
 // value: the Z80's `rst = 0x00 0x08 ... 0x38` would give `rst 3` where
 // `rst 0x18` was meant, and its `imode = 0 0 1 2 0 0 1 2` is not even injective.
-// Those keep a function each, worth 21 bodies between them in that description,
-// which is not worth a lookup table.
+// Those keep a function each, which for the handful of members involved is
+// cheaper than a lookup table.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
@@ -267,8 +267,8 @@ struct Resolution {
   result.parameter = operand.parameter;
   result.scope = Name{at.vocabularies[operand.reference.vocabulary_index].scope};
   // A number the opcode already carries: say where, rather than which. Every
-  // member of the vocabulary then resolves to the same operand, so the eight
-  // functions that differed only in a bit index become one.
+  // member of the vocabulary then resolves to the same operand, so the
+  // functions that differed only in a constant become one.
   if (!operand.reference.from_view && is_numeric(at.vocabularies[operand.reference.vocabulary_index])) {
     result.from_opcode = true;
     result.slice = at.matched.slices[operand.reference.slice_index];

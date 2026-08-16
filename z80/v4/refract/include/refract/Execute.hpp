@@ -746,7 +746,7 @@ template<std::meta::info Fn, Call C>
 // What a row says to do once it has run: nothing, or fetch another byte and
 // decode it in the table named. A prefix *returns* where to go rather than
 // going there, because `dd dd dd ...` is a legal and unbounded Z80 instruction:
-// it must cost 4T a byte, not a stack frame a byte. The displacement rides
+// it must cost a fetch a byte, not a stack frame a byte. The displacement rides
 // along because `dd cb d op` reads its displacement one table before the row
 // that uses it.
 // A handler does not report where to go next; it goes there. A `goto` step ends
@@ -759,10 +759,9 @@ template<std::meta::info Fn, Call C>
 // bytes.
 // Every handler has one signature, because a table of function pointers can
 // only have one. So `view` is a parameter of every handler and not merely of
-// the ones a prefix can reach: among the Z80's 747, `nop` pays a register's
-// worth for `ix` existing.
-// That is about 2% of run time, bought with 38% of the build. See NOTES.md,
-// which has the measurements and the alternative that was rejected.
+// the ones a prefix can reach: a machine's simplest instruction pays a
+// register's worth for its most elaborate addressing mode existing. That trade
+// has been measured, and the alternative rejected, in the design journal.
 using Handler = void (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
 // A handler tail-calls into another table's dispatch, and a dispatch is built
@@ -775,10 +774,10 @@ void continue_running(Cpu &cpu, std::uint8_t latch, std::uint8_t view, std::uint
 
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
 // table surviving into the generated code. There is one of these per *body*, a
-// row together with the slices it reads, so the opcodes of a row that reads
-// none of its variable bits share one: 747 of them for a complete Z80 against
-// its 1792 (table, opcode) pairs. See `body_key`. Each is typically a handful
-// of instructions, because every choice below is made at compile time.
+// row together with the slices it reads, so every opcode of a row that reads
+// none of its variable bits shares one; `body_key` is what decides. Each is
+// typically a handful of instructions, because every choice below is made at
+// compile time.
 //
 // `Table` and `Opcode` are template parameters rather than arguments precisely
 // so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules are all
@@ -818,7 +817,8 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     constexpr std::uint8_t next_table = step.target;
     const auto next_view = static_cast<std::uint8_t>(step.forwards_view ? view : step.target_view);
     // The fetch the loop used to do, now done by whoever hands over. A latched
-    // table's opcode arrives as an operand read: three cycles, and no refresh.
+    // table's opcode arrives as an operand read rather than an instruction
+    // fetch, which is cheaper and does not refresh.
     const auto next_opcode =
         static_cast<std::uint8_t>(target::latched[next_table] ? cpu.fetch_immediate(1) : cpu.fetch_opcode());
     [[gnu::musttail]] return dispatch_for<next_table>()[next_opcode](cpu, displacement, next_view, next_opcode);
@@ -836,8 +836,8 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     const std::uint16_t indexed = [&cpu, decoded, displacement] -> std::uint16_t {
       if constexpr (displaced) {
         // A latched table read its opcode inside the same window, so that byte
-        // counts too: it is why the Z80's `dd cb d op` spends five cycles and
-        // not eight.
+        // counts too, and the machine is charged for the window once rather
+        // than for each read inside it.
         //
         // The machine is told the count and works out what is left of the window
         // from it, so a count the window cannot hold asks it for a negative delay.
@@ -887,8 +887,7 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
 //
 // A row's body is built only from the slices it *reads*. A catch-all that reads
 // none of its opcodes is one instruction wearing as many hats as it claims; a
-// row that reads both its slices is genuinely 64 instructions. (On the Z80, the
-// `ed` page's catch-all claims 218 opcodes and `ld {reg:y}, {reg:z}` is the 64.)
+// row reading two three-bit slices is genuinely sixty-four instructions.
 // Generating per (table, opcode) cannot tell the difference and stamps out 256
 // either way.
 //
