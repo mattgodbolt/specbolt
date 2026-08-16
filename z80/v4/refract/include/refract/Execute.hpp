@@ -774,9 +774,11 @@ template<std::uint8_t Table>
 void continue_running(Cpu &cpu, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
-// table surviving into the generated code. There is one of these per (table,
-// opcode), 1792 for a complete Z80, and each is typically a handful of
-// instructions, because every choice below is made at compile time.
+// table surviving into the generated code. There is one of these per *body*, a
+// row together with the slices it reads, so the opcodes of a row that reads
+// none of its variable bits share one: 747 of them for a complete Z80 against
+// its 1792 (table, opcode) pairs. See `body_key`. Each is typically a handful
+// of instructions, because every choice below is made at compile time.
 //
 // `Table` and `Opcode` are template parameters rather than arguments precisely
 // so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules are all

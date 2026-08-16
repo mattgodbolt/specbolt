@@ -54,6 +54,8 @@ languages sharing a line.
 | `<-` | `keyword.operator.assignment` |
 | a location the CPU supplies | `variable.other.location` |
 | `{vocab:selector}` | vocabulary as a type, selector as a parameter |
+| a vocabulary's `: Scope` clause | `entity.name.type.scope` |
+| `parameter=` naming the argument an operand feeds | `variable.parameter.operand` |
 | `/delay=N` | `storage.modifier.delay` |
 | a hole, and a `-` discard | `constant.language` |
 | a trailing `\`, joining a line to the next | `keyword.operator.continuation` |

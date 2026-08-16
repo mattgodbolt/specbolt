@@ -217,7 +217,7 @@ identifier      = ? no space. Resolved against the CPU's operations, ignoring
                     case ? ;
 table-name      = ? no space ? ;
 display-text    = ? a member's text as the vocabulary writes it, up to the ":"
-                    or "/", so a rule matches `q.adc`, not `q.adc:add8+carry` ? ;
+                    or "/", so a rule matches `q.adc`, not `q.adc:add8(carry)` ? ;
 literal         = ? mnemonic text containing no "{", "$" or "+d" ? ;
 ```
 
@@ -283,7 +283,7 @@ search.
 
 ### Members
 
-A member is written `display[:operation[+operand]][/delay=N]`. The `display` is
+A member is written `display[:operation[(arguments)]][/delay=N]`. The `display` is
 also the member's operand, so it must be something an operand may be: a name the
 CPU resolves, a constant, or either of those as an address.
 
@@ -887,7 +887,7 @@ would be `ld (hl),(hl)`, which is really `halt`, declared earlier, so it wins.
 **The operation from the vocabulary.**
 
 ```
-vocab arith = add:add8+0 adc:add8+carry sub:sub8+0 sbc:sub8+carry
+vocab arith = add:add8(0) adc:add8(carry) sub:sub8(0) sbc:sub8(carry)
 100qqzzz | {arith:q} a, {reg:z} | {arith:q} a, flags <- a {reg:z}
 ```
 
@@ -925,11 +925,17 @@ prefix chose. The override row exists because `ld h,(ix+d)` uses the *real* `h`.
 It says so by naming `real`, the vocabulary of true registers, which no rule
 rewrites.
 
-**A repeat.**
+**A repeat, and a direction the opcode carries.**
 
 ```
-10110000 | ldir | block_load flags <- 1 flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+vocab dir : BlockDirection = i d
+1011d000 | ld{dir:d}r | block_load flags <- {dir:d} flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
 ```
+
+One row for `ldir` and `lddr` both. Bit 3 *is* the direction, so the row hands
+it to the operation rather than spelling out two rows that differ in an
+argument, and the scope clause says the two members are `BlockDirection`
+values rather than places to read from.
 
 The rewind is what the chip actually does, re-executing the opcode, which is why
 an interrupt can land in the middle of an `ldir`.

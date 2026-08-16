@@ -97,7 +97,7 @@
     },
 
     "member": {
-      "comment": "display[:operation[+operand]][/delay=N], or `-` for a hole.",
+      "comment": "display[:operation[(arguments)]][/delay=N], or `-` for a hole.",
       "match": "(?<![^\\s=,])(?:(-)|(0[xX][0-9a-fA-F]+|[0-9]+)|(\\([^)\\s]*\\))|([^\\s:/(,]+))(?:(:)([A-Za-z_][A-Za-z0-9_]*))?(?:(\\()([^)]*)(\\)))?(?:(/)(delay)(=)([0-9]))?(?=[\\s,]|$)",
       "captures": {
         "1": { "name": "constant.language.hole.cpu" },
