@@ -251,6 +251,10 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("vocab r :\ntable t\n"),
         Equals("z80.cpu:1: ':' introduces the scope a vocabulary's members come from, and none was given"));
     CHECK_THROWS_WITH(parse("vocab r : = b c\ntable t\n"), Equals("z80.cpu:1: expected '=' in vocabulary declaration"));
+    // A scope was the one name that reached `Name` unchecked, and `Name` has no
+    // line to complain with. The Z80's own longest scope is 14 of the 15.
+    CHECK_THROWS_WITH(parse("vocab r : AVeryLongScopeName = b c\ntable t\n"),
+        Equals("z80.cpu:1: scope name 'AVeryLongScopeName' is too long"));
     CHECK_THROWS_WITH(parse("vocab r = b:add8(0,1,2,3)\ntable t\n"),
         Equals("z80.cpu:1: a member passes more arguments than an operation can take"));
     CHECK_THROWS_WITH(parse("vocab r = b:add8(n)\ntable t\n"),

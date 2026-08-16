@@ -854,8 +854,13 @@ response to a message rather than a guess.
 | operands, and destinations, per step | 4 |
 | pieces per mnemonic | 12 |
 | pieces per vocabulary member | 3 |
+| arguments a member may fix | 3 |
+| slices per opcode pattern | 4 |
 | immediate bytes per row | 2 |
 | characters in a name | 15 |
+
+A name here is an operand, a parameter or a scope: the Z80's longest is
+`ProgramCounter`, at 14.
 
 One limit is not a capacity but a shape: **an opcode is eight bits**. A pattern
 is always eight characters and a table always has 256 entries. The Z80 is a

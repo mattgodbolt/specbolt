@@ -40,6 +40,10 @@ namespace specbolt::refract {
       vocabulary.scope = parser.next_word();
       if (vocabulary.scope.empty())
         throw table_error(at, "':' introduces the scope a vocabulary's members come from, and none was given");
+      // Checked here rather than where it becomes a `Name`, which is inside
+      // `resolve` with no line to hand and long after anyone could act on it.
+      if (vocabulary.scope.size() > Name::capacity)
+        throw table_error(at, "scope name '" + std::string(vocabulary.scope) + "' is too long");
       next = parser.next_word();
     }
     if (next != "=")
