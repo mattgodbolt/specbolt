@@ -14,7 +14,7 @@ machine leak into the library constantly. Finding them is your only job.
 
 **Your scope is `z80/v4/refract/` and nothing else.** Everything else under
 `z80/v4/` (`z80.cpu`, `Z80.cpp`, `Operations.hpp`, `Table.hpp`,
-`Disassembler.cpp`, `CPU_FORMAT.md`, `NOTES.md`, the tests) belongs to the Z80
+`Disassembler.cpp`, `CPU_FORMAT.md`, `NOTES.md`, `notes/`, the tests) belongs to the Z80
 and may talk about the Z80 as much as it likes. Do not report those.
 
 ## What is fine

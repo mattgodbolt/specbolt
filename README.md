@@ -61,7 +61,8 @@ CC=<clang>/bin/clang CXX=<clang>/bin/clang++ cmake --preset debug-reflection \
     -DCMAKE_CXX_FLAGS=--gcc-toolchain=$HOME/opt/gcc-16.2.0
 ```
 
-It is about 1.4× slower than gcc at compiling v4 — see [z80/v4/NOTES.md](z80/v4/NOTES.md) for the
+It is about 1.4× slower than gcc at compiling v4; see
+[z80/v4/notes/MEASUREMENTS.md](z80/v4/notes/MEASUREMENTS.md) for the
 numbers and for what each compiler needed.
 
 ### Web/WASM Build

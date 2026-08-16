@@ -22,7 +22,8 @@ why.
 ## The blindfold, which is not optional
 
 **Do not read the project's design journal, notes file, or architecture rationale
-documents.** In this repo that means `z80/v4/NOTES.md`. Read the code, the tests,
+documents.** In this repo that means `z80/v4/NOTES.md` and everything under
+`z80/v4/notes/`. Read the code, the tests,
 and the user-facing format or API documentation. Nothing else.
 
 This is the whole value of the review. A design journal exists to justify
