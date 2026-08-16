@@ -817,6 +817,11 @@ template<std::meta::info Fn, Call C>
 // the ones a prefix can reach: a machine's simplest instruction pays a
 // register's worth for its most elaborate addressing mode existing. That trade
 // has been measured, and the alternative rejected, in the design journal.
+// Positional, and measured to be worth it. Bundling the three into a by-value
+// struct, as `Decoded` bundles what an instruction carries, reads better and
+// would stop two of them being swapped unnoticed; it also costs 3.1% more
+// retired instructions through this function-pointer table, which is too much
+// for a signature with two call sites. See notes/MEASUREMENTS.md.
 using Handler = void (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
 // A handler tail-calls into another table's dispatch, and a dispatch is built

@@ -552,3 +552,32 @@ parentheses, which is a reason that survives the measurement. `operand_for_param
 being a function: memoising it needed a second name, `compute_operand_for_parameter`, and paying a
 name for nothing is a bad trade. The claim in `arity_of`'s own comment is now unproven, and is left
 standing only because nothing argues against the form it already has.
+
+## Bundling the handler's arguments costs 3%
+
+`Handler` takes three `std::uint8_t`s positionally through a function-pointer table, so swapping two
+of them is caught by nothing. That is the coupling this file objects to on a description's behalf,
+and `Decoded` already bundles what an instruction carries for the same reason, so bundling these
+looked like tidying with no downside.
+
+Two fixed binaries, alternated, counting retired instructions rather than time:
+
+| | run 1 | run 2 | spread |
+|---|---|---|---|
+| positional | 14,324,983,856 | 14,323,098,682 | 0.013% |
+| bundled | 14,776,249,993 | 14,762,781,388 | 0.09% |
+
+**+3.1%**, which is two hundred times the reproducibility of the measurement. Not neutral, and not
+close. The structure is three bytes, trivially copyable, and passed by value; the cost is presumably
+gcc materialising it rather than keeping three arguments in three registers, across a call it cannot
+see the far side of.
+
+Two things this confirms beside the answer. Retired instructions really do reproduce to about 0.01%
+on this laptop, which makes them worth reaching for whenever a question can be phrased in them; and
+`Decoded` being free is not evidence that another bundle will be, because `Decoded` is materialised
+once per instruction inside a function the compiler can see all of, where this crosses a function
+pointer.
+
+So `Handler` stays positional, with a comment saying it was measured rather than merely preferred.
+The safety it gives up is real: the two call sites are `execute_one`'s hand-over and
+`continue_running`, and nothing but reading them would catch a transposition.
