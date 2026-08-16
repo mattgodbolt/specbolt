@@ -818,10 +818,13 @@ void continue_running(Cpu &cpu, std::uint8_t latch, std::uint8_t view, std::uint
 // typically a handful of instructions, because every choice below is made at
 // compile time.
 //
-// `Table` and `Opcode` are template parameters rather than arguments precisely
-// so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules are all
-// constants here.
-template<std::uint8_t Table, std::uint8_t Opcode, std::size_t Index>
+// `Table` and `BodyKey` are template parameters rather than arguments precisely
+// so that `target::rows[Index]`, the vocabulary lookups, and the renaming rules
+// are all constants here. `BodyKey` is not the opcode: it is the opcode with
+// every slice this body does not read cleared, so the compile-time lookups
+// below see only the bits that vary the code they generate, while the run-time
+// `opcode` parameter still carries all of them. See `body_key`.
+template<std::uint8_t Table, std::uint8_t BodyKey, std::size_t Index>
 void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
   // `static` is not an optimisation here: the expansion statement below walks
   // this as a range, and a range's *address* has to be a constant. A local
@@ -841,7 +844,7 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
   // work because `optional`'s members are `constexpr`.
   // `static` for a second reason, on top of the one above: a tail call abandons
   // the frame, so anything the compiler thinks lives in it blocks one.
-  static constexpr auto displaced = displaced_through(target::vocabularies, row, Opcode, rules);
+  static constexpr auto displaced = displaced_through(target::vocabularies, row, BodyKey, rules);
   constexpr bool entered_latched = target::latched[Table];
   const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
                                         ? static_cast<std::uint8_t>(cpu.fetch_immediate(1))
@@ -896,9 +899,9 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     // arguments. A `return` here leaves `execute_one`, not the expansion.
     template for (constexpr auto step: row.steps) {
       {
-        constexpr auto member = member_for(step, row.matched, Opcode, rules);
+        constexpr auto member = member_for(step, row.matched, BodyKey, rules);
         constexpr auto operation = step.operation_reference ? member.operation : step.operation;
-        constexpr auto call = call_for(step, row.matched, Opcode, row.line, rules);
+        constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
         if constexpr (step.kind == Step::Kind::If) {
           // The rest of the row is the conditional half, which is where the
           // extra cycles of a taken branch come from too. `break` rather than
@@ -966,6 +969,14 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
 // The encoding with every unread variable bit cleared, which names the body
 // this opcode wants. Two opcodes of one row share a body exactly when this
 // agrees.
+//
+// This is what `execute_one` is given as `BodyKey`, and the invariant that
+// makes the sharing sound lives here, between the two halves that have to
+// agree: the slices `slices_read_by` leaves out are exactly the ones that do
+// not vary the generated code, which is the same set `resolve` short-circuits
+// when it turns a numeric vocabulary into a run-time read of the opcode. Add a
+// kind of reference that the generated code *does* branch on, and it has to be
+// noted in both places or two opcodes will share a body they disagree about.
 [[nodiscard]] consteval std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
   auto result = row.matched.opcode_bits;
   for (const auto index: slices_read_by(row)) {
