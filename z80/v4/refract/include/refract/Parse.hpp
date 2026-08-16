@@ -412,7 +412,8 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
   }
   if (step.operation == "goto") {
     if (step.kind == Step::Kind::If)
-      throw table_error(row.line, "a goto cannot be conditional; guard it with an earlier `if` step");
+      throw table_error(row.line, "a goto is the whole of its row, so it cannot be conditional; a row that decides "
+                                  "between two tables has to be two rows, one per encoding");
     step.kind = Step::Kind::Goto;
     auto destination = action.next_word();
     std::string_view supplied;
@@ -512,7 +513,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     // to be the whole row or the two would disagree about what an opcode means.
     if (std::ranges::any_of(row.steps, [](const Step &step) { return step.kind == Step::Kind::Goto; }) &&
         row.steps.size() != 1) // NOLINT
-      throw table_error(at, "a goto must be the row's only step");
+      throw table_error(at, "a goto is the whole of its row, so it cannot share one with another step");
     lower_mnemonic(vocabularies, row, tables[*current]);
     check_immediates(row);
     result.push_back(row);
