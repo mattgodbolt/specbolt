@@ -74,35 +74,38 @@ private:
 
 public:
   static void nop() {}
-  static std::uint16_t ld16(const std::uint16_t value) { return value; }
-  static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
-  static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
-  static std::uint8_t ld8(const std::uint8_t value) { return value; }
+  [[nodiscard]] static std::uint16_t ld16(const std::uint16_t value) { return value; }
+  [[nodiscard]] static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
+  [[nodiscard]] static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
+  [[nodiscard]] static std::uint8_t ld8(const std::uint8_t value) { return value; }
   static void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.delay(cycles); }
   // Alu::bit takes a mask; the encoding carries an index, as res and set do.
   // Flags 3 and 5 come from whatever was last on the bus, which the row names.
-  static Flags bit8(const std::uint8_t value, const std::uint8_t bit, const Flags flags, const std::uint8_t bus) {
+  [[nodiscard]] static Flags bit8(
+      const std::uint8_t value, const std::uint8_t bit, const Flags flags, const std::uint8_t bus) {
     return Alu::bit(value, static_cast<std::uint8_t>(1u << bit), flags, bus);
   }
-  static std::uint8_t res8(const std::uint8_t value, const std::uint8_t bit) {
+  [[nodiscard]] static std::uint8_t res8(const std::uint8_t value, const std::uint8_t bit) {
     return static_cast<std::uint8_t>(value & ~(1u << bit));
   }
-  static std::uint8_t set8(const std::uint8_t value, const std::uint8_t bit) {
+  [[nodiscard]] static std::uint8_t set8(const std::uint8_t value, const std::uint8_t bit) {
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
   // Conditions. A vocabulary member binds one of these and appends the flag it
   // asks about, exactly as `adc` binds `add8` and appends the carry.
-  static bool is_set(const bool flag) { return flag; }
-  static bool is_clear(const bool flag) { return !flag; }
-  static bool nonzero(const std::uint8_t value) { return value != 0; }
+  [[nodiscard]] static bool is_set(const bool flag) { return flag; }
+  [[nodiscard]] static bool is_clear(const bool flag) { return !flag; }
+  [[nodiscard]] static bool nonzero(const std::uint8_t value) { return value != 0; }
 
   // `djnz` counts without touching the flags, which `dec8` would.
-  static std::uint8_t dec8_quiet(const std::uint8_t value) { return static_cast<std::uint8_t>(value - 1); }
+  [[nodiscard]] static std::uint8_t dec8_quiet(const std::uint8_t value) {
+    return static_cast<std::uint8_t>(value - 1);
+  }
 
   // A relative jump is measured from the byte after the offset, which is where
   // the program counter already is.
-  static std::uint16_t relative(const std::uint16_t pc, const std::uint8_t offset) {
+  [[nodiscard]] static std::uint16_t relative(const std::uint16_t pc, const std::uint8_t offset) {
     return static_cast<std::uint16_t>(pc + static_cast<std::int8_t>(offset));
   }
 
@@ -113,14 +116,14 @@ public:
     cpu.bus(Bus::io_write, address);
     cpu.out(address, value);
   }
-  static std::uint8_t in_n(Cpu &cpu, const std::uint8_t port, const std::uint8_t high) {
+  [[nodiscard]] static std::uint8_t in_n(Cpu &cpu, const std::uint8_t port, const std::uint8_t high) {
     const auto address = static_cast<std::uint16_t>(high << 8 | port);
     cpu.bus(Bus::io_read, address);
     return cpu.in(address);
   }
 
   // Three accesses and two idle stretches, none of which an operand can spell.
-  static std::uint16_t ex_sp_hl(Cpu &cpu, const std::uint16_t value) {
+  [[nodiscard]] static std::uint16_t ex_sp_hl(Cpu &cpu, const std::uint16_t value) {
     const auto sp = cpu.get(RegisterFile::R16::SP);
     const auto low = cpu.read_memory(sp);
     const auto high = cpu.read_memory(static_cast<std::uint16_t>(sp + 1));
@@ -136,7 +139,7 @@ public:
   // memory.
   // Sign, zero and parity come from the byte; the carry is explicitly *not*
   // affected, so it has to be carried through rather than recomputed.
-  static Alu::R8 in_c(Cpu &cpu, const std::uint16_t port, const Flags flags) {
+  [[nodiscard]] static Alu::R8 in_c(Cpu &cpu, const std::uint16_t port, const Flags flags) {
     cpu.bus(Bus::io_read, port);
     const auto value = cpu.in(port);
     return {value, Alu::parity_flags_for(value) | (flags & Flags::Carry())};
@@ -148,19 +151,21 @@ public:
 
   // `ld a,i` and `ld a,r` report iff2 in the parity flag, which is the one way
   // a program can see the interrupt state.
-  static Alu::R8 ld_a_special(Cpu &cpu, const std::uint8_t value, const Flags flags) {
+  [[nodiscard]] static Alu::R8 ld_a_special(Cpu &cpu, const std::uint8_t value, const Flags flags) {
     return {value, Alu::iff2_flags_for(value, flags, cpu.iff2())};
   }
 
   // `neg` is `0 - a`, which sub8 already is.
-  static Alu::R8 neg8(const std::uint8_t value) { return Alu::sub8(0, value, false); }
+  [[nodiscard]] static Alu::R8 neg8(const std::uint8_t value) { return Alu::sub8(0, value, false); }
 
-  static bool nonzero16(const std::uint16_t value) { return value != 0; }
+  [[nodiscard]] static bool nonzero16(const std::uint16_t value) { return value != 0; }
 
   // `rrd` and `rld` move a nibble between the accumulator and memory, so both
   // ends change at once and only one of them can be a destination.
-  static Alu::R8 rrd8(Cpu &cpu, const std::uint8_t value, const Flags flags) { return nibble(cpu, value, flags, true); }
-  static Alu::R8 rld8(Cpu &cpu, const std::uint8_t value, const Flags flags) {
+  [[nodiscard]] static Alu::R8 rrd8(Cpu &cpu, const std::uint8_t value, const Flags flags) {
+    return nibble(cpu, value, flags, true);
+  }
+  [[nodiscard]] static Alu::R8 rld8(Cpu &cpu, const std::uint8_t value, const Flags flags) {
     return nibble(cpu, value, flags, false);
   }
 
@@ -168,7 +173,7 @@ public:
   // bc down. The repeating forms are the same row with a condition and a
   // rewind: the chip really does re-execute the opcode, which is why an
   // interrupt can land in the middle of an `ldir`.
-  static Flags block_load(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+  [[nodiscard]] static Flags block_load(Cpu &cpu, const BlockDirection direction, const Flags flags) {
     const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto de = cpu.get(RegisterFile::R16::DE);
@@ -182,7 +187,7 @@ public:
     // Flags 3 and 5 come from the byte plus the accumulator, and swapped over.
     return counted(flags, bc, static_cast<std::uint8_t>(byte + cpu.get(RegisterFile::R8::A)));
   }
-  static Flags block_compare(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+  [[nodiscard]] static Flags block_compare(Cpu &cpu, const BlockDirection direction, const Flags flags) {
     const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto bc = cpu.get(RegisterFile::R16::BC);
@@ -198,7 +203,7 @@ public:
     constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
     return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
   }
-  static Flags block_in(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+  [[nodiscard]] static Flags block_in(Cpu &cpu, const BlockDirection direction, const Flags flags) {
     cpu.delay(1);
     const auto port = cpu.get(RegisterFile::R16::BC);
     cpu.bus(Bus::io_read, port);
@@ -208,7 +213,7 @@ public:
     cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
     return stepped(cpu, flags);
   }
-  static Flags block_out(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+  [[nodiscard]] static Flags block_out(Cpu &cpu, const BlockDirection direction, const Flags flags) {
     cpu.delay(1);
     const auto hl = cpu.get(RegisterFile::R16::HL);
     const auto value = cpu.read_memory(hl);

@@ -14,6 +14,6 @@ SPECBOLT_EXPORT struct Disassembled {
   std::size_t length;
 };
 
-SPECBOLT_EXPORT Disassembled disassemble(const Memory &memory, std::uint16_t address);
+SPECBOLT_EXPORT [[nodiscard]] Disassembled disassemble(const Memory &memory, std::uint16_t address);
 
 } // namespace specbolt::v4
