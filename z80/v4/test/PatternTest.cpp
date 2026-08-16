@@ -3,11 +3,7 @@
 #include <algorithm>
 #include <ranges>
 
-#ifdef SPECBOLT_MODULES
-import z80_v4;
-#else
 #include "refract/Pattern.hpp"
-#endif
 
 namespace specbolt::v4 {
 

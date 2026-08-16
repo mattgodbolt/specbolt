@@ -1,11 +1,9 @@
-#ifndef SPECBOLT_MODULES
 #include "z80/v4/Z80.hpp"
 
 #include "refract/Execute.hpp"
 
 #include <limits>
 #include <utility>
-#endif
 
 namespace specbolt::v4 {
 

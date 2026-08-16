@@ -1,6 +1,5 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/common/Z80Base.hpp"
@@ -10,7 +9,6 @@
 #include <utility>
 
 #include "peripherals/Memory.hpp"
-#endif
 
 namespace specbolt::v4 {
 

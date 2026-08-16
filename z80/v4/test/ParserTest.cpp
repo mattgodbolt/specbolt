@@ -1,10 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#ifdef SPECBOLT_MODULES
-import z80_v4;
-#else
 #include "refract/Parser.hpp"
-#endif
 
 #include <ranges>
 #include <vector>

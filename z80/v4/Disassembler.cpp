@@ -1,4 +1,3 @@
-#ifndef SPECBOLT_MODULES
 #include "z80/v4/Disassembler.hpp"
 
 #include "Table.hpp"
@@ -6,7 +5,6 @@
 #include "refract/Disassemble.hpp"
 
 #include <utility>
-#endif
 
 namespace specbolt::v4 {
 

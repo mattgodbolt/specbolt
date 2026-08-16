@@ -1,13 +1,11 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 #include <cstdint>
 #include <string>
 
 namespace specbolt {
 class Memory;
 }
-#endif
 
 namespace specbolt::v4 {
 

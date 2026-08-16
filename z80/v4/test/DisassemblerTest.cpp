@@ -1,17 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <cstdint>
 
-#ifdef SPECBOLT_MODULES
-import z80_v4;
-#else
 #include "z80/v4/Disassembler.hpp"
-#endif
 
-#ifdef SPECBOLT_MODULES
-import peripherals;
-#else
 #include "peripherals/Memory.hpp"
-#endif
 
 namespace specbolt::v4 {
 TEST_CASE("Opcode generation tests") {

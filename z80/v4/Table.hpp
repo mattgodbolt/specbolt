@@ -1,6 +1,5 @@
 #pragma once
 
-#ifndef SPECBOLT_MODULES
 #include "refract/Coverage.hpp"
 #include "refract/Model.hpp"
 #include "refract/Parse.hpp"
@@ -12,7 +11,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#endif
 
 namespace specbolt::v4 {
 

@@ -2,18 +2,10 @@
 #include <cstdint>
 #include <optional>
 
-#ifdef SPECBOLT_MODULES
-import z80_v4;
-#else
 #include "z80/v4/Z80.hpp"
-#endif
 
-#ifdef SPECBOLT_MODULES
-import peripherals;
-#else
 #include "peripherals/Memory.hpp"
 #include "z80/common/Scheduler.hpp"
-#endif
 
 // Cycle counts and results are the ones `z80/test/OpcodeTests.cpp` asserts
 // against v1/v2/v3, so a row that decodes has to agree with three
