@@ -432,8 +432,13 @@ Nothing that runs at compile time can know which member a view will pick, so
 every check resolves such a reference at member 0 and applies the answer to all
 of them. That is only sound if the members agree about everything except which
 location they name: whether they are indirect, whether they are displaced, what
-a write-back costs, whether they bring an operation of their own, and how they
-render.
+a write-back costs, and how they render.
+
+For the same reason a member of such a vocabulary may **only** name a location.
+An operation is spliced once, from member 0, so a member bringing its own would
+be obeyed for the first view and ignored for every other; and a member bringing
+the *same* operation as its siblings only spells out something the row could say
+once. `vocab m = ix:ld16 iy:inc16` is rejected on the vocabulary's own line.
 
 So this is rejected, on the line that references it:
 

@@ -386,16 +386,27 @@ TEST_CASE("Table diagnostics") {
     // that selects it by a view, without which the declaration would be fine.
     CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy)\n" + std::string(prefix)),
         Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so all of its members must have the "
-               "same shape; '(iy)' does not match '(ix+d)'"));
+               "same shape as '(ix+d)'; '(iy)' does not"));
     // Disagreeing about the idle cycle a write-back costs is just as silent.
     CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy+d)\n" + std::string(prefix)),
         Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so all of its members must have the "
-               "same shape; '(iy+d)' does not match '(ix+d)'"));
+               "same shape as '(ix+d)'; '(iy+d)' does not"));
     // A hole cannot be one of them either: a view has no opcode bits to leave
     // room for a more specific row in.
     CHECK_THROWS_WITH(parse("vocab m = ix -\n" + std::string(prefix)),
         Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so all of its members must have the "
-               "same shape; '-' does not match 'ix'"));
+               "same shape as 'ix'; '-' does not"));
+    // And a member may not bring an operation at all. The operation is spliced
+    // from member 0, so two that disagree would run the first one's for every
+    // view: the `fd` page would execute `ld16` where the row said `inc16`.
+    CHECK_THROWS_WITH(parse("vocab m = ix:ld16 iy:inc16\n" + std::string(prefix)),
+        Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so each of its members may only name "
+               "a location, since a view is chosen long after the operation has been spliced; 'ix' does not"));
+    // Agreeing about the operation is not enough either: the arguments a member
+    // fixes are spliced from member 0 in the same way.
+    CHECK_THROWS_WITH(parse("vocab m = ix:add8(0) iy:add8(carry)\n" + std::string(prefix)),
+        Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so each of its members may only name "
+               "a location, since a view is chosen long after the operation has been spliced; 'ix' does not"));
   }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("vocab r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));

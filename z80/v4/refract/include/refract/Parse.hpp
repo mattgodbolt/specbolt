@@ -232,19 +232,27 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   const auto &first = vocabulary.members[0];
   const auto shape_of = [](const Member &member) {
     return std::tuple{member.hole, member.operand.indirect, member.operand.displaced, member.operand.write_back_delay,
-        member.operand.kind, member.operation.empty(), member.arguments.size(), member.pieces.size()};
+        member.operand.kind, member.pieces.size()};
   };
-  const auto complaint = [&](const Member &member, const std::string_view must) {
+  const auto complaint = [&](const std::string_view what, const std::string_view because) {
     return table_error(vocabulary.line, "vocabulary '" + std::string(vocabulary.name) + "' is selected by a view (at " +
-                                            at_line(used_at) + "), so " + std::string(must) + "; '" +
-                                            std::string(member.display) + "' does not match '" +
-                                            std::string(first.display) + "'");
+                                            at_line(used_at) + "), so " + std::string(because) + "; '" +
+                                            std::string(what) + "' does not");
   };
   for (const auto &member: vocabulary.members) {
+    // The operation is spliced from member 0, so a member that brought its own
+    // would be ignored for every view but the first. Rather than require them to
+    // agree, which permits only a spelling the row could give once, a member a
+    // view selects names a location and nothing else.
+    if (!member.operation.empty())
+      throw complaint(member.display, "each of its members may only name a location, since a view is chosen long "
+                                      "after the operation has been spliced");
     if (shape_of(member) != shape_of(first))
-      throw complaint(member, "all of its members must have the same shape");
+      throw complaint(
+          member.display, "all of its members must have the same shape as '" + std::string(first.display) + "'");
     if (!std::ranges::equal(member.pieces, first.pieces, {}, &Piece::kind, &Piece::kind))
-      throw complaint(member, "all of its members must render the same way");
+      throw complaint(
+          member.display, "all of its members must render the same way as '" + std::string(first.display) + "'");
   }
 }
 
