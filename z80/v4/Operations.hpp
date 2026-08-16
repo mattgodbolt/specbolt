@@ -241,8 +241,10 @@ public:
   static void ex_af(Cpu &cpu) { cpu.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
 };
 
-// Where the table may name operations from. A `std::vector` for the same reason
-// `location_scopes` is one. See Locations.hpp.
+// Where the table may name operations from, and the only scope question a
+// machine has to answer: where its *locations* live is derived from its `read`
+// overloads instead. A `std::vector` because only `consteval` code reads it, so
+// the allocation never leaves the constant evaluation that made it.
 [[nodiscard]] consteval std::vector<std::meta::info> operation_scopes() { return {^^Operations, ^^Alu}; }
 
 } // namespace specbolt::v4
