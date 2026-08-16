@@ -683,47 +683,56 @@ template<std::meta::info Member>
 template<std::meta::info Fn, Call C>
 void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   constexpr std::size_t supplied = takes_cpu<Fn>() ? 1 : 0;
-  static_assert(
-      C.operands.size() + supplied == arity_of<Fn>, "the row supplies the wrong number of operands for this operation");
-  // A default capture rather than `[&cpu]`, because only one branch of the
-  // `if constexpr` names it: an operation that does not ask for the machine
-  // leaves an explicit capture unused, which clang diagnoses and gcc does not.
-  const auto call = [&](const auto &arguments) { return call_with<Fn, C>(cpu, arguments); };
+  // Gating the body on the same condition, rather than only asserting it,
+  // keeps a wrong count from being one message followed by twenty. The
+  // `decltype` below asks for the operation's return type, which instantiates
+  // a parameter type per operand, and an operand the signature has no
+  // parameter for indexes off the end of `parameters_of` inside libstdc++.
+  constexpr bool arity_matches = C.operands.size() + supplied == arity_of<Fn>;
+  static_assert(arity_matches, "the row supplies the wrong number of operands for this operation");
+  if constexpr (arity_matches) {
+    // A default capture rather than `[&cpu]`, because only one branch of the
+    // `if constexpr` names it: an operation that does not ask for the machine
+    // leaves an explicit capture unused, which clang diagnoses and gcc does not.
+    const auto call = [&](const auto &arguments) { return call_with<Fn, C>(cpu, arguments); };
 
-  // Unevaluated, despite everything just said about operands having effects:
-  // `decltype` asks for the type and calls nothing.
-  using Result = decltype(call(operands_of<Fn, C>(cpu, decoded, indexed)));
-  // A `std::span`, and safe to hold: `decomposes_into` promotes its contents
-  // with `define_static_array`, so what this points at has static storage and
-  // `members[at]` is a constant expression a splice can use.
-  static constexpr auto members = decomposes_into(^^Result, C.line);
-  // The language would decompose a one-member class quite happily; refusing to
-  // is this framework's own policy, because such a result is as good a
-  // description of one value as of a bundle holding one, and a row would be
-  // written differently depending on which was meant.
-  static_assert(members.size() != 1,
-      "a result with one part is ambiguous: give it a second part, or keep its state to itself and be one value");
-  if constexpr (std::is_void_v<Result>) {
-    static_assert(C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
-    call(operands_of<Fn, C>(cpu, decoded, indexed));
-  }
-  else if constexpr (members.size() > 1) {
-    // Two is a value and the flags it set, which is what almost every
-    // arithmetic operation returns. One accessible member is caught above as
-    // ambiguous.
-    static_assert(
-        C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
-    const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
-    template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
-        store<C.destinations[at], C.line>(cpu, decoded, indexed, member_of_result<members[at]>(result));
-  }
-  else {
-    static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
-    // More than one *destination* is how an instruction writes one result to
-    // two places, as the Z80's `dd cb d op` puts it through the addressing mode
-    // and into the register its low bits name.
-    const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
-    template for (constexpr auto destination: C.destinations) store<destination, C.line>(cpu, decoded, indexed, result);
+    // Unevaluated, despite everything just said about operands having effects:
+    // `decltype` asks for the type and calls nothing.
+    using Result = decltype(call(operands_of<Fn, C>(cpu, decoded, indexed)));
+    // A `std::span`, and safe to hold: `decomposes_into` promotes its contents
+    // with `define_static_array`, so what this points at has static storage and
+    // `members[at]` is a constant expression a splice can use.
+    static constexpr auto members = decomposes_into(^^Result, C.line);
+    // The language would decompose a one-member class quite happily; refusing to
+    // is this framework's own policy, because such a result is as good a
+    // description of one value as of a bundle holding one, and a row would be
+    // written differently depending on which was meant.
+    static_assert(members.size() != 1,
+        "a result with one part is ambiguous: give it a second part, or keep its state to itself and be one value");
+    if constexpr (std::is_void_v<Result>) {
+      static_assert(
+          C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
+      call(operands_of<Fn, C>(cpu, decoded, indexed));
+    }
+    else if constexpr (members.size() > 1) {
+      // Two is a value and the flags it set, which is what almost every
+      // arithmetic operation returns. One accessible member is caught above as
+      // ambiguous.
+      static_assert(
+          C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
+      const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
+      template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
+          store<C.destinations[at], C.line>(cpu, decoded, indexed, member_of_result<members[at]>(result));
+    }
+    else {
+      static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
+      // More than one *destination* is how an instruction writes one result to
+      // two places, as the Z80's `dd cb d op` puts it through the addressing mode
+      // and into the register its low bits name.
+      const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
+      template for (constexpr auto destination: C.destinations)
+          store<destination, C.line>(cpu, decoded, indexed, result);
+    }
   }
 }
 
