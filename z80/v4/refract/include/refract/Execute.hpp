@@ -111,7 +111,7 @@ static_assert(
 // Why the data looks the way it does
 // ---------------------------------------------------------------------------
 //
-// `Call` and `Operand` are non-type template parameters, so they must be
+// `Call` and `Resolved` are non-type template parameters, so they must be
 // *structural*: literal types whose members are all public, recursively. That
 // single requirement explains a lot of the model: why `Vector` exposes its
 // `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>`
@@ -294,9 +294,9 @@ static_assert(location_names_are_unique(),
 // `template for` rather than a loop: a splice needs its operand to be a
 // constant expression, and only an expansion statement's induction variable is
 // one.
-template<Operand Op, std::size_t Line>
+template<Resolved Op, std::size_t Line>
 [[nodiscard]] consteval auto locations_of_view() {
-  constexpr const auto &vocabulary = target::vocabularies[Op.reference.vocabulary_index];
+  constexpr const auto &vocabulary = target::vocabularies[Op.view_vocabulary];
   constexpr const auto &members = vocabulary.members;
   // The scope comes from the vocabulary rather than from a member, because a
   // member is parsed before anything knows which vocabulary it will end up in.
@@ -385,14 +385,14 @@ struct Decoded {
 // is a non-type template parameter, so every member of it, and of everything
 // it contains, has to be public. See the note on structural types above.
 struct Call {
-  Vector<Operand, max_operands> operands{};
-  Vector<Operand, max_operands> destinations{};
+  Vector<Resolved, max_operands> operands{};
+  Vector<Resolved, max_operands> destinations{};
   // Which line of the description this came from, so a diagnostic can name it.
   // It sits here, and is threaded through `value_of`, `store` and the rest as a
-  // separate template parameter, rather than being a member of `Operand` where
+  // separate template parameter, rather than being a member of `Resolved` where
   // it would obviously be tidier.
   //
-  // Deliberately. `Operand` is a template argument, so two of them are the same
+  // Deliberately. `Resolved` is a template argument, so two of them are the same
   // argument when they are memberwise equal. Give it a line and an operand on
   // line 40 stops being the same one as the identical operand on line 90, every
   // instantiation below splits in two, and a file whose build cost is measured
@@ -402,10 +402,10 @@ struct Call {
 };
 
 // The rule the paragraph above states, said in a way the compiler checks. Give
-// `Operand` a `std::string_view` and this fires here, rather than as a
+// `Resolved` a `std::string_view` and this fires here, rather than as a
 // deduction failure several hundred lines away from the cause.
 static_assert(std::meta::is_structural_type(^^Name));
-static_assert(std::meta::is_structural_type(^^Operand));
+static_assert(std::meta::is_structural_type(^^Resolved));
 static_assert(std::meta::is_structural_type(^^Call));
 
 // An operand becomes the type the parameter it feeds asks for. A constant is
@@ -413,15 +413,15 @@ static_assert(std::meta::is_structural_type(^^Call));
 // parameter is a mistake worth naming. A location converts the ordinary way, so
 // whether a 16-bit register reaching an 8-bit parameter is diagnosed depends on
 // the build's warnings rather than on anything this file does.
-template<Operand Op, std::size_t Line, typename Parameter>
+template<Resolved Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter direct_value_of(Cpu &cpu, const Decoded decoded) {
   static_assert(!std::is_reference_v<Parameter>,
       "an operation takes its operands by value; there is nothing here for a reference to bind to");
-  if constexpr (Op.kind == Operand::Kind::Constant && Op.from_opcode)
+  if constexpr (Op.kind == Resolved::Kind::Constant && Op.from_opcode)
     // The instruction carries the number and the slice says where. Nothing to
     // check against the parameter: the mask already bounds it.
     return static_cast<Parameter>(Op.slice.extract(decoded.opcode));
-  else if constexpr (Op.kind == Operand::Kind::Constant) {
+  else if constexpr (Op.kind == Resolved::Kind::Constant) {
     // A parameter that is an enum has names for its values, and those names are
     // what a spelling annotation exists to expose. Casting a number into one
     // would get past every check the enum was introduced to impose, so this is
@@ -433,7 +433,7 @@ template<Operand Op, std::size_t Line, typename Parameter>
           "this constant does not fit the parameter it is passed to");
     return static_cast<Parameter>(Op.constant);
   }
-  else if constexpr (Op.kind == Operand::Kind::Immediate) {
+  else if constexpr (Op.kind == Resolved::Kind::Immediate) {
     if constexpr (Op.width == 1)
       return static_cast<std::uint8_t>(decoded.immediate);
     else
@@ -464,7 +464,7 @@ template<Operand Op, std::size_t Line, typename Parameter>
 
 // The address an indirect operand addresses through. A displaced one was formed
 // once for the whole instruction, before any operand was touched.
-template<Operand Op, std::size_t Line>
+template<Resolved Op, std::size_t Line>
 [[nodiscard]] std::uint16_t address_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   if constexpr (Op.displaced)
     return indexed;
@@ -477,7 +477,7 @@ template<Operand Op, std::size_t Line>
 // the row says, so one operand spelling serves every width the machine offers.
 // (On the Z80 that is `ld16 hl <- (n)` reading two bytes where `ld8 a <- (n)`
 // reads one.)
-template<Operand Op, std::size_t Line, typename Parameter>
+template<Resolved Op, std::size_t Line, typename Parameter>
 [[nodiscard]] Parameter value_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   if constexpr (Op.indirect) {
     // The machine offers two widths and the parameter's type picks. Said out
@@ -496,9 +496,9 @@ template<Operand Op, std::size_t Line, typename Parameter>
     return direct_value_of<Op, Line, Parameter>(cpu, decoded);
 }
 
-template<Operand Op, std::size_t Line, typename T>
+template<Resolved Op, std::size_t Line, typename T>
 void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T value) {
-  if constexpr (Op.kind == Operand::Kind::Discard)
+  if constexpr (Op.kind == Resolved::Kind::Discard)
     static_cast<void>(value);
   else if constexpr (Op.indirect) {
     static_assert(std::same_as<T, std::uint8_t> || std::same_as<T, std::uint16_t>,
@@ -513,7 +513,7 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
       cpu.write_memory(address, value);
   }
   else {
-    static_assert(Op.kind == Operand::Kind::Named, "only a named location can be a destination");
+    static_assert(Op.kind == Resolved::Kind::Named, "only a named location can be a destination");
     if constexpr (Op.from_view) {
       static constexpr auto locations = locations_of_view<Op, Line>();
       cpu.write(locations[decoded.view], value);
@@ -724,11 +724,11 @@ template<std::meta::info Fn, Call C>
   for (const auto &operand: step.operands)
     if (!result.operands.try_push_back(resolve(at, operand)))
       throw table_error(line, "too many operands");
-  for (auto destination: step.destinations) {
-    destination = resolve(at, destination);
+  for (const auto &written: step.destinations) {
+    auto destination = resolve(at, written);
     // The idle cycle belongs to a write-back, so only to something read through
     // the same address it will be written through.
-    const auto was_read = destination.indirect && std::ranges::any_of(result.operands, [&](const Operand &operand) {
+    const auto was_read = destination.indirect && std::ranges::any_of(result.operands, [&](const Resolved &operand) {
       return operand.indirect && operand.name == destination.name;
     });
     if (!was_read)
@@ -736,9 +736,11 @@ template<std::meta::info Fn, Call C>
     if (!result.destinations.try_push_back(destination))
       throw table_error(line, "too many destinations");
   }
-  // A vocabulary member may append an operand the encoding does not carry.
+  // A vocabulary member may append an operand the encoding does not carry. It
+  // named no vocabulary, so it is already resolved and has no scope: which enum
+  // a name means here is the parameter's business.
   for (const auto &argument: member.arguments)
-    if (!result.operands.try_push_back(argument))
+    if (!result.operands.try_push_back(as_resolved(argument)))
       throw table_error(line, "too many operands");
   return result;
 }

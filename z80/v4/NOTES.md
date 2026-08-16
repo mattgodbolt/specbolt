@@ -2490,3 +2490,48 @@ against the line that has to change**, and name the line that made it a
 requirement in the text. A check that fires at a use site has to be asked which
 of the two it is really about, and it is usually not the one it happens to be
 standing on.
+
+## Done: an operand before an opcode, and an operand after one
+
+One `Operand` served three roles: what a row wrote, what a vocabulary member
+holds, and what `resolve` produced. Thirteen fields, of which `reference` meant
+something only before resolution and `scope`, `from_opcode`, `slice` and
+`from_view` only after. Nothing said so, so nothing checked it.
+
+Three places had gone wrong on exactly that seam, and two were live:
+
+- `locations_of_view` read `scope` off a *member's* operand, where only
+  `resolve` ever sets it. It was always empty, so every view-selected location
+  was looked up unqualified, and the four index vocabularies all declare a
+  scope. It gave right answers only because `location_names_are_unique` asserts
+  the whole pool is unambiguous, which is the guarantee the scope clause exists
+  so a description need not lean on.
+- `call_for` pushed a member's appended arguments straight into the call's
+  operand list without resolving them, so a `Call` held a mixture of the two.
+- `resolve` wrote its answer back over `reference.vocabulary_index`, a field
+  whose other meaning was a slice plus a vocabulary.
+
+`Operand` is now what a description wrote and `Resolved` is what an opcode makes
+of it. The generated code is templated on `Resolved`, `resolve` is the only way
+to obtain one, and the three sites above are no longer expressible: the first
+two are type errors and the third is a field called `view_vocabulary`.
+
+**The enum is the part worth stealing.** `Resolved::Kind` has four enumerators
+where `Operand::Kind` has five: resolving a vocabulary reference *is* the
+lookup, so `Vocabulary` cannot survive it. Before, a vocabulary operand reaching
+`direct_value_of` would have fallen out of the bottom of the `if constexpr`
+chain and spliced a lookup of an empty name. Now the case does not exist to be
+reached, and the compiler knows the chain is exhaustive.
+
+The types did not get smaller: nine fields and thirteen, against thirteen, since
+the shape fields are genuinely common to both. What was bought is that no field
+on either is meaningless, and that `Resolved resolve(const Resolution &,
+Operand)` states the direction of travel in its signature.
+
+**Build cost: unchanged, 747 instantiations before and after** (`nm | sort -u`
+on `Z80.cpp.o`). Shrinking an NTTP can only merge instantiations, never split
+them, so this was the expected direction, but the hoped-for merge did not
+happen: `parameter` has to stay on the resolved side, because
+`operand_for_parameter` reads it off `C.operands` to work out the argument
+order, and it is the only field two otherwise-identical operands are likely to
+differ in.

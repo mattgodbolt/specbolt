@@ -32,10 +32,10 @@ namespace specbolt::refract {
 // to have the same shape, so view 0 answers for all of them. That requirement
 // is `check_view_vocabulary` in Parse.hpp, without which one page of a
 // prefixed encoding would quietly get another's addressing mode.
-[[nodiscard]] constexpr std::optional<Operand> displaced_through(
+[[nodiscard]] constexpr std::optional<Resolved> displaced_through(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode};
-  std::optional<Operand> found;
+  std::optional<Resolved> found;
   const auto consider = [&](const Operand &operand) {
     const auto resolved = resolve(at, operand);
     if (!resolved.displaced)

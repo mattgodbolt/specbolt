@@ -1,11 +1,10 @@
 #pragma once
 
 // The shapes a parsed instruction table is made of, all of them plain value
-// types. `Name`, `Reference` and `Operand` are non-type template parameters
-// later, so those three are *structural*: literal, with every member public,
-// recursively, which is what `Name` exists to be. The rest hold
-// `std::string_view`s into the description and so could not be however they
-// were written.
+// types. `Name` and `Resolved` are non-type template parameters later, so they
+// are *structural*: literal, with every member public, recursively, which is
+// what `Name` exists to be. The rest hold `std::string_view`s into the
+// description and so could not be however they were written.
 
 #include "refract/Pattern.hpp"
 #include "refract/Vector.hpp"
@@ -87,25 +86,75 @@ struct Operand {
   // paying for it is.
   bool displaced{};
   std::uint8_t write_back_delay{};
-  // The value is in the instruction: these bits of the opcode. A vocabulary of
-  // plain numbers needs no code of its own, so choosing between its members is
-  // a run-time read rather than one function per member.
-  bool from_opcode{};
-  BitSlice slice{};
   // The operand says which parameter it feeds rather than relying on where it
   // sits, as `value=(hl)` does in the Z80's description. Empty when the row
   // wrote it positionally, which is almost always. See `operand_for_parameter`
   // in Execute.hpp.
   Name parameter{};
-  // Chosen by the table's view, so it cannot be folded away at compile time.
-  // `reference.vocabulary_index` says which vocabulary, and the generated code
-  // turns that into the list of locations the view indexes.
-  bool from_view{};
-  // Carried from the vocabulary this came from, because by the time a name is
-  // looked up the vocabulary is long gone.
-  Name scope{};
   constexpr bool operator==(const Operand &) const = default;
 };
+
+// What an operand becomes once an opcode has settled which vocabulary member it
+// meant. `Operand` is what a description wrote; this is what the generated code
+// is built from, and `resolve` below is the only way to arrive at one.
+//
+// The two share their shape and differ at both ends, which is the point of
+// there being two of them: a `Reference` means nothing here, and the four
+// fields below it mean nothing until an opcode has been chosen.
+struct Resolved {
+  // No `Vocabulary`: resolving one is the lookup, so what is left names
+  // whatever the member named.
+  enum class Kind : std::uint8_t { Constant, Named, Immediate, Discard };
+  Kind kind{};
+  Name name{};
+  std::uint16_t constant{};
+  std::uint8_t width{};
+  bool indirect{};
+  bool displaced{};
+  std::uint8_t write_back_delay{};
+  Name parameter{};
+  // The scope of the vocabulary this came from, because by the time a name is
+  // looked up the vocabulary is long gone. Empty for an operand no vocabulary
+  // owns, such as one a member appends, where the parameter decides.
+  Name scope{};
+  // The value is in the instruction: these bits of the opcode. A vocabulary of
+  // plain numbers needs no code of its own, so choosing between its members is
+  // a run-time read rather than one function per member.
+  bool from_opcode{};
+  BitSlice slice{};
+  // Chosen by the table's view, so it cannot be folded away at compile time.
+  // The generated code turns the vocabulary into the list of locations the view
+  // indexes.
+  bool from_view{};
+  std::uint8_t view_vocabulary{};
+  constexpr bool operator==(const Resolved &) const = default;
+};
+
+// An operand that names no vocabulary resolves to itself. A member's operand
+// arrives here too, which is why the vocabulary case is a framework invariant
+// rather than a diagnostic: the lexical parse cannot produce one, since it is
+// the reference syntax that makes an operand a vocabulary reference and only a
+// row can write it.
+[[nodiscard]] constexpr Resolved as_resolved(const Operand &operand) {
+  const auto kind = [&] {
+    switch (operand.kind) {
+      case Operand::Kind::Constant: return Resolved::Kind::Constant;
+      case Operand::Kind::Named: return Resolved::Kind::Named;
+      case Operand::Kind::Immediate: return Resolved::Kind::Immediate;
+      case Operand::Kind::Discard: return Resolved::Kind::Discard;
+      case Operand::Kind::Vocabulary: break;
+    }
+    throw std::logic_error("a vocabulary reference resolves to a member, never to itself");
+  }();
+  return {.kind = kind,
+      .name = operand.name,
+      .constant = operand.constant,
+      .width = operand.width,
+      .indirect = operand.indirect,
+      .displaced = operand.displaced,
+      .write_back_delay = operand.write_back_delay,
+      .parameter = operand.parameter};
+}
 
 // Text with the values it carries taken out of it. A piece is a literal chunk,
 // a vocabulary member to look up, a value read from the encoding, or the
@@ -256,12 +305,16 @@ struct Resolution {
   return {reference.vocabulary_index, reference.from_view};
 }
 
-// A reference operand names whichever vocabulary member its slice selects, and that
-// member is written the same way an operand is written in a row.
-[[nodiscard]] constexpr Operand resolve(const Resolution &at, const Operand operand) {
+// The one way from what a row wrote to what the generated code is built from. A
+// reference names whichever vocabulary member its slice selects, and that
+// member is written the same way an operand is written in a row, so most of
+// this is deciding what the member could not know: which parameter it feeds,
+// which scope its name belongs to, and whether the encoding or the view will
+// answer at run time.
+[[nodiscard]] constexpr Resolved resolve(const Resolution &at, const Operand &operand) {
   if (operand.kind != Operand::Kind::Vocabulary)
-    return operand;
-  auto result = member_of(at, operand.reference).operand;
+    return as_resolved(operand);
+  auto result = as_resolved(member_of(at, operand.reference).operand);
   // The member supplies everything about the operand except which parameter it
   // was written against, which is the row's business and not the vocabulary's.
   result.parameter = operand.parameter;
@@ -281,7 +334,7 @@ struct Resolution {
   // code turns it into the list of locations the view selects between.
   if (const auto [vocabulary, from_view] = source_of(at, operand.reference); from_view) {
     result.from_view = true;
-    result.reference.vocabulary_index = vocabulary;
+    result.view_vocabulary = vocabulary;
   }
   return result;
 }
