@@ -143,6 +143,10 @@ struct Vocabulary {
   // written the way assembly is written.
   std::string_view scope{};
   Vector<Member, max_members> members{};
+  // Where it was declared, so a check that fires elsewhere can point at the line
+  // that has to change. A continuation folds to the line the declaration starts
+  // on.
+  std::size_t line{};
 };
 
 // A derived table re-reads its parent's rows with some vocabulary members

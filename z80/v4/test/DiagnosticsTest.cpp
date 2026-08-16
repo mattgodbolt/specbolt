@@ -297,18 +297,20 @@ TEST_CASE("Table diagnostics") {
     CHECK_NOTHROW(parse("vocab m = (ix+d)/delay=1 (iy+d)/delay=1\n" + std::string(prefix)));
     // The mistake this exists for: one member displaced and the other not, so
     // the `fd` page would run `(iy+d)` and print `(iy)`.
+    // Line 1 is the declaration, which is what has to change; line 6 is the row
+    // that selects it by a view, without which the declaration would be fine.
     CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy)\n" + std::string(prefix)),
-        Equals("z80.cpu:6: vocabulary 'm' is selected by a view, so all of its members must have the same shape; "
-               "'(iy)' does not match '(ix+d)'"));
+        Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so all of its members must have the "
+               "same shape; '(iy)' does not match '(ix+d)'"));
     // Disagreeing about the idle cycle a write-back costs is just as silent.
     CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy+d)\n" + std::string(prefix)),
-        Equals("z80.cpu:6: vocabulary 'm' is selected by a view, so all of its members must have the same shape; "
-               "'(iy+d)' does not match '(ix+d)'"));
+        Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so all of its members must have the "
+               "same shape; '(iy+d)' does not match '(ix+d)'"));
     // A hole cannot be one of them either: a view has no opcode bits to leave
     // room for a more specific row in.
     CHECK_THROWS_WITH(parse("vocab m = ix -\n" + std::string(prefix)),
-        Equals("z80.cpu:6: vocabulary 'm' is selected by a view, so all of its members must have the same shape; "
-               "'-' does not match 'ix'"));
+        Equals("z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so all of its members must have the "
+               "same shape; '-' does not match 'ix'"));
   }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("vocab r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));

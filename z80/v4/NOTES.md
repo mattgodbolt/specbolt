@@ -2458,3 +2458,35 @@ Ambiguity is now checked over the whole pool rather than per lookup.
 description happens to write; a `static_assert` over the derived scopes makes it
 a property of the machine. The Z80's 51 names are unique, which is the sort of
 thing worth knowing rather than assuming.
+
+## Done: a diagnostic names the line you have to edit
+
+`check_view_vocabulary` fires when a row binds a vocabulary to a table's view,
+which is the only moment the requirement exists. So the only line in scope was
+the row's, and that is the line it reported:
+
+```
+z80.cpu:6: vocabulary 'm' is selected by a view, so all of its members must
+have the same shape; '(iy)' does not match '(ix+d)'
+```
+
+Line 6 is `00000000 | ld {m:view} | ld8 {m:view} <- a`, a row with nothing wrong
+with it. The mistake is on line 1, and line 1 is where the fix goes, every time.
+Worse, if two tables select the same vocabulary by a view, the row you are told
+about is whichever the parser reached first.
+
+Both lines matter, for the reason C++ prints an error in a template and a note
+saying who instantiated it. The declaration is where the edit goes; the use is
+why a declaration that would otherwise be legal is not. `Vocabulary` gained the
+line it was declared on, so the message can carry both:
+
+```
+z80.cpu:1: vocabulary 'm' is selected by a view (at z80.cpu:6), so all of its
+members must have the same shape; '(iy)' does not match '(ix+d)'
+```
+
+The rule this settles, for the rest of the format's diagnostics: **report
+against the line that has to change**, and name the line that made it a
+requirement in the text. A check that fires at a use site has to be asked which
+of the two it is really about, and it is usually not the one it happens to be
+standing on.

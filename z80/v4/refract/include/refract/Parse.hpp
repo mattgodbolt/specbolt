@@ -29,6 +29,7 @@ namespace specbolt::refract {
     Parser parser(text);
     parser.skip_word();
     Vocabulary vocabulary;
+    vocabulary.line = at;
     vocabulary.name = parser.next_word();
     if (vocabulary.name.empty())
       throw table_error(at, "vocabulary declaration has no name");
@@ -221,23 +222,27 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 // `fd` page silently runs one addressing mode while printing another. It is the
 // one mistake in the format that would otherwise produce a wrong emulator
 // rather than a line number.
-constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::size_t line) {
+//
+// Reported against the declaration rather than the row that selects it, because
+// that is the line to edit; the row is named in the message, since a vocabulary
+// nothing selects by a view is free to hold whatever it likes.
+constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::size_t used_at) {
   const auto &first = vocabulary.members[0];
   const auto shape_of = [](const Member &member) {
     return std::tuple{member.hole, member.operand.indirect, member.operand.displaced, member.operand.write_back_delay,
         member.operand.kind, member.operation.empty(), member.arguments.size(), member.pieces.size()};
   };
+  const auto complaint = [&](const Member &member, const std::string_view must) {
+    return table_error(vocabulary.line, "vocabulary '" + std::string(vocabulary.name) + "' is selected by a view (at " +
+                                            at_line(used_at) + "), so " + std::string(must) + "; '" +
+                                            std::string(member.display) + "' does not match '" +
+                                            std::string(first.display) + "'");
+  };
   for (const auto &member: vocabulary.members) {
     if (shape_of(member) != shape_of(first))
-      throw table_error(line, "vocabulary '" + std::string(vocabulary.name) +
-                                  "' is selected by a view, so all of its members must have the same shape; '" +
-                                  std::string(member.display) + "' does not match '" + std::string(first.display) +
-                                  "'");
+      throw complaint(member, "all of its members must have the same shape");
     if (!std::ranges::equal(member.pieces, first.pieces, {}, &Piece::kind, &Piece::kind))
-      throw table_error(line, "vocabulary '" + std::string(vocabulary.name) +
-                                  "' is selected by a view, so all of its members must render the same way; '" +
-                                  std::string(member.display) + "' does not match '" + std::string(first.display) +
-                                  "'");
+      throw complaint(member, "all of its members must render the same way");
   }
 }
 

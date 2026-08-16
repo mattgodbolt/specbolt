@@ -25,8 +25,12 @@ namespace specbolt::refract {
   return {digits.data(), end};
 }
 
+// The file and line together, for a message that has to name a second line
+// besides the one it is reported against.
+[[nodiscard]] constexpr std::string at_line(const std::size_t line) { return SPECBOLT_CPU_TABLE ":" + decimal(line); }
+
 [[nodiscard]] constexpr std::runtime_error table_error(const std::size_t line, const std::string_view what) {
-  return std::runtime_error(SPECBOLT_CPU_TABLE ":" + decimal(line) + ": " + std::string(what));
+  return std::runtime_error(at_line(line) + ": " + std::string(what));
 }
 
 } // namespace specbolt::refract
