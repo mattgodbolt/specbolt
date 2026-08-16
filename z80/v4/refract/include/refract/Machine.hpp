@@ -35,9 +35,10 @@
 
 namespace specbolt::refract {
 
-// `read` is named here because two things depend on the spelling: the concept
-// below, and the scan that derives the location scopes from the overloads of
-// that name.
+// `read` is named here because the scan that derives a machine's location
+// scopes looks for overloads by that spelling, and this is the file stating
+// what a machine must provide. `write` needs no such constant: the generator
+// spells it once, at the point of the call it splices.
 inline constexpr std::string_view read_verb = "read";
 
 

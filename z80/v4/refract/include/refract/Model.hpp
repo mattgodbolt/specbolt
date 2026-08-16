@@ -25,7 +25,10 @@ namespace specbolt::refract {
 // reason; this one is v4's.
 struct Name {
   std::array<char, 15> storage{};
-  std::size_t length{};
+  // A byte, not a `std::size_t`: `Resolved` is a template argument on a
+  // translation unit that peaks above a gigabyte, so the eight bytes are worth
+  // not spending.
+  std::uint8_t length{};
   constexpr Name() = default;
   template<std::size_t N>
   constexpr Name(const char (&text)[N]) : Name(std::string_view{text, N - 1}) {} // NOLINT(*-explicit-constructor)
@@ -33,7 +36,7 @@ struct Name {
     if (text.size() > storage.size())
       throw std::length_error("name does not fit");
     std::ranges::copy(text, storage.begin());
-    length = text.size();
+    length = static_cast<std::uint8_t>(text.size());
   }
   static constexpr std::size_t capacity = std::tuple_size_v<decltype(storage)>;
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), length}; }

@@ -21,6 +21,11 @@
 
 namespace specbolt::refract {
 
+// Both are held as a `std::uint8_t` wherever one is referred to, which is what
+// bounds them rather than any judgement about how many a description needs.
+inline constexpr std::size_t max_vocabularies = 256;
+inline constexpr std::size_t max_tables = 256;
+
 [[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
   std::vector<Vocabulary> result;
   for (const auto [at, text]: lines_of(description)) {
@@ -59,6 +64,10 @@ namespace specbolt::refract {
       throw table_error(at, "vocabulary declares no members");
     if (std::ranges::contains(result, vocabulary.name, &Vocabulary::name))
       throw table_error(at, "duplicate vocabulary name");
+    // A reference holds its vocabulary as a byte, so this is a real capacity
+    // like the rest, and says so rather than wrapping.
+    if (result.size() == max_vocabularies)
+      throw table_error(at, "too many vocabularies");
     result.push_back(vocabulary);
   }
   return result;
@@ -197,6 +206,9 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       if (table.rules.empty())
         throw table_error(at, "a derived table declares no substitutions, so it is its parent");
     }
+    // A goto holds its target as a byte, as a row holds the table it is in.
+    if (result.size() == max_tables)
+      throw table_error(at, "too many tables");
     result.push_back(table);
   }
   return result;

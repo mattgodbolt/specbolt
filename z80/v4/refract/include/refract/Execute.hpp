@@ -11,6 +11,7 @@
 #include <concepts>
 #include <limits>
 #include <meta>
+#include <numeric>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -162,6 +163,12 @@ static_assert(
   return scopes;
 }
 
+// Names in a description are matched the way assembler is written, without
+// regard to case. One definition, because two would be two chances to disagree.
+[[nodiscard]] constexpr char fold_case(const char c) {
+  return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
 // Every location name means exactly one thing, checked over the whole pool
 // rather than as each name happens to be looked up. `only_match` would catch an
 // ambiguity, but only for a name some description writes; this makes it a
@@ -172,8 +179,7 @@ static_assert(
   for (const auto scope: location_scopes())
     for (const auto enumerator: std::meta::enumerators_of(scope)) {
       auto name = std::string(std::meta::identifier_of(enumerator));
-      for (auto &character: name)
-        character = character >= 'A' && character <= 'Z' ? static_cast<char>(character - 'A' + 'a') : character;
+      std::ranges::transform(name, name.begin(), fold_case);
       if (std::ranges::contains(seen, name))
         return false;
       seen.push_back(name);
@@ -184,11 +190,8 @@ static_assert(
 static_assert(location_names_are_unique(),
     "two of this machine's readable locations are spelled the same, so a description could not say which it meant");
 
-// The table is written the way assembler is written, so every name in it is
-// matched without regard to case.
 [[nodiscard]] constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
-  constexpr auto fold = [](const char c) { return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c; };
-  return std::ranges::equal(lhs, rhs, {}, fold, fold);
+  return std::ranges::equal(lhs, rhs, {}, fold_case, fold_case);
 }
 
 // Every name a table uses must resolve to exactly one thing. Throwing from a
@@ -591,8 +594,7 @@ template<std::meta::info Fn, Call C>
     if (!operand.parameter.empty())
       ++named;
   if (named == 0) {
-    for (std::size_t at = 0; at < written.size(); ++at)
-      written[at] = at;
+    std::ranges::iota(written, 0uz);
     return written;
   }
   if (named != C.operands.size())
