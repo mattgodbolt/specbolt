@@ -44,7 +44,7 @@ if (SPECBOLT_HAS_REFLECTION)
     include(CheckCXXCompilerFlag)
 
     # clang's constexpr budget defaults to about a million steps against gcc's
-    # 33.5 million, and parsing the description alone exceeds it -- the failure
+    # 33.5 million, and parsing the description alone exceeds it: the failure
     # reads "constexpr evaluation hit maximum step limit; possible infinite
     # loop?", which is not what has happened.
     check_cxx_compiler_flag("-fconstexpr-steps=100000000" SPECBOLT_HAS_CONSTEXPR_STEPS)

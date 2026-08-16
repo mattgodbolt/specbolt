@@ -527,7 +527,7 @@ the things the suites do *not* catch, or catch only because we match an approxim
 - **Interrupts are not handled at all.** v3 checks `irq_pending_` at the top of `execute_one`; v4
   does not. Not a papered-over difference so much as a missing feature, but it is missing.
   *(Since fixed: `Z80::handle_interrupt` does all three modes, `ei` defers acceptance by one
-  instruction, and `ExecuteTest` covers it. What remains open is that nothing ever releases /INT --
+  instruction, and `ExecuteTest` covers it. What remains open is that nothing ever releases /INT;
   see the section on it below.)*
 - **The immediate is fetched once, before any step**, rather than at the token that names it. Fine
   for every row that exists; wrong for `ld (ix+d), n`.
@@ -1202,9 +1202,9 @@ Then the part gcc cannot do at all, time by template (inclusive, so `execute_one
 the checks, the coverage, the decode tables, and they cost 6.1 of 126 seconds. Individually:
 
 ```
-3.1s  to_array<Table.hpp:43>   row_opcodes -- opcodes_of_each, the cartesian product walk
-1.4s  to_array<Table.hpp:42>   rows        -- parse_rows
-1.0s  to_array<Table.hpp:44>   decoded     -- decode_tables
+3.1s  to_array<Table.hpp:43>   row_opcodes: opcodes_of_each, the cartesian product walk
+1.4s  to_array<Table.hpp:42>   rows:        parse_rows
+1.0s  to_array<Table.hpp:44>   decoded:     decode_tables
 1.0s  all_dispatches<0..6>
 0.4s  to_array<Table.hpp:40>   vocabularies
 ```
@@ -1635,7 +1635,7 @@ view. One array, two ways of choosing.
 Two ways out, and they are not equal:
 
 - **Per-view arrays.** `location_table` becomes `[view][ordinal]`. Correct and general, but the
-  operand would have to carry its `Pattern` and table so the table could be rebuilt per view --
+  operand would have to carry its `Pattern` and table so the table could be rebuilt per view,
   plumbing a good deal of the row into a type that exists to be small.
 - **Do not shape-class a vocabulary the table rewrites.** One condition, no plumbing. Gives up the
   collapse in `indexed`/`indexed_cb` and keeps it in `base`, `cb` and `ed`, which is where `arith`,

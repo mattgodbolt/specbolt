@@ -69,9 +69,9 @@ private:
 };
 
 // Defined here rather than in the .cpp: this is the hottest pair of functions in
-// the emulator -- every opcode fetch and every data access reaches one of them
-// -- and out of line they can only be inlined when the whole program is
-// optimised at once, which turns out to be a lottery.
+// the emulator (every opcode fetch and every data access reaches one of them)
+// and out of line they can only be inlined when the whole program is optimised
+// at once, which turns out to be a lottery.
 inline std::uint8_t Memory::read(const std::uint16_t address) const {
   if (listener_) [[unlikely]]
     listener_->on_memory_read(address);

@@ -72,7 +72,7 @@ This document defines terminology specific to the ZX Spectrum, emulation, and th
 |------|------------|
 | Z80 Version | Different implementations of the Z80 emulation (v1 to v4) with varying approaches. |
 | v4 | The table-driven implementation: an instruction-set description in [`z80.cpu`](z80/v4/z80.cpu) compiled by C++26 reflection into both a disassembler and an interpreter. See [CPU_FORMAT.md](z80/v4/CPU_FORMAT.md). |
-| refract | The CPU-agnostic half of v4 — the parser, checks and code generator that read a `.cpu` description without knowing any Z80 instruction. |
+| refract | The CPU-agnostic half of v4: the parser, checks and code generator that read a `.cpu` description without knowing any Z80 instruction. |
 | Memory Address Space | The complete 64KB memory map that the Z80 can access. |
 | C++ Module | A feature introduced in C++20 for organizing code, used as an alternative to header files. |
 | Register File | Collection of CPU registers (A, F, BC, DE, HL, etc.). |

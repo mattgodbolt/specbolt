@@ -64,7 +64,7 @@
     },
 
     "view-decl": {
-      "comment": "(view:index) — this table takes a parameter drawn from a vocabulary.",
+      "comment": "(view:index) is a table taking a parameter drawn from a vocabulary.",
       "match": "(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(:)\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\))",
       "captures": {
         "1": { "name": "punctuation.definition.view.begin.cpu" },
@@ -242,7 +242,7 @@
     },
 
     "keyword-operand": {
-      "comment": "value=(hl) — the operand names the parameter it feeds. An identifier before `=`, which `/delay=1` is not.",
+      "comment": "value=(hl) is an operand naming the parameter it feeds. An identifier before `=`, which `/delay=1` is not.",
       "match": "(?<![^\\s,|])([A-Za-z_][A-Za-z0-9_]*)(=)",
       "captures": {
         "1": { "name": "variable.parameter.operand.cpu" },

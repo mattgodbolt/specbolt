@@ -114,8 +114,8 @@ Neither has anything to do with how an instruction is dispatched.
 
 Both are now fixed at the source: `Memory`'s accessors moved into the header, and
 `tick` grew an inline fast path over an out-of-line `tick_with_tasks`. Every
-implementation got faster -- v1 -25%, v2 -18%, v3 -31%, v4 -29% -- and v2, v3 and
-v4 now execute within 1% of the same number of x86 instructions per Z80
+implementation got faster (v1 -25%, v2 -18%, v3 -31%, v4 -29%) and v2, v3 and v4
+now execute within 1% of the same number of x86 instructions per Z80
 instruction. The gap that looked like a verdict on dispatch design was the layer
 underneath all of them.
 
@@ -132,7 +132,7 @@ instructions:
 | *header `inline` + tick fast path, default LTO* | *0.94G* | *0.85G* |
 
 `-flto-partition=one` changes nothing at all. Whole program, one partition, every
-definition visible, and gcc still declines to inline `Memory::read` -- so this is
+definition visible, and gcc still declines to inline `Memory::read`, so this is
 not the visibility problem LTO exists to solve. Raising the inline budget alone
 recovers most of the win with no source change, which shows the compiler could
 have done it and chose not to.
@@ -144,7 +144,7 @@ it under the auto budget. Writing `inline` in a header tells the compiler nothin
 new about the code; it moves the function into the generous budget.
 
 So the claim survives as a statement about *capability* and fails as one about
-*policy*. Nobody has to arrange code for the linker's benefit any more -- but
+*policy*. Nobody has to arrange code for the linker's benefit any more, but
 `inline` is still a hint to the cost model, and for a few tiny leaf functions on
 the hot path with a thousand callers it is the difference between a call and no
 call. The alternative is a whole-program flag, which is a blunt instrument: it
@@ -153,13 +153,13 @@ most. Same win, very different blast radius.
 
 #### Why the `tick` fast path did nothing for v1
 
-v1 ticks once per instruction -- it decodes into an `Instruction` carrying its own
+v1 ticks once per instruction: it decodes into an `Instruction` carrying its own
 T-state count and spends it in one go (`pass_time(extra_t_states +
 instr.decode_t_states)`), from four call sites in the whole implementation.
 v2/v3/v4 tick per bus access, from around forty. Making a per-access function
 cheap only helps the implementations that call it per access: v1 gained 2%.
 
-v2 gained nothing either, for a different reason -- in the combined binary LTO had
+v2 gained nothing either, for a different reason: in the combined binary LTO had
 already inlined `tick` for it. In v2's *own* binary it had not, and there the same
 change was worth 29%, the largest gain of any implementation. The same edit is
 worth 0% or 29% depending on what else is linked beside it.
@@ -170,7 +170,7 @@ All of the above was found on a thermally limited laptop (i7-10510U). Repeating 
 on a quiet desktop (i9-9980XE, 18 cores, 24.75MB L3) with the same compiler:
 
 Retired instructions came back **identical to within 0.03%** on every
-implementation -- v1 +0.02%, v2 -0.03%, v3 -0.01%, v4 -0.02%. That is the
+implementation (v1 +0.02%, v2 -0.03%, v3 -0.01%, v4 -0.02%). That is the
 expected result for deterministic work and the same compiler, and it is why the
 instruction-count half of this investigation could be trusted from the laptop at
 all.
@@ -188,7 +188,7 @@ on the laptop. Nanoseconds per emulated Z80 instruction:
 So the inversion is real and reproduces on different hardware: v4 is fastest in
 the binary the emulator actually ships, v2 is fastest when each is built alone,
 and the difference either way is under 6%. Cycle counts agree with the clock on
-this machine, which they did not on the laptop -- that disagreement was the
+this machine, which they did not on the laptop: that disagreement was the
 laptop, not the code.
 
 The headline is that the original 20% gap is entirely gone. What is left is a few
@@ -198,7 +198,7 @@ against.
 #### Real games, and two traps in measuring them
 
 `z80_bench --snapshot FILE --frames N` runs a `.sna`/`.z80` through the whole
-`Spectrum` -- ULA, display and all -- instead of running zexdoc through the bare
+`Spectrum` (ULA, display and all) instead of running zexdoc through the bare
 CPU. Milliseconds per emulated frame, 300 frames, on the quiet desktop:
 
 | game | v1 | v2 | v3 | v4 |
@@ -224,7 +224,7 @@ each frame halted waiting for the frame interrupt, and the implementations model
 So v1-v3 go round `execute_one` four times per four T-states where v4 goes round
 once, and jetpac's 3x is that ratio rather than anything about dispatch. Chronos
 behaves the same way. Two of five games sampled, so idling is a real part of
-emulator performance rather than an outlier to discard -- but it must not be read
+emulator performance rather than an outlier to discard, but it must not be read
 as a dispatch result.
 
 There is a correctness difference hiding in the same lines: a halted Z80 keeps
@@ -232,8 +232,8 @@ fetching, so R keeps counting. v1-v3 freeze it. A program that reads R for
 randomness or timing sees a stopped counter across a HALT.
 
 **Trap two: a snapshot dropped in and run is in an attract loop.** Mispredict
-rates are flat from 300 frames to 3000 -- 6.6% to 6.8% on elite, 2.0% to 2.1% on
-manic miner -- so ten times the emulated time is the same behaviour repeated.
+rates are flat from 300 frames to 3000 (6.6% to 6.8% on elite, 2.0% to 2.1% on
+manic miner), so ten times the emulated time is the same behaviour repeated.
 These numbers describe title screens and demo modes, not play. Getting to
 gameplay needs keyboard input driven into `Spectrum::keyboard()`, which has not
 been done.
@@ -241,7 +241,7 @@ been done.
 #### What the games say about the dispatch indirect
 
 Mispredicts split with `br_misp_retired.conditional` against
-`br_misp_retired.all_branches` -- the difference is indirect branches and
+`br_misp_retired.all_branches`: the difference is indirect branches and
 returns, and returns are predicted almost perfectly by the return stack, so it is
 mostly the dispatch. As a share of cycles at an 18-cycle Skylake penalty, v4:
 
@@ -331,15 +331,15 @@ like; `z80_bench_v1` .. `z80_bench_v4` hold one each and are what a comparison
 *between* implementations should be read from. `--snapshot` swaps zexdoc for a
 game; the games themselves are not in the repository. Two traps, both of which produced
 wrong answers before they were fixed: never run it while anything else is on the
-machine, and never run the implementations in a fixed order within a repetition
--- whoever goes last meets the hottest core and the coldest caches. The harness
+machine, and never run the implementations in a fixed order within a repetition,
+since whoever goes last meets the hottest core and the coldest caches. The harness
 alternates direction and reports the best repetition for that reason.
 
 ---
 
 ### Compile time
 
-The measurements above are all about how fast the emulator runs. The other half of the trade --
-how long v4 takes to *build*, where that time goes, how it scales, and what two different
-reflection implementations cost -- is in [z80/v4/NOTES.md](z80/v4/NOTES.md) under "Compile time,
+The measurements above are all about how fast the emulator runs. The other half of the trade (how
+long v4 takes to *build*, where that time goes, how it scales, and what two different reflection
+implementations cost) is in [z80/v4/NOTES.md](z80/v4/NOTES.md) under "Compile time,
 measured", because it is a fact about v4 rather than about the emulator.

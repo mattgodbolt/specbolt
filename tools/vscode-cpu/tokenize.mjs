@@ -7,7 +7,7 @@
 //   node tokenize.mjs some.cpu invalid      # only tokens whose scopes match
 //
 // A filtered run only ever shows the tokens you asked about, so it cannot tell
-// you that a `begin`/`end` block ran away and swallowed the rest of the file --
+// you that a `begin`/`end` block ran away and swallowed the rest of the file,
 // which looks exactly like "no bad tokens". The two checks below say so out
 // loud, and the exit status is non-zero when either fires.
 
@@ -84,7 +84,7 @@ const warnings = [];
 // itself, so the only line allowed to leave a block open is one that ends in a
 // backslash and has asked to be continued. Anything else left open is a rule
 // eating the lines below it, and a line inside a rule that was never meant to
-// hold it is highlighted as whatever that rule says -- it cannot be reported as
+// hold it is highlighted as whatever that rule says: it cannot be reported as
 // wrong, however wrong it is. That is invisible in a filtered run, so say it.
 const continued = /\\[ \t\r]*$/;
 const stillOpen = asEditorDoes

@@ -28,7 +28,7 @@ The simplest path is via CMake presets (see `CMakePresets.json` for the list):
 
 ```bash
 # Configure, build, test
-cmake --preset debug              # Debug, no modules — works with clang or gcc
+cmake --preset debug              # Debug, no modules; works with clang or gcc
 cmake --build --preset debug
 ctest --preset debug
 
@@ -42,9 +42,9 @@ To pin a specific compiler, set `CC`/`CXX` or create a local `CMakeUserPresets.j
 
 ### C++26 reflection
 
-Reflection (P2996) needs **gcc 16+**, or one of the clang forks that implement it — no clang *release* does. Detection is automatic, including whichever extra flags the compiler wants, so any other compiler simply builds without the reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
+Reflection (P2996) needs **gcc 16+**, or one of the clang forks that implement it: no clang *release* does. Detection is automatic, including whichever extra flags the compiler wants, so any other compiler simply builds without the reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
 
-No distro packages gcc 16, so grab a [Compiler Explorer](https://compiler-explorer.com/) build — the same one CI uses:
+No distro packages gcc 16, so grab a [Compiler Explorer](https://compiler-explorer.com/) build, the same one CI uses:
 
 ```bash
 mkdir -p ~/opt

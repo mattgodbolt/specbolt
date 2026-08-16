@@ -340,7 +340,7 @@ template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
 // What a result destructures into. Returns nothing for a non-class type, and
-// also for a class whose members are all inaccessible from here --
+// also for a class whose members are all inaccessible from here:
 // `access_context::current()` is this namespace, so a type keeping its state
 // private looks empty. `apply` reads an empty answer as "one value, stored
 // whole", which is what makes such a type a value rather than a pair.
@@ -886,7 +886,7 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
 
 // Which of a row's slices change the generated code. Three kinds do not: a
 // view is a run-time value, a numeric vocabulary is read straight out of the
-// opcode, and the mnemonic's own references are the disassembler's business --
+// opcode, and the mnemonic's own references are the disassembler's business;
 // nothing below this line ever looks at `row.pieces`.
 [[nodiscard]] consteval Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
   Vector<std::uint8_t, Pattern::max_slices> used;

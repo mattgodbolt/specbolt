@@ -35,7 +35,7 @@ public:
 
   // The overwhelmingly common case: no task is due inside this span, so time
   // just advances. Kept small and separate so it inlines into the callers that
-  // matter -- every memory access and every idle cycle reaches here.
+  // matter: every memory access and every idle cycle reaches here.
   void tick(const size_t cycles) {
     if (cycles < headroom()) {
       cycles_ += cycles;

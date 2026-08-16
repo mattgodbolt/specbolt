@@ -150,7 +150,7 @@ std::uint16_t Z80::read_memory16(const std::uint16_t address) {
   return static_cast<std::uint16_t>(read_memory(static_cast<std::uint16_t>(address + 1)) << 8 | low);
 }
 
-// Low byte first, which is what `ld (nn), hl` does. A push does the opposite --
+// Low byte first, which is what `ld (nn), hl` does. A push does the opposite:
 // high byte to sp-1, then low to sp-2, and gets this order instead. The bytes
 // land in the same places either way, so nothing can see the difference until
 // `bus` starts contending or a watchpoint watches. Recorded in NOTES.

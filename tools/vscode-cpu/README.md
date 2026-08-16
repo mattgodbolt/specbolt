@@ -7,7 +7,7 @@ file it exists for is [`z80.cpu`](../../z80/v4/z80.cpu).
 ## Installing
 
 VS Code loads any extension it finds in its extensions directory, so a symlink
-is enough — no packaging, no marketplace:
+is enough: no packaging, no marketplace:
 
 ```sh
 ln -s "$PWD/tools/vscode-cpu" ~/.vscode/extensions/cpu-instruction-table
@@ -23,7 +23,7 @@ machine the code is on. So it goes in the local `~/.vscode/extensions`, never
 the remote's `~/.vscode-server/extensions`.
 
 The tidy answer is a checkout on the local machine as well, and the symlink
-above — which goes on tracking the repository, so an edit to the grammar needs
+above, which goes on tracking the repository, so an edit to the grammar needs
 only a window reload. Failing that, package it and carry the result across:
 
 ```sh
@@ -45,11 +45,11 @@ languages sharing a line.
 | | scoped as |
 |---|---|
 | fixed bits of an encoding | `constant.numeric.binary` |
-| a slice — the bits a vocabulary is selected by | `variable.parameter.slice` |
+| a slice, the bits a vocabulary is selected by | `variable.parameter.slice` |
 | the encoding's `n` and `d` byte tokens | `constant.other.immediate` / `.displacement` |
 | mnemonic literal text | `string.unquoted.mnemonic` |
 | `$nn`, `$nnnn`, `$e`, `+d` in a mnemonic | `constant.character.format.placeholder` |
-| the first word of a step — the operation | `support.function.operation` |
+| the first word of a step, the operation | `support.function.operation` |
 | `goto`, `if`, `vocab`, `table`, `with` | `keyword.control` |
 | `<-` | `keyword.operator.assignment` |
 | a location the CPU supplies | `variable.other.location` |
@@ -63,7 +63,7 @@ they read differently in any theme: the mnemonic is string-coloured throughout,
 with the placeholders picked out, while the action gets the operation, operand
 and keyword colours of an ordinary language.
 
-Three things are marked `invalid` — all of them cases the compiler rejects, so
+Three things are marked `invalid`, all of them cases the compiler rejects, so
 the colour arrives before the build does:
 
 - a line that is neither blank, comment, declaration nor row (the format
@@ -72,7 +72,7 @@ the colour arrives before the build does:
 - an encoding that is not eight pattern characters, on a line that is otherwise
   a row;
 - a `#` in the action column. `#` is only special at the start of a line, so a
-  trailing comment on a row is not a comment — it becomes part of the action and
+  trailing comment on a row is not a comment: it becomes part of the action and
   fails to parse as one.
 
 ## Testing a change
@@ -104,7 +104,7 @@ status non-zero:
 - **the tokens do not depend on the line terminator.** vscode-textmate appends
   a `\n` to every line it is given, so the editor hands one over without it. A
   grammar that matches newlines can be right one way and wrong the other, so
-  both are tried and compared — except across a continuation, where keeping the
+  both are tried and compared, except across a continuation, where keeping the
   block open is precisely a decision about that newline.
 
 ## Limits
@@ -112,7 +112,7 @@ status non-zero:
 This is a grammar, not a parser. It knows the shape of the format but none of
 its checks: it cannot tell you that a vocabulary has the wrong number of members
 for the slice that selects it, that two rows overlap partially, or that a name
-does not resolve — those need the CPU description, and they are what the build
+does not resolve; those need the CPU description, and they are what the build
 is for. What it can see is one line at a time.
 
 A wrapped line stays inside its declaration or row, so its members and operands

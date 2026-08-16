@@ -1,7 +1,7 @@
 // A fixed-work benchmark for the four implementations.
 //
-// Every implementation runs the *same* instruction stream -- zexdoc, which is
-// what the regression tests already use -- for the same number of instructions,
+// Every implementation runs the *same* instruction stream (zexdoc, which is
+// what the regression tests already use) for the same number of instructions,
 // so the only figure that matters is nanoseconds per instruction. Fixed work
 // rather than fixed time, because the point is to compare implementations
 // rather than to characterise the machine they run on.

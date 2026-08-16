@@ -23,7 +23,7 @@ endif ()
 
 # One benchmark holding every implementation, and one per implementation.
 # Interprocedural optimisation is on for the whole link, so the combined binary
-# optimises the four against each other -- editing one changes the code
+# optimises the four against each other: editing one changes the code
 # generated for the others, by enough to swamp what is being measured. The
 # combined binary is what the emulator ships; the single ones are what a
 # comparison between implementations should be read from.
