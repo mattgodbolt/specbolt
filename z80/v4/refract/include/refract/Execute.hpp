@@ -72,10 +72,10 @@ static_assert(
 //   [:Fn:](arguments...)               a function, in callee position.
 //   cpu.read([:find_location(…):])     an enumerator, yielding a prvalue of the
 //                                      enum type, so ordinary overload
-//                                      resolution picks `read(R8)` or
-//                                      `read(FlagBit)`. The framework does not
-//                                      dispatch on the kind of location; C++
-//                                      does, because the splice has a type.
+//                                      resolution picks whichever `read` that
+//                                      kind of location has. The framework does
+//                                      not dispatch on the kind of location;
+//                                      C++ does, because the splice has a type.
 //   result.[:members[at]:]             a data member. The leading `.` is not a
 //                                      typo; it is member-access syntax with a
 //                                      splice where the name would be.
@@ -102,9 +102,10 @@ static_assert(
 //
 // **`std::meta::access_context::current()`** means the context of the function
 // that names it, namespace scope here rather than the caller's. Load-bearing twice:
-// it is why `Flags` counts as one value rather than a struct to destructure
-// (its byte is private, so this file cannot see it), and why the private
-// helpers in `Ops` cannot be named by a table.
+// it is why a machine's flags type can count as one value rather than a struct
+// to destructure (the Z80's keeps its byte private, so this file cannot see
+// it), and why a private helper in an operation scope cannot be named by a
+// table.
 //
 // ---------------------------------------------------------------------------
 // Why the data looks the way it does
@@ -127,8 +128,8 @@ static_assert(
 // namespace or an annotation but the capability itself. An enum with no `read`
 // taking it is not a location, which is why a bus cycle kind cannot be one.
 //
-// `read_memory` is excluded by name and `bus` by name; an overload taking more
-// than the location is excluded by arity.
+// `read_memory` is excluded by name; an overload taking more than the location
+// is excluded by arity.
 [[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
   std::vector<std::meta::info> scopes;
   for (const auto member: std::meta::members_of(^^Cpu, std::meta::access_context::current())) {
@@ -212,7 +213,8 @@ static_assert(location_names_are_unique(),
   return candidates.front();
 }
 
-// `a`, `hl`, `carry`, `pc`: an enumerator in one of the scopes the CPU offers.
+// An enumerator in one of the scopes the CPU offers, such as the Z80's `a`,
+// `hl`, `carry` and `pc`.
 // The `std::vector` here is fine, because it is created and destroyed within
 // one constant evaluation, which is allowed; what it must not do is escape.
 // What a description calls one enumerator: the `Spelling` it declares, or its
@@ -294,17 +296,20 @@ static_assert(location_names_are_unique(),
 // one.
 template<Operand Op, std::size_t Line>
 [[nodiscard]] consteval auto locations_of_view() {
-  constexpr const auto &members = target::vocabularies[Op.reference.vocabulary_index].members;
-  std::array<typename[:std::meta::type_of(find_location(
-                           members[0].operand.name.view(), Line, members[0].operand.scope.view())):], members.size()>
+  constexpr const auto &vocabulary = target::vocabularies[Op.reference.vocabulary_index];
+  constexpr const auto &members = vocabulary.members;
+  // The scope comes from the vocabulary rather than from a member, because a
+  // member is parsed before anything knows which vocabulary it will end up in.
+  constexpr auto scope = vocabulary.scope;
+  std::array<typename[:std::meta::type_of(find_location(members[0].operand.name.view(), Line, scope)):], members.size()>
       locations{};
   template for (constexpr auto at: std::views::iota(0uz, members.size()))
-      locations[at] = [:find_location(members[at].operand.name.view(), Line, members[at].operand.scope.view()):];
+      locations[at] = [:find_location(members[at].operand.name.view(), Line, scope):];
   return locations;
 }
 
-// `inc8`, `add16`, `is_set`: a static member function of one of the CPU's
-// operation scopes.
+// A static member function of one of the CPU's operation scopes, such as the
+// Z80's `inc8`, `add16` and `is_set`.
 [[nodiscard]] consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
   std::vector<std::meta::info> candidates;
   for (const auto scope: target::operation_scopes())
@@ -388,8 +393,8 @@ struct Call {
   // it would obviously be tidier.
   //
   // Deliberately. `Operand` is a template argument, so two of them are the same
-  // argument when they are memberwise equal. Give it a line and `ld a, b` on
-  // line 40 stops being the same operand as `ld a, b` on line 90, every
+  // argument when they are memberwise equal. Give it a line and an operand on
+  // line 40 stops being the same one as the identical operand on line 90, every
   // instantiation below splits in two, and a file whose build cost is measured
   // in tens of seconds pays for a field that only ever appears in an error
   // message. The tidier arrangement is the expensive one.
@@ -451,9 +456,9 @@ template<Operand Op, std::size_t Line, typename Parameter>
   else
     // An *enumerator* splice: this yields a prvalue whose type is the enum the
     // name was found in, so the machine's overload set decides what reading it
-    // means. `cpu.read(R8::A)` and `cpu.read(FlagBit::carry)` are different
-    // functions returning different types, chosen here by nothing more exotic
-    // than overload resolution.
+    // means: on the Z80, `cpu.read(R8::A)` and `cpu.read(FlagBit::carry)` are
+    // different functions returning different types, chosen here by nothing
+    // more exotic than overload resolution.
     return cpu.read([:find_location(Op.name.view(), Line, Op.scope.view()):]);
 }
 
@@ -525,9 +530,10 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
 // so the values are materialised into a tuple first and the call made from
 // that.
 //
-// `bit n, (ix+d)` is the row that proves this is not pedantry: it reads memory
-// and then asks for the address that read left on the bus, and getting those
-// two the wrong way round takes the undocumented flags from the wrong place.
+// The rows that prove this is not pedantry are the ones that read memory and
+// then ask for the address that read left on the bus. The Z80's `bit n, (ix+d)`
+// is one, and getting those two the wrong way round takes its undocumented
+// flags from the wrong place.
 //
 // [dcl.init.list] says the guarantee survives CTAD and constructor selection,
 // which is the part worth checking rather than assuming. Storing needs no such
@@ -535,13 +541,14 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
 // at risk.
 
 // Which of the row's operands feeds each of the operation's parameters. By
-// position, unless the row said otherwise: an operand written `value=(hl)` goes
-// to the parameter *called* `value`, and what the parameters are called is
-// asked of the declaration rather than written down anywhere.
+// position, unless the row said otherwise: an operand written `value=…` goes to
+// the parameter *called* `value`, and what the parameters are called is asked
+// of the declaration rather than written down anywhere.
 //
-// This exists because position is a silent coupling. `bit8(value, bit, flags,
-// bus)` takes three `std::uint8_t`s, so a row that swaps two of them compiles,
-// runs, and quietly tests the wrong bit.
+// This exists because position is a silent coupling. An operation taking
+// several parameters of one type, as the Z80's `bit8(value, bit, flags, bus)`
+// takes three `std::uint8_t`s, lets a row swap two of them and still compile,
+// run, and quietly test the wrong bit.
 //
 // Naming is all or nothing within a step. A half-named argument list needs a
 // rule about what "the next one" means, and a description is easier to read if
@@ -669,8 +676,9 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
     call(operands_of<Fn, C>(cpu, decoded, indexed));
   }
   else if constexpr (members.size() > 1) {
-    // Two is `Alu`'s `{result, flags}`, which is what almost every arithmetic
-    // operation returns. One accessible member is caught above as ambiguous.
+    // Two is a value and the flags it set, which is what almost every
+    // arithmetic operation returns. One accessible member is caught above as
+    // ambiguous.
     static_assert(
         C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
     const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
@@ -680,8 +688,8 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   else {
     static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
     // More than one *destination* is how an instruction writes one result to
-    // two places: `dd cb d op` puts it through the addressing mode and into
-    // the register its low bits name.
+    // two places, as the Z80's `dd cb d op` puts it through the addressing mode
+    // and into the register its low bits name.
     const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
     template for (constexpr auto destination: C.destinations) store<destination, C.line>(cpu, decoded, indexed, result);
   }
@@ -750,8 +758,9 @@ template<std::meta::info Fn, Call C>
 // did: both are chosen by the prefix, needed by the row, and in neither's own
 // bytes.
 // Every handler has one signature, because a table of function pointers can
-// only have one. So `view` is a parameter of all 747 of them and not merely of
-// the ones a prefix can reach: `nop` pays a register's worth for `ix` existing.
+// only have one. So `view` is a parameter of every handler and not merely of
+// the ones a prefix can reach: among the Z80's 747, `nop` pays a register's
+// worth for `ix` existing.
 // That is about 2% of run time, bought with 38% of the build. See NOTES.md,
 // which has the measurements and the alternative that was rejected.
 using Handler = void (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
@@ -784,7 +793,7 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
   // Z80's `ld {real:y}, (ix+d)` keeps a real h.)
   static constexpr auto rules = target::tables[Table].rules;
   // The displacement is read before any immediate, which is the order the bytes
-  // appear in: `dd 36 d n` is `ld (ix+d), n`.
+  // appear in, as the Z80's `dd 36 d n` spells `ld (ix+d), n`.
   // Unless this table was entered with a displacement already read, in which
   // case it arrived before this row's own opcode did.
   // A `constexpr std::optional` used two ways: contextually converted to `bool`
@@ -825,7 +834,8 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     const std::uint16_t indexed = [&cpu, decoded, displacement] -> std::uint16_t {
       if constexpr (displaced) {
         // A latched table read its opcode inside the same window, so that byte
-        // counts too: it is why `dd cb d op` spends five cycles and not eight.
+        // counts too: it is why the Z80's `dd cb d op` spends five cycles and
+        // not eight.
         //
         // The machine is told the count and works out what is left of the window
         // from it, so a count the window cannot hold asks it for a negative delay.
@@ -873,11 +883,12 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
 // One function per instruction, not one per (table, opcode)
 // ---------------------------------------------------------------------------
 //
-// A row's body is built only from the slices it *reads*. `ed`'s catch-all row
-// claims 218 opcodes and reads none of them, so those 218 are one instruction
-// wearing 218 hats; `ld {reg:y}, {reg:z}` reads both its slices, so its 64 are
-// genuinely 64. Generating per (table, opcode) cannot tell the difference and
-// stamps out 256 either way.
+// A row's body is built only from the slices it *reads*. A catch-all that reads
+// none of its opcodes is one instruction wearing as many hats as it claims; a
+// row that reads both its slices is genuinely 64 instructions. (On the Z80, the
+// `ed` page's catch-all claims 218 opcodes and `ld {reg:y}, {reg:z}` is the 64.)
+// Generating per (table, opcode) cannot tell the difference and stamps out 256
+// either way.
 //
 // So walk rows and splat each body across the opcodes it claims. Nothing is
 // deduplicated because nothing is generated twice: the combinations of the

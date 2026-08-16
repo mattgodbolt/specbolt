@@ -61,7 +61,7 @@ struct Spelling {
 // Which vocabulary to look a value up in, and what says which of its members to
 // take: a slice of the opcode, or (when `from_view` is set) the decoding
 // table's own parameter, which a prefix chose and the instruction does not
-// carry. Anything a row can write `{reg:z}` or `{index:view}` in holds one.
+// carry. Anything a row can write `{vocabulary:slice}` in holds one.
 struct Reference {
   std::uint8_t vocabulary_index{};
   std::uint8_t slice_index{};
@@ -69,11 +69,11 @@ struct Reference {
   constexpr bool operator==(const Reference &) const = default;
 };
 
-// An operand is a constant, a name the CPU can resolve, or a vocabulary reference.
-// `a`, `hl` and `carry` are all just names, whatever they denote on the
-// machine: a register, a register pair, a single flag bit. Wrapping one in parentheses
-// says to use it as an address rather than as a value, which is orthogonal to
-// all of the above.
+// An operand is a constant, a name the CPU can resolve, or a vocabulary
+// reference. A name is only a name here, whatever it denotes on the machine: a
+// register, a register pair, a single flag bit (the Z80's `a`, `hl` and `carry`
+// are one of each). Wrapping one in parentheses says to use it as an address
+// rather than as a value, which is orthogonal to all of the above.
 struct Operand {
   enum class Kind : std::uint8_t { Constant, Named, Immediate, Vocabulary, Discard };
   Kind kind{};
@@ -82,8 +82,9 @@ struct Operand {
   std::uint8_t width{};
   Reference reference{};
   bool indirect{};
-  // `(ix+d)`: the address is this operand offset by a displacement byte, which
-  // is the machine's to form because it is the machine's to pay for.
+  // The address is this operand offset by a displacement byte the instruction
+  // carries, as in the Z80's `(ix+d)`. Forming it is the machine's job because
+  // paying for it is.
   bool displaced{};
   std::uint8_t write_back_delay{};
   // The value is in the instruction: these bits of the opcode. A vocabulary of
@@ -91,9 +92,10 @@ struct Operand {
   // a run-time read rather than one function per member.
   bool from_opcode{};
   BitSlice slice{};
-  // `value=(hl)`: the operand says which parameter it feeds rather than relying
-  // on where it sits. Empty when the row wrote it positionally, which is almost
-  // always. See `operand_order` in Execute.hpp.
+  // The operand says which parameter it feeds rather than relying on where it
+  // sits, as `value=(hl)` does in the Z80's description. Empty when the row
+  // wrote it positionally, which is almost always. See `operand_for_parameter`
+  // in Execute.hpp.
   Name parameter{};
   // Chosen by the table's view, so it cannot be folded away at compile time.
   // `reference.vocabulary_index` says which vocabulary, and the generated code
@@ -137,7 +139,8 @@ struct Member {
 struct Vocabulary {
   static constexpr std::size_t max_members = 8;
   std::string_view name{};
-  // `vocab pair : R16 = bc de hl sp`: which scope its members are looked up in.
+  // Which scope its members are looked up in, named by the `:` clause of a
+  // declaration such as the Z80's `vocab pair : R16 = bc de hl sp`.
   // Empty means the CPU's locations, which is what most of them are. Compared
   // exactly, unlike a member, because it names a C++ type rather than something
   // written the way assembly is written.
@@ -150,17 +153,19 @@ struct Vocabulary {
 };
 
 // A derived table re-reads its parent's rows with some vocabulary members
-// renamed: `dd` is `base` read with `pair.hl -> ix`. A rule names the vocabulary
-// it rewrites as well as the member, because the same text means different
-// things in different vocabularies: `reg.h` is renamed by a view and the
-// `real.h` of an indexed load is not. The right side is a whole member, so a substitute
-// may bring its own operation and its own access sequence.
+// renamed; the Z80's `dd` page is its `base` page read with `pair.hl -> ix`. A
+// rule names the vocabulary it rewrites as well as the member, because the same
+// text means different things in different vocabularies (there, `reg.h` is
+// renamed by a view and the `real.h` of an indexed load is not). The right side
+// is a whole member, so a substitute may bring its own operation and its own
+// access sequence.
 struct Rule {
   std::uint8_t vocabulary_index{};
   std::string_view from{};
   Member to{};
-  // `pair.hl -> {index:view}`: the replacement is chosen by the table's view
-  // rather than fixed, which is what lets one table stand for both ix and iy.
+  // The replacement is chosen by the table's view rather than fixed, which is
+  // what lets one table stand for every member the view can select: the Z80's
+  // `pair.hl -> {index:view}` covers `ix` and `iy` at once.
   bool to_is_view{};
   std::uint8_t to_vocabulary{};
   constexpr bool operator==(const Rule &) const = default;
@@ -168,17 +173,19 @@ struct Rule {
 
 using Rules = Vector<Rule, 6>;
 
-// A vocabulary that *is* its slice: `bit = 0 1 2 3 4 5 6 7`, where member n is
-// the number n. Its members differ in a value and nothing else, with no
-// operation to splice, no location to name and no addressing mode to pay for, so the
-// choice between them need not be baked into a function, because the opcode
-// already carries it.
+// A vocabulary that *is* its slice: member n is the number n, as in the Z80's
+// `bit = 0 1 2 3 4 5 6 7`. Its members differ in a value and nothing else, with
+// no operation to splice, no location to name and no addressing mode to pay
+// for, so the choice between them need not be baked into a function, because
+// the opcode already carries it.
 //
-// Identity is the load-bearing half, and it is easy to miss: `rst = 0x00 0x08
-// ... 0x38` and `imode = 0 0 1 2 0 0 1 2` are just as numeric, but their member
-// is a *function* of the slice rather than the slice, so reading the bits would
-// give `rst 3` where `rst 0x18` was meant. Those keep a function each; between
-// them they are worth 21 bodies, which is not worth a lookup table.
+// Identity is the load-bearing half, and it is easy to miss. A vocabulary whose
+// member is a *function* of the slice rather than the slice itself looks just
+// as numeric, and reading the bits would answer with the index instead of the
+// value: the Z80's `rst = 0x00 0x08 ... 0x38` would give `rst 3` where
+// `rst 0x18` was meant, and its `imode = 0 0 1 2 0 0 1 2` is not even injective.
+// Those keep a function each, worth 21 bodies between them in that description,
+// which is not worth a lookup table.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
@@ -293,8 +300,9 @@ struct Step {
   enum class Kind : std::uint8_t { Apply, Goto, If };
   Kind kind{};
   std::uint8_t target{};
-  // `goto indexed(ix)` names a member of the target's view vocabulary;
-  // `goto indexed_cb(view)` hands on the view this table was decoded under.
+  // A goto may name a member of the target's view vocabulary, as the Z80's
+  // `goto indexed(ix)` does, or write `view` to hand on the view this table was
+  // decoded under.
   std::uint8_t target_view{};
   bool forwards_view{};
   std::string_view operation{};
@@ -328,9 +336,10 @@ struct TableDecl {
   bool derived{};
   std::uint8_t parent{};
   Rules rules{};
-  // `table indexed(view:index)`, decoded once for each member of `index`
-  // without being generated once for each. The name is what a row writes where
-  // a slice letter would go; empty means the table takes no view.
+  // A table declared `t(view:v)` is decoded once for each member of `v` without
+  // being generated once for each; the Z80's is `table indexed(view:index)`.
+  // The name is what a row writes where a slice letter would go; empty means
+  // the table takes no view.
   std::string_view view_name{};
   std::uint8_t view_vocabulary{};
   [[nodiscard]] constexpr bool takes_view() const { return !view_name.empty(); }

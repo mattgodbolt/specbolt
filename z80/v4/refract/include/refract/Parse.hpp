@@ -34,8 +34,8 @@ namespace specbolt::refract {
     if (vocabulary.name.empty())
       throw table_error(at, "vocabulary declaration has no name");
     auto next = parser.next_word();
-    // `vocab pair : R16 = ...`: the scope its members are looked up in, rather
-    // than every location the CPU offers.
+    // A `:` clause names the scope this vocabulary's members are looked up in,
+    // rather than every location the CPU offers.
     if (next == ":") {
       vocabulary.scope = parser.next_word();
       if (vocabulary.scope.empty())
@@ -81,9 +81,8 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
   return static_cast<std::size_t>(found - vocabularies.begin());
 }
 
-// `indexed(view:index)` declares a table called `indexed`; the parenthesised
-// part is its view. Both the declaration and the scan for a table's rows need
-// the bare name.
+// `t(view:v)` declares a table called `t`; the parenthesised part is its view.
+// Both the declaration and the scan for a table's rows need the bare name.
 [[nodiscard]] constexpr std::string_view table_name_of(const std::string_view word) {
   const auto open = word.find('(');
   return open == std::string_view::npos ? word : word.substr(0, open);
@@ -92,9 +91,10 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
 [[nodiscard]] constexpr Reference reference_from_braces(std::span<const Vocabulary> vocabularies, std::string_view text,
     const Pattern &matched, std::size_t line, const TableDecl &table);
 
-// `pair.hl->ix, reg.h -> ixh`: either spacing, because both read naturally.
-// A right side of `{index:view}` substitutes whichever member the table's view
-// selects, which is what lets one table stand for both ix and iy.
+// `from -> to`, comma separated, with either spacing, because both read
+// naturally: the Z80's is `pair.hl->ix, reg.h -> ixh`. A right side written as
+// a view reference substitutes whichever member the table's view selects, which
+// is what lets one table stand for every one of them.
 constexpr void parse_substitutions(const std::string_view text, const std::span<const Vocabulary> vocabularies,
     TableDecl &table, const std::size_t line) {
   Parser list(text);
@@ -111,7 +111,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       throw table_error(line, "a table substitution needs a name on each side of '->'");
     const auto dot = left.find('.');
     if (dot == std::string_view::npos)
-      throw table_error(line, "a table substitution names the vocabulary it rewrites, as in 'reg.h -> ixh'");
+      throw table_error(
+          line, "a table substitution names the vocabulary it rewrites, as in 'vocabulary.member -> replacement'");
     const auto vocabulary = left.substr(0, dot);
     const auto named = find_vocabulary(vocabularies, vocabulary);
     if (!named)
@@ -155,8 +156,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
     if (name.empty())
       throw table_error(at, "table declaration has no name");
     TableDecl table{.line = at};
-    // `indexed(view:index)`: the table is decoded once per member of `index`,
-    // and a row writes `view` where a slice letter would go.
+    // `t(view:v)`: the table is decoded once per member of `v`, and a row
+    // writes `view` where a slice letter would go.
     if (const auto open = name.find('('); open != std::string_view::npos) {
       if (!name.ends_with(')'))
         throw table_error(at, "unterminated '(' in table view");
@@ -218,8 +219,9 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
 // `displaced_through` does not even take a view, which is only sound if the
 // members agree about everything except which location they name.
 //
-// Without this, `vocab index_mem = (ix+d)/delay=1 (iy)` compiles clean and the
-// `fd` page silently runs one addressing mode while printing another. It is the
+// Without this, the Z80's `vocab index_mem = (ix+d)/delay=1 (iy)` would compile
+// clean and its `fd` page would silently run one addressing mode while printing
+// another. It is the
 // one mistake in the format that would otherwise produce a wrong emulator
 // rather than a line number.
 //
@@ -246,16 +248,16 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   }
 }
 
-// `{reg:z}` binds the vocabulary `reg` to the slice `z`; in a table that takes
-// one, `{index:view}` binds it to the view instead, which the opcode does not
-// carry and a prefix chose.
+// `{vocabulary:slice}` binds a vocabulary to a slice of the opcode; in a table
+// that takes a view, `{vocabulary:view}` binds it to the view instead, which
+// the opcode does not carry and a prefix chose.
 [[nodiscard]] constexpr Reference parse_reference(const std::span<const Vocabulary> vocabularies,
     const std::string_view inner, const Pattern &matched, const std::size_t line, const TableDecl &table) {
   Parser parser(inner);
   const auto name = parser.take_until(':');
   const auto slice = parser.rest();
   if (name.empty() || slice.empty())
-    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
+    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {vocabulary:z}");
   const auto field = find_vocabulary(vocabularies, name);
   if (!field)
     throw table_error(line, "reference names a vocabulary that does not exist");
@@ -266,7 +268,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
     return {.vocabulary_index = static_cast<std::uint8_t>(*field), .from_view = true};
   }
   if (slice.size() != 1)
-    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
+    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {vocabulary:z}");
   const auto found = find_slice(matched, slice.front());
   if (!found)
     throw table_error(line, "reference names a slice the opcode pattern does not define");
@@ -278,7 +280,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
 [[nodiscard]] constexpr Reference reference_from_braces(const std::span<const Vocabulary> vocabularies,
     const std::string_view text, const Pattern &matched, const std::size_t line, const TableDecl &table) {
   if (!text.starts_with('{') || !text.ends_with('}'))
-    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {reg:z}");
+    throw table_error(line, "a reference names a vocabulary and one slice letter, as in {vocabulary:z}");
   return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, line, table);
 }
 

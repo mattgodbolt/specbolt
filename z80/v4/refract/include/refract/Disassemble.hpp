@@ -35,9 +35,10 @@ inline constexpr std::size_t max_instruction_bytes = 8;
 // rather than how far it goes.
 [[nodiscard]] inline Disassembly disassemble(
     const Description &description, const std::uint16_t address, const auto &byte_at) {
-  // Follow prefixes until a row that renders something is reached. `dd cb d op`
-  // takes its displacement between the prefix and the byte that says what to
-  // do, so the latch is filled inside this loop rather than after it.
+  // Follow prefixes until a row that renders something is reached. An encoding
+  // may take its displacement between the prefix and the byte that says what to
+  // do (the Z80's `dd cb d op`), so the latch is filled inside this loop rather
+  // than after it.
   std::size_t offset = 0;
   auto table = description.entry;
   const Row *row = nullptr;

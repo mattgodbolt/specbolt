@@ -139,12 +139,15 @@ namespace specbolt::refract {
   return pieces;
 }
 
-// `bc` is display only; `adc:add8+carry` binds an operation and appends an
-// operand; `(hl)/delay=1` states the access sequence of an addressing mode.
-// `value=(hl)`: an operand may name the parameter it feeds instead of relying on
-// its position. A keyword is an identifier followed by `=`, and nothing else is,
-// which is what stops `(hl)/delay=1` from looking like one: everything before
-// its `=` is punctuation.
+// A member may be display only; it may bind an operation and fix some of that
+// operation's arguments; it may state the access sequence of an addressing
+// mode; and an operand may name the parameter it feeds instead of relying on
+// its position. In the Z80's description those are `bc`, `adc:add8(carry)`,
+// `(hl)/delay=1` and `value=(hl)`.
+//
+// A keyword is an identifier followed by `=`, and nothing else is, which is
+// what stops `(hl)/delay=1` from looking like one: everything before its `=` is
+// punctuation.
 [[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(
     const std::string_view word, const std::size_t line) {
   const auto at = word.find('=');

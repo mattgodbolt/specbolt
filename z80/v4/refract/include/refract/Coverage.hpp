@@ -19,17 +19,19 @@
 namespace specbolt::refract {
 
 // What this opcode, decoded here, is displaced through, or nothing if it is not.
-// Nothing declares this: a row says `{reg:z}`, a view says that member is now
-// `(ix+d)`, and the answer is whatever the operands resolve to.
+// Nothing declares this: a row names a vocabulary member, a view says that
+// member is now a displaced one, and the answer is whatever the operands
+// resolve to.
 //
-// One per instruction, not one per operand. `inc (ix+d)` reads and writes
-// through the same address, and the chip reads one displacement and forms one
-// sum; forming it per operand would pay for it twice.
+// One per instruction, not one per operand. An instruction that reads and
+// writes through the same address wants one displacement read and one sum
+// formed, as the chip does; forming it per operand would pay for it twice. (The
+// Z80's `inc (ix+d)` is such an instruction.)
 //
 // No `view` parameter: every member of a vocabulary a view selects is required
 // to have the same shape, so view 0 answers for all of them. That requirement
-// is `check_view_vocabulary` in Parse.hpp, without which this would quietly
-// give the `iy` page the `ix` page's addressing mode.
+// is `check_view_vocabulary` in Parse.hpp, without which one page of a
+// prefixed encoding would quietly get another's addressing mode.
 [[nodiscard]] constexpr std::optional<Operand> displaced_through(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode};
@@ -70,7 +72,8 @@ namespace specbolt::refract {
 }
 
 // Earlier rows win, so a specific encoding must precede the general one that
-// would otherwise swallow it: `halt` before `ld {reg:y}, {reg:z}`.
+// would otherwise swallow it, as the Z80's `halt` must precede its
+// `ld {reg:y}, {reg:z}`.
 // A set of opcodes, as bits, so containment and overlap are whole-set
 // operations rather than 256. C++23 made `std::bitset` usable during constant
 // evaluation, which is the only reason this is not written out by hand.
@@ -192,7 +195,7 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 // gotos that reach a table rather than declared on it: its rows use the
 // displacement instead of reading one, and its opcode arrives by an operand
 // read rather than an instruction fetch, because the machine has committed,
-// which is why the real chip does not increment R for that byte.
+// which is why the Z80 does not advance its refresh register for that byte.
 [[nodiscard]] constexpr std::vector<bool> latched_tables(
     const std::span<const Row> rows, const std::size_t num_tables) {
   // Empty until some goto has said, so that "not reached yet" and "reached
@@ -232,7 +235,7 @@ constexpr bool check_tables_total(const Description &description) {
 // it?
 [[nodiscard]] constexpr bool names_literally(const Row &row, std::string_view what) {
   // A rule's left side is written as the vocabulary writes it, so it may carry
-  // parentheses, as in `reg.(hl) -> (ix+d)`. An operand keeps the name and the
+  // parentheses, as in the Z80's `reg.(hl) -> (ix+d)`. An operand keeps the name and the
   // indirection apart, so compare both halves rather than the text.
   auto indirect = false;
   if (what.starts_with('(') && what.ends_with(')')) {
@@ -273,9 +276,10 @@ constexpr bool check_inherited_literals(const Description &description) {
 // row that overlaps a parent row without being contained in it is silently
 // taking opcodes the parent meant to keep.
 //
-// This is the check that would have caught writing `{reg:y}` for `{real:y}` in the
-// `ix` table: `r` has no hole at slot 6, so the row would claim `0x76` and
-// `halt` would quietly vanish from the prefixed pages.
+// This is the check that would have caught a mistake made while writing the
+// Z80's description: `{reg:y}` for `{real:y}` in the `ix` table, where `reg`
+// has no hole at slot 6, so the row would claim `0x76` and `halt` would quietly
+// vanish from the prefixed pages.
 constexpr bool check_derived_rows_override(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
   const auto tables = description.tables;
@@ -294,8 +298,8 @@ constexpr bool check_derived_rows_override(const Description &description, const
 }
 
 // Does this row's mnemonic render a displacement? It may say so itself, as an
-// override row writing `(ix+d)` in full does, or through a vocabulary member that
-// a view renamed to one.
+// override row spelling a displaced operand out in full does, or through a
+// vocabulary member that a view renamed to one.
 [[nodiscard]] constexpr bool renders_displacement(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   return std::ranges::any_of(row.pieces, [&](const Piece &piece) {
