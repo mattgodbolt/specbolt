@@ -346,17 +346,38 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 
 // The parts a result comes apart into, or nothing if it does not come apart.
 //
-// This is the language's own rule, asked with reflection rather than by writing
-// `auto [a, b] =`: a class is decomposable only if all its non-static data
-// members are public members of the same class ([dcl.struct.bind]), which is
-// why `access_context::current()` is the right context to ask from. A type
-// whose state is private is not decomposable by anyone, here or anywhere, and
-// `apply` stores such a result whole. A non-class type has no parts either, and
-// arrives at the same answer by a shorter road.
-[[nodiscard]] consteval std::span<const std::meta::info> decomposes_into(const std::meta::info type) {
+// The rule is the language's: a class decomposes only when all of its
+// non-static data members are public members of *that same class*
+// ([dcl.struct.bind]). Asking with reflection rather than by writing
+// `auto [a, b] =` means enforcing both halves here, because
+// `nonstatic_data_members_of` answers a subtly different question twice over.
+// It reports what is *accessible from the asking context*, which is not "all of
+// them are public", and it reports only *direct* members, where a structured
+// binding sees through a base class.
+//
+// Where the answers part company there is no safe guess: binding the visible
+// half of a result would store some of it and drop the rest in silence. So a
+// type all of whose state is hidden is one value, a type all of whose state is
+// public is its parts, and anything in between is refused.
+[[nodiscard]] consteval std::span<const std::meta::info> decomposes_into(
+    const std::meta::info type, const std::size_t line) {
   if (!std::meta::is_class_type(type))
     return {};
-  return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
+  const auto visible = std::meta::nonstatic_data_members_of(type, std::meta::access_context::current());
+  const auto every = std::meta::nonstatic_data_members_of(type, std::meta::access_context::unchecked());
+  if (visible.size() != every.size()) {
+    if (!visible.empty())
+      throw table_error(line, "this operation returns a type that hides some of its state and not the rest, so it is "
+                              "neither one value nor a set of parts; the parts this row would be given are only the "
+                              "ones this library can see");
+    // Every member hidden: encapsulated, so one value, which is what the
+    // language says too by refusing to decompose it.
+    return {};
+  }
+  if (!std::meta::bases_of(type, std::meta::access_context::unchecked()).empty())
+    throw table_error(line, "this operation returns a type with a base class, and a result is taken apart by its own "
+                            "members, so whatever it inherits would be dropped");
+  return std::define_static_array(visible);
 }
 
 // An operation may ask for the machine itself, and if it does it must ask first:
@@ -672,7 +693,7 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   // A `std::span`, and safe to hold: `decomposes_into` promotes its contents
   // with `define_static_array`, so what this points at has static storage and
   // `members[at]` is a constant expression a splice can use.
-  static constexpr auto members = decomposes_into(^^Result);
+  static constexpr auto members = decomposes_into(^^Result, C.line);
   // The language would decompose a one-member class quite happily; refusing to
   // is this framework's own policy, because such a result is as good a
   // description of one value as of a bundle holding one, and a row would be
