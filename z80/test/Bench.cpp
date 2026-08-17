@@ -23,6 +23,8 @@
 #include <format>
 #include <iostream>
 #include <limits>
+#include <print>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -199,6 +201,12 @@ struct Bench {
       std::print(std::cerr, "No implementation to run: this binary does not hold v{}.\n", only);
       return 1;
     }
+    // Nothing to divide by, and every figure this prints is per unit of work.
+    if (const auto work = snapshot.empty() ? instructions : frames; reps == 0 || work == 0) {
+      std::print(std::cerr, "Nothing to measure: repetitions and {} must both be above zero.\n",
+          snapshot.empty() ? "instructions" : "frames");
+      return 1;
+    }
 
     for (std::size_t rep = 0; rep < reps; ++rep) {
       // Alternating direction, because position within a repetition is not
@@ -268,4 +276,12 @@ struct Bench {
 
 } // namespace specbolt
 
-int main(const int argc, const char *argv[]) { return specbolt::Bench{}.Main(argc, argv); }
+int main(const int argc, const char *argv[]) {
+  try {
+    return specbolt::Bench{}.Main(argc, argv);
+  }
+  catch (const std::runtime_error &e) {
+    std::print(std::cerr, "Caught exception: {}\n", e.what());
+    return 1;
+  }
+}
