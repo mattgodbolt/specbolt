@@ -22,6 +22,7 @@
 #include <filesystem>
 #include <format>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -84,8 +85,21 @@ void service_cpm(Memory &memory, RegisterFile &regs) {
   regs.sp(static_cast<std::uint16_t>(sp + 2));
 }
 
+// What a repetition did, which is not always what it was asked to do: a zexdoc
+// run ends early if the program returns to 0. Dividing the time by the amount
+// asked for would then report a figure nothing ran, and report it as an
+// improvement.
+struct Run {
+  std::chrono::nanoseconds elapsed{};
+  std::uint64_t done{};
+
+  [[nodiscard]] double per_unit() const {
+    return done == 0 ? 0.0 : static_cast<double>(elapsed.count()) / static_cast<double>(done);
+  }
+};
+
 template<typename Cpu>
-[[nodiscard]] std::chrono::nanoseconds time_one(const std::uint64_t instructions) {
+[[nodiscard]] Run time_one(const std::uint64_t instructions) {
   Memory memory{4};
   memory.load(std::filesystem::path("z80/test/zexdoc.com"), 0, 0x100, 8704);
   memory.set_rom_flags({false, false, false, false});
@@ -95,15 +109,17 @@ template<typename Cpu>
   z80.regs().pc(0x100);
   z80.regs().sp(0xf000);
 
+  std::uint64_t done = 0;
   const auto start = std::chrono::steady_clock::now();
-  for (std::uint64_t done = 0; done < instructions; ++done) {
+  while (done < instructions) {
     z80.execute_one();
+    ++done;
     if (z80.pc() == 5) [[unlikely]]
       service_cpm(memory, z80.regs());
     else if (z80.pc() == 0) [[unlikely]]
       break;
   }
-  return std::chrono::steady_clock::now() - start;
+  return {std::chrono::steady_clock::now() - start, done};
 }
 
 // A real program, as against an instruction exerciser. zexdoc chooses its own
@@ -114,7 +130,7 @@ template<typename Cpu>
 // A 48K frame is 69888 T-states at 3.5MHz, so a real Spectrum takes 19.97ms
 // over one. Anything faster than that is emulating faster than the machine.
 template<typename Cpu>
-[[nodiscard]] std::chrono::nanoseconds time_frames(const std::filesystem::path &snapshot, const std::uint64_t frames) {
+[[nodiscard]] Run time_frames(const std::filesystem::path &snapshot, const std::uint64_t frames) {
   Spectrum<Cpu> spectrum{Variant::Spectrum48, get_asset_dir() / "48.rom", 16000};
   Snapshot::load(snapshot, spectrum.z80());
   // Past whatever the snapshot was taken mid-way through, so the timed part is
@@ -125,13 +141,15 @@ template<typename Cpu>
   const auto start = std::chrono::steady_clock::now();
   for (std::uint64_t frame = 0; frame < frames; ++frame)
     spectrum.run_frame();
-  return std::chrono::steady_clock::now() - start;
+  return {std::chrono::steady_clock::now() - start, frames};
 }
 
+// Nanoseconds per instruction, or per frame with `--snapshot`. Per unit rather
+// than total, so a repetition that did less work than another still compares.
 struct Result {
   std::string name;
-  std::chrono::nanoseconds best{std::chrono::nanoseconds::max()};
-  std::chrono::nanoseconds worst{};
+  double best{std::numeric_limits<double>::max()};
+  double worst{};
 };
 
 struct Bench {
@@ -174,13 +192,21 @@ struct Bench {
       results.push_back({.name = "v3"});
 #endif
 
+    // A per-implementation binary holds exactly one, so asking it for another
+    // selects nothing at all. Said here rather than left to divide a total by
+    // no repetitions.
+    if (results.empty()) {
+      std::print(std::cerr, "No implementation to run: this binary does not hold v{}.\n", only);
+      return 1;
+    }
+
     for (std::size_t rep = 0; rep < reps; ++rep) {
       // Alternating direction, because position within a repetition is not
       // neutral: whoever runs last meets the hottest core and the coldest
       // caches. A fixed order quietly taxes whoever is at the end of it.
       for (std::size_t at = 0; at < results.size(); ++at) {
         auto &result = results[rep % 2 == 0 ? at : results.size() - 1 - at];
-        const auto taken = run_named(result.name);
+        const auto taken = run_named(result.name).per_unit();
         result.best = std::min(result.best, taken);
         result.worst = std::max(result.worst, taken);
       }
@@ -191,7 +217,7 @@ struct Bench {
     return 0;
   }
 
-  [[nodiscard]] std::chrono::nanoseconds run_named(const std::string &name) const {
+  [[nodiscard]] Run run_named(const std::string &name) const {
     const auto run = [&]<typename Cpu>() {
       return snapshot.empty() ? time_one<Cpu>(instructions) : time_frames<Cpu>(snapshot, frames);
     };
@@ -210,6 +236,12 @@ struct Bench {
     return {};
   }
 
+  // How far the worst repetition ran from the best. A wide spread means the
+  // machine was busy or throttling, and the comparison is worth less.
+  [[nodiscard]] static double spread_of(const Result &result) {
+    return (result.worst - result.best) / result.best * 100.0;
+  }
+
   void report(const std::vector<Result> &results) const {
     const auto fastest = std::ranges::min(results, {}, &Result::best).best;
     if (!snapshot.empty()) {
@@ -218,24 +250,16 @@ struct Bench {
       std::print(
           std::cout, "{:>4}  {:>10}  {:>10}  {:>8}  {:>7}\n", "impl", "ms/frame", "x realtime", "vs best", "spread");
       for (const auto &result: results) {
-        const auto ms = static_cast<double>(result.best.count()) / 1'000'000.0 / static_cast<double>(frames);
-        const auto spread = static_cast<double>(result.worst.count() - result.best.count()) /
-                            static_cast<double>(result.best.count()) * 100.0;
+        const auto ms = result.best / 1'000'000.0;
         std::print(std::cout, "{:>4}  {:>10.4f}  {:>10.1f}  {:>7.2f}x  {:>6.1f}%\n", result.name, ms,
-            real_ms_per_frame / ms, static_cast<double>(result.best.count()) / static_cast<double>(fastest.count()),
-            spread);
+            real_ms_per_frame / ms, result.best / fastest, spread_of(result));
       }
       return;
     }
     std::print(std::cout, "{:>4}  {:>10}  {:>10}  {:>8}  {:>7}\n", "impl", "ns/instr", "Minstr/s", "vs best", "spread");
     for (const auto &result: results) {
-      const auto per = static_cast<double>(result.best.count()) / static_cast<double>(instructions);
-      // How far the worst repetition ran from the best. A wide spread means the
-      // machine was busy or throttling, and the comparison is worth less.
-      const auto spread = static_cast<double>(result.worst.count() - result.best.count()) /
-                          static_cast<double>(result.best.count()) * 100.0;
-      std::print(std::cout, "{:>4}  {:>10.2f}  {:>10.1f}  {:>7.2f}x  {:>6.1f}%\n", result.name, per, 1000.0 / per,
-          static_cast<double>(result.best.count()) / static_cast<double>(fastest.count()), spread);
+      std::print(std::cout, "{:>4}  {:>10.2f}  {:>10.1f}  {:>7.2f}x  {:>6.1f}%\n", result.name, result.best,
+          1000.0 / result.best, result.best / fastest, spread_of(result));
     }
   }
 };
