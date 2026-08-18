@@ -81,88 +81,110 @@ On top of that regular reads and writes take 3, IO takes 4.
 
 ---
 
-### Why v2 looked 20% faster than v3 and v4 (and wasn't)
+### The two functions every implementation waits on
 
-For a long time the zexdoc times said v2 was clearly the quickest and v3/v4 were
-paying for their fancier dispatch. That turned out to be wrong, and the way it
-was wrong is the interesting part. `z80/test/Bench.cpp` is the harness; run it
-with `--impl`, or use the per-implementation binaries (see below).
+The zexdoc times used to look like a statement about how each implementation
+dispatches. Some of what they were saying was really about two small functions
+underneath all of them, neither of which has anything to do with dispatch:
+`Memory::read` and `Scheduler::tick`. Both were being left out of line, and what
+that cost depended on what else happened to be in the binary.
 
-**Wall-clock on a laptop cannot see a 15% effect.** The same binary varied by a
-third between runs of the zexdoc suite. Everything below is `perf` counters:
-retired instructions reproduce to better than 0.01%, and cycles to about 2%.
+`z80/test/Bench.cpp` is the harness. `z80_bench` holds every implementation and
+is what the emulator's own link looks like; `z80_bench_v1` .. `z80_bench_v3`
+hold one each, and are what a comparison *between* implementations should be
+read from.
 
-**The ranking depended on how the binaries were linked.** Interprocedural
-optimisation is on for the whole build, and every test binary contains all four
-implementations, so they are optimised against each other. Cycles per emulated
-Z80 instruction:
+**Wall clock on a laptop cannot see an effect this size.** The same binary varies
+by tens of per cent between runs. Everything below is `perf` retired
+instructions, which reproduce to better than 0.01% for the same binary on the
+same input. Cycles moved the same way, but with a couple of per cent of noise on
+top, so they are the column to trust least.
 
-| | four in one binary | one binary each |
-|---|---|---|
-| v1 | 134.8 | 135.1 |
-| v2 | **55.9** | 67.0 |
-| v3 | 63.4 | 58.6 |
-| v4 | 62.1 | **54.0** |
+Retired x86 instructions per emulated Z80 instruction, over 20M instructions of
+zexdoc, gcc 16.2 at `RelWithDebInfo`:
 
-v2 wins one column and v4 wins the other. This was found by accident: editing v4
-moved *v2's* retired instruction count by 7.5% without v2's source changing.
+| all three in one binary | before | `Memory` inline | `tick` fast path | both |
+|---|---:|---:|---:|---:|
+| v1 | 360.9 | 329.7 | 348.4 | **302.2** |
+| v2 | 182.2 | 162.8 | 167.3 | **146.6** |
+| v3 | 191.1 | 170.7 | 167.0 | **146.2** |
 
-**The mechanism was two shared functions losing an inlining lottery.** Whichever
-one stayed out of line decided the loser: `Memory::read` was 18% of v4's runtime
-in the combined binary, and `Scheduler::tick` was 28% of v2's in its own binary.
-Neither has anything to do with how an instruction is dispatched.
+| one binary each | before | `Memory` inline | `tick` fast path | both |
+|---|---:|---:|---:|---:|
+| v1 | 377.0 | 307.2 | 362.1 | **292.2** |
+| v2 | 202.9 | 200.1 | 132.9 | **125.9** |
+| v3 | 210.4 | 207.1 | 130.5 | **123.4** |
 
-Both are now fixed at the source: `Memory`'s accessors moved into the header, and
-`tick` grew an inline fast path over an out-of-line `tick_with_tasks`. Every
-implementation got faster (v1 -25%, v2 -18%, v3 -31%, v4 -29%) and v2, v3 and v4
-now execute within 1% of the same number of x86 instructions per Z80
-instruction. The gap that looked like a verdict on dispatch design was the layer
-underneath all of them.
+**The same edit is worth 1% or 34% depending on what else is linked beside it.**
+In its own binary v2 gets almost nothing from inlining `Memory::read` (-1.4%)
+and almost all of its win from the `tick` fast path (-34.5%); in the combined
+binary the two contribute about equally. Same source, same compiler, same input,
+and only the link differs. Interprocedural optimisation is on for the whole
+build, so whichever function loses the inlining lottery decides where the time
+goes, and what it is competing against changes when the unit changes size. This
+is also why editing one implementation can move another's instruction count
+without its source changing.
 
-#### What this says about "we don't need to inline by hand, that is what LTO is for"
+**v1 is the mirror image.** It gains from `Memory::read` (-18.5% in its own
+binary) and next to nothing from `tick` (-3.9%), because it ticks once per
+instruction: it decodes into an `Instruction` carrying its own T-state count and
+spends it in one go, from four call sites in the whole implementation. v2 and v3
+tick per bus access, from forty-odd. Making a per-access function cheap only
+helps the implementations that call it per access.
 
-Three builds of the *unmodified* source, combined binary, cycles per 20M
-instructions:
+**What is left is a much smaller spread.** After both changes v2 and v3 execute
+within 0.3% of the same number of x86 instructions per Z80 instruction in the
+combined binary, having been 5% apart before. Some of what looked like a verdict
+on how each one dispatches was the layer underneath all of them.
 
-| build | v2 | v4 |
-|---|---|---|
-| default `-flto=auto` | 1.10G | 1.27G |
-| `-flto-partition=one` | 1.10G | 1.27G |
-| `--param max-inline-insns-auto=200 --param inline-unit-growth=200` | 0.73G | 0.93G |
-| *header `inline` + tick fast path, default LTO* | *0.94G* | *0.85G* |
+#### What this says about "we do not need to inline by hand, that is what LTO is for"
 
-`-flto-partition=one` changes nothing at all. Whole program, one partition, every
-definition visible, and gcc still declines to inline `Memory::read`, so this is
-not the visibility problem LTO exists to solve. Raising the inline budget alone
-recovers most of the win with no source change, which shows the compiler could
-have done it and chose not to.
-
-The reason is that gcc runs two budgets: `max-inline-insns-single` for functions
-*declared* `inline`, and a much stingier `max-inline-insns-auto` for everything
-else. `Memory::read` has thousands of call sites, so `inline-unit-growth` vetoes
-it under the auto budget. Writing `inline` in a header tells the compiler nothing
-new about the code; it moves the function into the generous budget.
+Writing `inline` in a header tells the compiler nothing it could not already
+work out: with LTO on, every definition is visible at link time whichever file
+it sits in. What it changes is which budget gcc spends.
+`max-inline-insns-single` applies to functions *declared* `inline`, and a much
+stingier `max-inline-insns-auto` applies to everything else. `Memory::read` has
+thousands of call sites, so `inline-unit-growth` vetoes it under the auto
+budget.
 
 So the claim survives as a statement about *capability* and fails as one about
 *policy*. Nobody has to arrange code for the linker's benefit any more, but
-`inline` is still a hint to the cost model, and for a few tiny leaf functions on
-the hot path with a thousand callers it is the difference between a call and no
-call. The alternative is a whole-program flag, which is a blunt instrument: it
-re-ranked every implementation and helped v2 most, where the keyword helped v4
-most. Same win, very different blast radius.
+`inline` is still a hint to the cost model, and for a couple of tiny leaf
+functions on the hot path with a thousand callers it is the difference between a
+call and no call.
 
-#### Why the `tick` fast path did nothing for v1
+#### Reading the benchmark
 
-v1 ticks once per instruction: it decodes into an `Instruction` carrying its own
-T-state count and spends it in one go (`pass_time(extra_t_states +
-instr.decode_t_states)`), from four call sites in the whole implementation.
-v2/v3/v4 tick per bus access, from around forty. Making a per-access function
-cheap only helps the implementations that call it per access: v1 gained 2%.
+`--snapshot FILE --frames N` runs a `.sna`/`.z80` through the whole `Spectrum`
+(ULA, display and all) instead of running zexdoc through the bare CPU; the games
+themselves are not in the repository. Two traps, both of which produced wrong
+answers before they were fixed: never run it while anything else is on the
+machine, and never run the implementations in a fixed order within a repetition,
+since whoever goes last meets the hottest core and the coldest caches. The
+harness alternates direction and reports the best repetition for that reason.
 
-v2 gained nothing either, for a different reason: in the combined binary LTO had
-already inlined `tick` for it. In v2's *own* binary it had not, and there the same
-change was worth 29%, the largest gain of any implementation. The same edit is
-worth 0% or 29% depending on what else is linked beside it.
+#### What changes when v4 is in the link
+
+Everything above was measured with three implementations sharing the combined
+binary, which is what that binary held at the time. v4 changes it, and the point
+of the section above is that what else is linked beside an implementation moves
+its numbers, so the combined column has to be read as "whatever this binary
+held".
+
+With v4 present the ranking inverts across the two links: v4 is fastest in the
+combined binary and v2 is fastest when each is built alone. That inversion is
+the finding the rest of this section rests on, and it does not appear at all in
+a three-implementation build, where v2 leads both columns.
+
+One number is unexplained and left standing rather than quietly dropped. An
+earlier laptop run recorded v3 at 58.6 cycles per emulated instruction in its
+own binary; a later re-measurement of the same configuration, on the same
+machine and compiler, gave 88.7. That is far outside the couple of per cent
+cycles usually vary by here. The candidate is that this branch puts
+`-freflection` on `opt::c++26`, so every target is built with it where a build
+without v4 is not, but nobody has checked. **Treat the cycle figures below as
+the weaker half of the evidence, and the retired-instruction ones as the
+strong half.**
 
 #### Confirmed on a machine that can actually be measured
 
@@ -323,19 +345,6 @@ they share, not of v4's generated one.
 Both of these numbers are upper bounds twice over: 18 cycles is the textbook
 penalty and out-of-order execution hides some of it, and "non-conditional"
 includes returns.
-
-#### Reading the benchmark
-
-`z80_bench` holds all four implementations and is what the emulator's link looks
-like; `z80_bench_v1` .. `z80_bench_v4` hold one each and are what a comparison
-*between* implementations should be read from. `--snapshot` swaps zexdoc for a
-game; the games themselves are not in the repository. Two traps, both of which produced
-wrong answers before they were fixed: never run it while anything else is on the
-machine, and never run the implementations in a fixed order within a repetition,
-since whoever goes last meets the hottest core and the coldest caches. The harness
-alternates direction and reports the best repetition for that reason.
-
----
 
 ### Compile time
 

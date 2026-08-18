@@ -17,7 +17,6 @@ Memory::Memory(const int num_pages) {
   address_space_.resize(static_cast<std::size_t>(num_pages) * page_size);
 }
 
-
 void Memory::raw_write(const std::uint8_t page, const std::uint16_t offset, const std::uint8_t byte) {
   address_space_[page * page_size + offset] = byte;
 }
