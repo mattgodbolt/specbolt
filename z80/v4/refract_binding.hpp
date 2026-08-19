@@ -10,6 +10,8 @@
 // A second description would be a second one of these, and also a second
 // binary, because the table constants and `Cpu` are definitions rather than
 // parameters. That is the limit of this arrangement.
+// TODO this absolutley has to change; I'd like to be able to embed more than one
+// CPU in a project. Think about this please.
 
 #include "Operations.hpp"
 #include "Table.hpp"

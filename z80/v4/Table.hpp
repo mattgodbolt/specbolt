@@ -16,16 +16,21 @@ namespace specbolt::v4 {
 
 using namespace refract;
 
-// clang-format off
-inline constexpr char cpu_raw[] = {
+// TODO: check my terrible hackery here worked, essentially let's not expose "cpu_raw" to anyone.
+inline constexpr std::string_view cpu_description = []{
+  // clang-format off
+  inline constexpr char cpu_raw[] = {
 #embed SPECBOLT_CPU_TABLE
-};
-// clang-format on
+  };
+  // clang-format on
 
-// `#embed` already knows how long the file is, so the view is built from the
-// size rather than from a terminator the description would otherwise have to
-// carry.
-inline constexpr std::string_view cpu_description{cpu_raw, sizeof cpu_raw};
+return {cpu_raw, sizeof(cpu_raw)};
+}();
+
+// TODO: all these seem like things refract should do for me, once I give it the cpu_description, like
+// as a struct here, not a bunch of free variables. though does to_array cause us issues here? perhaps?
+// IIFE can save us? I dunno, it just seems like annoying toil to do all this work, AND all the static_asserts.
+// Any other CPU would need the same boilerplate.
 
 // The description this build was compiled against. Everything above parses
 // whatever it is handed; these are where the embedded file enters. (Diagnostics
@@ -46,6 +51,7 @@ inline constexpr auto row_opcodes = to_array<[] { return opcodes_of_each(vocabul
 inline constexpr auto decoded = to_array<[] { return decode_tables(rows, row_opcodes, tables); }>();
 inline constexpr auto latched = to_array<[] { return latched_tables(rows, tables.size()); }>();
 
+// TODO: is this a valueable thing? "no name is speical" what does that mean?
 // Decoding starts in the first table declared; no name is special.
 inline constexpr std::uint8_t entry_table = 0;
 

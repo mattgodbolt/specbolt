@@ -18,8 +18,11 @@
 
 namespace specbolt::v4 {
 
+// Ideally let's not do this - this is unhelpful, this _is_ a Z80. Let's call it
+// such throughout this file.
 using Cpu = Z80;
 
+// TODO: see the todo at the end of this superlong comment (which needs trimming too).
 // Which way the block operations walk memory. Bit 3 of the opcode is exactly
 // this, so the values are the hardware's rather than anyone's choice and are
 // written out: nothing here should depend on the order the enumerators happen
@@ -27,14 +30,26 @@ using Cpu = Z80;
 //
 // The spellings are how `z80.cpu` names these, and they are here rather than
 // there because the enum is what knows: `ldi` steps forwards, and `i` is the
-// Z80's name for forwards. `refract` finds them by annotation, so the table
-// writes `i` and this file never mentions the number 1. See CPU_FORMAT.md.
+// Z80's name for forwards. `refract` finds them by annotation.
+// TODO: remind me why the 0 and 1 are important here? seems at this point the
+// number is no longer important? or is this information better encoded in the
+// .cpu file (being more about the encoding of the insturction)?
 enum class BlockDirection : std::uint8_t {
   Up[[= refract::Spelling{"i"}]] = 0,
   Down[[= refract::Spelling{"d"}]] = 1,
 };
 
+// TODO in general I'd like all these to be much more "adapter"-y; anything that
+// takes a `cpu` should delegate to a function on the `cpu` instead of puppeteering
+// the `cpu` from outside. I really want this to read as "the thing that tells"
+// refract the palette of things it can do, but not have to keep reading back
+// and forth between the CPU itself and this file to find the actual Z80 behaviour.
+// Even better if we can dream up a way to make this less painful but for now
+// I think this is ok :) (perhaps a future where the Cpu itself with _annotations_
+// is the Operations, like adding ^^Z80 to the scopes somehow, or ... anyway, future)
+
 struct Operations {
+  // TODO what the heck is this comment supposed to be? refers to what?
   // Not nameable from a description: `find_operation` looks with
   // `access_context::current()`, which is the framework's, so what a row may
   // call is exactly what is public here.
@@ -62,6 +77,7 @@ private:
     cpu.set(RegisterFile::R8::B, b);
     return Alu::parity_flags_for(b) | Flags::Subtract() | (flags & Flags::Carry());
   }
+  // A helper function for rrd and rld.
   [[nodiscard]] static Alu::R8 nibble(Cpu &cpu, const std::uint8_t value, const Flags flags, const bool right) {
     const auto a = cpu.get(RegisterFile::R8::A);
     const auto updated =
@@ -74,13 +90,14 @@ private:
 
 public:
   static void nop() {}
+  [[nodiscard]] static std::uint8_t ld8(const std::uint8_t value) { return value; }
   [[nodiscard]] static std::uint16_t ld16(const std::uint16_t value) { return value; }
   [[nodiscard]] static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
   [[nodiscard]] static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
-  [[nodiscard]] static std::uint8_t ld8(const std::uint8_t value) { return value; }
   static void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.delay(cycles); }
   // Alu::bit takes a mask; the encoding carries an index, as res and set do.
   // Flags 3 and 5 come from whatever was last on the bus, which the row names.
+  // TODO: unless there's a compelling reason, let's call these bit, res, and set (we tend to only put the 8/16 suffix on ambiguous functions)
   [[nodiscard]] static Flags bit8(
       const std::uint8_t value, const std::uint8_t bit, const Flags flags, const std::uint8_t bus) {
     return Alu::bit(value, static_cast<std::uint8_t>(1u << bit), flags, bus);
@@ -92,13 +109,15 @@ public:
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
-  // Conditions. A vocabulary member binds one of these and appends the flag it
-  // asks about, exactly as `adc` binds `add8` and appends the carry.
+  // Conditional operation helpers.
+  // TODO i removed the confusing comment as `flag` and Flags and flag bits are all confusing here to me, anyway.
   [[nodiscard]] static bool is_set(const bool flag) { return flag; }
   [[nodiscard]] static bool is_clear(const bool flag) { return !flag; }
   [[nodiscard]] static bool nonzero(const std::uint8_t value) { return value != 0; }
 
-  // `djnz` counts without touching the flags, which `dec8` would.
+  // TODO: there appears to be no "dec8" and if this is only called from djnz then let's pick a useful name
+  // that obviates the need for a comment (maybe?)
+  // `djnz` counts without touching the flags, which `dec8` would, so it uses 
   [[nodiscard]] static std::uint8_t dec8_quiet(const std::uint8_t value) {
     return static_cast<std::uint8_t>(value - 1);
   }
