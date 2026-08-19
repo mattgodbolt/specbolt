@@ -7,26 +7,31 @@
 
 namespace specbolt::v4 {
 
-using refract::execute_instruction;
-
 void Z80::execute_one() { run(1); }
 
 void Z80::run(const std::size_t instructions) {
   remaining_ = instructions;
   until_ = std::numeric_limits<std::size_t>::max();
-  execute_instruction(*this);
+  refract::execute_instruction(*this);
 }
 
 void Z80::run_until(const std::size_t cycle_count) {
   remaining_ = std::numeric_limits<std::size_t>::max();
   until_ = cycle_count;
-  execute_instruction(*this);
+  refract::execute_instruction(*this);
 }
 
 bool Z80::start_instruction() {
-  // A loop rather than a test, because a halted chip consumes instructions
-  // without executing any, and the run has to end whether it wakes or not.
+  // Called between instructions by the generated code, handles interrupts,
+  // and loops for halted CPUs.
+  // TODO: investigate how well the compiler can remove the likely true part
+  // and whether it's profitable to have an inlined, non-looping version
+  // deferring to the halting version out of line.
   while (true) {
+    // TODO consider if we can avoid two checks here: remaining vs until_ seem
+    // like the same concept and anything we can do to remove this; even if it
+    // means breaking the run(instructions) version as that is less common and
+    // used in tests only (check this claim).
     if (remaining_ == 0 || cycle_count() >= until_)
       return false;
     --remaining_;

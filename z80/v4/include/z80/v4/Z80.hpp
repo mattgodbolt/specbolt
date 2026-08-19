@@ -44,6 +44,7 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 // Individually addressable flag bits, so `carry` is a location like any other.
 // The ordinal is the bit position, which is what `read` shifts by; the
 // static_asserts below hold that to what `Flags` actually says.
+// TODO this should be part of Flags not by "happy accident" in the same order. DRY please
 SPECBOLT_EXPORT enum class FlagBit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };
 
 // Reordering the enumerators above would silently retarget every condition in
@@ -54,6 +55,9 @@ constexpr bool flag_bit_is(const Flags flag, const FlagBit bit) {
   return flag.to_u8() == 1u << static_cast<unsigned>(bit);
 }
 } // namespace detail
+// TODO all this can go if we teach Flags how to do this. I appreciate the attempt to canonicalise this
+// but there must be a better way, if we make some minor changes to flags....like publishing Flags::Flag or similar.
+// all the shifting up and down by bits surely is something we could avoid too?
 static_assert(detail::flag_bit_is(Flags::Carry(), FlagBit::carry));
 static_assert(detail::flag_bit_is(Flags::Subtract(), FlagBit::subtract));
 static_assert(detail::flag_bit_is(Flags::Parity(), FlagBit::parity));
@@ -107,6 +111,12 @@ public:
   // the chip's own names for what it does; the framework calls them directly
   // rather than through anything in between.
   std::uint8_t fetch_opcode();
+  // TODO: This should be either a template function on width OR two functions.
+  // We shouldn't have to rely on this passing a param and we don't even support
+  // anything but 1 or 2 here, so an `enum class` would be more appopriate if
+  // needed at all. Why not have callers call read_immediate or read_immediate16?
+  // NB seems like this is part of the `refract` contract but I think we should fix
+  // that. (see comments in Execute.hpp and Machine.hpp)
   std::uint16_t fetch_immediate(std::uint8_t width);
   [[nodiscard]] std::uint8_t read_memory(std::uint16_t address);
   [[nodiscard]] std::uint16_t read_memory16(std::uint16_t address);
@@ -122,15 +132,15 @@ public:
   [[nodiscard]] std::uint16_t displaced_address(std::uint16_t base, std::uint8_t offset, std::uint8_t immediate_bytes);
 
   // Reading and writing a named location. One overload per kind of location,
-  // all called `read` or `write`, because the framework has only the one name
-  // to call: it splices an enumerator and lets overload resolution land on the
-  // right one. The return types differ, and that is the point: `carry` yields
-  // a `bool` and `flags` a `Flags`, without anything in between being told.
+  // all called `read` or `write`, then the framework has only the one name
+  // to call.
   [[nodiscard]] std::uint8_t read(const RegisterFile::R8 location) const { return get(location); }
   [[nodiscard]] std::uint16_t read(const RegisterFile::R16 location) const { return get(location); }
   void write(const RegisterFile::R8 location, const std::uint8_t value) { set(location, value); }
   void write(const RegisterFile::R16 location, const std::uint16_t value) { set(location, value); }
 
+  // TODO the flags should support this natively. I don't like this "accident" of FlagBit, and the whole
+  // shift down is dumb compared to the `& Flags` which is kinda the point of doing flags this way?
   [[nodiscard]] bool read(const FlagBit which) const {
     return ((flags().to_u8() >> static_cast<unsigned>(which)) & 1u) != 0;
   }

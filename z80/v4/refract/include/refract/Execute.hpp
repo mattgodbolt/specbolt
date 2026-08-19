@@ -893,6 +893,8 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     // The encoding column says what is fetched, and it is fetched once before any
     // step: argument order within a call is unspecified, and a later step may
     // store through an address an earlier one read.
+    // TODO: this is the only place we conditionally read 8 or 16 bits -- perhaphs this
+    // is the one place we use a ternary to cpu.read_immediate() and cast or cpu.read_immediate16()
     const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : cpu.fetch_immediate(row.immediate_bytes);
     // Formed once, after both, and handed to every operand that shares it. The
     // machine is told what else was read first, because on a Z80 those reads

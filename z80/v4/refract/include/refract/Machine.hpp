@@ -53,6 +53,9 @@ concept Machine = requires(M &machine, const std::uint16_t address, const std::u
   // Between instructions: false ends the run. The machine does whatever it
   // does in between, which on a Z80 is interrupts and the halt idle.
   { machine.start_instruction() } -> std::same_as<bool>;
+  // TODO: what on earth does this comment mean. "Widest first"?
+  // TODO: we should make this a template param based off 8-bit of 16-bit OR
+  // call read_immediate() and read_immediate16() here casting up as needed.
   // Widest first, and exactly: a machine returning the narrow width would
   // satisfy a convertibility requirement and drop the high byte of every
   // sixteen-bit immediate, which the row asking for one cannot see.
