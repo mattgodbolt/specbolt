@@ -291,11 +291,7 @@ static_assert(location_names_are_unique(),
 // view at all. The alternative is for the machine to offer a location per
 // vocabulary and a selector to go with it, which works only while the machine
 // and the description agree about what the number means; nothing states that
-// agreement, so nothing can check it.
-//
-// `template for` rather than a loop: a splice needs its operand to be a
-// constant expression, and only an expansion statement's induction variable is
-// one.
+// agreement, so nothing can check it. TODO WHY would we explain the alternative? we shuldn;t explain what We DO NOT DO
 template<Resolved Op, std::size_t Line>
 [[nodiscard]] consteval auto locations_of_view() {
   constexpr const auto &vocabulary = target::vocabularies[Op.view_vocabulary];
@@ -303,6 +299,8 @@ template<Resolved Op, std::size_t Line>
   // The scope comes from the vocabulary rather than from a member, because a
   // member is parsed before anything knows which vocabulary it will end up in.
   constexpr auto scope = vocabulary.scope;
+  // TODO can we not use some kind of expansion statement instead here? this seems awfully longwinded. that would avoid
+  // the need to define the types of the array and the template for entirely right?
   std::array<typename[:std::meta::type_of(find_location(members[0].operand.name.view(), Line, scope)):], members.size()>
       locations{};
   template for (constexpr auto at: std::views::iota(0uz, members.size()))
@@ -336,13 +334,16 @@ template<Resolved Op, std::size_t Line>
 // expression escalates: the standard promotes the enclosing templated function
 // to `consteval` too, and it can then no longer be called with a running CPU.
 // The vector is the cause and the escalation is the symptom.
+// TODO What the heck does this entire section of prose explain to a user of this library? or someone trying to understand the code?
+// I don't get it at all. all this "rather than" and more "this is not ok so we didn't do it" ? help
 //
-// A variable template dodges it, and memoises the answer for free.
+// A variable template dodges it, and memoises the answer for free. TODO What is the "it" now? we have like 10 lines of text above
 template<std::meta::info Fn>
 inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
 // The `typename` is required: a splice's category is not known until it is
 // instantiated, so the parser has to be told this one names a type.
+// TODO: CLion/clang thinks `typename is unnecessary`, they could easily be wrong. And if it were necesary WHY ARE WE COMMENTING IT!?
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
@@ -361,6 +362,7 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 // half of a result would store some of it and drop the rest in silence. So a
 // type all of whose state is hidden is one value, a type all of whose state is
 // public is its parts, and anything in between is refused.
+// TODO^ more fluff I started reading and lost the plot because the explanation is so overwordy and complicated before I even know what the heck the thing it's describing.
 [[nodiscard]] consteval std::span<const std::meta::info> decomposes_into(
     const std::meta::info type, const std::size_t line) {
   if (!std::meta::is_class_type(type))
@@ -371,7 +373,7 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
     if (!visible.empty())
       throw table_error(line, "this operation returns a type that hides some of its state and not the rest, so it is "
                               "neither one value nor a set of parts; the parts this row would be given are only the "
-                              "ones this library can see");
+                              "ones this library can see"); // TODO dear god what is this essay in an error message?
     // Every member hidden: encapsulated, so one value, which is what the
     // language says too by refusing to decompose it.
     return {};
@@ -381,6 +383,8 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
                             "members, so whatever it inherits would be dropped");
   return std::define_static_array(visible);
 }
+
+//// TODO MATT GOT TO HERE IN REVEWING
 
 // An operation may ask for the machine itself, and if it does it must ask first:
 // the framework supplies argument zero and the row supplies the rest, so which
