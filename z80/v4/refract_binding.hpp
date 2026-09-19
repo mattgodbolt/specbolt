@@ -19,6 +19,6 @@
 namespace specbolt::refract {
 
 // Where this build's machine and table are to be found.
-namespace target = ::specbolt::v4;
+namespace target = v4;
 
 } // namespace specbolt::refract

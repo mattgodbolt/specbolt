@@ -2,6 +2,8 @@
 
 // The consumer provides this: it must define `Cpu`, the scope functions, and
 // the table constants this generates from. See Machine.hpp for the contract.
+// ^^^ TODO what is this comment referring to? seems confusing.
+
 #include "refract_binding.hpp"
 
 #include "refract/Machine.hpp"
@@ -23,8 +25,7 @@
 
 namespace specbolt::refract {
 
-// The machine this build generates for, named once here rather than spelled
-// out at every use.
+// The machine this build generates for. TODO as noted in many places we can't do this, if we want to support multiple cpus
 using Cpu = target::Cpu;
 
 // The machine this build generates for. `Cpu` and the functions below come from
@@ -63,8 +64,7 @@ static_assert(
 // part of a template instantiation's identity.
 //
 // **Splices**, `[: … :]`, turn an `info` back into code. They look like one
-// feature and are four, each with its own grammar:
-//
+// feature and are four, each with its own grammar: TODO Why four? this is a common grammar? wth. each expands in place. type_of ... is just an expession in the splice? I am not sure you're right about these.
 //   typename[: type_of(p) :]           a type. The `typename` is mandatory:
 //                                      the parser cannot know what a splice
 //                                      yields until it is instantiated.
@@ -163,9 +163,8 @@ static_assert(
   return scopes;
 }
 
-// Names in a description are matched the way assembler is written, without
-// regard to case. One definition, because two would be two chances to disagree.
-[[nodiscard]] constexpr char fold_case(const char c) {
+// Names in a description are matched the way assembler is written, without regard to case.
+[[nodiscard]] constexpr char to_lower_case(const char c) {
   return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
 }
 
@@ -179,7 +178,7 @@ static_assert(
   for (const auto scope: location_scopes())
     for (const auto enumerator: std::meta::enumerators_of(scope)) {
       auto name = std::string(std::meta::identifier_of(enumerator));
-      std::ranges::transform(name, name.begin(), fold_case);
+      std::ranges::transform(name, name.begin(), to_lower_case);
       if (std::ranges::contains(seen, name))
         return false;
       seen.push_back(name);
@@ -188,10 +187,10 @@ static_assert(
 }
 
 static_assert(location_names_are_unique(),
-    "two of this machine's readable locations are spelled the same, so a description could not say which it meant");
+    "at east two of this machine's readable locations are spelled the same, so a description could not say which it meant");
 
 [[nodiscard]] constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
-  return std::ranges::equal(lhs, rhs, {}, fold_case, fold_case);
+  return std::ranges::equal(lhs, rhs, {}, to_lower_case, to_lower_case);
 }
 
 // Every name a table uses must resolve to exactly one thing. Throwing from a

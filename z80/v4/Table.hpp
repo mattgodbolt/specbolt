@@ -7,9 +7,6 @@
 
 #include <array>
 #include <optional>
-#include <ranges>
-#include <span>
-#include <string>
 #include <string_view>
 
 namespace specbolt::v4 {
@@ -19,12 +16,12 @@ using namespace refract;
 // TODO: check my terrible hackery here worked, essentially let's not expose "cpu_raw" to anyone.
 inline constexpr std::string_view cpu_description = []{
   // clang-format off
-  inline constexpr char cpu_raw[] = {
+  static constexpr char cpu_raw[] = {
 #embed SPECBOLT_CPU_TABLE
   };
   // clang-format on
 
-return {cpu_raw, sizeof(cpu_raw)};
+return std::string_view{cpu_raw, sizeof(cpu_raw)};
 }();
 
 // TODO: all these seem like things refract should do for me, once I give it the cpu_description, like
@@ -51,7 +48,7 @@ inline constexpr auto row_opcodes = to_array<[] { return opcodes_of_each(vocabul
 inline constexpr auto decoded = to_array<[] { return decode_tables(rows, row_opcodes, tables); }>();
 inline constexpr auto latched = to_array<[] { return latched_tables(rows, tables.size()); }>();
 
-// TODO: is this a valueable thing? "no name is speical" what does that mean?
+// TODO: is this a valuable thing? "no name is special" what does that mean?
 // Decoding starts in the first table declared; no name is special.
 inline constexpr std::uint8_t entry_table = 0;
 

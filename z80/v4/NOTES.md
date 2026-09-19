@@ -235,3 +235,12 @@ Two ways out, both out of scope for the change that found it:
 Until one of them lands, v4 differs from the other three in a way real software could notice, and
 the difference is *more* wrong than what it replaced for long `di` regions, and *less* wrong for
 short ones.
+
+
+---
+
+Matt's random extra C++26 and other notes
+- std::function_ref or std::copyable_function ?
+- anywhere we can use optional<T&> ?
+- python folks use `[[preserve_none]]` for some routines for great success esp with jump threading
+- 

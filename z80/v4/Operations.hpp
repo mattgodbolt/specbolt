@@ -77,7 +77,7 @@ private:
     cpu.set(RegisterFile::R8::B, b);
     return Alu::parity_flags_for(b) | Flags::Subtract() | (flags & Flags::Carry());
   }
-  // A helper function for rrd and rld.
+  // A helper function for rrd and rld. Returns an Alu result but always affects the A register too.
   [[nodiscard]] static Alu::R8 nibble(Cpu &cpu, const std::uint8_t value, const Flags flags, const bool right) {
     const auto a = cpu.get(RegisterFile::R8::A);
     const auto updated =
@@ -122,10 +122,8 @@ public:
     return static_cast<std::uint8_t>(value - 1);
   }
 
-  // A relative jump is measured from the byte after the offset, which is where
-  // the program counter already is.
-  [[nodiscard]] static std::uint16_t relative(const std::uint16_t pc, const std::uint8_t offset) {
-    return static_cast<std::uint16_t>(pc + static_cast<std::int8_t>(offset));
+  [[nodiscard]] static std::uint16_t relative(const std::uint16_t base, const std::uint8_t offset) {
+    return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
   }
 
   // The port is sixteen bits wide even when the encoding writes eight: the Z80
@@ -141,7 +139,7 @@ public:
     return cpu.in(address);
   }
 
-  // Three accesses and two idle stretches, none of which an operand can spell.
+  // Three accesses and two idle stretches, none of which an operand can spell. TODO please what do you mean, reprhase this comment please "can spell" perhaps not ideal terminology (check its use elsehwere)
   [[nodiscard]] static std::uint16_t ex_sp_hl(Cpu &cpu, const std::uint16_t value) {
     const auto sp = cpu.get(RegisterFile::R16::SP);
     const auto low = cpu.read_memory(sp);
@@ -170,7 +168,7 @@ public:
 
   // `ld a,i` and `ld a,r` report iff2 in the parity flag, which is the one way
   // a program can see the interrupt state.
-  [[nodiscard]] static Alu::R8 ld_a_special(Cpu &cpu, const std::uint8_t value, const Flags flags) {
+  [[nodiscard]] static Alu::R8 ld_a_special(const Cpu &cpu, const std::uint8_t value, const Flags flags) {
     return {value, Alu::iff2_flags_for(value, flags, cpu.iff2())};
   }
 

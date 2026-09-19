@@ -34,7 +34,7 @@ inline constexpr std::size_t max_instruction_bytes = 8;
 // `address` itself is needed because a relative jump renders where it lands
 // rather than how far it goes.
 [[nodiscard]] inline Disassembly disassemble(
-    const Description &description, const std::uint16_t address, const auto &byte_at) {
+    const Description &description, const std::uint16_t address, const auto &byte_at) { // TODO why is this auto? surely std::function_ref or a constrained callable at least?
   // Follow prefixes until a row that renders something is reached. An encoding
   // may take its displacement between the prefix and the byte that says what to
   // do (the Z80's `dd cb d op`), so the latch is filled inside this loop rather
