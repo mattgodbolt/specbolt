@@ -16,8 +16,6 @@ public:
   // What separates one word from the next. A newline and a backslash are in
   // here because a logical line may span several physical ones: the text still
   // holds the `\` and the newline it was joined at, and neither is a word.
-  // A trailing \r matters because the description may have been written on a
-  // machine that thinks so.
   static constexpr std::string_view blanks = " \t\r\n\\";
 
   // Text with leading and trailing blanks removed.
@@ -76,14 +74,11 @@ struct Line {
   std::string_view text{};
 };
 
-// A description is its lines, numbered from one. Every pass over the text wants
-// exactly this, and this is the only place that knows lines are numbered at all.
+// A description is its lines, numbered from one. This is the only place that knows lines are numbered at all.
 //
-// A line ending in `\` continues onto the next, and the two arrive here as one.
-// Nothing is copied to do it: the description is one buffer, so a joined line is
-// still a single `std::string_view` into it, just a longer one that happens to
-// contain the `\` and the newline. Those are blanks to `Parser`, so no consumer
-// of a line has to know this happened.
+// A line ending in `\` continues onto the next.The description is one buffer, so a joined line is still a single
+// `std::string_view` into it, just a longer one that happens to contain the `\` and the newline. Those are blanks to
+// `Parser`, so no consumer of a line has to know this happened.
 //
 // A continued line is reported at the number it *started* on, which is where a
 // reader would look for it.
@@ -115,7 +110,7 @@ struct Line {
     // the end comes from the untrimmed line instead. The join is trimmed again
     // because that blank line, or a `\` with nothing after it, would otherwise
     // leave trailing blanks inside the text.
-    const auto *const end = text.empty() ? raw.data() : text.data() + text.size();
+    const char *end = text.empty() ? raw.data() : text.data() + text.size();
     lines.push_back({started_at, Parser::trim({begin, static_cast<std::size_t>(end - begin)})});
     begin = nullptr;
   }

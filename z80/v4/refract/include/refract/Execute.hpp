@@ -25,7 +25,8 @@
 
 namespace specbolt::refract {
 
-// The machine this build generates for. TODO as noted in many places we can't do this, if we want to support multiple cpus
+// The machine this build generates for. TODO as noted in many places we can't do this, if we want to support multiple
+// cpus
 using Cpu = target::Cpu;
 
 // The machine this build generates for. `Cpu` and the functions below come from
@@ -64,7 +65,8 @@ static_assert(
 // part of a template instantiation's identity.
 //
 // **Splices**, `[: … :]`, turn an `info` back into code. They look like one
-// feature and are four, each with its own grammar: TODO Why four? this is a common grammar? wth. each expands in place. type_of ... is just an expession in the splice? I am not sure you're right about these.
+// feature and are four, each with its own grammar: TODO Why four? this is a common grammar? wth. each expands in place.
+// type_of ... is just an expession in the splice? I am not sure you're right about these.
 //   typename[: type_of(p) :]           a type. The `typename` is mandatory:
 //                                      the parser cannot know what a splice
 //                                      yields until it is instantiated.
@@ -186,8 +188,8 @@ static_assert(
   return true;
 }
 
-static_assert(location_names_are_unique(),
-    "at east two of this machine's readable locations are spelled the same, so a description could not say which it meant");
+static_assert(location_names_are_unique(), "at east two of this machine's readable locations are spelled the same, so "
+                                           "a description could not say which it meant");
 
 [[nodiscard]] constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
   return std::ranges::equal(lhs, rhs, {}, to_lower_case, to_lower_case);
@@ -334,16 +336,19 @@ template<Resolved Op, std::size_t Line>
 // expression escalates: the standard promotes the enclosing templated function
 // to `consteval` too, and it can then no longer be called with a running CPU.
 // The vector is the cause and the escalation is the symptom.
-// TODO What the heck does this entire section of prose explain to a user of this library? or someone trying to understand the code?
-// I don't get it at all. all this "rather than" and more "this is not ok so we didn't do it" ? help
+// TODO What the heck does this entire section of prose explain to a user of this library? or someone trying to
+// understand the code? I don't get it at all. all this "rather than" and more "this is not ok so we didn't do it" ?
+// help
 //
-// A variable template dodges it, and memoises the answer for free. TODO What is the "it" now? we have like 10 lines of text above
+// A variable template dodges it, and memoises the answer for free. TODO What is the "it" now? we have like 10 lines of
+// text above
 template<std::meta::info Fn>
 inline constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
 // The `typename` is required: a splice's category is not known until it is
 // instantiated, so the parser has to be told this one names a type.
-// TODO: CLion/clang thinks `typename is unnecessary`, they could easily be wrong. And if it were necesary WHY ARE WE COMMENTING IT!?
+// TODO: CLion/clang thinks `typename is unnecessary`, they could easily be wrong. And if it were necesary WHY ARE WE
+// COMMENTING IT!?
 template<std::meta::info Fn, std::size_t I>
 using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
@@ -362,7 +367,8 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 // half of a result would store some of it and drop the rest in silence. So a
 // type all of whose state is hidden is one value, a type all of whose state is
 // public is its parts, and anything in between is refused.
-// TODO^ more fluff I started reading and lost the plot because the explanation is so overwordy and complicated before I even know what the heck the thing it's describing.
+// TODO^ more fluff I started reading and lost the plot because the explanation is so overwordy and complicated before I
+// even know what the heck the thing it's describing.
 [[nodiscard]] consteval std::span<const std::meta::info> decomposes_into(
     const std::meta::info type, const std::size_t line) {
   if (!std::meta::is_class_type(type))
@@ -708,8 +714,12 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   // a parameter type per operand, and an operand the signature has no
   // parameter for indexes off the end of `parameters_of` inside libstdc++.
   constexpr bool arity_matches = C.operands.size() + supplied == arity_of<Fn>;
-  static_assert(arity_matches, "the row supplies the wrong number of operands for this operation");
-  if constexpr (arity_matches) {
+  if (!arity_matches) // TODO: this _used_ to be static_assert() but would fail maybe "spuriously"?? please put it back
+                      // to a static_assert and see if yo ucan get it to trip and why, and then also please fix up all
+                      // these error messages to get some kind of line/name reference in them as it's impossible to
+                      // debug if it goes wrong. also in the original v4 branch this seemed to work ok? so I broke something that cused it? maybe?
+    throw std::invalid_argument("the row supplies the wrong number of operands for this operation");
+  if constexpr (arity_matches) { // if constexpr here prevents cascading errors if the above fails.
     // A default capture rather than `[&cpu]`, because only one branch of the
     // `if constexpr` names it: an operation that does not ask for the machine
     // leaves an explicit capture unused, which clang diagnoses and gcc does not.

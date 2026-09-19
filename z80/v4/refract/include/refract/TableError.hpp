@@ -9,6 +9,7 @@
 // The description this build compiles, named by whoever is compiling one. The
 // library never names a particular machine's file; diagnostics quote whatever
 // the consumer set.
+// TODO: this is utterly hateful and cannot be allowed to stay. #define? wth. hardcoding? wth?
 #ifndef SPECBOLT_CPU_TABLE
 #define SPECBOLT_CPU_TABLE "cpu"
 #endif
@@ -16,7 +17,7 @@
 namespace specbolt::refract {
 
 // `std::to_string` is not usable during constant evaluation and `std::format`
-// is not either; `std::to_chars` has been since C++23.
+// is not either; `std::to_chars` has been since C++23. TODO please double check std::format with gcc 16.2 as it ought to be constexpr now
 [[nodiscard]] constexpr std::string decimal(const std::size_t value) {
   std::array<char, 20> digits{}; // enough for any 64-bit value
   const auto [end, _] = std::to_chars(digits.data(), digits.data() + digits.size(), value);

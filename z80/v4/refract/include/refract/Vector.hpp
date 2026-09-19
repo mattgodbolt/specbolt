@@ -9,13 +9,13 @@ namespace specbolt::refract {
 // structural, so one can be a template argument. `std::inplace_vector` is the
 // obvious answer and the wrong one twice over: it is not structural, and gcc
 // 16.2's constexpr path supports trivial types only, while these hold
-// `std::string_view`.
+// `std::string_view`. TODO "these" wth. these Vector<>s hold T. T _MIGHT_ hold a std::string_view. rephrase
 //
 // Everything here is public because structural types have no other option.
-// `try_push_back` follows `std::inplace_vector`'s spelling and, like it, leaves
+// `try_push_back` follows `std::inplace_vector`'s spelling (TODO "spelling" again) and, like it, leaves
 // what a full container means to the caller: overflowing is a description
 // asking for more than the format allows, and only the caller knows which
-// limit was reached and on which line.
+// limit was reached and on which line. TODO But confusingly returns a `bool` not a `optional<T&>`
 template<typename T, std::size_t N>
 struct Vector {
   std::array<T, N> storage{};

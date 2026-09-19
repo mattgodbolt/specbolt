@@ -6,6 +6,10 @@
 
 namespace specbolt::refract {
 
+// TODO you're describing the use of this function not what this does. stop it. describe what this does. We don't
+// explain the reason for this here, it's a useful utility to make an array. if _necessray_ explain _examples_ of it
+// usage. TODO why do we call `Make()` multiple times? That seems SUPER DUMB and surely adds to compilation time.
+
 // The one place compile-time data becomes run-time data.
 //
 // Everything that reads a description works in `std::vector`, because that is

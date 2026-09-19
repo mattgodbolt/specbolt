@@ -4,7 +4,6 @@
 #include "refract/Vector.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <string_view>
 
@@ -29,7 +28,7 @@ struct Pattern {
   static constexpr std::size_t num_bits = 8;
 
   std::uint8_t opcode_bits{};
-  Vector<BitSlice, max_slices> slices{};
+  Vector<BitSlice, max_slices> slices{}; // TODO this is a Vector which apparently only exists BECAUSE "std::string_view" BUT there's no string view? wth inplace_vector?
 };
 
 [[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
