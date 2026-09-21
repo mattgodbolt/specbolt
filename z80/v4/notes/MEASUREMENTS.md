@@ -621,38 +621,51 @@ fitting, and because "where does the compiler collect" is not a question the sou
 
 ## The fetch was the call that mattered, and two ideas that did not
 
-Retired user-space instructions over 20M instructions of zexdoc in `z80_bench_v4`, gcc 16.2
-`RelWithDebInfo`, two runs of each binary agreeing to within 100 instructions in 2.9 billion.
+Nanoseconds per emulated instruction over 20M instructions of zexdoc, `z80_bench_v4` and
+`z80_bench_v2`, one core per binary, gcc 16.2 `RelWithDebInfo`, the bench's own best of five,
+three rounds alternating the two builds on a laptop with a load average near four. The bests
+agree across rounds to within 1%, which is the number to read; the spreads within a round were
+15% to 45%, which is the machine.
 
-| | retired instructions | per emulated instruction | |
+| | before (`2b2b916`) | after (`27751d0`) | |
 |---|---:|---:|---:|
-| as committed | 2,884,824,542 | 144.2 | |
-| `fetch_opcode`, `fetch_immediate`, `fetch_immediate16` inline in the header | **2,562,452,224** | **128.1** | **-11.2%** |
-| ... and `bus`, `refresh`, `delay` inline too | 2,562,452,220 | 128.1 | 0.0% |
-| ... and the deferred flag cleared only when set, instead of every instruction | 2,682,452,210 | 134.1 | +4.7% |
+| v4 alone, with `fetch_opcode`, `fetch_immediate`, `fetch_immediate16` inline | 10.79 / 10.84 / 10.74 | **9.58 / 9.56 / 9.62** | **-11%** |
+| v2 alone, unchanged source, for reference | 9.08 / 9.05 / 9.17 | 9.06 / 8.98 / 9.05 | 0% |
 
 **The fetches were the call.** `continue_running` is the one function every handler tail-calls,
-and gcc had already inlined `start_instruction` into it, halt loop and interrupt path out of line,
-without being asked; the disassembly showed one `call` left on the hot path, to `fetch_opcode`.
-The same lesson as `Memory::read` and `Scheduler::tick` in Notes.md: with LTO on, `inline` in a
-header tells the compiler nothing about visibility and everything about which budget applies, and
-for a function with a call site in every one of several hundred handlers the auto budget says no.
+and the compiler had already inlined `start_instruction` into it, halt loop and interrupt path out
+of line, without being asked; the disassembly showed one `call` left on the hot path, to
+`fetch_opcode`. The same lesson as `Memory::read` and `Scheduler::tick` in Notes.md: with LTO on,
+`inline` in a header tells the compiler nothing about visibility and everything about which budget
+applies, and for a function with a call site in every one of several hundred handlers the auto
+budget says no. v2 is still the faster core alone, here as on the desktop in Notes.md.
 
-**`bus`, `refresh` and `delay` were already inlined**, being small enough for the stingier budget;
-moving them to the header changed the count by four instructions in two and a half billion, so
-they went back.
+**Retired instructions are a change detector, not a benchmark.** They were used first here, being
+repeatable to a few parts per billion on this machine, and they moved by the same 11%
+(2,884,824,542 to 2,562,452,224 user-space instructions over the run). That agreement is luck: a
+count weighs a divide as an add and a stalled load as a register move, so it cannot say what a
+change does to time, only whether the work changed. Two of the conclusions below were first drawn
+from the count and are stated here as what they are.
 
-**The unconditional store is cheaper than the branch that avoids it.** `start_instruction` clears
-`interrupts_deferred_` with `std::exchange` on every instruction, and it looked like a store to
-save. Clearing it only when set costs six instructions per emulated instruction more: the branch
-and its compare replace one store that the store buffer absorbed for free.
+**`bus`, `refresh` and `delay` inline too**: no change in the count, so not adopted; not timed.
+
+**Clearing the deferred-interrupt flag only when it is set**, instead of an unconditional store
+every instruction, added six instructions per emulated instruction to the count and was not timed.
+A predicted branch that skips a store may well be faster than the store; this one is open, and a
+timed comparison is what would settle it.
 
 **`[[gnu::preserve_none]]` has nothing to remove.** The attribute makes a function preserve no
 registers, which CPython's tail-called interpreter uses so that a handler entered by a jump and
 left by a jump does no saving. Counted in the binary before trying it: of the 757 generated
-handlers, none saves a callee-saved register and none sets up a stack frame. gcc already knows a
-`musttail` chain returns nowhere, and the handlers' own calls out to the scheduler force their live
-values to memory whatever the convention. The one place it would act is a single `rbx` save in
-`continue_running`, two instructions per emulated instruction at most, for a gcc-15-and-clang-only
-attribute on a function pointer type. Not measured, because the count said there was nothing to
-measure.
+handlers, none saves a callee-saved register and none sets up a stack frame. The compiler already
+knows a `musttail` chain returns nowhere, and the handlers' own calls out to the scheduler force
+their live values to memory whatever the convention. The one place it would act is a single `rbx`
+save in `continue_running`, for a gcc-15-and-clang-only attribute on a function pointer type. Not
+measured, because the disassembly said there was nothing to measure.
+
+**The combined binary moves every core when one changes.** In `z80_bench`, which links all four,
+the same two commits gave v2 11.1 to 11.8, v3 13.0 to 12.0 and v1 24.4 to 26.3 ns, none of whose
+source changed, while v4 went 12.7 to 12.2. That is the link-order effect Notes.md describes, and
+it is why the per-core binaries are the ones to read a change from. It is also why "which core is
+fastest" depends on the machine: v4 led the combined binary on the Intel desktop in Notes.md, and
+v2 leads it on this laptop and on an AMD desktop.

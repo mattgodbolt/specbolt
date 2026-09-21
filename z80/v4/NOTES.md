@@ -206,6 +206,13 @@ journal now, most of their items struck through. This is what survived them.
   where it could be handed a table built at compile time.
 - **v4's `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so nothing checks
   them; the table is a header included into more than one partition and its definitions duplicate.
+- **Which core is fastest depends on the machine.** v2 leads `z80_bench` on an AMD desktop and on
+  the Intel laptop, v4 led it on the Intel desktop in Notes.md, and the cores that did not change
+  between two commits moved by 5% to 8% anyway (MEASUREMENTS.md). Not a regression; the per-core
+  binaries agree that v4 alone got 11% faster and v2 alone did not move. Why the machines disagree
+  about the combined binary is open: indirect-branch prediction on a function-pointer chain is the
+  first suspect, and `perf stat -e br_misp_retired.all_branches` per core on each machine is the
+  first measurement.
 - **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a
   unit, because gcc collects only between top-level declarations. The six-line consumer-side
   workaround is in MEASUREMENTS.md; a library-side one has not been found.
