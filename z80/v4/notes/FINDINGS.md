@@ -77,17 +77,51 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - `std::optional<T&>` is there, which an earlier note here had said it was not. `Description::row_for`
   and `rule_for` still return pointers and could return one.
 - `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`.
-- **`std::inplace_vector` of a non-trivial element type cannot be constant-evaluated**, and the
-  history matters for what to expect. C++26 as first adopted (P0843) said so outright: no member of
-  `inplace_vector<T, N>` is usable in a constant expression unless `T` is trivial. P3074, trivial
-  unions, struck that sentence in February 2025 and added the feature-test macro
-  `__cpp_lib_constexpr_inplace_vector` at `202502L`. libstdc++ 16 does not define that macro, and its
-  header's own TODO names what it waits on, GCC PR 121068, constexpr placement-new of an array. So
-  it is a not-yet-implemented part of the standard rather than a bug. It would not free `Vector`
-  either way: `Call` is a template argument, so its vectors must be structural, and `inplace_vector`
-  has private members.
-- `typename` before a splice is optional in an alias declaration, and required in a template
-  argument list, where the splice would otherwise be read as an expression.
+### Why refract has its own `Vector`, and what it would take to use `std::inplace_vector`
+
+`Vector<T, N>` in Vector.hpp is a `std::array<T, N>` and a count, with `try_push_back`. It exists
+because `std::inplace_vector`, which is exactly the right container for a parser that knows its
+limits, fails two requirements this library has. One is permanent and one is temporary, and they
+fall on different uses.
+
+**Requirement 1, structural: permanent.** `Call` in Execute.hpp is a non-type template parameter:
+every generated step is `apply<Fn, Call>`, and the `Call` holds two `Vector<Resolved, 4>`. A class
+type used that way must be *structural* ([temp.param]/7): every base and every non-static data
+member public, non-mutable, and itself structural, recursively. `std::inplace_vector` keeps its
+storage and its size private, so it is not structural and no paper proposes that it should be. To
+use it there the design would have to stop passing a `Call` by value: pass an index into a
+`constexpr` table of calls instead and look the object up inside, which is the trick the journal
+already records for `string_view`. That is a real change to the generator's shape, not a swap of
+containers.
+
+**Requirement 2, constant evaluation of a non-trivial element type: temporary.** Seven of the
+twelve uses hold `Piece`, `Operand`, `Member`, `Rule` or `Step`, each of which carries a
+`std::string_view` into the description or a `Name`, so none is trivial. They are built during the
+parse and fixed into `Compiled`'s arrays, which the disassembler walks at run time. The history:
+
+- C++26 as first adopted, P0843R14, [inplace.vector.overview]/4: "For any N > 0, if
+  `is_trivial_v<T>` is false, then no `inplace_vector<T, N>` member functions are usable in constant
+  expressions." So at that point the standard itself forbade this use.
+- P3074R7, trivial unions, adopted February 2025, struck that sentence and added the feature-test
+  macro `__cpp_lib_constexpr_inplace_vector` at `202502L`. Since then the standard permits it.
+- libstdc++ 16.2 defines `__cpp_lib_inplace_vector` at `202603L` and does not define
+  `__cpp_lib_constexpr_inplace_vector`. Its `inplace_vector` header carries the reason in its own
+  words: `// TODO: use new(_M_elems) _Tp[_Nm]() once PR121068 is fixed`, above
+  `__builtin_unreachable(); // only trivial types are supported at compile time`. GCC PR 121068 is
+  constexpr placement-new of an array. A `constexpr` `inplace_vector<Piece, N>` reaches that line
+  and the build fails with "`__builtin_unreachable()` is not a constant expression", which does not
+  say why.
+
+So this half is a conformance gap with a bug number, not a bug and not a prohibition. The test
+that it has closed is `#ifdef __cpp_lib_constexpr_inplace_vector`, and on the day it does, the
+seven uses above could become `std::inplace_vector` with `try_push_back` unchanged, since that
+name was chosen to match.
+
+**What is left over.** Two uses are trivial already, `Pattern::slices` and a local in
+`slices_read_by`, and could be `inplace_vector` today; a second fixed-capacity vector for two
+sites is not worth having. And `Call`'s two would stay on `Vector` regardless, for requirement 1.
+That is the order the header comment gives the reasons in, structural first, and it is why
+"eventually `inplace_vector`" is true of most of the parser and false of the generator.
 
 ### Structural types and static promotion
 
