@@ -1107,23 +1107,21 @@ struct Interpreter {
     return result;
   }
 
-  // One generated function: a row, as an index into `Compiled::rows()`, and an
-  // encoding fixing every slice it reads, which is the row's `body_key`.
+  // One generated function, named by the row it runs, as an index into `Compiled::rows()`, and the encoding that
+  // fixes every slice the row reads, which is its `body_key`.
   struct Body {
     std::size_t row{};
     std::uint8_t opcode{};
   };
 
-  // What a table's dispatch is made of: its distinct bodies, and for each of
-  // its 256 opcodes the index into `bodies` of the one that opcode uses.
+  // The distinct bodies a table's opcodes run, and for each of its 256 opcodes the index into `bodies` of its own.
   struct Decoding {
     std::vector<Body> bodies;
-    std::array<std::uint16_t, 256> fill{};
+    std::array<std::uint16_t, 256> body_of{};
   };
 
-  // Enumerates a table's bodies, one per (row, key) its opcodes reach, and
-  // which body each opcode uses. Every opcode decodes to some row, since
-  // `Compiled::check()` requires it, so the lookup is dereferenced unasked.
+  // Enumerates a table's bodies, one per (row, key) its opcodes reach, and which body each opcode uses. Every opcode
+  // decodes to some row, since `Compiled` checks that, so the lookup is dereferenced unasked.
   [[nodiscard]] static consteval Decoding decoding_for(const std::uint8_t table) {
     Decoding result;
     // Indexed, never searched: `made[row][key]` is the body this row already has
@@ -1138,17 +1136,17 @@ struct Interpreter {
         body = static_cast<std::uint16_t>(result.bodies.size());
         result.bodies.push_back({.row = row, .opcode = key});
       }
-      result.fill[opcode] = *body;
+      result.body_of[opcode] = *body;
     }
     return result;
   }
 
-  // A table's bodies, and which body each of its 256 opcodes uses, as arrays:
-  // `decoding_for` answers in a `std::vector`, which `to_array` fixes.
+  // A table's bodies, and which body each of its 256 opcodes uses, as arrays: `decoding_for` answers in a
+  // `std::vector`, which `to_array` fixes.
   template<std::uint8_t Table>
   static constexpr auto bodies_of = to_array<[] { return decoding_for(Table).bodies; }>();
   template<std::uint8_t Table>
-  static constexpr auto fill_of = decoding_for(Table).fill;
+  static constexpr auto body_of = decoding_for(Table).body_of;
 
   // A table's 256 handlers, one per opcode, pointing at the bodies `bodies_of`
   // enumerated. `execute_one` takes its row and encoding as template arguments,
@@ -1161,7 +1159,7 @@ struct Interpreter {
       made[at] = &execute_one<Table, bodies_of<Table>[at].opcode, bodies_of<Table>[at].row>;
     }
     std::array<Handler, 256> handlers{};
-    std::ranges::transform(fill_of<Table>, handlers.begin(), [&made](const std::uint16_t body) { return made[body]; });
+    std::ranges::transform(body_of<Table>, handlers.begin(), [&made](const std::uint16_t body) { return made[body]; });
     return handlers;
   }();
 
@@ -1198,17 +1196,11 @@ struct Interpreter {
   // Starts the run. The handlers tail-call each other from here on, so this is
   // the only frame the run keeps.
   //
-  // These two checks are not part of `TargetLike`: the first needs this class's
-  // own scan of the machine, and the second throws with the description's file
-  // and line, which a failed constraint would not carry. This is the one entry
-  // point, so they run once regardless.
+  // The machine's locations are checked here rather than by `TargetLike`, because the check needs this class's own
+  // scan of the machine; this is the one entry point, so it runs once regardless. The description was checked when
+  // `Compiled` was instantiated.
   static void run(Machine &machine) {
-    // The handlers reach the description's parts directly, so this is where
-    // building an interpreter checks it.
-    consteval {
-      check_location_names_unique();
-      Compiled::check();
-    }
+    consteval { check_location_names_unique(); }
     continue_running(machine, 0, 0, 0);
   }
 };

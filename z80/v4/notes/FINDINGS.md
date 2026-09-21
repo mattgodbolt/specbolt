@@ -209,6 +209,20 @@ The single most useful architectural fact:
 Note the contrast with advice that a `string_view` into the `#embed`ed blob "is trivially structural
 and survives promotion". It is neither, and both halves were verified false.
 
+### `consteval {}` blocks (P3289)
+
+- **gcc 16.2 implements them, at namespace, class and block scope.** A block runs its statements during constant
+  evaluation; a throw that escapes it is reported as "uncaught exception ... what(): file.cpu:7: the message" with
+  nothing else in front, where `static_assert(f())` on a throwing `f` first says "non-constant condition for static
+  assertion" and then the same. Every check in refract that used to be `static_assert(check_x())` with `check_x`
+  returning `true` is now a `void` function called from a block.
+- **A block at class scope in a class template runs when the class is instantiated**, as a class-scope
+  `static_assert` does. `Compiled<Source>` runs the whole-description checks that way, so a description is checked
+  wherever its `Compiled` is first named and there is no `check()` for a consumer to forget. Member functions
+  declared earlier in the class can be called from the block; the `steps::` variable templates can too.
+- **`[[nodiscard]]` still applies inside a block.** `naming(file, check)` returned the check's `true` and every call
+  in the block tripped `-Werror=unused-result`; the checks return `void` now, which is what they meant.
+
 ### Expansion statements
 
 - **`template for` + `-Wshadow` is a gcc bug, half fixed** ([PR c++/124197][pr124197]). Each expanded

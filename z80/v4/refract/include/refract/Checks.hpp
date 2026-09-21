@@ -2,8 +2,8 @@
 
 // The rules a whole description must obey, each asked once decoding is known: precedence between rows, totality of
 // every table, reachability of every table, no inherited row spelling out a name its table renames, and a mnemonic
-// rendering a displacement exactly when an operand is displaced. Each throws against a line, and `Compiled::check`
-// runs them all.
+// rendering a displacement exactly when an operand is displaced. Each throws against a line, and `Compiled` runs them
+// all when it is instantiated.
 
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
@@ -21,7 +21,7 @@ namespace specbolt::refract {
 // overlap the earlier is wholly contained in the later. Line order silently
 // decides who wins, so this says what the legal shapes are: containment is an
 // override, and a partial overlap is an accident.
-constexpr bool check_row_precedence(const Description &description, const std::span<const OpcodeSet> covers) {
+constexpr void check_row_precedence(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
   // What each row wins once the rows before it have taken their share.
   // Precedence is a fact about opcode sets, not about vocabularies, so this
@@ -43,7 +43,6 @@ constexpr bool check_row_precedence(const Description &description, const std::s
         throw table_error(rows[earlier].line, "this row overlaps a later one without being contained by it");
     }
   }
-  return true;
 }
 
 // Checks that every opcode of every table decodes to something. On real
@@ -53,14 +52,13 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 // does this".
 //
 // Requiring it here is what lets the dispatch loop call without checking.
-constexpr bool check_tables_total(const Description &description) {
+constexpr void check_tables_total(const Description &description) {
   for (std::size_t table = 0; table < description.tables.size(); ++table)
     for (std::size_t opcode = 0; opcode < 256; ++opcode)
       if (!description.row_for(static_cast<std::uint8_t>(table), static_cast<std::uint8_t>(opcode)))
         throw table_error(description.tables[table].line, "table '" + std::string(description.tables[table].name) +
                                                               "' does not say what opcode " + decimal(opcode) +
                                                               " does; add a row, or `xxxxxxxx` last to catch the rest");
-  return true;
 }
 
 // Whether any step of this row names `what` as a literal, where a rule cannot
@@ -91,7 +89,7 @@ constexpr bool check_tables_total(const Description &description) {
 //
 // A row written *in* the derived table is exempt: putting it there is how one
 // says the literal was meant.
-constexpr bool check_inherited_literals(const Description &description) {
+constexpr void check_inherited_literals(const Description &description) {
   for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
     if (row->table == table) // its own row, so the literal was meant
       continue;
@@ -102,7 +100,6 @@ constexpr bool check_inherited_literals(const Description &description) {
                 "', and this row names it literally where a rule cannot reach it; give that table its own row, "
                 "or name a vocabulary");
   }
-  return true;
 }
 
 // Checks that a derived table's own row overlapping a row it inherits is wholly
@@ -111,7 +108,7 @@ constexpr bool check_inherited_literals(const Description &description) {
 // to keep. Precedence within one table is `check_row_precedence`; this relates
 // a derived table's rows to the ones its parent decodes, whether the parent
 // wrote them or inherited them in turn.
-constexpr bool check_derived_rows_override(const Description &description, const std::span<const OpcodeSet> covers) {
+constexpr void check_derived_rows_override(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
   const auto tables = description.tables;
   for (std::size_t mine = 0; mine < rows.size(); ++mine) {
@@ -129,7 +126,6 @@ constexpr bool check_derived_rows_override(const Description &description, const
             "this row overlaps one it inherits from '" + std::string(tables[table.parent].name) +
                 "' without replacing it or fitting inside it, so it takes opcodes that row meant to keep");
   }
-  return true;
 }
 
 // Whether this row's mnemonic renders a displacement at this opcode. It may say
@@ -159,7 +155,7 @@ constexpr bool check_derived_rows_override(const Description &description, const
 // take the length from `displaced_through`, so they agree about how many bytes
 // to read and disagree only about what to print. The disassembler would quietly
 // name an addressing mode the machine did not use, or omit the one it did.
-constexpr bool check_displacement_rendered(const Description &description) {
+constexpr void check_displacement_rendered(const Description &description) {
   const auto vocabularies = description.vocabularies;
   for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
     const auto displaced = displaced_through(vocabularies, *row, opcode, *rules).has_value();
@@ -169,7 +165,6 @@ constexpr bool check_displacement_rendered(const Description &description) {
                                          "displacement belongs"
                                        : "this row's mnemonic renders a displacement that no operand of it uses");
   }
-  return true;
 }
 
 // Checks that every table not derived has rows of its own, and that every table
@@ -179,7 +174,7 @@ constexpr bool check_displacement_rendered(const Description &description) {
 // two tables that only reach each other are as dead as one nothing names. The
 // walk is over the decoded tables rather than the rows so that a derived table
 // reaches wherever its parent's rows go.
-constexpr bool check_tables_used(const Description &description) {
+constexpr void check_tables_used(const Description &description) {
   const auto tables = description.tables;
   for (const auto [which, table]: std::views::enumerate(tables))
     // A derived table with no rows of its own is its parent, renamed, which is
@@ -210,7 +205,6 @@ constexpr bool check_tables_used(const Description &description) {
   for (const auto [which, table]: std::views::enumerate(tables))
     if (!reachable[static_cast<std::size_t>(which)])
       throw table_error(table.line, "no goto reaches this table, so nothing in it is ever exercised");
-  return true;
 }
 
 } // namespace specbolt::refract

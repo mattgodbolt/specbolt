@@ -80,13 +80,12 @@ inline constexpr std::size_t max_tables = 256;
 // that is none of those is a mistyped one of them (a row that lost its
 // separators, or `vocabularies` for `vocab`) and would otherwise be skipped in
 // silence, surfacing much later as an opcode nothing decodes.
-constexpr bool check_every_line_means_something(const std::string_view description) {
+constexpr void check_every_line_means_something(const std::string_view description) {
   for (const auto [at, text]: lines_of(description)) {
     if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
       continue;
     throw table_error(at, "this is not a comment, a declaration, or a row; a row needs its '|' separators");
   }
-  return true;
 }
 
 // The index into `vocabularies` of the one called `name`, or nothing if none

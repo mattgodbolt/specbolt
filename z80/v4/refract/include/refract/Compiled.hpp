@@ -10,8 +10,8 @@
 //   latched        per table, whether it is entered with a displacement byte already read, because the row that
 //                  reached it read one before the opcode (CPU_FORMAT.md, "Latched tables")
 //
-// Asking for `description()`, or running `check()`, on a malformed description is a compile error naming the file and
-// line; instantiating the class alone evaluates nothing.
+// Instantiating the class runs every check in Checks.hpp over the description, so a malformed one is a compile error
+// naming the file and line wherever it is first used.
 
 #include "refract/Checks.hpp"
 #include "refract/Decode.hpp"
@@ -79,8 +79,8 @@ inline constexpr auto latched =
 
 } // namespace steps
 
-// The description a `Source` holds, compiled: each part of it as a constant, the checks on the whole, and the lookups
-// every consumer of it needs.
+// The description a `Source` holds, compiled: each part of it as a constant, checked as a whole, with the lookups every
+// consumer of it needs.
 template<SourceLike Source>
 struct Compiled {
   static constexpr std::string_view file = Source::file;
@@ -89,49 +89,36 @@ struct Compiled {
   // The table decoding starts in: the first one declared, since the format reserves no name for the entry table.
   static constexpr std::uint8_t entry_table = 0;
 
-  // One check, run with the file put in front of whatever it throws. A check throws against its line or returns true.
-  template<std::predicate auto Check>
-  static constexpr bool checked = naming(file, Check);
-
-  // The parts of the description, each evaluated on first use, as `description()` and `check()` are. What each holds
-  // is set out at the top of this file.
+  // The parts of the description, each evaluated on first use. What each holds is set out at the top of this file.
   [[nodiscard]] static constexpr const auto &vocabularies() { return steps::vocabularies<Source>; }
   [[nodiscard]] static constexpr const auto &tables() { return steps::tables<Source>; }
   [[nodiscard]] static constexpr const auto &rows() { return steps::rows<Source>; }
   [[nodiscard]] static constexpr const auto &decoded() { return steps::decoded<Source>; }
   [[nodiscard]] static constexpr const auto &latched() { return steps::latched<Source>; }
 
-  // Runs every check the text must pass, each against its line, and returns true if all do; a failing one throws,
-  // which makes it a compile error. `description()` asserts it, and so does an interpreter.
-  static consteval bool check() {
-    return checked<[] { return check_every_line_means_something(text); }> &&
-           checked<[] { return check_row_precedence(unchecked(), steps::row_opcodes<Source>); }> &&
-           checked<[] { return check_derived_rows_override(unchecked(), steps::row_opcodes<Source>); }> &&
-           checked<[] { return check_tables_used(unchecked()); }> &&
-           checked<[] { return check_tables_total(unchecked()); }> &&
-           checked<[] { return check_inherited_literals(unchecked()); }> &&
-           checked<[] { return check_displacement_rendered(unchecked()); }>;
-  }
-
-  // The parts above as one `Description`, its checks passed: what a consumer that takes a `Description`, such as the
-  // disassembler, is handed. An interpreter's handlers are templates on the parts themselves, so they reach them
-  // through the functions above and call `check()` on their own.
+  // The parts above as one `Description`: what a consumer that takes one, such as the disassembler, is handed. An
+  // interpreter's handlers are templates on the parts themselves, so they reach them through the functions above.
   [[nodiscard]] static constexpr Description description() {
-    consteval { check(); }
-    return unchecked();
+    return {vocabularies(), rows(), tables(), decoded(), entry_table};
   }
 
   // The index into `rows()` of the row that decodes `opcode` in `table`, or nothing if no row does. Every table is
-  // total once `check()` has passed, so a consumer that has run it may dereference the answer.
+  // total, since the checks below require it, so a consumer may dereference the answer.
   [[nodiscard]] static constexpr std::optional<std::size_t> find_row(
       const std::uint8_t table, const std::uint8_t opcode) {
     return decoded()[table][opcode];
   }
 
-private:
-  // The parts as one `Description` without asserting the checks: what the checks themselves are run against.
-  [[nodiscard]] static constexpr Description unchecked() {
-    return {vocabularies(), rows(), tables(), decoded(), entry_table};
+  // The rules the whole description must obey, run once when this class is instantiated: each throws against its
+  // line, `naming` puts the file in front, and that is the compile error.
+  consteval {
+    naming(file, [] { return check_every_line_means_something(text); });
+    naming(file, [] { return check_row_precedence(description(), steps::row_opcodes<Source>); });
+    naming(file, [] { return check_derived_rows_override(description(), steps::row_opcodes<Source>); });
+    naming(file, [] { return check_tables_used(description()); });
+    naming(file, [] { return check_tables_total(description()); });
+    naming(file, [] { return check_inherited_literals(description()); });
+    naming(file, [] { return check_displacement_rendered(description()); });
   }
 };
 
