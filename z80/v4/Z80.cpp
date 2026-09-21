@@ -63,8 +63,6 @@ void Z80::handle_interrupt() {
   write_memory(regs_.sp(), static_cast<std::uint8_t>(return_to));
   write_memory(static_cast<std::uint16_t>(regs_.sp() + 1), static_cast<std::uint8_t>(return_to >> 8));
   switch (irq_mode_) {
-    case 0: // Nothing drives the bus, so the byte reads as 0xff: `rst 0x38`.
-    case 1: regs_.pc(0x38); break;
     case 2: {
       const auto vector = static_cast<std::uint16_t>(0xff | regs_.i() << 8);
       const auto low = read_memory(vector);
@@ -72,7 +70,11 @@ void Z80::handle_interrupt() {
       regs_.pc(static_cast<std::uint16_t>(high << 8 | low));
       break;
     }
-    default: break;
+    case 0: // Nothing drives the bus, so the byte reads as 0xff: `rst 0x38`.
+    case 1:
+    default: // The chip has three modes; a value that is none of them behaves as mode 1.
+      regs_.pc(0x38);
+      break;
   }
 }
 
@@ -136,15 +138,6 @@ std::uint16_t Z80::read_memory16(const std::uint16_t address) {
 void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {
   write_memory(address, static_cast<std::uint8_t>(value));
   write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
-}
-
-// The window is five cycles, less the three each already-read immediate spent
-// inside it, so at most one byte can have been read: two would underflow. The
-// generator proves that with a `static_assert` before it ever calls this.
-std::uint16_t Z80::displaced_address(
-    const std::uint16_t base, const std::uint8_t offset, const std::uint8_t immediate_bytes) {
-  delay(static_cast<std::uint8_t>(5 - 3 * immediate_bytes));
-  return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
 }
 
 std::uint8_t Z80::read_memory(const std::uint16_t address) {

@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Target.hpp"
+#include "refract/Execute.hpp"
 
 #include "z80/v4/Z80.hpp"
 
@@ -263,6 +264,33 @@ TEST_CASE("Generated execution") {
     CHECK(cycles(0xcb, 0xc0) == 8); // set 0, b: two opcode fetches
     CHECK(cycles(0xcb, 0xfe) == 15); // set 7, (hl)
     CHECK(cycles(0xcb, 0x7e) == 12); // bit 7, (hl)
+  }
+}
+
+
+TEST_CASE("Two opcodes share a body only when every step agrees") {
+  // `body_key` decides which opcodes share a generated function, and `resolve`
+  // decides what that function does; the slices the first ignores must be the
+  // ones the second folds away. Checked here, over every opcode of every
+  // table, rather than in the build, where it was measured to cost a fifth of
+  // the interpreter's compile time.
+  using I = refract::Interpreter<Target>;
+  for (std::uint8_t table = 0; table < C::tables().size(); ++table) {
+    const auto &rules = C::tables()[table].rules;
+    for (std::size_t opcode = 0; opcode < 256; ++opcode) {
+      const auto byte = static_cast<std::uint8_t>(opcode);
+      const auto &row = C::rows()[*C::find_row(table, byte)];
+      const auto key = I::body_key(row, byte);
+      if (key == byte)
+        continue;
+      for (const auto &step: row.steps) {
+        if (step.kind == refract::Step::Kind::Goto)
+          continue;
+        INFO("table " << int{table} << " opcode " << opcode << " line " << row.line);
+        CHECK(I::call_for(step, row.matched, byte, row.line, rules) ==
+              I::call_for(step, row.matched, key, row.line, rules));
+      }
+    }
   }
 }
 

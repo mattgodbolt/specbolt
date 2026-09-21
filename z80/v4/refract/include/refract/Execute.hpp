@@ -159,7 +159,8 @@ struct Interpreter {
       const auto parameters = std::meta::parameters_of(member);
       if (parameters.size() != 1)
         continue;
-      if (const auto type = std::meta::type_of(parameters[0]); std::meta::is_enum_type(type))
+      if (const auto type = std::meta::type_of(parameters[0]);
+          std::meta::is_enum_type(type) && !std::ranges::contains(scopes, type))
         scopes.push_back(type);
     }
     return scopes;
@@ -206,7 +207,7 @@ struct Interpreter {
   }
 
   // Names in a description are matched the way assembler is written, without regard to case.
-  [[nodiscard]] static constexpr char to_lower_case(const char c) {
+  [[nodiscard]] static consteval char to_lower_case(const char c) {
     return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
   }
 
@@ -216,19 +217,23 @@ struct Interpreter {
   // property of the machine, so a CPU that grows a second `carry` is told at once
   // rather than whenever a row first wants one.
   [[nodiscard]] static consteval bool location_names_are_unique() {
-    std::vector<std::string> seen;
+    std::vector<std::pair<std::string, std::meta::info>> seen;
     for (const auto scope: location_scopes())
       for (const auto enumerator: std::meta::enumerators_of(scope)) {
-        auto name = std::string(std::meta::identifier_of(enumerator));
+        auto name = std::string(spelling_of(enumerator));
         std::ranges::transform(name, name.begin(), to_lower_case);
-        if (std::ranges::contains(seen, name))
-          return false;
-        seen.push_back(name);
+        if (const auto earlier = std::ranges::find(seen, name, &std::pair<std::string, std::meta::info>::first);
+            earlier != seen.end())
+          throw std::runtime_error("two of this machine's readable locations are spelled '" + name + "' (in " +
+                                   std::string(std::meta::identifier_of(earlier->second)) + " and " +
+                                   std::string(std::meta::identifier_of(scope)) +
+                                   "), so a description could not say which it meant");
+        seen.emplace_back(name, scope);
       }
     return true;
   }
 
-  [[nodiscard]] static constexpr bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
+  [[nodiscard]] static consteval bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
     return std::ranges::equal(lhs, rhs, {}, to_lower_case, to_lower_case);
   }
 
@@ -296,6 +301,14 @@ struct Interpreter {
       for (const auto enumerator: std::meta::enumerators_of(everywhere))
         if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
           candidates.push_back(enumerator);
+    // A spelling is consulted only when no identifier matched: almost every
+    // name is an identifier, and reading every enumerator's annotations on
+    // every lookup was measured to cost more than it is worth.
+    if (candidates.empty())
+      for (const auto everywhere: location_scopes())
+        for (const auto enumerator: std::meta::enumerators_of(everywhere))
+          if (same_ignoring_case(spelling_of(enumerator), name))
+            candidates.push_back(enumerator);
     return only_match(candidates, name, line);
   }
 
@@ -337,10 +350,18 @@ struct Interpreter {
     // The scope comes from the vocabulary rather than from a member, because a
     // member is parsed before anything knows which vocabulary it will end up in.
     constexpr auto scope = vocabulary.scope;
-    using Location = [:std::meta::type_of(find_location(members[0].operand.name.view(), Line, scope)):];
+    constexpr auto first = find_location(members[0].operand.name.view(), Line, scope);
+    template for (constexpr auto at: std::views::iota(1uz, members.size())) {
+      if (std::meta::type_of(find_location(members[at].operand.name.view(), Line, scope)) != std::meta::type_of(first))
+        throw error(Line, "'" + std::string(members[at].operand.name.view()) + "' and '" +
+                              std::string(members[0].operand.name.view()) +
+                              "' are different kinds of location, and a view selects among one kind");
+    }
+    using Location = [:std::meta::type_of(first):];
     std::array<Location, members.size()> locations{};
-    template for (constexpr auto at: std::views::iota(0uz, members.size()))
-        locations[at] = [:find_location(members[at].operand.name.view(), Line, scope):];
+    template for (constexpr auto at: std::views::iota(0uz, members.size())) {
+      locations[at] = [:find_location(members[at].operand.name.view(), Line, scope):];
+    }
     return locations;
   }
 
@@ -440,6 +461,7 @@ struct Interpreter {
     // would become different arguments, splitting every instantiation below for
     // a field only an error message reads.
     std::size_t line{};
+    constexpr bool operator==(const Call &) const = default;
   };
 
   // The rule the paragraph above states, said in a way the compiler checks. Give
@@ -785,8 +807,9 @@ struct Interpreter {
         // Two is a value and the flags it set, which is what almost every
         // arithmetic operation returns.
         const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
-        template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
-            store<C.destinations[at], C.line>(machine, decoded, indexed, member_of_result<members[at]>(result));
+        template for (constexpr auto at: std::views::iota(0uz, C.destinations.size())) {
+          store<C.destinations[at], C.line>(machine, decoded, indexed, member_of_result<members[at]>(result));
+        }
       }
       else {
         // More than one *destination* is how an instruction writes one result to
@@ -814,7 +837,7 @@ struct Interpreter {
 
   // A vocabulary member may bind the operation late, and may append an operand the
   // encoding does not carry.
-  [[nodiscard]] static consteval Member member_for(
+  [[nodiscard]] static constexpr Member member_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
     if (!step.operation_reference)
       return {};
@@ -822,14 +845,14 @@ struct Interpreter {
         *step.operation_reference);
   }
 
-  [[nodiscard]] static consteval Call call_for(
+  [[nodiscard]] static constexpr Call call_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
     const auto member = member_for(step, matched, opcode, rules);
     const Resolution at{.vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode};
     Call result{.line = line};
     for (const auto &operand: step.operands)
       if (!result.operands.try_push_back(resolve(at, operand)))
-        throw error(line, "too many operands");
+        throw table_error(Compiled::file, line, "too many operands");
     for (const auto &written: step.destinations) {
       auto destination = resolve(at, written);
       // The idle cycle belongs to a write-back, so only to something read through
@@ -839,14 +862,14 @@ struct Interpreter {
       if (!was_read)
         destination.write_back_delay = 0;
       if (!result.destinations.try_push_back(destination))
-        throw error(line, "too many destinations");
+        throw table_error(Compiled::file, line, "too many destinations");
     }
     // A vocabulary member may append an operand the encoding does not carry. It
     // named no vocabulary, so it is already resolved and has no scope: which enum
     // a name means here is the parameter's business.
     for (const auto &argument: member.arguments)
       if (!result.operands.try_push_back(as_resolved(argument)))
-        throw error(line, "too many operands");
+        throw table_error(Compiled::file, line, "too many operands");
     return result;
   }
 
@@ -877,9 +900,9 @@ struct Interpreter {
   template<std::uint8_t Table, std::uint8_t BodyKey, std::size_t Index>
   static void execute_one(
       Machine &machine, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
-    // `static` is not an optimisation here: the expansion statement below walks
-    // this as a range, and a range's *address* has to be a constant. A local
-    // `constexpr` has a constant value but not a constant address.
+    // A reference into the compiled arrays, which have static storage, so the
+    // expansion statement below can walk `row.steps` as a range: a range's
+    // *address* has to be a constant, and a local copy's would not be.
     static constexpr auto row = Compiled::rows()[Index];
     // A renaming applies to every row this table decodes, inherited or its own. A
     // rule names the vocabulary it rewrites, not just the member, so a row can opt
@@ -936,15 +959,11 @@ struct Interpreter {
           // counts too, and the machine is charged for the window once rather
           // than for each read inside it.
           //
-          // The machine is told the count and works out what is left of the window
-          // from it, so a count the window cannot hold asks it for a negative delay.
-          // Caught here, where the number is a constant, rather than at run time as
-          // an enormous unsigned one.
-          constexpr auto read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
-          static_assert(read_inside <= 1,
-              "this row reads more inside the window that forms its address than the window can hold");
-          return machine.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded),
-              displacement, static_cast<std::uint8_t>(read_inside));
+          // The count is a template argument so that the machine, which knows how
+          // long its window is, can refuse a count it cannot hold at compile time.
+          constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
+          return machine.template displaced_address<read_inside>(
+              direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement);
         }
         else
           return 0;
@@ -991,7 +1010,7 @@ struct Interpreter {
   // view is a run-time value, a numeric vocabulary is read straight out of the
   // opcode, and the mnemonic's own references are the disassembler's business;
   // nothing below this line ever looks at `row.pieces`.
-  [[nodiscard]] static consteval Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
+  [[nodiscard]] static constexpr Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
     Vector<std::uint8_t, Pattern::max_slices> used;
     const auto note = [&used](const Reference reference) {
       if (reference.from_view || is_numeric(Compiled::vocabularies()[reference.vocabulary_index]))
@@ -1025,8 +1044,9 @@ struct Interpreter {
   // not vary the generated code, which is the same set `resolve` short-circuits
   // when it turns a numeric vocabulary into a run-time read of the opcode. Add a
   // kind of reference that the generated code *does* branch on, and it has to be
-  // noted in both places or two opcodes will share a body they disagree about.
-  [[nodiscard]] static consteval std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
+  // noted in both places or two opcodes will share a body they disagree about;
+  // TableTest checks that every opcode of every body agrees with its key.
+  [[nodiscard]] static constexpr std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
     auto result = row.matched.opcode_bits;
     for (const auto index: slices_read_by(row)) {
       const auto &slice = row.matched.slices[index];
@@ -1078,8 +1098,9 @@ struct Interpreter {
   template<std::uint8_t Table>
   static constexpr auto dispatch = [] {
     std::array<Handler, bodies_of<Table>.size()> made{};
-    template for (constexpr auto at: std::views::iota(0uz, bodies_of<Table>.size())) made[at] =
-        &execute_one<Table, bodies_of<Table>[at].opcode, bodies_of<Table>[at].row>;
+    template for (constexpr auto at: std::views::iota(0uz, bodies_of<Table>.size())) {
+      made[at] = &execute_one<Table, bodies_of<Table>[at].opcode, bodies_of<Table>[at].row>;
+    }
     std::array<Handler, 256> handlers{};
     std::ranges::transform(fill_of<Table>, handlers.begin(), [&made](const std::uint16_t body) { return made[body]; });
     return handlers;
@@ -1111,7 +1132,7 @@ struct Interpreter {
                                                "description could not say which it meant");
     // The handlers reach the description's parts directly, so this is where
     // building an interpreter checks it.
-    Compiled::check();
+    static_assert(Compiled::check());
     continue_running(machine, 0, 0, 0);
   }
 };

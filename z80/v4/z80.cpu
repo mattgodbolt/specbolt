@@ -212,14 +212,14 @@ table ed
 01yyy110     | im {imode:y}         | ld8 im <- {imode:y}
 01100111     | rrd                  | rrd8 (hl), flags <- (hl) flags
 01101111     | rld                  | rld8 (hl), flags <- (hl) flags
-1010d000     | ld{dir:d}            | block_load flags <- {dir:d} flags
-1010d001     | cp{dir:d}            | block_compare flags <- {dir:d} flags
-1010d010     | in{dir:d}            | block_in flags <- {dir:d} flags
-1010d011     | out{dir:d}           | block_out flags <- {dir:d} flags
-1011d000     | ld{dir:d}r           | block_load flags <- {dir:d} flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
-1011d001     | cp{dir:d}r           | block_compare flags <- {dir:d} flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
-1011d010     | in{dir:d}r           | block_in flags <- {dir:d} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
-1011d011     | ot{dir:d}r           | block_out flags <- {dir:d} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+1010w000     | ld{dir:w}            | block_load flags <- {dir:w} flags
+1010w001     | cp{dir:w}            | block_compare flags <- {dir:w} flags
+1010w010     | in{dir:w}            | block_in flags <- {dir:w} flags
+1010w011     | out{dir:w}           | block_out flags <- {dir:w} flags
+1011w000     | ld{dir:w}r           | block_load flags <- {dir:w} flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+1011w001     | cp{dir:w}r           | block_compare flags <- {dir:w} flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
+1011w010     | in{dir:w}r           | block_in flags <- {dir:w} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
+1011w011     | ot{dir:w}r           | block_out flags <- {dir:w} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
 
 # Everything the chip does not define in this table is a two-byte nop, which is
 # a row like any other and has to come last so the rest shadow it.

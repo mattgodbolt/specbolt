@@ -87,7 +87,7 @@ public:
   void execute_one();
   // Called between instructions by the generated code. Takes the interrupt,
   // idles a halted chip, and says whether there is another instruction to run.
-  bool start_instruction();
+  [[nodiscard]] bool start_instruction();
 
   // What the framework asks of a machine. See refract/Machine.hpp. These are
   // the chip's own names for what it does; the framework calls them directly
@@ -166,8 +166,13 @@ public:
   // The Z80 sign-extends and spends a five-T-state window doing it, but any
   // immediate the instruction also carries is read *inside* that window, which
   // is why `ld (ix+d), n` is 19 T-states and not 22, and why the framework says
-  // how many bytes it already read.
-  [[nodiscard]] std::uint16_t displaced_address(std::uint16_t base, std::uint8_t offset, std::uint8_t immediate_bytes);
+  // how many bytes it already read. Three per byte, so the window holds one.
+  template<std::uint8_t BytesRead>
+  [[nodiscard]] std::uint16_t displaced_address(const std::uint16_t base, const std::uint8_t offset) {
+    static_assert(BytesRead <= 1, "the window that forms an indexed address holds at most one byte read inside it");
+    delay(5 - 3 * BytesRead);
+    return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
+  }
 
   // Reading and writing a named location. One overload per kind of location,
   // all called `read` or `write`, then the framework has only the one name

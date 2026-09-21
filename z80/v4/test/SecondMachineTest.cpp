@@ -61,8 +61,8 @@ struct Toy {
     write_memory(address, static_cast<std::uint8_t>(value));
     write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
   }
-  [[nodiscard]] std::uint16_t displaced_address(
-      const std::uint16_t base, const std::uint8_t offset, const std::uint8_t /*immediate_bytes*/) {
+  template<std::uint8_t BytesRead>
+  [[nodiscard]] std::uint16_t displaced_address(const std::uint16_t base, const std::uint8_t offset) {
     return static_cast<std::uint16_t>(base + offset);
   }
   void delay(const std::uint8_t count) { cycles += count; }

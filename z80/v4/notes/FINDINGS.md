@@ -123,6 +123,48 @@ sites is not worth having. And `Call`'s two would stay on `Vector` regardless, f
 That is the order the header comment gives the reasons in, structural first, and it is why
 "eventually `inplace_vector`" is true of most of the parser and false of the generator.
 
+### Compile time, and where it went when it moved
+
+Every figure here is one compile of `z80/v4/Z80.cpp` at `RelWithDebInfo` with gcc 16.2, taken
+with `/usr/bin/time` on the same laptop within one afternoon. The baseline, the commit before any
+of this, is **68.5s and 1.83 GB**, twice, with the load average below two. Each lesson was learned
+by adding something and watching the number, and the comparisons that matter were taken again on
+the quiet machine, alternating the two builds.
+
+- **One constant evaluation cannot be collected; many can.** A check that compared the resolved
+  operands of every opcode sharing a generated body was first written inside `decoding_for`, the
+  one `consteval` call that lays out a table: **7.8 GB**, and over 180s on a loaded machine. Moved
+  into a `static_assert` per body inside the expansion that builds the dispatch table, so that each
+  body's share ran as its own instantiation: **1.9 GB, and 85s to 87s quiet.** The same work, four
+  times the memory, because gcc reclaims between template instantiations and never inside one
+  evaluation. This is the mechanism behind the `Compiled` figures in MEASUREMENTS.md too, seen
+  from the other side.
+- **A 256-entry scan of a constant array per body is not free.** The per-body check with its
+  comparison switched off, leaving only a loop reading `fill_of<Table>[opcode]` 256 times for each
+  of 757 bodies, cost about 6s, back to back with and without: some 194,000 reads of a
+  namespace-scope `constexpr` array at 30 microseconds a read. The evaluator does not index a
+  constant the way a running program does.
+- **Resolving a step is a few milliseconds.** The comparison itself, `call_for` for every opcode
+  that shares a body, roughly 2,500 evaluations, was the other 8s to 10s. Hoisting the key's own
+  call out of the loop changed nothing, which says the cost is per call, not per pair.
+- **A check that costs a sixth of the build had better be worth it.** It guards a library
+  invariant against a future edit, not a description against its author. It is now a unit test
+  over every opcode of every table, at no compile cost, and `body_key` and `call_for` became
+  `constexpr` rather than `consteval` so that a test can call them. The file with everything else
+  in this pass and without the check: 71s to 76s.
+- **Reading every enumerator's annotations on every lookup costs about 6s.** Honouring `Spelling`
+  in the unscoped location lookup, by comparing `spelling_of` for each of the machine's fifty-odd
+  enumerators on each of several thousand lookups, was a 6s difference back to back. Comparing
+  identifiers first and consulting spellings only when nothing matched costs nothing measurable.
+- **Copying a `Row` into a `static constexpr` per body costs nothing.** Binding a
+  `static constexpr const auto &` into the compiled array instead, to save the copy, measured the
+  same to the second and the megabyte. gcc shares the constant either way.
+- **Check the load average before believing a number.** The same file compiled in 55s and in 71s
+  an hour apart with no change to it; the difference was three browser processes at 85% each,
+  load average 15. Peak memory is unaffected by load and time is not, so a time from a loaded
+  machine is a bound at best. Every time above was taken with the load below two, alternating
+  the two builds, or says so.
+
 ### Structural types and static promotion
 
 The single most useful architectural fact:

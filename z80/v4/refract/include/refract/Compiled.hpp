@@ -81,16 +81,16 @@ struct Compiled {
   [[nodiscard]] static constexpr const auto &decoded() { return steps::decoded<Text, File>; }
   [[nodiscard]] static constexpr const auto &latched() { return steps::latched<Text, File>; }
 
-  // Runs every check the text must pass. Instantiating this is what checks a
-  // description: `description()` does, and so does an interpreter.
-  static constexpr void check() {
-    static_assert(checked<[] { return check_every_line_means_something(text); }>);
-    static_assert(checked<[] { return check_row_precedence(unchecked(), steps::row_opcodes<Text, File>); }>);
-    static_assert(checked<[] { return check_derived_rows_override(unchecked(), steps::row_opcodes<Text, File>); }>);
-    static_assert(checked<[] { return check_tables_used(unchecked()); }>);
-    static_assert(checked<[] { return check_tables_total(unchecked()); }>);
-    static_assert(checked<[] { return check_inherited_literals(unchecked()); }>);
-    static_assert(checked<[] { return check_displacement_rendered(unchecked()); }>);
+  // Every check the text must pass, each against its line; true if all do.
+  // `description()` asserts it, and so does an interpreter.
+  [[nodiscard]] static consteval bool check() {
+    return checked<[] { return check_every_line_means_something(text); }> &&
+           checked<[] { return check_row_precedence(unchecked(), steps::row_opcodes<Text, File>); }> &&
+           checked<[] { return check_derived_rows_override(unchecked(), steps::row_opcodes<Text, File>); }> &&
+           checked<[] { return check_tables_used(unchecked()); }> &&
+           checked<[] { return check_tables_total(unchecked()); }> &&
+           checked<[] { return check_inherited_literals(unchecked()); }> &&
+           checked<[] { return check_displacement_rendered(unchecked()); }>;
   }
 
   // The above as one value, checked: what a consumer that takes a
@@ -98,11 +98,11 @@ struct Compiled {
   // handlers are templates on the parts themselves, so they reach them through
   // the functions above and call `check()` on their own.
   [[nodiscard]] static constexpr Description description() {
-    check();
+    static_assert(check());
     return unchecked();
   }
 
-  [[nodiscard]] static consteval std::optional<std::size_t> find_row(
+  [[nodiscard]] static constexpr std::optional<std::size_t> find_row(
       const std::uint8_t table, const std::uint8_t opcode) {
     return decoded()[table][opcode];
   }
