@@ -30,9 +30,9 @@ inline constexpr std::size_t max_tables = 256;
 [[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
   std::vector<Vocabulary> result;
   for (const auto [at, text]: lines_of(description)) {
+    if (!is_vocabulary(text))
+      continue;
     at_line(at, [&] {
-      if (!is_vocabulary(text))
-        return;
       Parser parser(text);
       parser.skip_word();
       Vocabulary vocabulary;
@@ -80,11 +80,9 @@ inline constexpr std::size_t max_tables = 256;
 // surfacing much later as an opcode nothing decodes.
 constexpr void check_every_line_means_something(const std::string_view description) {
   for (const auto [at, text]: lines_of(description)) {
-    at_line(at, [&] {
-      if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
-        return;
-      throw std::runtime_error("this is not a comment, a declaration, or a row; a row needs its '|' separators");
-    });
+    if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
+      continue;
+    throw table_error(at, "this is not a comment, a declaration, or a row; a row needs its '|' separators");
   }
 }
 
@@ -173,9 +171,9 @@ constexpr void parse_substitutions(
     const std::string_view description, const std::span<const Vocabulary> vocabularies) {
   std::vector<TableDecl> result;
   for (const auto [at, text]: lines_of(description)) {
+    if (!is_table(text))
+      continue;
     at_line(at, [&] {
-      if (!is_table(text))
-        return;
       Parser parser(text);
       parser.skip_word();
       auto name = parser.next_word();
@@ -325,9 +323,8 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
 [[nodiscard]] constexpr Operand parse_operand(const std::span<const Vocabulary> vocabularies,
     const std::string_view word, const Pattern &matched, const std::uint8_t immediate_bytes, const TableDecl &table) {
   const auto [parameter, text] = split_keyword(word);
-  auto operand = text.starts_with('{')
-                     ? Operand{{}, Operand::Kind::Vocabulary, reference_from_braces(vocabularies, text, matched, table)}
-                     : parse_simple_operand(text, immediate_bytes);
+  auto operand = text.starts_with('{') ? Operand::vocabulary(reference_from_braces(vocabularies, text, matched, table))
+                                       : parse_simple_operand(text, immediate_bytes);
   operand.parameter = parameter;
   return operand;
 }
@@ -500,6 +497,8 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
   std::vector<Row> result;
   std::optional<std::uint8_t> current;
   for (const auto [at, text]: lines_of(description)) {
+    if (!is_table(text) && !is_row(text))
+      continue;
     at_line(at, [&] {
       if (is_table(text)) {
         Parser declaration(text);
@@ -507,8 +506,6 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
         current = find_table(tables, table_name_of(declaration.next_word()));
         return;
       }
-      if (!is_row(text))
-        return;
       if (!current)
         throw std::runtime_error("this row is not in any table; declare one with `table <name>` first");
       // Three columns, separated by `|`: what is encoded, how it reads, what it does.

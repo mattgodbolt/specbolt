@@ -1016,14 +1016,15 @@ struct Interpreter {
   };
 
   // Enumerates a table's bodies, one per (row, key) its opcodes reach, and which body each opcode uses. Every opcode
-  // decodes to some row, since `Compiled` checks that, so the lookup is dereferenced unasked.
+  // decodes to some row, since `Compiled` checks that when it is instantiated; `.value()` rather than `*` so that if
+  // the check failed and this is instantiated anyway, the second complaint is one readable line.
   [[nodiscard]] static consteval Decoding decoding_for(const std::uint8_t table) {
     Decoding result;
     // Indexed, never searched: `made[row][key]` is the body this row already has for that combination of the slices it
     // reads. Per row as well as per key, because two rows may narrow to the same encoding and are still two rows.
     std::vector<std::array<std::optional<std::uint16_t>, 256>> made(Compiled::rows().size());
     for (const auto opcode: std::views::iota(0uz, 256uz)) {
-      const auto row = *Compiled::find_row(table, static_cast<std::uint8_t>(opcode));
+      const auto row = Compiled::find_row(table, static_cast<std::uint8_t>(opcode)).value();
       const auto key = body_key(Compiled::rows()[row], static_cast<std::uint8_t>(opcode));
       auto &body = made[row][key];
       if (!body) {
@@ -1070,14 +1071,18 @@ struct Interpreter {
     [[gnu::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
   }
 
-  // Asks whether the machine will form a displaced address with this many bytes already read inside its window. A
-  // machine refuses a count by constraining `displaced_address`; asking first turns that refusal into a diagnostic
-  // against the row that needs the count.
+  // Whether the machine will form a displaced address with this many bytes already read inside its window. A machine
+  // refuses a count by constraining `displaced_address`.
+  template<std::uint8_t BytesRead>
+  static constexpr bool window_holds = requires(Machine &machine, const std::uint16_t base, const std::uint8_t offset) {
+    machine.template displaced_address<BytesRead>(base, offset);
+  };
+
+  // Asks `window_holds` before the call is made, so that a refusal is a diagnostic against the row that needs the count
+  // rather than a failure inside the machine.
   template<std::uint8_t BytesRead>
   static consteval void check_window_holds(const std::size_t line) {
-    if constexpr (!requires(Machine &machine, const std::uint16_t base, const std::uint8_t offset) {
-                    machine.template displaced_address<BytesRead>(base, offset);
-                  })
+    if constexpr (!window_holds<BytesRead>)
       throw error(line, "this row reads " + decimal(BytesRead) +
                             " byte(s) inside the window that forms its displaced address, which is more than this "
                             "machine's window holds");

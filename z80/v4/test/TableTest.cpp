@@ -269,11 +269,9 @@ TEST_CASE("Generated execution") {
 
 
 TEST_CASE("Two opcodes share a body only when every step agrees") {
-  // `body_key` decides which opcodes share a generated function, and `resolve`
-  // decides what that function does; the slices the first ignores must be the
-  // ones the second folds away. Checked here, over every opcode of every
-  // table, rather than in the build, where it was measured to cost a fifth of
-  // the interpreter's compile time.
+  // `body_key` decides which opcodes share a generated function, and `resolve` decides what that function does; the
+  // slices the first ignores must be the ones the second folds away. Checked here, over every opcode of every table,
+  // rather than in the build, where it was measured to cost a fifth of the interpreter's compile time.
   using I = refract::Interpreter<Target>;
   for (std::uint8_t table = 0; table < C::tables().size(); ++table) {
     const auto &rules = C::tables()[table].rules;

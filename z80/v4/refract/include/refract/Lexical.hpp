@@ -59,7 +59,7 @@ namespace specbolt::refract {
     return attributed;
   }
   if (word == "-")
-    return {{}, Operand::Kind::Discard};
+    return Operand::discard();
   if (word.starts_with('(')) {
     if (!word.ends_with(')'))
       throw std::runtime_error("unterminated '(' in operand '" + std::string(word) + "'");
@@ -77,7 +77,7 @@ namespace specbolt::refract {
   if (word.ends_with("+d"))
     throw std::runtime_error("a displacement only makes sense inside '(...)'");
   if (word == "n")
-    return {{.width = immediate_bytes}, Operand::Kind::Immediate};
+    return Operand::immediate(immediate_bytes);
   if (word == "nn")
     throw std::runtime_error("write 'n'; the encoding column says how many bytes it occupies");
   if (word.front() >= '0' && word.front() <= '9') {
@@ -91,11 +91,11 @@ namespace specbolt::refract {
       throw std::runtime_error("constant '" + std::string(word) + "' does not fit in 16 bits");
     if (failure != std::errc{} || end != digits.data() + digits.size())
       throw std::runtime_error("malformed constant '" + std::string(word) + "'");
-    return {{.constant = static_cast<std::uint16_t>(value)}, Operand::Kind::Constant};
+    return Operand::literal(static_cast<std::uint16_t>(value));
   }
   if (word.size() > Name::capacity)
     throw std::runtime_error("operand name '" + std::string(word) + "' is too long");
-  return {{.name = Name{word}}, Operand::Kind::Named};
+  return Operand::named(Name{word});
 }
 
 // Splits display text around the values it renders rather than spells: `$nn` and `$nnnn` come from the encoding, `+d`

@@ -144,10 +144,11 @@ public:
   // How a displacement offsets a base, and what forming that address costs. The Z80 sign-extends and spends a
   // five-T-state window doing it, but any immediate the instruction also carries is read *inside* that window, which is
   // why `ld (ix+d), n` is 19 T-states and not 22, and why the framework says how many bytes it already read. Three per
-  // byte, so the window holds one.
+  // byte, so the window holds one, and the constraint refuses more: the framework asks before it calls, and reports
+  // the row that wanted it.
   template<std::uint8_t BytesRead>
+    requires(BytesRead <= 1)
   [[nodiscard]] std::uint16_t displaced_address(const std::uint16_t base, const std::uint8_t offset) {
-    static_assert(BytesRead <= 1, "the window that forms an indexed address holds at most one byte read inside it");
     delay(5 - 3 * BytesRead);
     return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
   }

@@ -7,9 +7,8 @@
 #include "peripherals/Memory.hpp"
 #include "z80/common/Scheduler.hpp"
 
-// Cycle counts and results are the ones `z80/test/OpcodeTests.cpp` asserts
-// against v1/v2/v3, so a row that decodes has to agree with three
-// implementations that already pass zexdoc.
+// Cycle counts and results are the ones `z80/test/OpcodeTests.cpp` asserts against v1/v2/v3, so a row that decodes has
+// to agree with three implementations that already pass zexdoc.
 
 namespace specbolt::v4 {
 namespace {
@@ -254,11 +253,9 @@ TEST_CASE("Interrupts") {
   }
 
   SECTION("ld a, i and ld a, r report iff2 in the parity flag") {
-    // These are the only rows whose operation reads the machine without
-    // changing it, so they are also where a `const` machine parameter has to
-    // keep being recognised as the machine.
-    // Each value's own parity is the opposite of the iff2 it is read under, so
-    // an ordinary parity flag would fail both halves.
+    // These are the only rows whose operation reads the machine without changing it, so they are also where a `const`
+    // machine parameter has to keep being recognised as the machine. Each value's own parity is the opposite of the
+    // iff2 it is read under, so an ordinary parity flag would fail both halves.
     regs.i(0x43); // three bits set
     t.z80.iff2(true);
     t.run(0xed, 0x57); // ld a, i
@@ -274,8 +271,8 @@ TEST_CASE("Interrupts") {
   }
 
   SECTION("ei lets one more instruction run before an interrupt is taken") {
-    // `ei ; halt` and `ei ; reti` both depend on this: without it the interrupt
-    // arrives before the instruction that was meant to run under it.
+    // `ei ; halt` and `ei ; reti` both depend on this: without it the interrupt arrives before the instruction that was
+    // meant to run under it.
     t.run(0xfb); // ei
     t.z80.interrupt();
     t.run(0x00); // nop, runs first
@@ -299,25 +296,22 @@ TEST_CASE("Interrupts") {
 
     t.z80.interrupt();
     t.z80.execute_one();
-    // Two more: the acknowledge is an M1, and the handler's first instruction
-    // is fetched in the same call.
+    // Two more: the acknowledge is an M1, and the handler's first instruction is fetched in the same call.
     CHECK(t.regs.r() == 4);
     CHECK_FALSE(t.z80.halted());
   }
 
   SECTION("a halted cycle is a real opcode fetch, so the bus keeps following it") {
-    // The halted path once spent its four cycles directly rather than through
-    // `bus`, which left the address bus holding whatever the last instruction
-    // put there for as long as the machine idled, and idling in `halt` until
-    // the frame interrupt is the commonest thing a Spectrum program does. It
-    // also meant the one place contention would matter most was the one place
-    // the seam did not reach.
+    // The halted path once spent its four cycles directly rather than through `bus`, which left the address bus holding
+    // whatever the last instruction put there for as long as the machine idled, and idling in `halt` until the frame
+    // interrupt is the commonest thing a Spectrum program does. It also meant the one place contention would matter
+    // most was the one place the seam did not reach.
     t.regs.pc(0x1234);
     t.run(0x00); // a nop, to leave the bus somewhere known
     REQUIRE(t.z80.bus_address() == 0x1234);
 
-    // Halted at a different address than the bus last saw, which is what tells
-    // a fetch apart from four cycles of nothing.
+    // Halted at a different address than the bus last saw, which is what tells a fetch apart from four cycles of
+    // nothing.
     t.z80.halted(true);
     t.regs.pc(0x4321);
     const auto before = t.z80.cycle_count();
@@ -333,8 +327,7 @@ TEST_CASE("Interrupts") {
   }
 
   SECTION("an interrupt raised while disabled is held, not dropped") {
-    // /INT is a level the device holds, not an edge, so arriving during a
-    // di/ei window does not lose it.
+    // /INT is a level the device holds, not an edge, so arriving during a di/ei window does not lose it.
     t.z80.iff1(false);
     t.z80.iff2(false);
     t.z80.interrupt();
@@ -523,11 +516,10 @@ TEST_CASE("Indexed addressing") {
   }
 
   SECTION("bit n, (ix+d) reads wzh after the memory access, not before") {
-    // `test_bit flags <- (ix+d) {b} flags wzh` has two operands that touch the bus:
-    // the memory read sets the address wzh then reports. If the arguments were
-    // evaluated in the other order, wzh would report the *previous* address:
-    // the opcode fetch, near zero, whose bits 3 and 5 are clear. So choose an
-    // index whose high byte has both set, and the two orders differ.
+    // `test_bit flags <- (ix+d) {b} flags wzh` has two operands that touch the bus: the memory read sets the address
+    // wzh then reports. If the arguments were evaluated in the other order, wzh would report the *previous* address:
+    // the opcode fetch, near zero, whose bits 3 and 5 are clear. So choose an index whose high byte has both set, and
+    // the two orders differ.
     t.z80.flags(Flags());
     regs.set(RegisterFile::R16::IX, 0x2834); // +2 -> 0x2836, high byte 0b0010'1000
     t.memory.write(0x2836, 0xff);
@@ -551,8 +543,8 @@ TEST_CASE("Indexed addressing") {
   }
 
   SECTION("dd cb also copies its result into the register the low bits name") {
-    // The undocumented half: v2 and v3 read this as a view over cb and get the
-    // wrong answer for every entry where the low bits are not 6.
+    // The undocumented half: v2 and v3 read this as a view over cb and get the wrong answer for every entry where the
+    // low bits are not 6.
     regs.set(RegisterFile::R16::IX, 0x1236);
     t.memory.write(0x1234, 0x00);
     t.run(0xdd, 0xcb, 0xfe, 0xe0); // set 4, (ix-2), b

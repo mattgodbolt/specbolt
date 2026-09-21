@@ -23,10 +23,14 @@ struct Vector {
   std::size_t count{};
 
   static constexpr std::size_t capacity = N;
+  // The element's name for the diagnostic, reflected once here rather than in `push_back`: a reflection call in a
+  // function body would make the function consteval, and the parser also runs at run time under test.
+  static constexpr std::string_view element_name =
+      std::meta::has_identifier(^^T) ? std::meta::identifier_of(^^T) : std::meta::display_string_of(^^T);
 
   constexpr void push_back(const T &value) {
     if (count == N)
-      throw std::length_error("more than " + decimal(N) + " " + std::string(std::meta::display_string_of(^^T)));
+      throw std::length_error("more than " + decimal(N) + " " + std::string(element_name));
     storage[count++] = value;
   }
 

@@ -321,14 +321,14 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xdd, 0xe5) == "push ix");
     CHECK(dis(0xdd, 0x09) == "add ix, bc");
     CHECK(dis(0xdd, 0x22, 0xad, 0xba) == "ld (0xbaad), ix");
-    // A rename would make this `ex de, ix`; the table names hl literally here,
-    // and only vocabulary members are renamed by a view. See #39.
+    // A rename would make this `ex de, ix`; the table names hl literally here, and only vocabulary members are renamed
+    // by a view. See #39.
     CHECK(dis(0xdd, 0xeb) == "ex de, hl");
   }
   SECTION("Test fd prefixes") {
     CHECK(dis(0xfd, 0xeb) == "ex de, hl");
-    // The four index vocabularies must list iy where ix sits, which nothing
-    // in the format can check; these are the rows that would print ix.
+    // The four index vocabularies must list iy where ix sits, which nothing in the format can check; these are the rows
+    // that would print ix.
     CHECK(dis(0xfd, 0x65) == "ld iyh, iyl");
     CHECK(dis(0xfd, 0x26, 0x12) == "ld iyh, 0x12");
     CHECK(dis(0xfd, 0x7c) == "ld a, iyh");
@@ -398,9 +398,8 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0xed, 0xa9) == "cpd");
     CHECK(dis(0xed, 0xb1) == "cpir");
     CHECK(dis(0xed, 0xb9) == "cpdr");
-    // All sixteen come from eight rows whose direction is bit 3 of the opcode,
-    // so the whole family is pinned here. `otir`/`otdr` are the reason the four
-    // families kept a row each: their repeating forms spell `out` as `ot`.
+    // All sixteen come from eight rows whose direction is bit 3 of the opcode, so the whole family is pinned here.
+    // `otir`/`otdr` are the reason the four families kept a row each: their repeating forms spell `out` as `ot`.
     CHECK(dis(0xed, 0xa2) == "ini");
     CHECK(dis(0xed, 0xaa) == "ind");
     CHECK(dis(0xed, 0xb2) == "inir");

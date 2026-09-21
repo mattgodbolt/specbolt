@@ -30,6 +30,11 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   cannot be called with runtime CPU state. Use `template<info Fn> constexpr auto arity_of = …` and
   `template<info Fn, size_t I> using parameter_type = typename[:type_of(parameters_of(Fn)[I]):]`
   instead. This is the sharp edge of the consteval-only rule and it is easy to trip over twice.
+- **A reflection call in a `constexpr` function body makes the function `consteval`.** `identifier_of(^^T)` inside
+  `Vector::push_back` (for a diagnostic) was an immediate-escalating expression, so `push_back`, `slices_read_by`
+  and `body_key` all became immediate functions and TableTest, which calls `body_key` at run time, stopped
+  compiling. The fix is the same as for `parameters_of`: do the reflection in a `static constexpr` data member's
+  initialiser, which is a constant-expression context, and read the result at run time. Found 2026-09-21.
 - **`access_context::current()` at namespace scope excludes private members.** This is why `Ops` is a
   struct with a private section rather than a namespace: access control gates which names the table
   may use as verbs. Deliberate and worth keeping.

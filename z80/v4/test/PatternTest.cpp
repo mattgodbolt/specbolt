@@ -47,9 +47,8 @@ TEST_CASE("Opcode bit parsing") {
 
 constexpr auto ld_rr_imm16 = parse_pattern("00pp0001");
 
-// A pattern is only ever read in one direction: `place` builds the opcodes a
-// row claims, and `extract` reads a value back out of one. Nothing tests an
-// opcode *against* a pattern, because nothing does that. See `opcodes_of`.
+// A pattern is only ever read in one direction: `place` builds the opcodes a row claims, and `extract` reads a value
+// back out of one. Nothing tests an opcode *against* a pattern, because nothing does that. See `opcodes_of`.
 TEST_CASE("Opcode slices") {
   constexpr auto matched = ld_rr_imm16;
   SECTION("Extracts and places field values") {

@@ -24,6 +24,7 @@
 #include <concepts>
 #include <optional>
 #include <string_view>
+#include <type_traits>
 
 namespace specbolt::refract {
 
@@ -39,6 +40,9 @@ template<typename S>
 concept SourceLike = requires {
   { S::file } -> std::convertible_to<std::string_view>;
   { S::text } -> std::convertible_to<std::string_view>;
+  // Both must be usable in constant expressions, which is what naming them as template arguments asks.
+  typename std::integral_constant<std::size_t, std::string_view{S::file}.size()>;
+  typename std::integral_constant<std::size_t, std::string_view{S::text}.size()>;
 };
 
 // Each constant is the answer of one step of the pipeline, fixed by `to_array`; the size of each is whatever the text
@@ -110,8 +114,11 @@ struct Compiled {
   }
 
   // The rules the whole description must obey, run once when this class is instantiated: each throws against its line,
-  // `naming` puts the file in front, and that is the compile error.
+  // `naming` puts the file in front, and that is the compile error. The block may call the members above because this
+  // is a class template, so it runs at instantiation, when their bodies exist; in a plain class it could not. `latched`
+  // is asked for here because deriving it is itself a check, and nothing else forces it.
   consteval {
+    naming(file, [] { static_cast<void>(latched()); });
     naming(file, [] { return check_every_line_means_something(text); });
     naming(file, [] { return check_row_precedence(description(), steps::row_opcodes<Source>); });
     naming(file, [] { return check_derived_rows_override(description(), steps::row_opcodes<Source>); });

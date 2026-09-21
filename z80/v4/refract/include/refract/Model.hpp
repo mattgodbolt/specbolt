@@ -99,6 +99,20 @@ struct Operand : Access {
   Kind kind{};
   Reference reference{};
   constexpr bool operator==(const Operand &) const = default;
+
+  // One of each kind. A designated initialiser cannot name a base's member, so the aggregate-with-a-base spelling
+  // lives here, once, rather than at every place the lexer makes one. (`literal`, since `constant` is the field.)
+  [[nodiscard]] static constexpr Operand discard() { return {{}, Kind::Discard}; }
+  [[nodiscard]] static constexpr Operand immediate(const std::uint8_t width) {
+    return {{.width = width}, Kind::Immediate};
+  }
+  [[nodiscard]] static constexpr Operand literal(const std::uint16_t value) {
+    return {{.constant = value}, Kind::Constant};
+  }
+  [[nodiscard]] static constexpr Operand named(const Name name) { return {{.name = name}, Kind::Named}; }
+  [[nodiscard]] static constexpr Operand vocabulary(const Reference reference) {
+    return {{}, Kind::Vocabulary, reference};
+  }
 };
 
 // An operand once an opcode has settled which vocabulary member it meant. `Operand` is what a description wrote; this
@@ -140,7 +154,8 @@ struct Resolved : Access {
     }
     throw std::logic_error("a vocabulary reference resolves to a member, never to itself");
   }();
-  return {operand, kind};
+  // The `Access` part is copied whole; only the kind is mapped.
+  return {static_cast<const Access &>(operand), kind};
 }
 
 // Text with the values it carries taken out of it. A piece is a literal chunk, a vocabulary member to look up, a value

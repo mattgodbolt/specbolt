@@ -10,9 +10,8 @@
 #include "refract/Disassemble.hpp"
 #include "refract/Execute.hpp"
 
-// A second machine, described and interpreted in the same binary as the Z80.
-// It exists to show that a target is a parameter: nothing about it is shared
-// with the Z80 but the library.
+// A second machine, described and interpreted in the same binary as the Z80. It exists to show that a target is a
+// parameter: nothing about it is shared with the Z80 but the library.
 
 namespace specbolt::refract {
 namespace {
@@ -61,7 +60,10 @@ struct Toy {
     write_memory(address, static_cast<std::uint8_t>(value));
     write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
   }
+  // Constrained so that the test below can watch the framework notice a refusal; the toy reads nothing inside its
+  // window.
   template<std::uint8_t BytesRead>
+    requires(BytesRead == 0)
   [[nodiscard]] std::uint16_t displaced_address(const std::uint16_t base, const std::uint8_t offset) {
     return static_cast<std::uint16_t>(base + offset);
   }
@@ -70,8 +72,8 @@ struct Toy {
   [[nodiscard]] std::uint8_t read(const Reg which) const { return which == Reg::a ? a : x; }
   void write(const Reg which, const std::uint8_t value) { (which == Reg::a ? a : x) = value; }
 
-  // Two verbs the machine marks, one that needs it and one that does not.
-  // `delay` above is public and is not a verb, because nothing says it is.
+  // Two verbs the machine marks, one that needs it and one that does not. `delay` above is public and is not a verb,
+  // because nothing says it is.
   [[nodiscard]][[= refract::operation]] std::uint8_t swap(const std::uint8_t value) {
     ++cycles;
     return static_cast<std::uint8_t>(value << 4 | value >> 4);
@@ -136,6 +138,11 @@ TEST_CASE("A second machine runs beside the Z80") {
   CHECK(at(2).length == 2);
   CHECK(at(7).text == "copy a"); // the prefix renders nothing; the row it reaches does
   CHECK(at(7).length == 2);
+}
+
+TEST_CASE("A machine's constraint on its displacement window is what the framework asks") {
+  STATIC_CHECK(Interpreter<ToyTarget>::window_holds<0>);
+  STATIC_CHECK(!Interpreter<ToyTarget>::window_holds<1>);
 }
 
 } // namespace specbolt::refract

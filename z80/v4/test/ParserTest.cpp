@@ -106,8 +106,8 @@ TEST_CASE("A trailing backslash joins a line to the next") {
   SECTION("Joining onto a blank line is not a crash") {
     CHECK(numbers_and_text("a \\\n\nb") == Lines{{1, "a"}, {3, "b"}});
   }
-  // The point of all the above: `Parser` sees the join as whitespace, so a
-  // caller reads the same words whether or not the description was wrapped.
+  // The point of all the above: `Parser` sees the join as whitespace, so a caller reads the same words whether or not
+  // the description was wrapped.
   SECTION("Words read the same either way") {
     const auto words = [](const std::string_view text) {
       Parser parser(lines_of(text).front().text);
