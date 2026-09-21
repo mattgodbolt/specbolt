@@ -22,7 +22,8 @@ target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
         include/z80/v4/Disassembler.hpp
         include/z80/v4/Z80.hpp
         refract/include/refract/Compiled.hpp
-        refract/include/refract/Coverage.hpp
+        refract/include/refract/Checks.hpp
+        refract/include/refract/Decode.hpp
         refract/include/refract/Disassemble.hpp
         refract/include/refract/Execute.hpp
         refract/include/refract/Lexical.hpp

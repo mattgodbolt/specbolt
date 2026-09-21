@@ -3,7 +3,7 @@
 A reference for the instruction-set description that v4 compiles. The file this
 describes is [`z80.cpu`](z80.cpu). The code that reads it is the `refract`
 library, in `refract/`: the parser is `Lexical.hpp` (a fragment of text at a time)
-and `Parse.hpp` (the declarations); `Coverage.hpp` works out what each row claims
+and `Parse.hpp` (the declarations); `Decode.hpp` works out what each row claims
 and checks it; `Compiled.hpp` turns a description into constants and runs those
 checks; `Machine.hpp` states what a machine must provide; `Execute.hpp`
 generates the interpreter. `Target.hpp` embeds `z80.cpu` and names the machine

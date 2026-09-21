@@ -161,7 +161,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       substitution.to_vocabulary = reference.vocabulary_index;
     }
     else {
-      // Coverage is worked out before any rule is applied, so a row renamed to
+      // What a row claims is worked out before any rule is applied, so a row renamed to
       // nothing would still claim its opcodes and then resolve to a default zero.
       substitution.to = parse_member(to, line);
       if (substitution.to.hole)

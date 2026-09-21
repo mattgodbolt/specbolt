@@ -21,7 +21,7 @@
 //
 // `Interpreter<Target>::run` then runs the machine until it says stop.
 
-#include "refract/Coverage.hpp"
+#include "refract/Decode.hpp"
 #include "refract/Machine.hpp"
 #include "refract/Model.hpp"
 #include "refract/TableError.hpp"

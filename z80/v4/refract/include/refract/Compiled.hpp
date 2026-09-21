@@ -13,7 +13,8 @@
 // Asking for `description()`, or running `check()`, on a malformed description is a compile error naming the file and
 // line; instantiating the class alone evaluates nothing.
 
-#include "refract/Coverage.hpp"
+#include "refract/Checks.hpp"
+#include "refract/Decode.hpp"
 #include "refract/Model.hpp"
 #include "refract/Parse.hpp"
 #include "refract/TableError.hpp"

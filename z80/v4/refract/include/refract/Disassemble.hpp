@@ -8,7 +8,7 @@
 // mnemonic was split into `Piece`s at parse time, so rendering one is walking a
 // list. All a machine supplies is where the bytes come from.
 
-#include "refract/Coverage.hpp"
+#include "refract/Decode.hpp"
 #include "refract/Model.hpp"
 
 #include <cstdint>
