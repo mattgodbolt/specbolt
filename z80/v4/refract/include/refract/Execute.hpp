@@ -7,7 +7,7 @@
 // it reads, so that opcodes generating the same code share one.
 //
 // A target names the two, and the palettes its description may draw verbs
-// from:
+// from; `TargetLike` in Machine.hpp is the contract:
 //
 //   struct Target {
 //     using Machine = ...;                       // see Machine.hpp
@@ -124,17 +124,10 @@ namespace specbolt::refract {
 // element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what
 // stands in its place.
 
-template<typename Target>
+template<TargetLike Target>
 struct Interpreter {
   using Machine = typename Target::Machine;
   using Compiled = typename Target::Compiled;
-
-  // Checking the contract here means a machine missing one of its functions is
-  // told which, rather than finding out inside a generated instruction three
-  // hundred lines away.
-  static_assert(MachineLike<Machine>, "this machine does not supply everything the framework needs; see Machine.hpp");
-  static_assert(
-      requires { Target::palettes(); }, "the target must list the palettes a description may draw its operations from");
 
   // A mistake in the description, reported against its line and the file the
   // target says it came from.
@@ -1112,9 +1105,10 @@ struct Interpreter {
   // Starts the run. The handlers tail-call each other from here on, so this is
   // the only frame the run keeps.
   //
-  // The uniqueness check lives here rather than beside `MachineLike` at class
-  // scope because a class-scope assertion cannot call a member function of the
-  // class it is in; this is the one entry point, so it runs once regardless.
+  // These two checks are not part of `TargetLike`: the first needs this class's
+  // own scan of the machine, and the second throws with the description's file
+  // and line, which a failed constraint would not carry. This is the one entry
+  // point, so they run once regardless.
   static void run(Machine &machine) {
     static_assert(location_names_are_unique(), "two of this machine's readable locations are spelled the same, so a "
                                                "description could not say which it meant");

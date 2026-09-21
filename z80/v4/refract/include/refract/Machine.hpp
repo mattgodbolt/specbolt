@@ -1,6 +1,7 @@
 #pragma once
 
-// What this library needs from a machine, written down in one place.
+// What this library needs from a machine, and from the target that names it,
+// written down in one place.
 //
 // A `.cpu` description names operations and locations; this says how the
 // framework fetches, accesses memory, forms an indexed address and spends time.
@@ -28,7 +29,9 @@
 
 #include <concepts>
 #include <cstdint>
+#include <meta>
 #include <string_view>
+#include <vector>
 
 namespace specbolt::refract {
 
@@ -71,5 +74,18 @@ concept MachineLike = requires(M &machine, const std::uint16_t address, const st
   // Spending time on nothing.
   { machine.delay(byte) };
 };
+
+// What `Interpreter` is given: the machine, the compiled description it runs,
+// and the palettes the description may draw operations from. The machine's
+// own operations are not listed here; it publishes them with
+// `[[=refract::operation]]`, and the interpreter finds them. Checked as a
+// constraint so that a target missing a piece is told at the point it is
+// named, not inside a generated instruction.
+template<typename T>
+concept TargetLike = requires {
+  typename T::Machine;
+  typename T::Compiled;
+  { T::palettes() } -> std::same_as<std::vector<std::meta::info>>;
+} && MachineLike<typename T::Machine>;
 
 } // namespace specbolt::refract
