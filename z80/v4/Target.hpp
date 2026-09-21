@@ -15,25 +15,27 @@
 
 namespace specbolt::v4 {
 
-// The description, embedded. `#embed` into a braced array gives the bytes with
-// no terminator, so `sizeof raw` is exactly their length; the array is local
-// to the lambda so that the view is formed from it there, and only the view
-// is visible.
-inline constexpr std::string_view z80_cpu = [] {
-  // clang-format off
-  static constexpr char raw[] = {
+// The description: the file, embedded, and what diagnostics call it. `#embed` into a braced array gives the bytes with
+// no terminator, so `sizeof raw` is exactly their length; the array is local to the lambda so that the view is formed
+// from it there, and only the view is visible.
+struct Z80Source {
+  static constexpr std::string_view file = "z80.cpu";
+  static constexpr std::string_view text = [] {
+    // clang-format off
+    static constexpr char raw[] = {
 #embed "z80.cpu"
-  };
-  // clang-format on
-  return std::string_view{raw, sizeof raw};
-}();
+    };
+    // clang-format on
+    return std::string_view{raw, sizeof raw};
+  }();
+};
 
 // What `refract::Interpreter` is instantiated on: the machine, its compiled
 // description, and the palettes. `TargetLike` in refract/Machine.hpp is the
 // contract this meets.
 struct Target {
   using Machine = Z80;
-  using Compiled = refract::Compiled<z80_cpu, "z80.cpu">;
+  using Compiled = refract::Compiled<Z80Source>;
 
   // The palettes: types built to be named, every public static function of
   // which is a verb. The chip's own verbs are the members `Z80` publishes with

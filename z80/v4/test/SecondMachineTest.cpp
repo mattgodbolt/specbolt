@@ -106,9 +106,14 @@ table other
 xxxxxxxx   | copy a         | ld8 x <- a
 )";
 
+struct ToySource {
+  static constexpr std::string_view file = "toy.cpu";
+  static constexpr std::string_view text = toy_cpu;
+};
+
 struct ToyTarget {
   using Machine = Toy;
-  using Compiled = refract::Compiled<toy_cpu, "toy.cpu">;
+  using Compiled = refract::Compiled<ToySource>;
   static consteval std::vector<std::meta::info> palettes() { return {^^ToyOperations}; }
 };
 

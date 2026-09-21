@@ -43,18 +43,6 @@ struct Name {
   constexpr bool operator==(const Name &) const = default;
 };
 
-// A string literal as a template argument, for the name of a description's
-// file: what its diagnostics call it. Sized by the literal, since a file name
-// has no reason to fit in a `Name`.
-template<std::size_t N>
-struct FileName {
-  std::array<char, N> text{};
-  constexpr FileName(const char (&literal)[N]) { // NOLINT(*-explicit-constructor)
-    std::ranges::copy(literal, text.begin());
-  }
-  [[nodiscard]] constexpr std::string_view view() const { return {text.data(), N - 1}; }
-};
-
 // Marks a member function of a machine as one a description may name. A
 // machine has an interface a description must not reach, so its operations
 // are the members it marks, one by one, static or not:

@@ -11,7 +11,7 @@
 //
 //   struct Target {
 //     using Machine = ...;                       // see Machine.hpp
-//     using Compiled = refract::Compiled<text, "file">;  // see Compiled.hpp
+//     using Compiled = refract::Compiled<Source>;  // see Compiled.hpp
 //     static consteval std::vector<std::meta::info> palettes();
 //   };
 //
