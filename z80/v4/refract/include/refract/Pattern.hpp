@@ -40,8 +40,9 @@ struct Pattern {
   Vector<BitSlice, max_slices> slices{};
 };
 
-// `01yyyzzz`: the fixed bits go into `opcode_bits`, and each distinct letter
-// becomes a slice, whose bits must be contiguous.
+// Parses an eight-character pattern such as `01yyyzzz`: the fixed bits go into
+// `opcode_bits`, and each distinct letter becomes a slice, whose bits must be
+// contiguous.
 [[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
   if (bits.size() != Pattern::num_bits)
     throw table_error(line, "opcode pattern must be 8 characters");

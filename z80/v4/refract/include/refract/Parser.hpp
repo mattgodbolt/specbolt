@@ -53,10 +53,11 @@ public:
     return word;
   }
 
-  // For a word that has already been recognised, such as the keyword a
-  // declaration opens with.
+  // Discards the next word: one that has already been recognised, such as the
+  // keyword a declaration opens with.
   constexpr void skip_word() { static_cast<void>(next_word()); }
 
+  // Discards every leading character that is in `skip`.
   constexpr void skip_any(const std::string_view skip) {
     const auto pos = buf_.find_first_not_of(skip);
     consume(pos == std::string_view::npos ? buf_.size() : pos);
@@ -78,8 +79,9 @@ struct Line {
   std::string_view text{};
 };
 
-// A description is its lines, numbered from one; this is the only place that
-// knows lines are numbered. A line ending in `\` continues onto the next. The
+// Splits a description into its logical lines, each numbered from one. This is
+// the only place that knows lines are numbered. A line ending in `\` continues
+// onto the next. The
 // description is one buffer, so a joined line is still one `std::string_view`
 // into it, holding the `\` and the newline, which are blanks to `Parser`. A
 // continued line is reported at the number it started on.

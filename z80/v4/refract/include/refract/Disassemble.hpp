@@ -19,6 +19,7 @@
 
 namespace specbolt::refract {
 
+// One instruction rendered: its text, and how many bytes it occupied.
 struct Disassembly {
   std::string text;
   // In bytes, which is how far the caller advances to reach the next one.
@@ -31,9 +32,10 @@ struct Disassembly {
 // even where it terminates. (On the Z80 the unbounded chain is a run of `0xdd`.)
 inline constexpr std::size_t max_instruction_bytes = 8;
 
-// `byte_at(n)` is the nth byte of the instruction, counting from `address`.
-// `address` itself is needed because a relative jump renders where it lands
-// rather than how far it goes.
+// Renders the instruction at `address` as text, and says how many bytes it
+// occupies. `byte_at(n)` is the nth byte of the instruction, counting from
+// `address`; `address` itself is needed because a relative jump renders where
+// it lands rather than how far it goes.
 [[nodiscard]] inline Disassembly disassemble(const Description &description, const std::uint16_t address,
     const std::function_ref<std::uint8_t(std::size_t)> byte_at) {
   // Follow prefixes until a row that renders something is reached. An encoding

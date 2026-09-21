@@ -18,7 +18,8 @@
 
 namespace specbolt::refract {
 
-// What this opcode, decoded here, is displaced through, or nothing if it is not.
+// The operand this opcode, decoded in this row under these rules, is displaced
+// through, or nothing if it is not displaced at all.
 // Nothing declares this: a row names a vocabulary member, a view says that
 // member is now a displaced one, and the answer is whatever the operands
 // resolve to. One per instruction, not one per operand: an instruction that
@@ -54,8 +55,9 @@ namespace specbolt::refract {
   return found;
 }
 
-// Every vocabulary member the row names must be live: a `-` member is a hole,
-// so the row does not cover that opcode even though the bits fit.
+// Whether every vocabulary member this row names at this opcode is live. A `-`
+// member is a hole, so a row naming one does not cover that opcode even though
+// the bits fit.
 [[nodiscard]] constexpr bool members_live(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode) {
   const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .opcode = opcode};
@@ -76,12 +78,15 @@ namespace specbolt::refract {
 // operations. `std::bitset` has been usable in constant evaluation since C++23.
 using OpcodeSet = std::bitset<256>;
 
-// Every opcode of mine is also one of theirs: an override, rather than an accident.
+// Whether every opcode of `mine` is also one of `theirs`: an override, rather
+// than an accident.
 [[nodiscard]] constexpr bool within(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & ~theirs).none(); }
+// Whether the two sets share any opcode at all.
 [[nodiscard]] constexpr bool overlaps(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & theirs).any(); }
 
-// A pattern *generates* its opcodes, walking the cartesian product of its
-// variable vocabularies and placing each combination, rather than being tested
+// The opcodes a row claims: every opcode its pattern matches whose vocabulary
+// members are all live. A pattern *generates* them, walking the cartesian
+// product of its slices and placing each combination, rather than being tested
 // against all 256. `BitSlice::place` exists for exactly this.
 [[nodiscard]] constexpr OpcodeSet opcodes_of(const std::span<const Vocabulary> vocabularies, const Row &row) {
   OpcodeSet result;
@@ -102,9 +107,10 @@ using OpcodeSet = std::bitset<256>;
   return result;
 }
 
-// Walking a row's cartesian product is the expensive part of evaluating a
-// description, and three of the checks below want the answer, so it is computed
-// once and passed to each.
+// The opcodes each row claims, index-coupled to `rows`. Walking a row's
+// cartesian product is the expensive part of evaluating a description, and
+// three of the checks below want the answer, so it is computed once here and
+// passed to each.
 [[nodiscard]] constexpr std::vector<OpcodeSet> opcodes_of_each(
     const std::span<const Vocabulary> vocabularies, const std::span<const Row> rows) {
   return rows | std::views::transform([&](const Row &row) { return opcodes_of(vocabularies, row); }) |
@@ -121,6 +127,8 @@ struct Instruction {
   const Rules *rules{};
 };
 
+// Every (table, opcode) the description decodes to a row, each with that row
+// and the rules the table reads it under.
 [[nodiscard]] constexpr std::vector<Instruction> instructions_of(const Description &description) {
   std::vector<Instruction> all;
   // Every table is total, so this is the exact size.
@@ -135,9 +143,10 @@ struct Instruction {
   return all;
 }
 
-// Line order silently decides who wins, so say what the legal shapes are: a row
-// must win something, and where two rows overlap the earlier must be wholly
-// contained in the later. That is an override. A partial overlap is an accident.
+// Checks that every row wins some opcode, and that where two rows of one table
+// overlap the earlier is wholly contained in the later. Line order silently
+// decides who wins, so this says what the legal shapes are: containment is an
+// override, and a partial overlap is an accident.
 constexpr bool check_row_precedence(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
   // What each row wins once the rows before it have taken their share.
@@ -163,9 +172,10 @@ constexpr bool check_row_precedence(const Description &description, const std::s
   return true;
 }
 
-// Earlier rows win; then a derived table takes from its parent whatever it did
-// not claim itself. Declaration order resolves a chain, because a parent is
-// always declared before its children.
+// Builds each table's decode table: which row, as an index into `rows`, each of
+// its 256 opcodes decodes to. Earlier rows win; then a derived table takes from
+// its parent whatever it did not claim itself. Declaration order resolves a
+// chain, because a parent is always declared before its children.
 [[nodiscard]] constexpr std::vector<DecodeTable> decode_tables(const std::span<const Row> rows,
     const std::span<const OpcodeSet> opcodes, const std::span<const TableDecl> tables) {
   std::vector<DecodeTable> all(tables.size());
@@ -184,12 +194,12 @@ constexpr bool check_row_precedence(const Description &description, const std::s
   return all;
 }
 
-// Which tables are entered with a displacement already read. Where an encoding
-// puts a byte before the opcode that decides what to do with it (the Z80's
-// `dd cb d op`), the row that meets that byte reads it and hands it on. Derived
-// from the gotos that reach a table rather than declared on it. A latched
-// table's rows use the displacement instead of reading one, and its opcode
-// arrives by an operand read rather than an instruction fetch.
+// Per table, whether it is entered with a displacement already read. Where an
+// encoding puts a byte before the opcode that decides what to do with it (the
+// Z80's `dd cb d op`), the row that meets that byte reads it and hands it on.
+// Derived from the gotos that reach a table rather than declared on it. A
+// latched table's rows use the displacement instead of reading one, and its
+// opcode arrives by an operand read rather than an instruction fetch.
 [[nodiscard]] constexpr std::vector<bool> latched_tables(
     const std::span<const Row> rows, const std::size_t num_tables) {
   // Empty until some goto has said, so that "not reached yet" and "reached
@@ -208,10 +218,11 @@ constexpr bool check_row_precedence(const Description &description, const std::s
          std::ranges::to<std::vector>();
 }
 
-// Every opcode of every table must decode to something. On real hardware one
-// always does, since an unassigned encoding still has an effect, so a table that
-// declines to say is an incomplete description rather than a permissive one. A
-// catch-all row is how a table says "and everything else does this".
+// Checks that every opcode of every table decodes to something. On real
+// hardware one always does, since an unassigned encoding still has an effect,
+// so a table that declines to say is an incomplete description rather than a
+// permissive one. A catch-all row is how a table says "and everything else
+// does this".
 //
 // Requiring it here is what lets the dispatch loop call without checking.
 constexpr bool check_tables_total(const Description &description) {
@@ -224,8 +235,8 @@ constexpr bool check_tables_total(const Description &description) {
   return true;
 }
 
-// Does any step of this row name `what` as a literal, where a rule cannot reach
-// it?
+// Whether any step of this row names `what` as a literal, where a rule cannot
+// reach it.
 [[nodiscard]] constexpr bool names_literally(const Row &row, std::string_view what) {
   // A rule's left side is written as the vocabulary writes it, so it may carry
   // parentheses, as in the Z80's `reg.(hl) -> {index_mem:view}`. An operand
@@ -244,10 +255,11 @@ constexpr bool check_tables_total(const Description &description) {
   });
 }
 
-// A rule rewrites vocabulary references and never literal text, which is what
-// lets a row that means what it says mean it. The same silence hides a mistake:
-// a row spelling a renamed name out, inherited unchanged by the table that
-// renames it, is almost certainly wrong.
+// Checks that no inherited row spells out, as a literal, a name the table
+// inheriting it renames. A rule rewrites vocabulary references and never
+// literal text, which is what lets a row that means what it says mean it. The
+// same silence hides a mistake: a row spelling a renamed name out, inherited
+// unchanged by the table that renames it, is almost certainly wrong.
 //
 // A row written *in* the derived table is exempt: putting it there is how one
 // says the literal was meant.
@@ -265,7 +277,7 @@ constexpr bool check_inherited_literals(const Description &description) {
   return true;
 }
 
-// A derived table's own row that overlaps a row it inherits must be wholly
+// Checks that a derived table's own row overlapping a row it inherits is wholly
 // contained in it. A derived row wins over everything inherited, so one that
 // only partly overlaps an inherited row silently takes opcodes that row meant
 // to keep. Precedence within one table is `check_row_precedence`; this relates
@@ -292,9 +304,9 @@ constexpr bool check_derived_rows_override(const Description &description, const
   return true;
 }
 
-// Does this row's mnemonic render a displacement? It may say so itself, as an
-// override row spelling a displaced operand out in full does, or through a
-// vocabulary member that a view renamed to one.
+// Whether this row's mnemonic renders a displacement at this opcode. It may say
+// so itself, as an override row spelling a displaced operand out in full does,
+// or through a vocabulary member that a view renamed to one.
 [[nodiscard]] constexpr bool renders_displacement(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   return std::ranges::any_of(row.pieces, [&](const Piece &piece) {
@@ -309,11 +321,11 @@ constexpr bool check_derived_rows_override(const Description &description, const
   });
 }
 
-// `check_immediates` cross-checks the three columns about `n`; this is the same
-// question for a displacement. It needs an opcode, since whether a row is
-// displaced depends on which vocabulary member the opcode picks, and on the
-// renaming the table it was decoded in applies, so it belongs here rather than
-// beside the row.
+// Checks that a row's mnemonic renders a displacement exactly when one of its
+// operands is displaced. `check_immediates` asks the same about `n`; this one
+// needs an opcode, since whether a row is displaced depends on which vocabulary
+// member the opcode picks, and on the renaming the table it was decoded in
+// applies, so it belongs here rather than beside the row.
 //
 // A mismatch is not a length error: both the interpreter and the disassembler
 // take the length from `displaced_through`, so they agree about how many bytes
@@ -332,11 +344,13 @@ constexpr bool check_displacement_rendered(const Description &description) {
   return true;
 }
 
-// A table nothing reaches is a typo: nothing can ever decode in it, so nothing
-// in it is ever exercised. Reachable *from the entry table*, not merely named
-// by some goto: two tables that only reach each other are as dead as one
-// nothing names. The walk is over the decoded tables rather than the rows so
-// that a derived table reaches wherever its parent's rows go.
+// Checks that every table not derived has rows of its own, and that every table
+// is reachable from the entry table by some chain of gotos. A table nothing
+// reaches is a typo: nothing can ever decode in it, so nothing in it is ever
+// exercised. Reachable *from the entry table*, not merely named by some goto:
+// two tables that only reach each other are as dead as one nothing names. The
+// walk is over the decoded tables rather than the rows so that a derived table
+// reaches wherever its parent's rows go.
 constexpr bool check_tables_used(const Description &description) {
   const auto tables = description.tables;
   for (const auto [which, table]: std::views::enumerate(tables))

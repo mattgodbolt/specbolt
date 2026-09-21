@@ -25,30 +25,37 @@ namespace specbolt::refract {
 // that rejects the text throws with the line, and `naming` adds the file.
 namespace steps {
 
+// The vocabularies the text declares, in declaration order.
 template<const std::string_view &Text, FileName File>
 inline constexpr auto vocabularies =
     to_array<[] { return naming(File.view(), [] { return parse_vocabularies(Text); }); }>();
 
+// The tables the text declares, in declaration order.
 template<const std::string_view &Text, FileName File>
 inline constexpr auto tables =
     to_array<[] { return naming(File.view(), [] { return parse_tables(Text, vocabularies<Text, File>); }); }>();
 
+// Every row of every table, in the order the text writes them.
 template<const std::string_view &Text, FileName File>
 inline constexpr auto rows = to_array<[] {
   return naming(File.view(), [] { return parse_rows(Text, vocabularies<Text, File>, tables<Text, File>); });
 }>();
 
+// The opcodes each row claims, index-coupled to `rows`.
 template<const std::string_view &Text, FileName File>
 inline constexpr auto row_opcodes = to_array<[] {
   return naming(File.view(), [] { return opcodes_of_each(vocabularies<Text, File>, rows<Text, File>); });
 }>();
 
+// Per table, which row (as an index into `rows`) each of its 256 opcodes
+// decodes to, or nothing where no row claims it.
 template<const std::string_view &Text, FileName File>
 inline constexpr auto decoded = to_array<[] {
   return naming(
       File.view(), [] { return decode_tables(rows<Text, File>, row_opcodes<Text, File>, tables<Text, File>); });
 }>();
 
+// Per table, whether it is entered with a displacement already read.
 template<const std::string_view &Text, FileName File>
 inline constexpr auto latched = to_array<[] {
   return naming(File.view(), [] { return latched_tables(rows<Text, File>, tables<Text, File>.size()); });
@@ -56,28 +63,35 @@ inline constexpr auto latched = to_array<[] {
 
 } // namespace steps
 
+// The description `Text`, compiled: each part of it as a constant, the checks
+// on the whole, and the lookups every consumer of it needs.
 template<const std::string_view &Text, FileName File>
 struct Compiled {
   static constexpr std::string_view file = File.view();
   static constexpr std::string_view text = Text;
 
-  // Decoding starts in the first table declared: the format reserves no name
-  // for the entry table.
+  // The table decoding starts in: the first one declared, since the format
+  // reserves no name for the entry table.
   static constexpr std::uint8_t entry_table = 0;
 
-  // The checks the text must pass. Each throws against its line or returns
-  // true; `naming` puts the file in front of whatever it throws.
+  // One check, run with the file put in front of whatever it throws. A check
+  // throws against its line or returns true.
   template<auto Check>
   static constexpr bool checked = naming(file, Check);
 
-  // Each step, evaluated on first use, as `description()` and `check()` are.
+  // The parts of the description, each evaluated on first use, as
+  // `description()` and `check()` are: the vocabularies and tables as
+  // declared, the rows in file order, then per table which row (an index into
+  // `rows()`) each opcode decodes to, and whether the table is entered with a
+  // displacement already read.
   [[nodiscard]] static constexpr const auto &vocabularies() { return steps::vocabularies<Text, File>; }
   [[nodiscard]] static constexpr const auto &tables() { return steps::tables<Text, File>; }
   [[nodiscard]] static constexpr const auto &rows() { return steps::rows<Text, File>; }
   [[nodiscard]] static constexpr const auto &decoded() { return steps::decoded<Text, File>; }
   [[nodiscard]] static constexpr const auto &latched() { return steps::latched<Text, File>; }
 
-  // Every check the text must pass, each against its line; true if all do.
+  // Runs every check the text must pass, each against its line, and returns
+  // true if all do; a failing one throws, which makes it a compile error.
   // `description()` asserts it, and so does an interpreter.
   [[nodiscard]] static consteval bool check() {
     return checked<[] { return check_every_line_means_something(text); }> &&
@@ -89,21 +103,26 @@ struct Compiled {
            checked<[] { return check_displacement_rendered(unchecked()); }>;
   }
 
-  // The above as one value, checked: what a consumer that takes a
-  // `Description`, such as the disassembler, is handed. An interpreter's
-  // handlers are templates on the parts themselves, so they reach them through
-  // the functions above and call `check()` on their own.
+  // The parts above as one `Description`, its checks passed: what a consumer
+  // that takes a `Description`, such as the disassembler, is handed. An
+  // interpreter's handlers are templates on the parts themselves, so they
+  // reach them through the functions above and call `check()` on their own.
   [[nodiscard]] static constexpr Description description() {
     static_assert(check());
     return unchecked();
   }
 
+  // The index into `rows()` of the row that decodes `opcode` in `table`, or
+  // nothing if no row does. Every table is total once `check()` has passed, so
+  // a consumer that has run it may dereference the answer.
   [[nodiscard]] static constexpr std::optional<std::size_t> find_row(
       const std::uint8_t table, const std::uint8_t opcode) {
     return decoded()[table][opcode];
   }
 
 private:
+  // The parts as one `Description` without asserting the checks: what the
+  // checks themselves are run against.
   [[nodiscard]] static constexpr Description unchecked() {
     return {vocabularies(), rows(), tables(), decoded(), entry_table};
   }

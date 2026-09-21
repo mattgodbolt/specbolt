@@ -17,33 +17,38 @@
 
 namespace specbolt::refract {
 
+// `text` without a trailing comma, if it had one.
 [[nodiscard]] constexpr std::string_view trim_comma(std::string_view text) {
   if (text.ends_with(','))
     text.remove_suffix(1);
   return text;
 }
 
-// A keyword on its own is still that keyword, so `table` with no name reaches
-// the diagnostic that says so rather than being silently ignored.
+// Whether the line opens with `keyword` as a whole word. A keyword on its own
+// is still that keyword, so `table` with no name reaches the diagnostic that
+// says so rather than being silently ignored.
 [[nodiscard]] constexpr bool is_directive(const std::string_view line, const std::string_view keyword) {
   return line.starts_with(keyword) &&
          (line.size() == keyword.size() || line[keyword.size()] == ' ' || line[keyword.size()] == '\t');
 }
 [[nodiscard]] constexpr bool is_vocabulary(const std::string_view line) { return is_directive(line, "vocab"); }
 [[nodiscard]] constexpr bool is_table(const std::string_view line) { return is_directive(line, "table"); }
+// Whether the line is a row: not blank, a comment or a declaration, and with a
+// `|` in it.
 [[nodiscard]] constexpr bool is_row(const std::string_view line) {
   return !line.empty() && line.front() != '#' && !is_vocabulary(line) && !is_table(line) && line.contains('|');
 }
 
+// The count of idle cycles a `delay=` attribute gives, which is one digit.
 [[nodiscard]] constexpr std::uint8_t parse_delay(const std::string_view value, const std::size_t line) {
   if (value.size() != 1 || value.front() < '0' || value.front() > '9')
     throw table_error(line, "delay must be a single digit");
   return static_cast<std::uint8_t>(value.front() - '0');
 }
 
-// An operand as a row or a member writes it: `-`, `n`, a number, or a name,
-// any of which may be wrapped `(...)` as an address, with `+d` inside the
-// parentheses for a displaced one, and `/delay=n` on the end for the idle
+// Parses an operand as a row or a member writes it: `-`, `n`, a number, or a
+// name, any of which may be wrapped `(...)` as an address, with `+d` inside
+// the parentheses for a displaced one, and `/delay=n` on the end for the idle
 // cycles a write back through it costs. Anything in braces is a vocabulary
 // reference, which is `parse_operand`'s business.
 [[nodiscard]] constexpr Operand parse_simple_operand(
@@ -169,9 +174,10 @@ namespace specbolt::refract {
   return {Name{keyword}, word.substr(at + 1)};
 }
 
-// A vocabulary member: `display[:operation[(argument, ...)]][/delay=n]`, or
-// `-` for a hole. The display is itself an operand, and the arguments are
-// operands the member appends to the row's, each of which may be `name=`d.
+// Parses one vocabulary member, written
+// `display[:operation[(argument, ...)]][/delay=n]`, or `-` for a hole. The
+// display is itself an operand, and the arguments are operands the member
+// appends to the row's, each of which may be `name=`d.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);
   Parser parser(whole.take_until('/'));

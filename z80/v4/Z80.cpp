@@ -12,10 +12,11 @@ void Z80::run_until(const std::size_t cycle_count) {
   refract::Interpreter<Target>::run(*this);
 }
 
-// An instruction that starts before the deadline runs to its end, and the
-// cheapest one takes longer than a cycle, so a deadline one cycle away is
-// exactly one instruction. A halted chip spends a fetch per turn of the loop
-// below, so it stops after one of those too.
+// Runs one instruction, by setting a deadline one cycle away. An instruction
+// that starts before the deadline runs to its end, and the cheapest one takes
+// longer than a cycle, so a deadline one cycle away is exactly one
+// instruction. A halted chip spends a fetch per turn of the loop below, so it
+// stops after one of those too.
 void Z80::execute_one() { run_until(cycle_count() + 1); }
 
 bool Z80::start_instruction() {
@@ -107,15 +108,15 @@ void Z80::bus(const Bus kind, const std::uint16_t address) {
   bus_address_ = address;
 }
 
-// The refresh counter is seven bits; the top bit is whatever was last written
-// to it and does not count.
+// Steps r. The refresh counter is seven bits; the top bit is whatever was last
+// written to it and does not count.
 void Z80::refresh() { regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f))); }
 
-// An internal cycle presents the address the last access left on the bus, so
-// a run of them only moves the clock, and spending them in one go is
-// equivalent: `pass_time(n)` fires the same tasks at the same cycles as n
-// calls of one. A machine that contends each internal cycle separately would
-// loop here.
+// Spends `cycles` internal cycles in one go. An internal cycle presents the
+// address the last access left on the bus, so a run of them only moves the
+// clock, and spending them in one go is equivalent: `pass_time(n)` fires the
+// same tasks at the same cycles as n calls of one. A machine that contends
+// each internal cycle separately would loop here.
 void Z80::delay(const std::uint8_t cycles) { pass_time(cycles * cost_of(Bus::internal)); }
 
 std::uint16_t Z80::read_memory16(const std::uint16_t address) {
@@ -124,9 +125,10 @@ std::uint16_t Z80::read_memory16(const std::uint16_t address) {
   return static_cast<std::uint16_t>(read_memory(static_cast<std::uint16_t>(address + 1)) << 8 | low);
 }
 
-// Low byte first, as `ld (nn), hl` does. A push writes high to sp-1 then low
-// to sp-2 on the chip and gets this order instead; the bytes land in the same
-// places, so only contention or a watchpoint could tell (notes/PREFIXES.md).
+// Writes a word, low byte first, as `ld (nn), hl` does. A push writes high to
+// sp-1 then low to sp-2 on the chip and gets this order instead; the bytes
+// land in the same places, so only contention or a watchpoint could tell
+// (notes/PREFIXES.md).
 void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {
   write_memory(address, static_cast<std::uint8_t>(value));
   write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
@@ -177,8 +179,9 @@ void Z80::out_c(const std::uint16_t port, const std::uint8_t value) {
   out(port, value);
 }
 
-// Nineteen T-states with the fetch: two reads, an idle cycle, two writes, then
-// two more idle cycles, which is where the two `delay`s sit.
+// Swaps `value` with the word at sp and returns the old word. Nineteen
+// T-states with the fetch: two reads, an idle cycle, two writes, then two more
+// idle cycles, which is where the two `delay`s sit.
 std::uint16_t Z80::ex_sp_hl(const std::uint16_t value) {
   const auto sp = regs_.sp();
   const auto low = read_memory(sp);
@@ -198,11 +201,13 @@ Alu::R8 Z80::ld_a_special(const std::uint8_t value, const Flags flags) const {
   return {value, Alu::iff2_flags_for(value, flags, iff2())};
 }
 
-// `right` is `rrd`: the low nibble of `value` goes into `a`, `value`'s high
-// nibble drops to the low half of what is written back, and `a`'s old low
-// nibble fills the high half. `rld` rotates the other way: the high nibble of
-// `value` goes into `a`, `value`'s low nibble rises to the high half, and
-// `a`'s old low nibble fills the low half.
+// Rotates a nibble between `a` and `value`, changing `a` in place and
+// returning what goes back to memory with the flags. `right` is `rrd`: the low
+// nibble of `value` goes into `a`, `value`'s high nibble drops to the low half
+// of what is written back, and `a`'s old low nibble fills the high half. `rld`
+// rotates the other way: the high nibble of `value` goes into `a`, `value`'s
+// low nibble rises to the high half, and `a`'s old low nibble fills the low
+// half.
 Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const bool right) {
   const auto a = regs_.get(RegisterFile::R8::A);
   const auto updated =

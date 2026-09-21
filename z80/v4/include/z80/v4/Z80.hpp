@@ -67,18 +67,21 @@ SPECBOLT_EXPORT enum class BlockDirection : std::uint8_t {
   Down[[= refract::Spelling{"d"}]],
 };
 
+// The Z80 as refract drives it: the state a description may name, the verbs
+// the chip marks as its own, and what the framework asks of a machine.
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
 
-  // Run until the clock reaches `cycle_count` or the machine says stop, which
+  // Runs until the clock reaches `cycle_count` or the machine says stop, which
   // is what a scheduler wants: run to the next thing that is due. The handlers
   // tail-call each other for the whole of it, so this returns once.
   void run_until(std::size_t cycle_count);
-  // One instruction, however long it takes.
+  // Runs one instruction, however long it takes.
   void execute_one();
-  // Called between instructions by the generated code. Takes the interrupt,
-  // idles a halted chip, and says whether there is another instruction to run.
+  // Takes a pending interrupt, idles a halted chip, and says whether there is
+  // another instruction to run. Called between instructions by the generated
+  // code.
   [[nodiscard]] bool start_instruction();
 
   // What the framework asks of a machine; see refract/Machine.hpp. The
@@ -107,7 +110,8 @@ public:
   [[nodiscard]] std::uint16_t read_memory16(std::uint16_t address);
   void write_memory(std::uint16_t address, std::uint8_t value);
   void write_memory16(std::uint16_t address, std::uint16_t value);
-  // Also a verb: `delay 2` is a step a row may write.
+  // Spends `cycles` idle cycles. Also a verb: `delay 2` is a step a row may
+  // write.
   [[= refract::operation]] void delay(std::uint8_t cycles);
 
   // The verbs a description may name on the chip itself, marked one by
@@ -115,8 +119,8 @@ public:
   // machine in an order or a place no operand can. The verbs that touch no
   // chip are in Operations.hpp.
 
-  // The port is sixteen bits wide even when the encoding writes eight: the Z80
-  // puts the accumulator on the top half.
+  // `out (n),a` and `in a,(n)`. The port is sixteen bits wide even when the
+  // encoding writes eight: the Z80 puts the accumulator on the top half.
   [[= refract::operation]] void out_n(std::uint8_t port, std::uint8_t value);
   [[nodiscard]][[= refract::operation]] std::uint8_t in_n(std::uint8_t port, std::uint8_t high);
   // `in r,(c)` addresses with the whole of bc and sets flags; `out (c),r` does
@@ -126,6 +130,7 @@ public:
   [[nodiscard]][[= refract::operation]] Alu::R8 in_c(std::uint16_t port, Flags flags);
   [[= refract::operation]] void out_c(std::uint16_t port, std::uint8_t value);
 
+  // `ex (sp),hl`: swaps `value` with the word at sp and returns the old word.
   // Three accesses and two idle stretches, interleaved in an order no row could
   // write as operands.
   [[nodiscard]][[= refract::operation]] std::uint16_t ex_sp_hl(std::uint16_t value);
@@ -223,23 +228,29 @@ public:
   [[nodiscard]] std::uint16_t bus_address() const { return bus_address_; }
 
   using Z80Base::halted;
-  // Halting goes through `halt()`, which parks the program counter on the
-  // instruction as well as setting the flag; waking only clears the flag,
-  // since whoever wakes the chip steps the counter off it.
+  // Halts the chip, or wakes it. Halting goes through `halt()`, which parks the
+  // program counter on the instruction as well as setting the flag; waking
+  // only clears the flag, since whoever wakes the chip steps the counter off
+  // it.
   void halted(bool value);
 
-  // `ei` takes effect only after the instruction that follows it, so that
-  // `ei ; halt` and `ei ; reti` do what they are written to do. The table says
-  // an instruction defers; what deferring means is the machine's business.
+  // Whether the interrupt just enabled is held off until one more instruction
+  // has run. `ei` takes effect only after the instruction that follows it, so
+  // that `ei ; halt` and `ei ; reti` do what they are written to do. The table
+  // says an instruction defers; what deferring means is the machine's
+  // business.
   [[nodiscard]] bool interrupts_deferred() const { return interrupts_deferred_; }
   void interrupts_deferred(const bool value) { interrupts_deferred_ = value; }
 
 private:
   std::size_t until_{};
 
-  // Accepting an interrupt is not an instruction: no encoding matches it, so it
-  // cannot be a row. It belongs to the machine that drives the decoder.
+  // Accepts the pending interrupt: pushes the return address and jumps where
+  // the mode says. Accepting one is not an instruction: no encoding matches
+  // it, so it cannot be a row. It belongs to the machine that drives the
+  // decoder.
   void handle_interrupt();
+  // Steps the refresh counter, as every M1 cycle does.
   void refresh();
 
   // What the address bus last held, which is what an internal cycle presents.
@@ -251,8 +262,9 @@ private:
   // flag 5 from bit 1 of `noise`, a value the instruction happens to have to
   // hand.
   [[nodiscard]] static Flags counted(Flags flags, std::uint16_t bc, std::uint8_t noise);
-  // The in and out block forms count b rather than bc. Their real parity comes
-  // from `(value + ((c ± 1) & 0xff)) & 7` exclusive-ored with b, and their half
+  // Counts b down for an in or out block form and returns the flags that
+  // leaves. Those forms count b rather than bc. Their real parity comes from
+  // `(value + ((c ± 1) & 0xff)) & 7` exclusive-ored with b, and their half
   // carry and carry from whether that sum passed 255; none of that is modelled,
   // so only sign, zero and flags 3 and 5 are trustworthy here.
   [[nodiscard]] Flags stepped(Flags flags);

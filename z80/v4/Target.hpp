@@ -28,6 +28,9 @@ inline constexpr std::string_view z80_cpu = [] {
   return std::string_view{raw, sizeof raw};
 }();
 
+// What `refract::Interpreter` is instantiated on: the machine, its compiled
+// description, and the palettes. `TargetLike` in refract/Machine.hpp is the
+// contract this meets.
 struct Target {
   using Machine = Z80;
   using Compiled = refract::Compiled<z80_cpu, "z80.cpu">;

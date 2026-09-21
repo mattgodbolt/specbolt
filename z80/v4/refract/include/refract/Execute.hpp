@@ -125,6 +125,8 @@ namespace specbolt::refract {
 // element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what
 // stands in its place.
 
+// The interpreter for `Target`: one generated handler per body of its
+// description, and the run loop that chains them.
 template<TargetLike Target>
 struct Interpreter {
   using Machine = typename Target::Machine;
@@ -136,10 +138,11 @@ struct Interpreter {
     return table_error(Compiled::file, line, what);
   }
 
-  // Where a location name may come from: the machine's own `read` overloads. A
-  // location is a thing the machine can read, so the pool is the capability
-  // itself. An enum with no `read` taking it is not a location, which is why a
-  // bus cycle kind cannot be one.
+  // The enums a location name may come from: the parameter type of each of the
+  // machine's public one-argument `read` overloads. A location is a thing the
+  // machine can read, so the pool is the capability itself. An enum with no
+  // `read` taking it is not a location, which is why a bus cycle kind cannot
+  // be one.
   //
   // `read_memory` is excluded by name; an overload taking more than the location
   // is excluded by arity.
@@ -160,10 +163,10 @@ struct Interpreter {
     return scopes;
   }
 
-  // Where a *value* may come from, for a vocabulary that names its scope: any
-  // enum an operation takes. Derived the same way and for the same reason, from
-  // what the CPU can be asked to do rather than from anything it declares about
-  // itself.
+  // The enums a vocabulary may name as its scope: the location scopes, and any
+  // enum an operation takes as a parameter. Derived the same way and for the
+  // same reason, from what the CPU can be asked to do rather than from anything
+  // it declares about itself.
   [[nodiscard]] static consteval std::vector<std::meta::info> named_scopes() {
     auto scopes = location_scopes();
     for (const auto candidate: operations())
@@ -200,16 +203,19 @@ struct Interpreter {
     return found;
   }
 
-  // Names in a description are matched the way assembler is written, without regard to case.
+  // `c` in lower case, if it is an ASCII letter. Names in a description are
+  // matched the way assembler is written, without regard to case.
   [[nodiscard]] static consteval char to_lower_case(const char c) {
     return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
   }
 
-  // Every location name means exactly one thing, checked over the whole pool
-  // rather than as each name happens to be looked up. `only_match` would catch an
-  // ambiguity, but only for a name some description writes; this makes it a
-  // property of the machine, so a CPU that grows a second `carry` is told at once
-  // rather than whenever a row first wants one.
+  // Checks that no two of the machine's readable locations share a name,
+  // ignoring case; true if none do, and an error naming both scopes otherwise.
+  // Checked over the whole pool rather than as each name happens to be looked
+  // up: `only_match` would catch an ambiguity, but only for a name some
+  // description writes; this makes it a property of the machine, so a CPU that
+  // grows a second `carry` is told at once rather than whenever a row first
+  // wants one.
   [[nodiscard]] static consteval bool location_names_are_unique() {
     std::vector<std::pair<std::string, std::meta::info>> seen;
     for (const auto scope: location_scopes())
@@ -227,13 +233,15 @@ struct Interpreter {
     return true;
   }
 
+  // Whether two names are the same once case is ignored.
   [[nodiscard]] static consteval bool same_ignoring_case(const std::string_view lhs, const std::string_view rhs) {
     return std::ranges::equal(lhs, rhs, {}, to_lower_case, to_lower_case);
   }
 
-  // Every name a table uses must resolve to exactly one thing. Throwing from a
-  // `consteval` function is how a bad name becomes a compile error naming the
-  // line of the description that wrote it.
+  // The one candidate, when there is exactly one; an error against `line`
+  // otherwise. Every name a table uses must resolve to exactly one thing, and
+  // throwing from a `consteval` function is how a bad name becomes a compile
+  // error naming the line of the description that wrote it.
   [[nodiscard]] static consteval std::meta::info only_match(
       const std::span<const std::meta::info> candidates, const std::string_view name, const std::size_t line) {
     if (candidates.empty())
@@ -261,8 +269,9 @@ struct Interpreter {
     return std::string(std::meta::identifier_of(enumerator));
   }
 
-  // The scope a vocabulary named. Compared exactly: it is a C++ type's name, not
-  // something written the way assembly is written.
+  // The enum a vocabulary named as its scope, or an error listing what the
+  // machine offers. Compared exactly: it is a C++ type's name, not something
+  // written the way assembly is written.
   [[nodiscard]] static consteval std::meta::info find_scope(const std::string_view name, const std::size_t line) {
     std::string offered;
     for (const auto scope: named_scopes()) {
@@ -273,9 +282,10 @@ struct Interpreter {
     throw error(line, "no scope named '" + std::string(name) + "'" + offered + ")");
   }
 
-  // An enumerator in one of the scopes the CPU offers, such as the Z80's `a`,
-  // `hl`, `carry` and `pc`. A vocabulary that named a scope searches that one and
-  // no other; everything else searches them all.
+  // The enumerator a location name denotes, in one of the scopes the CPU
+  // offers, such as the Z80's `a`, `hl`, `carry` and `pc`. A vocabulary that
+  // named a scope searches that one and no other; everything else searches
+  // them all.
   [[nodiscard]] static consteval std::meta::info find_location(
       const std::string_view name, const std::size_t line, const std::string_view scope = {}) {
     std::vector<std::meta::info> candidates;
@@ -301,11 +311,12 @@ struct Interpreter {
     return only_match(candidates, name, line);
   }
 
-  // An enumerator of the enum a *parameter* asks for. The parameter type is the
-  // scope, and that is what keeps these names out of the location namespace: a
-  // spelling is free to collide with the name of a register and mean something
-  // else entirely. (On the Z80, `i` and `d` are a direction here and the I and D
-  // registers everywhere else.)
+  // The enumerator of `scope` that a description spells `name`, for an enum a
+  // *parameter* asks for. The parameter type is the scope, and that is what
+  // keeps these names out of the location namespace: a spelling is free to
+  // collide with the name of a register and mean something else entirely. (On
+  // the Z80, `i` and `d` are a direction here and the I and D registers
+  // everywhere else.)
   [[nodiscard]] static consteval std::meta::info find_spelling(
       const std::meta::info scope, const std::string_view name, const std::size_t line) {
     std::vector<std::meta::info> candidates;
@@ -354,7 +365,8 @@ struct Interpreter {
     return locations;
   }
 
-  // The operation a row names, such as the Z80's `inc8`, `add16` and `is_set`.
+  // The function an operation name denotes, such as the Z80's `inc8`, `add16`
+  // and `is_set`; an error against `line` if there is none or more than one.
   [[nodiscard]] static consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
     std::vector<std::meta::info> candidates;
     for (const auto candidate: operations())
@@ -564,8 +576,9 @@ struct Interpreter {
     }
   }
 
-  // Which of the row's operands feeds each parameter: by position, unless the
-  // row wrote `value=…`, in which case by the parameter's declared name. Naming
+  // For each parameter of `Fn`, in signature order, the index into `C.operands`
+  // of the operand that feeds it: by position, unless the row wrote `value=…`,
+  // in which case by the parameter's declared name. Naming
   // exists because position is a silent coupling: an operation taking several
   // parameters of one type, as the Z80's `test_bit(value, bit, flags, bus)`
   // does, lets a row swap two and still compile. Naming is all or nothing
@@ -612,9 +625,10 @@ struct Interpreter {
     return written;
   }
 
-  // The inverse: which parameter each operand, in the order the row wrote it,
-  // ends up feeding. Needed because an operand is *read* where the row put it and
-  // *passed* where the signature wants it, and its type comes from the latter.
+  // The inverse: for each operand, in the order the row wrote it, the index of
+  // the parameter of `Fn` it ends up feeding. Needed because an operand is
+  // *read* where the row put it and *passed* where the signature wants it, and
+  // its type comes from the latter.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> parameter_for_operand() {
     constexpr auto operand = operand_for_parameter<Fn, C>();
@@ -643,9 +657,10 @@ struct Interpreter {
     }(std::make_index_sequence<C.operands.size()>{});
   }
 
-  // Where the row's order and the signature's order are reconciled: the tuple
-  // holds the values in the order they were read, and this hands them over in the
-  // order the parameters want them.
+  // Calls `Fn` with the values in `arguments` and returns whatever it returns.
+  // This is where the row's order and the signature's order are reconciled: the
+  // tuple holds the values in the order they were read, and this hands them
+  // over in the order the parameters want them.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static auto call_with(Machine &machine, const auto &arguments) {
     constexpr auto operand = operand_for_parameter<Fn, C>();
@@ -683,7 +698,7 @@ struct Interpreter {
   // step that does not fit its operation is a compile error naming the
   // description line and the operation, as every other mistake in a description
   // is reported.
-  //
+
   // Checks one operand against the parameter it feeds: the parameter takes it
   // by value, a number is not passed to an enum, a constant the row wrote fits,
   // and an address is read at a width the machine has.
@@ -723,7 +738,7 @@ struct Interpreter {
     return true;
   }
 
-  // Every operand, against the parameter each feeds.
+  // Checks every operand against the parameter it feeds; true if all fit.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval bool operands_each_fit() {
     return []<std::size_t... I>(std::index_sequence<I...>) { return (operand_fits<Fn, C, I>() && ...); }(
@@ -793,10 +808,12 @@ struct Interpreter {
     return true;
   }
 
-  // A condition tests only what the row hands it, so that the row says
-  // everything the branch depends on. That rules out a member of the machine,
-  // even a `const` one, since a machine in hand can be asked anything. It
-  // names no destination, and answers yes or no.
+  // Checks a step used as a condition against the operation it applies: it
+  // reaches no machine, is supplied every parameter, names no destination, and
+  // answers yes or no. A condition tests only what the row hands it, so that
+  // the row says everything the branch depends on; that rules out a member of
+  // the machine, even a `const` one, since a machine in hand can be asked
+  // anything.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval bool condition_fits() {
     const auto name = quoted_name_of(Fn);
@@ -814,8 +831,10 @@ struct Interpreter {
     return operands_each_fit<Fn, C>();
   }
 
-  // Arguments are supplied positionally, or by name where the row said so;
-  // destinations destructure the result in declaration order.
+  // Runs one step: reads its operands, calls the operation, and stores what it
+  // returns in the step's destinations. Arguments are supplied positionally, or
+  // by name where the row said so; destinations destructure the result in
+  // declaration order.
   template<std::meta::info Fn, Call C>
   static void apply(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     // Gating the body on the arity, rather than only asserting it, keeps a wrong
@@ -857,8 +876,8 @@ struct Interpreter {
     }
   }
 
-  // A condition is applied like any other operation; only what is done with the
-  // answer differs.
+  // Runs one `if` step and returns its answer. A condition is applied like any
+  // other operation; only what is done with the answer differs.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static bool evaluate(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     static_assert(condition_fits<Fn, C>());
@@ -870,8 +889,10 @@ struct Interpreter {
       return false;
   }
 
-  // A vocabulary member may bind the operation late, and may append an operand the
-  // encoding does not carry.
+  // The vocabulary member a step's `{...}` operation reference names at this
+  // opcode, or an empty member for a step that wrote its operation by name. A
+  // member may bind the operation late, and may append an operand the encoding
+  // does not carry.
   [[nodiscard]] static constexpr Member member_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
     if (!step.operation_reference)
@@ -880,8 +901,8 @@ struct Interpreter {
         *step.operation_reference);
   }
 
-  // Where a step becomes a `Call`: its operands and destinations resolved
-  // against this opcode, then whatever the vocabulary member appends.
+  // The `Call` a step becomes: its operands and destinations resolved against
+  // this opcode, then whatever the vocabulary member appends.
   [[nodiscard]] static constexpr Call call_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
     const auto member = member_for(step, matched, opcode, rules);
@@ -1044,10 +1065,11 @@ struct Interpreter {
   // reading two three-bit slices is sixty-four. The functions below enumerate
   // those bodies once each and fill a table's 256 entries by pointing at them.
 
-  // Which of a row's slices change the generated code. Three kinds do not: a
-  // view is a run-time value, a numeric vocabulary is read straight out of the
-  // opcode, and the mnemonic's own references are the disassembler's business;
-  // nothing below this line ever looks at `row.pieces`.
+  // Which of a row's slices, as indices into `row.matched.slices`, change the
+  // generated code. Three kinds do not: a view is a run-time value, a numeric
+  // vocabulary is read straight out of the opcode, and the mnemonic's own
+  // references are the disassembler's business; nothing below this line ever
+  // looks at `row.pieces`.
   [[nodiscard]] static constexpr Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
     Vector<std::uint8_t, Pattern::max_slices> used;
     const auto note = [&used](const Reference reference) {
@@ -1088,18 +1110,23 @@ struct Interpreter {
     return result;
   }
 
-  // One generated function: a row, and an encoding fixing every slice it reads.
+  // One generated function: a row, as an index into `Compiled::rows()`, and an
+  // encoding fixing every slice it reads, which is the row's `body_key`.
   struct Body {
     std::size_t row{};
     std::uint8_t opcode{};
   };
 
-  // What a table's dispatch is made of, in one pass over its rows.
+  // What a table's dispatch is made of: its distinct bodies, and for each of
+  // its 256 opcodes the index into `bodies` of the one that opcode uses.
   struct Decoding {
     std::vector<Body> bodies;
     std::array<std::uint16_t, 256> fill{};
   };
 
+  // Enumerates a table's bodies, one per (row, key) its opcodes reach, and
+  // which body each opcode uses. Every opcode decodes to some row, since
+  // `Compiled::check()` requires it, so the lookup is dereferenced unasked.
   [[nodiscard]] static consteval Decoding decoding_for(const std::uint8_t table) {
     Decoding result;
     // Indexed, never searched: `made[row][key]` is the body this row already has
@@ -1141,11 +1168,12 @@ struct Interpreter {
     return handlers;
   }();
 
-  // Where one instruction becomes the next. Every handler ends here, and this
-  // ends in the next handler, so a run of instructions is a chain of tail calls
-  // and the stack never grows. The machine decides whether there is a next one:
-  // `start_instruction` is where a Z80 takes its interrupt and idles its halt,
-  // none of which is the framework's business.
+  // Starts the next instruction: asks the machine whether there is one, fetches
+  // its opcode and tail-calls the entry table's handler for it. Every handler
+  // ends here, and this ends in the next handler, so a run of instructions is
+  // a chain of tail calls and the stack never grows. The machine decides
+  // whether there is a next one: `start_instruction` is where a Z80 takes its
+  // interrupt and idles its halt, none of which is the framework's business.
   //
   // Handler-shaped so that the tail call out of a handler is a tail call: the
   // three arguments a fresh instruction has no use for are passed as zero.

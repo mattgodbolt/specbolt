@@ -153,11 +153,11 @@ struct Resolved : Access {
   constexpr bool operator==(const Resolved &) const = default;
 };
 
-// An operand that names no vocabulary resolves to itself. A member's operand
-// arrives here too, which is why the vocabulary case is a framework invariant
-// rather than a diagnostic: the lexical parse cannot produce one, since it is
-// the reference syntax that makes an operand a vocabulary reference and only a
-// row can write it.
+// The `Resolved` form of an operand that names no vocabulary: the same access,
+// with the kind carried across. A member's operand arrives here too, which is
+// why the vocabulary case is a framework invariant rather than a diagnostic:
+// the lexical parse cannot produce one, since it is the reference syntax that
+// makes an operand a vocabulary reference and only a row can write it.
 [[nodiscard]] constexpr Resolved as_resolved(const Operand &operand) {
   const auto kind = [&] {
     switch (operand.kind) {
@@ -220,13 +220,14 @@ struct Vocabulary {
   std::size_t line{};
 };
 
-// A derived table re-reads its parent's rows with some vocabulary members
-// renamed; the Z80's `indexed` table is `base` read with
-// `pair.hl -> {index:view}`. A rule names the vocabulary as well as the member,
-// because the same text means different things in different vocabularies:
-// `reg.h` is renamed by a view and the `real.h` of an indexed load is not. The
-// right side is a whole member, so a substitute may bring its own access
-// sequence.
+// One renaming a derived table applies: the member of this vocabulary whose
+// display is `from` reads as `to` instead. A derived table re-reads its
+// parent's rows with some vocabulary members renamed; the Z80's `indexed`
+// table is `base` read with `pair.hl -> {index:view}`. A rule names the
+// vocabulary as well as the member, because the same text means different
+// things in different vocabularies: `reg.h` is renamed by a view and the
+// `real.h` of an indexed load is not. The right side is a whole member, so a
+// substitute may bring its own access sequence.
 struct Rule {
   std::uint8_t vocabulary_index{};
   std::string_view from{};
@@ -239,13 +240,15 @@ struct Rule {
   constexpr bool operator==(const Rule &) const = default;
 };
 
+// The renamings one table applies to what it decodes.
 using Rules = Vector<Rule, 6>;
 
-// A vocabulary that *is* its slice: member n is the number n, as in the Z80's
-// `bit = 0 1 2 3 4 5 6 7`. Its members differ in a value and nothing else, so
-// the opcode can supply it at run time and no function per member is needed.
-// Identity is required, not just numbers: a member that is a *function* of the
-// slice, as in `rst = 0x00 0x08 ... 0x38`, would be read as its index.
+// Whether a vocabulary *is* its slice: member n is the number n, as in the
+// Z80's `bit = 0 1 2 3 4 5 6 7`. Its members differ in a value and nothing
+// else, so the opcode can supply it at run time and no function per member is
+// needed. Identity is required, not just numbers: a member that is a
+// *function* of the slice, as in `rst = 0x00 0x08 ... 0x38`, would be read as
+// its index.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
@@ -284,10 +287,10 @@ struct Resolution {
          lhs.from_view == rhs.from_view && lhs.view_vocabulary == rhs.view_vocabulary;
 }
 
-// Which rule, if any, rewrites this member of this vocabulary. The two
-// functions below must agree about which rule fires, since one returns the
-// member it produces and the other where that member came from, so they ask the
-// same question rather than each spelling it out.
+// The rule that rewrites this member of this vocabulary, or null when none
+// does. The two functions below must agree about which rule fires, since one
+// returns the member it produces and the other where that member came from, so
+// they ask the same question rather than each spelling it out.
 [[nodiscard]] constexpr const Rule *rule_for(
     const std::span<const Rule> rules, const Reference reference, const std::string_view display) {
   const auto found = std::ranges::find_if(rules,
@@ -308,9 +311,10 @@ struct Resolution {
   return member;
 }
 
-// Which vocabulary a reference finally lands in, and whether the view chose the
-// member. Only `resolve` needs this: an operand the view chose must name the
-// vocabulary rather than the member, because the member is not known yet.
+// Which vocabulary a reference finally lands in, as an index into
+// `at.vocabularies`, and whether the view chose the member. Only `resolve`
+// needs this: an operand the view chose must name the vocabulary rather than
+// the member, because the member is not known yet.
 [[nodiscard]] constexpr std::pair<std::uint8_t, bool> source_of(const Resolution &at, const Reference reference) {
   // Member 0 stands for all of them here: this matches rules by display text
   // alone, and every member of a view vocabulary shares a shape and so is
@@ -322,12 +326,14 @@ struct Resolution {
   return {reference.vocabulary_index, reference.from_view};
 }
 
-// The one way from what a row wrote to what the generated code is built from. A
-// reference names whichever vocabulary member its slice selects, and that
-// member is written the same way an operand is written in a row, so most of
-// this is deciding what the member could not know: which parameter it feeds,
-// which scope its name belongs to, and whether the encoding or the view will
-// answer at run time.
+// Resolves an operand against this opcode: a vocabulary reference becomes the
+// member its slice, or the view, selects, and anything else resolves to
+// itself. This is the one way from what a row wrote to what the generated code
+// is built from. A reference names whichever vocabulary member its slice
+// selects, and that member is written the same way an operand is written in a
+// row, so most of this is deciding what the member could not know: which
+// parameter it feeds, which scope its name belongs to, and whether the
+// encoding or the view will answer at run time.
 [[nodiscard]] constexpr Resolved resolve(const Resolution &at, const Operand &operand) {
   if (operand.kind != Operand::Kind::Vocabulary)
     return as_resolved(operand);
@@ -358,6 +364,7 @@ struct Resolution {
   return result;
 }
 
+// How many operands, and how many destinations, one step may name.
 inline constexpr std::size_t max_operands = 4;
 
 // One application of one operation, or a transfer into another decoding table.
@@ -422,15 +429,17 @@ struct TableDecl {
   [[nodiscard]] constexpr bool takes_view() const { return !view_name.empty(); }
 };
 
-// A row that only transfers elsewhere renders nothing and does nothing: it is a
-// prefix, and what follows it is the instruction.
+// The table a row hands decoding to, or nothing for a row that is an
+// instruction itself. A row that only transfers elsewhere renders nothing and
+// does nothing: it is a prefix, and what follows it is the instruction.
 [[nodiscard]] constexpr std::optional<std::uint8_t> transfers_to(const Row &row) {
   if (row.steps.size() == 1 && row.steps[0].kind == Step::Kind::Goto)
     return row.steps[0].target;
   return std::nullopt;
 }
 
-// Which row, if any, a table decodes each opcode to.
+// Which row, as an index into the description's rows, a table decodes each of
+// its 256 opcodes to, or nothing where no row claims one.
 using DecodeTable = std::array<std::optional<std::size_t>, 256>;
 
 // A whole parsed description, as everything downstream of the parse sees it.

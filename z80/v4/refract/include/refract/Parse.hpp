@@ -21,12 +21,14 @@
 
 namespace specbolt::refract {
 
-// Both are held as a `std::uint8_t` wherever one is referred to, which is what
+// How many vocabularies, and how many tables, a description may declare. Both
+// are held as a `std::uint8_t` wherever one is referred to, which is what
 // bounds them rather than any judgement about how many a description needs.
 inline constexpr std::size_t max_vocabularies = 256;
 inline constexpr std::size_t max_tables = 256;
 
-// `vocab name [: scope] = member member...`, one per line, from the whole text.
+// Parses every `vocab name [: scope] = member member...` line of the text, in
+// the order they appear.
 [[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
   std::vector<Vocabulary> result;
   for (const auto [at, text]: lines_of(description)) {
@@ -74,10 +76,10 @@ inline constexpr std::size_t max_tables = 256;
   return result;
 }
 
-// After blanks and comments, every line is a declaration or a row. A line that
-// is neither is a mistyped one of them (a row that lost its separators, or
-// `vocabularies` for `vocab`) and would otherwise be skipped in silence, surfacing
-// much later as an opcode nothing decodes.
+// Checks that every line is blank, a comment, a declaration or a row. A line
+// that is none of those is a mistyped one of them (a row that lost its
+// separators, or `vocabularies` for `vocab`) and would otherwise be skipped in
+// silence, surfacing much later as an opcode nothing decodes.
 constexpr bool check_every_line_means_something(const std::string_view description) {
   for (const auto [at, text]: lines_of(description)) {
     if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
@@ -87,6 +89,8 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
   return true;
 }
 
+// The index into `vocabularies` of the one called `name`, or nothing if none
+// is.
 [[nodiscard]] constexpr std::optional<std::size_t> find_vocabulary(
     const std::span<const Vocabulary> vocabularies, const std::string_view name) {
   const auto found = std::ranges::find(vocabularies, name, &Vocabulary::name);
@@ -95,8 +99,9 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
   return static_cast<std::size_t>(found - vocabularies.begin());
 }
 
-// `t(view:v)` declares a table called `t`; the parenthesised part is its view.
-// Both the declaration and the scan for a table's rows need the bare name.
+// The bare name in a table declaration's first word: `t(view:v)` declares a
+// table called `t`, the parenthesised part being its view. Both the
+// declaration and the scan for a table's rows need the bare name.
 [[nodiscard]] constexpr std::string_view table_name_of(const std::string_view word) {
   const auto open = word.find('(');
   return open == std::string_view::npos ? word : word.substr(0, open);
@@ -105,6 +110,7 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
 [[nodiscard]] constexpr Reference reference_from_braces(std::span<const Vocabulary> vocabularies, std::string_view text,
     const Pattern &matched, std::size_t line, const TableDecl &table);
 
+// Parses a derived table's substitution list into `table.rules`:
 // `vocabulary.member -> replacement`, comma separated, with either spacing. A
 // right side written as a view reference substitutes whichever member the
 // table's view selects, as the Z80's `pair.hl -> {index:view}` does.
@@ -166,8 +172,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   }
 }
 
-// `table name[(view:vocabulary)] [= parent with substitutions]`, one per line,
-// from the whole text.
+// Parses every `table name[(view:vocabulary)] [= parent with substitutions]`
+// line of the text, in the order they appear.
 [[nodiscard]] constexpr std::vector<TableDecl> parse_tables(
     const std::string_view description, const std::span<const Vocabulary> vocabularies) {
   std::vector<TableDecl> result;
@@ -225,6 +231,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   return result;
 }
 
+// The index into `tables` of the one called `name`; an error against `line` if
+// there is none.
 [[nodiscard]] constexpr std::uint8_t find_table(
     const std::span<const TableDecl> tables, const std::string_view name, const std::size_t line) {
   const auto found = std::ranges::find(tables, name, &TableDecl::name);
@@ -233,6 +241,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   return static_cast<std::uint8_t>(found - tables.begin());
 }
 
+// The index into `matched.slices` of the slice lettered `name`, or nothing if
+// the pattern has no such slice.
 [[nodiscard]] constexpr std::optional<std::size_t> find_slice(const Pattern &matched, const char name) {
   const auto found = std::ranges::find(matched.slices, name, &BitSlice::name);
   if (found == matched.slices.end())
@@ -240,11 +250,12 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   return static_cast<std::size_t>(found - matched.slices.begin());
 }
 
-// Every member of a vocabulary a view selects must share one shape, as
-// `shape_of` below defines it, and bring no operation. A view is chosen by a prefix at run time, so every compile-time
-// check resolves such a reference at member 0 and trusts the answer for all of
-// them (`displaced_through` takes no view at all); a member that differed would
-// run one addressing mode while printing another.
+// Checks that every member of a vocabulary a view selects shares one shape, as
+// `shape_of` below defines it, and brings no operation. A view is chosen by a
+// prefix at run time, so every compile-time check resolves such a reference at
+// member 0 and trusts the answer for all of them (`displaced_through` takes no
+// view at all); a member that differed would run one addressing mode while
+// printing another.
 //
 // Reported against the declaration, which is the line to edit, naming the row
 // that made it a requirement: a vocabulary nothing selects by a view may hold
@@ -276,9 +287,10 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   }
 }
 
-// `{vocabulary:slice}` binds a vocabulary to a slice of the opcode; in a table
-// that takes a view, `{vocabulary:view}` binds it to the view instead, which
-// the opcode does not carry and a prefix chose.
+// Parses the inside of a `{...}` reference: `vocabulary:slice` binds a
+// vocabulary to a slice of the opcode; in a table that takes a view,
+// `vocabulary:view` binds it to the view instead, which the opcode does not
+// carry and a prefix chose.
 [[nodiscard]] constexpr Reference parse_reference(const std::span<const Vocabulary> vocabularies,
     const std::string_view inner, const Pattern &matched, const std::size_t line, const TableDecl &table) {
   Parser parser(inner);
@@ -314,6 +326,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   return {.vocabulary_index = static_cast<std::uint8_t>(*field), .slice_index = static_cast<std::uint8_t>(*found)};
 }
 
+// Parses a `{vocabulary:slice}` reference, braces included.
 [[nodiscard]] constexpr Reference reference_from_braces(const std::span<const Vocabulary> vocabularies,
     const std::string_view text, const Pattern &matched, const std::size_t line, const TableDecl &table) {
   if (!text.starts_with('{') || !text.ends_with('}'))
@@ -321,6 +334,9 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, line, table);
 }
 
+// Parses one operand of a step: a `{...}` vocabulary reference, or anything
+// `parse_simple_operand` accepts, either with an optional `name=` in front
+// saying which parameter it feeds.
 [[nodiscard]] constexpr Operand parse_operand(const std::span<const Vocabulary> vocabularies,
     const std::string_view word, const Pattern &matched, const std::size_t line, const std::uint8_t immediate_bytes,
     const TableDecl &table) {
@@ -332,6 +348,8 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   return operand;
 }
 
+// Splits the row's mnemonic into `row.pieces`: literal text, the values it
+// renders from the encoding, and its vocabulary references.
 constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Row &row, const TableDecl &table) {
   const auto add = [&row](const Piece piece) {
     if (!row.pieces.try_push_back(piece))
@@ -356,8 +374,9 @@ constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Ro
   }
 }
 
-// The encoding says what is fetched. The mnemonic must render exactly that, and
-// the action must use it: otherwise one of the three columns is lying.
+// Checks that a row's three columns agree about its immediate: the encoding
+// says what is fetched, the mnemonic must render exactly that, and the action
+// must use it, or one of the three is lying.
 constexpr void check_immediates(const Row &row) {
   // A row fetches one immediate, of `immediate_bytes` bytes, so the mnemonic
   // must render exactly one, of exactly that width. Summing widths would let
@@ -391,8 +410,8 @@ constexpr void check_immediates(const Row &row) {
     throw table_error(row.line, "the action and the encoding disagree about whether there is an immediate");
 }
 
-// The first column: the opcode pattern, then whichever bytes the instruction
-// carries after it.
+// Parses the first column into `row`: the opcode pattern, then whichever bytes
+// the instruction carries after it.
 constexpr void parse_encoding(Parser encoding, Row &row) {
   row.matched = parse_pattern(encoding.next_word(), row.line);
   while (!encoding.eof()) {
@@ -413,9 +432,9 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     throw table_error(row.line, "an instruction may carry at most two immediate bytes");
 }
 
-// One step of the third column: an operation, the destinations written before
-// `<-`, and the operands after it. `if` guards the rest of the row; `goto`
-// hands decoding to another table and does nothing else.
+// Parses one step of the third column: an operation, the destinations written
+// before `<-`, and the operands after it. `if` guards the rest of the row;
+// `goto` hands decoding to another table and does nothing else.
 [[nodiscard]] constexpr Step parse_step(Parser action, const std::span<const Vocabulary> vocabularies,
     const std::span<const TableDecl> tables, const Row &row, const TableDecl &table) {
   Step step{.operation = action.next_word()};
@@ -499,10 +518,10 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
   return step;
 }
 
-// `encoding | mnemonic | step ; step...`: every line with `|` in it. A row
-// belongs to the nearest `table` line above it, which is why this pass tracks
-// the current table where the vocabulary and table passes read the whole file
-// flat.
+// Parses every row of the text, `encoding | mnemonic | step ; step...`, in the
+// order they appear. A row belongs to the nearest `table` line above it, which
+// is why this pass tracks the current table where the vocabulary and table
+// passes read the whole file flat.
 [[nodiscard]] constexpr std::vector<Row> parse_rows(const std::string_view description,
     const std::span<const Vocabulary> vocabularies, const std::span<const TableDecl> tables) {
   std::vector<Row> result;

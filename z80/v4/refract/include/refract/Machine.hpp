@@ -35,11 +35,11 @@
 
 namespace specbolt::refract {
 
-// `read` is named here because the scan that derives a machine's location
-// scopes looks for overloads by that spelling, and this is the file stating
-// what a machine must provide: a public `read(E)` overload publishes every
-// enumerator of `E` to descriptions. `write` needs no such constant: the
-// generator spells it at the calls it splices.
+// The name of the member the scan for a machine's location scopes looks for.
+// It is named here because that scan finds overloads by this spelling, and
+// this is the file stating what a machine must provide: a public `read(E)`
+// overload publishes every enumerator of `E` to descriptions. `write` needs no
+// such constant: the generator spells it at the calls it splices.
 inline constexpr std::string_view read_verb = "read";
 
 // Everything the framework does *to* a machine. `delay` is separate from the
