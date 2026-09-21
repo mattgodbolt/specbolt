@@ -38,6 +38,12 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   source. Bloomberg's P2996 fork is a different matter. See "The other implementation" below.
 - Reflection works inside module interface units, including `template for` in a module purview and
   exported templates that reflect on their own parameters and are instantiated in importing TUs.
+- **`^^std::uint8_t` is ill-formed.** A reflect-expression may not name a using-declarator, and
+  libstdc++ brings the fixed-width integers into `std` with `using ::uint8_t;`. gcc 16.2 says
+  "'^^' cannot be applied to a using-declaration". Reflect an alias of your own instead
+  (`using Byte = std::uint8_t; ^^Byte`) and compare after `dealias` on both sides, since the alias
+  reflects as itself and `type_of` a parameter may answer with `unsigned char`. Found 2026-09-21
+  moving the bus-width checks into `destinations_fit`.
 
 ### Annotations on member functions
 
