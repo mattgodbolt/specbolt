@@ -9,17 +9,16 @@
 
 namespace specbolt::refract {
 
-// Renders a number for a diagnostic. `std::to_chars` is usable during constant
-// evaluation; `std::to_string` and `std::format` are not.
+// Renders a number for a diagnostic. `std::to_chars` is usable during constant evaluation; `std::to_string` and
+// `std::format` are not.
 [[nodiscard]] constexpr std::string decimal(const std::size_t value) {
   std::array<char, 20> digits{}; // enough for any 64-bit value
   const auto [end, _] = std::to_chars(digits.data(), digits.data() + digits.size(), value);
   return {digits.data(), end};
 }
 
-// A mistake in a description, reported against its line. The parser does not
-// know which file it is reading, so the line stands alone here and `naming`
-// puts the file in front of it.
+// A mistake in a description, reported against its line. The parser does not know which file it is reading, so the line
+// stands alone here and `naming` puts the file in front of it.
 [[nodiscard]] constexpr std::runtime_error table_error(const std::size_t line, const std::string_view what) {
   return std::runtime_error(decimal(line) + ": " + std::string(what));
 }
@@ -30,8 +29,8 @@ namespace specbolt::refract {
   return std::runtime_error(std::string(file) + ":" + decimal(line) + ": " + std::string(what));
 }
 
-// Runs `make`, and if it throws, rethrows with the file in front of the
-// message. Constant evaluation can catch and throw since C++26.
+// Runs `make`, and if it throws, rethrows with the file in front of the message. Constant evaluation can catch and
+// throw since C++26.
 template<std::invocable Make>
 [[nodiscard]] constexpr auto naming(const std::string_view file, Make make) {
   try {

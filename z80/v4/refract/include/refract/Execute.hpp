@@ -1,13 +1,12 @@
 #pragma once
 
-// Turns a compiled description into an interpreter for a machine. `Compiled`
-// has already read the text and lowered it to `constexpr` data; nothing here
-// parses anything. What is left is to look up the names that data holds in the
-// machine, and to emit one function per body: a row together with the slices
-// it reads, so that opcodes generating the same code share one.
+// Turns a compiled description into an interpreter for a machine. `Compiled` has already read the text and lowered it
+// to `constexpr` data; nothing here parses anything. What is left is to look up the names that data holds in the
+// machine, and to emit one function per body: a row together with the slices it reads, so that opcodes generating the
+// same code share one.
 //
-// A target names the two, and the palettes its description may draw verbs
-// from; `TargetLike` in Machine.hpp is the contract:
+// A target names the two, and the palettes its description may draw verbs from; `TargetLike` in Machine.hpp is the
+// contract:
 //
 //   struct Target {
 //     using Machine = ...;                       // see Machine.hpp
@@ -15,9 +14,8 @@
 //     static consteval std::vector<std::meta::info> palettes();
 //   };
 //
-// A palette is a type every public static function of which is a verb. The
-// machine's own verbs are the members it publishes with
-// `[[=refract::operation]]`, static or not; see Model.hpp.
+// A palette is a type every public static function of which is a verb. The machine's own verbs are the members it
+// publishes with `[[=refract::operation]]`, static or not; see Model.hpp.
 //
 // `Interpreter<Target>::run` then runs the machine until it says stop.
 
@@ -57,16 +55,14 @@ namespace specbolt::refract {
 // The C++26 features, and what each is doing here
 // ---------------------------------------------------------------------------
 //
-// **Reflection (P2996).** `^^X` yields a `std::meta::info`: one type that can
-// denote *any* entity: a type, a function, an enumerator, a data member. That
-// one-type-for-everything is why `find_location` and `find_operation` have the
-// same shape despite looking for very different things. `info` is a structural
-// type, so it can be a non-type template parameter, which is the hinge the
-// whole file turns on: `template<std::meta::info Fn>` makes "which function"
-// part of a template instantiation's identity.
+// **Reflection (P2996).** `^^X` yields a `std::meta::info`: one type that can denote *any* entity: a type, a function,
+// an enumerator, a data member. That one-type-for-everything is why `find_location` and `find_operation` have the same
+// shape despite looking for very different things. `info` is a structural type, so it can be a non-type template
+// parameter, which is the hinge the whole file turns on: `template<std::meta::info Fn>` makes "which function" part of
+// a template instantiation's identity.
 //
-// **Splices**, `[: … :]`, turn an `info` back into code. One syntax, which
-// denotes whatever the reflection designated; the forms here are
+// **Splices**, `[: … :]`, turn an `info` back into code. One syntax, which denotes whatever the reflection designated;
+// the forms here are
 //
 //   using T = [: type_of(p) :];        a type. In a template argument list the
 //                                      same splice would be read as an
@@ -80,72 +76,57 @@ namespace specbolt::refract {
 //                                      on the kind of location; C++ does.
 //   result.[:members[at]:]             a data member, in member-access position.
 //
-// **Expansion statements (P1306)**, `template for`. The body is *instantiated
-// once per element*, so it is code size rather than a loop, and the induction
-// variable is `constexpr` inside the body, which is what lets it be used as a
-// template argument. A `return` inside one returns from the enclosing function,
-// not from an iteration. There is deliberately no `template switch`: the body
-// of an expansion statement is control-flow-limited, so a `case` label inside
-// it can only belong to a `switch` that is also inside it, and a 256-way
-// dispatch cannot be expanded into one. Hence a table of function pointers.
+// **Expansion statements (P1306)**, `template for`. The body is *instantiated once per element*, so it is code size
+// rather than a loop, and the induction variable is `constexpr` inside the body, which is what lets it be used as a
+// template argument. A `return` inside one returns from the enclosing function, not from an iteration. There is
+// deliberately no `template switch`: the body of an expansion statement is control-flow-limited, so a `case` label
+// inside it can only belong to a `switch` that is also inside it, and a 256-way dispatch cannot be expanded into one.
+// Hence a table of function pointers.
 //
 // **`consteval` functions that throw, called from `consteval {}` blocks.** Nothing catches them. A block runs its
-// statements during compilation, a throw that escapes one is not a constant expression, and *that* is the diagnostic:
-// a mistake in the description becomes a compile error carrying its line number. This is the most surprising idiom in
-// the file, and it is used everywhere a check has a line to report against.
+// statements during compilation, a throw that escapes one is not a constant expression, and *that* is the diagnostic: a
+// mistake in the description becomes a compile error carrying its line number. This is the most surprising idiom in the
+// file, and it is used everywhere a check has a line to report against.
 //
-// **`std::define_static_array`.** `nonstatic_data_members_of` returns a
-// `std::vector`, whose allocation cannot survive constant evaluation. This
-// promotes the contents into an object with static storage duration, so a
-// `span` over it *can* escape into a `constexpr` variable and still be usable
-// as a template argument afterwards.
+// **`std::define_static_array`.** `nonstatic_data_members_of` returns a `std::vector`, whose allocation cannot survive
+// constant evaluation. This promotes the contents into an object with static storage duration, so a `span` over it
+// *can* escape into a `constexpr` variable and still be usable as a template argument afterwards.
 //
-// **`std::meta::access_context::current()`** means the context of the function
-// that names it, `Interpreter`'s own scope here rather than the caller's, and
-// `Interpreter` is nobody's friend. Load-bearing twice:
-// it is why asking what a result decomposes into gives the same answer here as
-// a structured binding would give anywhere (a machine's flags type keeps its
-// byte private, so it is one value and not a pair), and why a private helper in
-// an operation scope cannot be named by a table.
+// **`std::meta::access_context::current()`** means the context of the function that names it, `Interpreter`'s own scope
+// here rather than the caller's, and `Interpreter` is nobody's friend. Load-bearing twice: it is why asking what a
+// result decomposes into gives the same answer here as a structured binding would give anywhere (a machine's flags type
+// keeps its byte private, so it is one value and not a pair), and why a private helper in an operation scope cannot be
+// named by a table.
 //
 // ---------------------------------------------------------------------------
 // Why the data looks the way it does
 // ---------------------------------------------------------------------------
 //
-// `Call` and `Resolved` are non-type template parameters, so they must be
-// *structural*: literal types whose members and bases are all public,
-// recursively. That
-// single requirement explains a lot of the model: why `Vector` exposes its
-// `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>`
-// rather than a `std::string_view` (which has private members and is not
-// structural).
+// `Call` and `Resolved` are non-type template parameters, so they must be *structural*: literal types whose members and
+// bases are all public, recursively. That single requirement explains a lot of the model: why `Vector` exposes its
+// `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>` rather than a `std::string_view` (which has
+// private members and is not structural).
 //
-// It is also why the parse cannot simply hand its `std::vector`s over:
-// `std::define_static_array` would promote them, but only for a structural
-// element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what
-// stands in its place.
+// It is also why the parse cannot simply hand its `std::vector`s over: `std::define_static_array` would promote them,
+// but only for a structural element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what stands in its
+// place.
 
-// The interpreter for `Target`: one generated handler per body of its
-// description, and the run loop that chains them.
+// The interpreter for `Target`: one generated handler per body of its description, and the run loop that chains them.
 template<TargetLike Target>
 struct Interpreter {
   using Machine = typename Target::Machine;
   using Compiled = typename Target::Compiled;
 
-  // A mistake in the description, reported against its line and the file the
-  // target says it came from.
+  // A mistake in the description, reported against its line and the file the target says it came from.
   [[nodiscard]] static consteval std::runtime_error error(const std::size_t line, const std::string_view what) {
     return table_error(Compiled::file, line, what);
   }
 
-  // The enums a location name may come from: the parameter type of each of the
-  // machine's public one-argument `read` overloads. A location is a thing the
-  // machine can read, so the pool is the capability itself. An enum with no
-  // `read` taking it is not a location, which is why a bus cycle kind cannot
-  // be one.
+  // The enums a location name may come from: the parameter type of each of the machine's public one-argument `read`
+  // overloads. A location is a thing the machine can read, so the pool is the capability itself. An enum with no `read`
+  // taking it is not a location, which is why a bus cycle kind cannot be one.
   //
-  // `read_memory` is excluded by name; an overload taking more than the location
-  // is excluded by arity.
+  // `read_memory` is excluded by name; an overload taking more than the location is excluded by arity.
   [[nodiscard]] static consteval std::vector<std::meta::info> location_scopes() {
     std::vector<std::meta::info> scopes;
     for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current())) {
@@ -163,10 +144,9 @@ struct Interpreter {
     return scopes;
   }
 
-  // The enums a vocabulary may name as its scope: the location scopes, and any
-  // enum an operation takes as a parameter. Derived the same way and for the
-  // same reason, from what the CPU can be asked to do rather than from anything
-  // it declares about itself.
+  // The enums a vocabulary may name as its scope: the location scopes, and any enum an operation takes as a parameter.
+  // Derived the same way and for the same reason, from what the CPU can be asked to do rather than from anything it
+  // declares about itself.
   [[nodiscard]] static consteval std::vector<std::meta::info> named_scopes() {
     auto scopes = location_scopes();
     for (const auto candidate: operations())
@@ -177,9 +157,8 @@ struct Interpreter {
     return scopes;
   }
 
-  // Whether a declaration carries `[[=refract::operation]]`. The annotation's
-  // type is const-qualified when it came from the constant, so the qualifier is
-  // taken off before comparing.
+  // Whether a declaration carries `[[=refract::operation]]`. The annotation's type is const-qualified when it came from
+  // the constant, so the qualifier is taken off before comparing.
   [[nodiscard]] static consteval bool is_operation(const std::meta::info fn) {
     for (const auto annotation: std::meta::annotations_of(fn))
       if (std::meta::remove_cv(std::meta::type_of(annotation)) == ^^Operation)
@@ -187,10 +166,9 @@ struct Interpreter {
     return false;
   }
 
-  // Every function a description may name: the machine's marked members,
-  // static or not, and every public static function of each palette.
-  // `has_identifier` excludes the implicitly-declared special members, which
-  // have no name to compare.
+  // Every function a description may name: the machine's marked members, static or not, and every public static
+  // function of each palette. `has_identifier` excludes the implicitly-declared special members, which have no name to
+  // compare.
   [[nodiscard]] static consteval std::vector<std::meta::info> operations() {
     std::vector<std::meta::info> found;
     for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current()))
@@ -203,19 +181,16 @@ struct Interpreter {
     return found;
   }
 
-  // `c` in lower case, if it is an ASCII letter. Names in a description are
-  // matched the way assembler is written, without regard to case.
+  // `c` in lower case, if it is an ASCII letter. Names in a description are matched the way assembler is written,
+  // without regard to case.
   [[nodiscard]] static consteval char to_lower_case(const char c) {
     return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
   }
 
-  // Checks that no two of the machine's readable locations share a name,
-  // ignoring case; true if none do, and an error naming both scopes otherwise.
-  // Checked over the whole pool rather than as each name happens to be looked
-  // up: `only_match` would catch an ambiguity, but only for a name some
-  // description writes; this makes it a property of the machine, so a CPU that
-  // grows a second `carry` is told at once rather than whenever a row first
-  // wants one.
+  // Checks that no two of the machine's readable locations share a name, ignoring case; true if none do, and an error
+  // naming both scopes otherwise. Checked over the whole pool rather than as each name happens to be looked up:
+  // `only_match` would catch an ambiguity, but only for a name some description writes; this makes it a property of the
+  // machine, so a CPU that grows a second `carry` is told at once rather than whenever a row first wants one.
   static consteval void check_location_names_unique() {
     std::vector<std::pair<std::string, std::meta::info>> seen;
     for (const auto scope: location_scopes())
@@ -237,18 +212,16 @@ struct Interpreter {
     return std::ranges::equal(lhs, rhs, {}, to_lower_case, to_lower_case);
   }
 
-  // The one candidate, when there is exactly one; an error against `line`
-  // otherwise. Every name a table uses must resolve to exactly one thing, and
-  // throwing from a `consteval` function is how a bad name becomes a compile
-  // error naming the line of the description that wrote it.
+  // The one candidate, when there is exactly one; an error against `line` otherwise. Every name a table uses must
+  // resolve to exactly one thing, and throwing from a `consteval` function is how a bad name becomes a compile error
+  // naming the line of the description that wrote it.
   [[nodiscard]] static consteval std::meta::info only_match(
       const std::span<const std::meta::info> candidates, const std::string_view name, const std::size_t line) {
     if (candidates.empty())
       throw error(line, "this CPU has nothing named '" + std::string(name) + "'");
     if (candidates.size() > 1) {
-      // Naming both is the point: the scopes are found by scanning rather than
-      // listed, so "more than one" is most likely a scope the reader did not know
-      // was being searched.
+      // Naming both is the point: the scopes are found by scanning rather than listed, so "more than one" is most
+      // likely a scope the reader did not know was being searched.
       std::string found;
       for (const auto candidate: candidates)
         found +=
@@ -258,9 +231,8 @@ struct Interpreter {
     return candidates.front();
   }
 
-  // What a description calls one enumerator: the `Spelling` it declares, or its
-  // own identifier when it declares none. An annotation's type is
-  // const-qualified, so the qualifier comes off before the comparison.
+  // What a description calls one enumerator: the `Spelling` it declares, or its own identifier when it declares none.
+  // An annotation's type is const-qualified, so the qualifier comes off before the comparison.
   [[nodiscard]] static consteval std::string spelling_of(const std::meta::info enumerator) {
     for (const auto annotation: std::meta::annotations_of(enumerator))
       if (std::meta::remove_cv(std::meta::type_of(annotation)) == ^^Spelling)
@@ -268,9 +240,8 @@ struct Interpreter {
     return std::string(std::meta::identifier_of(enumerator));
   }
 
-  // The enum a vocabulary named as its scope, or an error listing what the
-  // machine offers. Compared exactly: it is a C++ type's name, not something
-  // written the way assembly is written.
+  // The enum a vocabulary named as its scope, or an error listing what the machine offers. Compared exactly: it is a
+  // C++ type's name, not something written the way assembly is written.
   [[nodiscard]] static consteval std::meta::info find_scope(const std::string_view name, const std::size_t line) {
     std::string offered;
     for (const auto scope: named_scopes()) {
@@ -281,10 +252,8 @@ struct Interpreter {
     throw error(line, "no scope named '" + std::string(name) + "'" + offered + ")");
   }
 
-  // The enumerator a location name denotes, in one of the scopes the CPU
-  // offers, such as the Z80's `a`, `hl`, `carry` and `pc`. A vocabulary that
-  // named a scope searches that one and no other; everything else searches
-  // them all.
+  // The enumerator a location name denotes, in one of the scopes the CPU offers, such as the Z80's `a`, `hl`, `carry`
+  // and `pc`. A vocabulary that named a scope searches that one and no other; everything else searches them all.
   [[nodiscard]] static consteval std::meta::info find_location(
       const std::string_view name, const std::size_t line, const std::string_view scope = {}) {
     std::vector<std::meta::info> candidates;
@@ -299,9 +268,8 @@ struct Interpreter {
       for (const auto enumerator: std::meta::enumerators_of(everywhere))
         if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
           candidates.push_back(enumerator);
-    // A spelling is consulted only when no identifier matched: almost every
-    // name is an identifier, and reading every enumerator's annotations on
-    // every lookup was measured to cost more than it is worth.
+    // A spelling is consulted only when no identifier matched: almost every name is an identifier, and reading every
+    // enumerator's annotations on every lookup was measured to cost more than it is worth.
     if (candidates.empty())
       for (const auto everywhere: location_scopes())
         for (const auto enumerator: std::meta::enumerators_of(everywhere))
@@ -310,12 +278,10 @@ struct Interpreter {
     return only_match(candidates, name, line);
   }
 
-  // The enumerator of `scope` that a description spells `name`, for an enum a
-  // *parameter* asks for. The parameter type is the scope, and that is what
-  // keeps these names out of the location namespace: a spelling is free to
-  // collide with the name of a register and mean something else entirely. (On
-  // the Z80, `i` and `d` are a direction here and the I and D registers
-  // everywhere else.)
+  // The enumerator of `scope` that a description spells `name`, for an enum a *parameter* asks for. The parameter type
+  // is the scope, and that is what keeps these names out of the location namespace: a spelling is free to collide with
+  // the name of a register and mean something else entirely. (On the Z80, `i` and `d` are a direction here and the I
+  // and D registers everywhere else.)
   [[nodiscard]] static consteval std::meta::info find_spelling(
       const std::meta::info scope, const std::string_view name, const std::size_t line) {
     std::vector<std::meta::info> candidates;
@@ -335,19 +301,18 @@ struct Interpreter {
     return candidates.front();
   }
 
-  // The locations a view selects between, in the order its vocabulary lists them,
-  // so that the view *is* the index. Every member resolves to a location of the
-  // same type, which `check_view_vocabulary` guarantees, so the machine is handed
-  // a location it already knows how to read and needs no notion of a view.
+  // The locations a view selects between, in the order its vocabulary lists them, so that the view *is* the index.
+  // Every member resolves to a location of the same type, which `check_view_vocabulary` guarantees, so the machine is
+  // handed a location it already knows how to read and needs no notion of a view.
   //
-  // `template for` rather than a loop, because a splice needs a constant operand
-  // and an expansion statement's induction variable is one.
+  // `template for` rather than a loop, because a splice needs a constant operand and an expansion statement's induction
+  // variable is one.
   template<Resolved Op, std::size_t Line>
   [[nodiscard]] static consteval auto locations_of_view() {
     constexpr const auto &vocabulary = Compiled::vocabularies()[Op.view_vocabulary];
     constexpr const auto &members = vocabulary.members;
-    // The scope comes from the vocabulary rather than from a member, because a
-    // member is parsed before anything knows which vocabulary it will end up in.
+    // The scope comes from the vocabulary rather than from a member, because a member is parsed before anything knows
+    // which vocabulary it will end up in.
     constexpr auto scope = vocabulary.scope;
     constexpr auto first = find_location(members[0].operand.name.view(), Line, scope);
     template for (constexpr auto at: std::views::iota(1uz, members.size())) {
@@ -364,16 +329,15 @@ struct Interpreter {
     return locations;
   }
 
-  // The function an operation name denotes, such as the Z80's `inc8`, `add16`
-  // and `is_set`; an error against `line` if there is none or more than one.
+  // The function an operation name denotes, such as the Z80's `inc8`, `add16` and `is_set`; an error against `line` if
+  // there is none or more than one.
   [[nodiscard]] static consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
     std::vector<std::meta::info> candidates;
     for (const auto candidate: operations())
       if (same_ignoring_case(std::meta::identifier_of(candidate), name))
         candidates.push_back(candidate);
-    // A marked member the scan above could not see is a mistake worth its own
-    // message: access control would otherwise decide, in silence, that it is
-    // not an operation.
+    // A marked member the scan above could not see is a mistake worth its own message: access control would otherwise
+    // decide, in silence, that it is not an operation.
     if (candidates.empty())
       for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::unchecked()))
         if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_operation(member) &&
@@ -384,9 +348,8 @@ struct Interpreter {
     return only_match(candidates, name, line);
   }
 
-  // How many parameters `Fn` declares. A variable template so that the count
-  // reads without parentheses, and is one spelling in `if constexpr`,
-  // checks and diagnostics alike.
+  // How many parameters `Fn` declares. A variable template so that the count reads without parentheses, and is one
+  // spelling in `if constexpr`, checks and diagnostics alike.
   template<std::meta::info Fn>
   static constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
@@ -394,12 +357,10 @@ struct Interpreter {
   template<std::meta::info Fn, std::size_t I>
   using parameter_type = [:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
-  // The members a result is split across, or an empty span for a result that is
-  // one value. A class comes apart when every non-static data member is public
-  // and its own; one that hides all of its state is one value. One that hides
-  // some of it, or has a base class, is refused, because a row could be given
-  // only part of it. Stricter than a structured binding, which also accepts
-  // members all in one base.
+  // The members a result is split across, or an empty span for a result that is one value. A class comes apart when
+  // every non-static data member is public and its own; one that hides all of its state is one value. One that hides
+  // some of it, or has a base class, is refused, because a row could be given only part of it. Stricter than a
+  // structured binding, which also accepts members all in one base.
   [[nodiscard]] static consteval std::span<const std::meta::info> decomposes_into(
       const std::meta::info type, const std::size_t line) {
     if (!std::meta::is_class_type(type))
@@ -417,18 +378,16 @@ struct Interpreter {
     return std::define_static_array(visible);
   }
 
-  // Whether `Fn` is a member of the machine, called on it, rather than a static
-  // function called on nothing. A member reaches the machine as `this`, which
-  // is not a parameter, so the row's operands are the whole parameter list
-  // either way; one that only reads the machine is `const`. `^^Machine`
-  // reflects the alias, and a parent is never an alias, hence `dealias`.
+  // Whether `Fn` is a member of the machine, called on it, rather than a static function called on nothing. A member
+  // reaches the machine as `this`, which is not a parameter, so the row's operands are the whole parameter list either
+  // way; one that only reads the machine is `const`. `^^Machine` reflects the alias, and a parent is never an alias,
+  // hence `dealias`.
   template<std::meta::info Fn>
   static constexpr bool machine_member =
       (std::meta::parent_of(Fn) == std::meta::dealias(^^Machine)) && !std::meta::is_static_member(Fn);
 
-  // Whether `Fn` asks for the machine as a parameter, which nothing may: an
-  // operation that needs the machine is a member of it. One asking this way
-  // would be handed a row's operand instead, and the error would be about that
+  // Whether `Fn` asks for the machine as a parameter, which nothing may: an operation that needs the machine is a
+  // member of it. One asking this way would be handed a row's operand instead, and the error would be about that
   // operand rather than about the signature, so it is named here.
   template<std::meta::info Fn>
   static constexpr bool asks_for_machine = [] {
@@ -438,34 +397,29 @@ struct Interpreter {
       return std::is_same_v<std::remove_cvref_t<parameter_type<Fn, 0>>, Machine>;
   }();
 
-  // What the instruction carries: the immediate its encoding fetched, the view a
-  // prefix chose, and the opcode itself. Fixed for the whole of one instruction.
-  // Passed by value, and it must be: a handler ends in a mandatory tail call,
-  // which abandons the frame, so nothing in the frame may have had its address
-  // taken.
+  // What the instruction carries: the immediate its encoding fetched, the view a prefix chose, and the opcode itself.
+  // Fixed for the whole of one instruction. Passed by value, and it must be: a handler ends in a mandatory tail call,
+  // which abandons the frame, so nothing in the frame may have had its address taken.
   struct Decoded {
     std::uint16_t immediate{};
     std::uint8_t view{};
     std::uint8_t opcode{};
   };
 
-  // Everything one step needs, with its vocabulary references already resolved. This
-  // is a non-type template parameter, so every member of it, and of everything
-  // it contains, has to be public. See the note on structural types above.
+  // Everything one step needs, with its vocabulary references already resolved. This is a non-type template parameter,
+  // so every member of it, and of everything it contains, has to be public. See the note on structural types above.
   struct Call {
     Vector<Resolved, max_operands> operands{};
     Vector<Resolved, max_operands> destinations{};
-    // The description line, for diagnostics. Threaded through `value_of` and
-    // `store` as its own template parameter and kept out of `Resolved`:
-    // `Resolved` is a template argument, and equal operands on different lines
-    // would become different arguments, splitting every instantiation below for
-    // a field only an error message reads.
+    // The description line, for diagnostics. Threaded through `value_of` and `store` as its own template parameter and
+    // kept out of `Resolved`: `Resolved` is a template argument, and equal operands on different lines would become
+    // different arguments, splitting every instantiation below for a field only an error message reads.
     std::size_t line{};
     constexpr bool operator==(const Call &) const = default;
   };
 
-  // The rule the paragraph above states, said in a way the compiler checks, in
-  // one place rather than at whichever template first takes the type.
+  // The rule the paragraph above states, said in a way the compiler checks, in one place rather than at whichever
+  // template first takes the type.
   static_assert(std::meta::is_structural_type(^^Name),
       "Name is a template argument, so every member must be public and itself structural");
   static_assert(std::meta::is_structural_type(^^Resolved),
@@ -473,13 +427,11 @@ struct Interpreter {
   static_assert(std::meta::is_structural_type(^^Call),
       "Call is a template argument, so every member must be public and itself structural");
 
-  // Reads one operand that is not an address and returns it as the type of the
-  // parameter it feeds: a constant or immediate converted, an enumerator
-  // spliced, or a location read from the machine. Whether the operand suits
-  // the parameter was settled by `check_operand_fits` before this is instantiated. A
-  // location converts the ordinary way, so whether a 16-bit register reaching
-  // an 8-bit parameter is diagnosed depends on the build's warnings rather than
-  // on anything here.
+  // Reads one operand that is not an address and returns it as the type of the parameter it feeds: a constant or
+  // immediate converted, an enumerator spliced, or a location read from the machine. Whether the operand suits the
+  // parameter was settled by `check_operand_fits` before this is instantiated. A location converts the ordinary way, so
+  // whether a 16-bit register reaching an 8-bit parameter is diagnosed depends on the build's warnings rather than on
+  // anything here.
   template<Resolved Op, std::size_t Line, typename Parameter>
   [[nodiscard]] static Parameter direct_value_of(Machine &machine, const Decoded decoded) {
     if constexpr (Op.kind == Resolved::Kind::Constant) {
@@ -496,31 +448,28 @@ struct Interpreter {
         return decoded.immediate;
     }
     else if constexpr (Op.from_view) {
-      // Which member is not known until the table's view has been chosen, so the
-      // choice is an array index rather than a splice. See `locations_of_view`.
+      // Which member is not known until the table's view has been chosen, so the choice is an array index rather than a
+      // splice. See `locations_of_view`.
       static constexpr auto locations = locations_of_view<Op, Line>();
       return machine.read(locations[decoded.view]);
     }
     else if constexpr (std::is_enum_v<Parameter>)
-      // The name is one of the enum's members rather than a place to read from,
-      // so it is spliced as a value and nothing is fetched. Whether a name is
-      // read or handed over as an enumerator is decided by the parameter's type,
-      // not by the row. The enum is the one the vocabulary named, or the
-      // parameter's type for an operand no vocabulary owns, such as one a member
-      // appends.
+      // The name is one of the enum's members rather than a place to read from, so it is spliced as a value and nothing
+      // is fetched. Whether a name is read or handed over as an enumerator is decided by the parameter's type, not by
+      // the row. The enum is the one the vocabulary named, or the parameter's type for an operand no vocabulary owns,
+      // such as one a member appends.
       return [:find_spelling(
                    Op.scope.empty() ? ^^Parameter : find_scope(Op.scope.view(), Line), Op.name.view(), Line):];
     else
-      // An *enumerator* splice: this yields a prvalue whose type is the enum the
-      // name was found in, so the machine's overload set decides what reading it
-      // means: on the Z80, `machine.read(R8::A)` and `machine.read(Flags::Bit::carry)` are
-      // different functions returning different types, chosen here by overload
+      // An *enumerator* splice: this yields a prvalue whose type is the enum the name was found in, so the machine's
+      // overload set decides what reading it means: on the Z80, `machine.read(R8::A)` and
+      // `machine.read(Flags::Bit::carry)` are different functions returning different types, chosen here by overload
       // resolution.
       return machine.read([:find_location(Op.name.view(), Line, Op.scope.view()):]);
   }
 
-  // The address an indirect operand addresses through. A displaced one was formed
-  // once for the whole instruction, before any operand was touched.
+  // The address an indirect operand addresses through. A displaced one was formed once for the whole instruction,
+  // before any operand was touched.
   template<Resolved Op, std::size_t Line>
   [[nodiscard]] static std::uint16_t address_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     if constexpr (Op.displaced)
@@ -529,12 +478,10 @@ struct Interpreter {
       return direct_value_of<Op, Line, std::uint16_t>(machine, decoded);
   }
 
-  // Reads one operand and returns it as the type of the parameter it feeds.
-  // An indirect operand is whatever it would have been, read as an address;
-  // how wide the read is comes from the parameter rather than from anything
-  // the row says, so one operand spelling serves every width the machine
-  // offers. (On the Z80 that is `ld16 hl <- (n)` reading two bytes where
-  // `ld8 a <- (n)` reads one.)
+  // Reads one operand and returns it as the type of the parameter it feeds. An indirect operand is whatever it would
+  // have been, read as an address; how wide the read is comes from the parameter rather than from anything the row
+  // says, so one operand spelling serves every width the machine offers. (On the Z80 that is `ld16 hl <- (n)` reading
+  // two bytes where `ld8 a <- (n)` reads one.)
   template<Resolved Op, std::size_t Line, typename Parameter>
   [[nodiscard]] static Parameter value_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     if constexpr (Op.indirect) {
@@ -548,9 +495,8 @@ struct Interpreter {
       return direct_value_of<Op, Line, Parameter>(machine, decoded);
   }
 
-  // Writes a value to one destination: through an address if the operand is
-  // indirect, into the location it names otherwise, and nowhere for `-`.
-  // Whether the value suits the destination was settled by `check_destinations_fit`.
+  // Writes a value to one destination: through an address if the operand is indirect, into the location it names
+  // otherwise, and nowhere for `-`. Whether the value suits the destination was settled by `check_destinations_fit`.
   template<Resolved Op, std::size_t Line, typename T>
   static void store(Machine &machine, const Decoded decoded, const std::uint16_t indexed, const T value) {
     if constexpr (Op.kind == Resolved::Kind::Discard)
@@ -575,13 +521,11 @@ struct Interpreter {
     }
   }
 
-  // For each parameter of `Fn`, in signature order, the index into `C.operands`
-  // of the operand that feeds it: by position, unless the row wrote `value=…`,
-  // in which case by the parameter's declared name. Naming
-  // exists because position is a silent coupling: an operation taking several
-  // parameters of one type, as the Z80's `test_bit(value, bit, flags, bus)`
-  // does, lets a row swap two and still compile. Naming is all or nothing
-  // within a step, so there is no rule about what "the next one" means.
+  // For each parameter of `Fn`, in signature order, the index into `C.operands` of the operand that feeds it: by
+  // position, unless the row wrote `value=…`, in which case by the parameter's declared name. Naming exists because
+  // position is a silent coupling: an operation taking several parameters of one type, as the Z80's `test_bit(value,
+  // bit, flags, bus)` does, lets a row swap two and still compile. Naming is all or nothing within a step, so there is
+  // no rule about what "the next one" means.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
     std::array<std::size_t, C.operands.size()> written{};
@@ -624,9 +568,8 @@ struct Interpreter {
     return written;
   }
 
-  // The inverse: for each operand, in the order the row wrote it, the index of
-  // the parameter of `Fn` it ends up feeding. Needed because an operand is
-  // *read* where the row put it and *passed* where the signature wants it, and
+  // The inverse: for each operand, in the order the row wrote it, the index of the parameter of `Fn` it ends up
+  // feeding. Needed because an operand is *read* where the row put it and *passed* where the signature wants it, and
   // its type comes from the latter.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> parameter_for_operand() {
@@ -637,16 +580,13 @@ struct Interpreter {
     return parameter;
   }
 
-  // The row's operands, each converted to the type of the parameter it feeds,
-  // evaluated in the order the row wrote them. The order matters: resolving one
-  // can read memory and move the address bus, and a row may then ask what that
-  // read left there. A call's arguments are evaluated in an unspecified order,
-  // so the values are materialised into a braced tuple first, which is sequenced
-  // left to right ([dcl.init.list]/4). Naming a parameter changes which argument
+  // The row's operands, each converted to the type of the parameter it feeds, evaluated in the order the row wrote
+  // them. The order matters: resolving one can read memory and move the address bus, and a row may then ask what that
+  // read left there. A call's arguments are evaluated in an unspecified order, so the values are materialised into a
+  // braced tuple first, which is sequenced left to right ([dcl.init.list]/4). Naming a parameter changes which argument
   // an operand becomes, never when it is read.
   //
-  // A pack rather than `template for`: an expansion statement produces
-  // statements, and an argument list needs a pack.
+  // A pack rather than `template for`: an expansion statement produces statements, and an argument list needs a pack.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static auto operands_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     constexpr auto parameter = parameter_for_operand<Fn, C>();
@@ -656,10 +596,9 @@ struct Interpreter {
     }(std::make_index_sequence<C.operands.size()>{});
   }
 
-  // Calls `Fn` with the values in `arguments` and returns whatever it returns.
-  // This is where the row's order and the signature's order are reconciled: the
-  // tuple holds the values in the order they were read, and this hands them
-  // over in the order the parameters want them.
+  // Calls `Fn` with the values in `arguments` and returns whatever it returns. This is where the row's order and the
+  // signature's order are reconciled: the tuple holds the values in the order they were read, and this hands them over
+  // in the order the parameters want them.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static auto call_with(Machine &machine, const auto &arguments) {
     constexpr auto operand = operand_for_parameter<Fn, C>();
@@ -671,9 +610,8 @@ struct Interpreter {
     }(std::make_index_sequence<C.operands.size()>{});
   }
 
-  // One member of a returned struct. A splice in member-access position is
-  // legitimate and reads as a typo, so it appears once, here, rather than inline
-  // at the only place that wants it.
+  // One member of a returned struct. A splice in member-access position is legitimate and reads as a typo, so it
+  // appears once, here, rather than inline at the only place that wants it.
   template<std::meta::info Member>
   [[nodiscard]] static constexpr decltype(auto) member_of_result(const auto &result) {
     return result.[:Member:];
@@ -693,14 +631,11 @@ struct Interpreter {
     return "parameter " + decimal(at + 1);
   }
 
-  // The checks on a step's shape follow. Each throws from `consteval`, so a
-  // step that does not fit its operation is a compile error naming the
-  // description line and the operation, as every other mistake in a description
-  // is reported.
+  // The checks on a step's shape follow. Each throws from `consteval`, so a step that does not fit its operation is a
+  // compile error naming the description line and the operation, as every other mistake in a description is reported.
 
-  // Checks one operand against the parameter it feeds: the parameter takes it
-  // by value, a number is not passed to an enum, a constant the row wrote fits,
-  // and an address is read at a width the machine has.
+  // Checks one operand against the parameter it feeds: the parameter takes it by value, a number is not passed to an
+  // enum, a constant the row wrote fits, and an address is read at a width the machine has.
   template<std::meta::info Fn, Call C, std::size_t I>
   static consteval void check_operand_fits() {
     constexpr auto operand = C.operands[I];
@@ -711,25 +646,22 @@ struct Interpreter {
     if (std::is_reference_v<Parameter>)
       throw error(C.line, name + " takes " + parameter + " by reference; an operation takes its operands by value");
     if constexpr (operand.kind == Resolved::Kind::Constant) {
-      // An enum parameter has names for its values, and a spelling annotation
-      // exists to expose them, so a description must name one rather than cast
-      // a number into it. That holds for a number read from the opcode as much
-      // as one written in the row.
+      // An enum parameter has names for its values, and a spelling annotation exists to expose them, so a description
+      // must name one rather than cast a number into it. That holds for a number read from the opcode as much as one
+      // written in the row.
       if (std::is_enum_v<Parameter>)
         throw error(C.line, name + " takes " + parameter +
                                 " as an enum, so name one of its spellings rather than "
                                 "passing a number");
-      // A number from the opcode is bounded by its slice; one the row wrote is
-      // bounded by nothing but this.
+      // A number from the opcode is bounded by its slice; one the row wrote is bounded by nothing but this.
       if constexpr (std::integral<Parameter>)
         if (!operand.from_opcode &&
             operand.constant > static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()))
           throw error(C.line, "constant " + decimal(operand.constant) + " does not fit " + parameter + " of " + name);
     }
-    // The machine reads at two widths and the parameter's type picks between
-    // them, so any other type is refused rather than quietly read as one byte:
-    // an operation declaring `unsigned` rather than `std::uint16_t` would
-    // otherwise get half of what it asked for, zero-extended.
+    // The machine reads at two widths and the parameter's type picks between them, so any other type is refused rather
+    // than quietly read as one byte: an operation declaring `unsigned` rather than `std::uint16_t` would otherwise get
+    // half of what it asked for, zero-extended.
     if (operand.indirect && !std::same_as<Parameter, std::uint8_t> && !std::same_as<Parameter, std::uint16_t>)
       throw error(C.line, name + " reads " + parameter +
                               " through an address, so it must be std::uint8_t or "
@@ -743,8 +675,8 @@ struct Interpreter {
         std::make_index_sequence<C.operands.size()>{});
   }
 
-  // Checks a step against the operation it applies: the row supplies every
-  // parameter the operation has, and each operand suits its parameter.
+  // Checks a step against the operation it applies: the row supplies every parameter the operation has, and each
+  // operand suits its parameter.
   template<std::meta::info Fn, Call C>
   static consteval void check_operands_fit() {
     if (asks_for_machine<Fn>)
@@ -756,13 +688,11 @@ struct Interpreter {
     check_each_operand_fits<Fn, C>();
   }
 
-  // Checks a step's destinations against what the operation returns. The
-  // result decides how many the row names: none for `void`, one or more for a
-  // single value, and exactly one per part for a result that comes apart. A
-  // result with one part is refused rather than guessed at: it describes one
-  // value as well as it describes a bundle holding one, and a row would be
-  // written differently depending on which was meant. Then each destination
-  // must be able to take what it is handed.
+  // Checks a step's destinations against what the operation returns. The result decides how many the row names: none
+  // for `void`, one or more for a single value, and exactly one per part for a result that comes apart. A result with
+  // one part is refused rather than guessed at: it describes one value as well as it describes a bundle holding one,
+  // and a row would be written differently depending on which was meant. Then each destination must be able to take
+  // what it is handed.
   template<std::meta::info Fn, Call C, typename Result>
   static consteval void check_destinations_fit(const std::span<const std::meta::info> parts) {
     const auto name = quoted_name_of(Fn);
@@ -781,11 +711,9 @@ struct Interpreter {
     }
     else if (destinations == 0)
       throw error(C.line, name + " returns a value, so this row must name a destination");
-    // A `-` drops anything, a location takes whatever the machine can write
-    // there, and an address takes only the widths the machine writes at. The
-    // widths are spelled through aliases of our own because a reflect-expression
-    // may not name a using-declarator, which is how a standard library may bring
-    // `uint8_t` into `std`.
+    // A `-` drops anything, a location takes whatever the machine can write there, and an address takes only the widths
+    // the machine writes at. The widths are spelled through aliases of our own because a reflect-expression may not
+    // name a using-declarator, which is how a standard library may bring `uint8_t` into `std`.
     using Byte = std::uint8_t;
     using Word = std::uint16_t;
     for (const auto [at, destination]: std::views::enumerate(C.destinations)) {
@@ -805,12 +733,10 @@ struct Interpreter {
     }
   }
 
-  // Checks a step used as a condition against the operation it applies: it
-  // reaches no machine, is supplied every parameter, names no destination, and
-  // answers yes or no. A condition tests only what the row hands it, so that
-  // the row says everything the branch depends on; that rules out a member of
-  // the machine, even a `const` one, since a machine in hand can be asked
-  // anything.
+  // Checks a step used as a condition against the operation it applies: it reaches no machine, is supplied every
+  // parameter, names no destination, and answers yes or no. A condition tests only what the row hands it, so that the
+  // row says everything the branch depends on; that rules out a member of the machine, even a `const` one, since a
+  // machine in hand can be asked anything.
   template<std::meta::info Fn, Call C>
   static consteval void check_condition_fits() {
     const auto name = quoted_name_of(Fn);
@@ -828,44 +754,39 @@ struct Interpreter {
     check_each_operand_fits<Fn, C>();
   }
 
-  // Runs one step: reads its operands, calls the operation, and stores what it
-  // returns in the step's destinations. Arguments are supplied positionally, or
-  // by name where the row said so; destinations destructure the result in
+  // Runs one step: reads its operands, calls the operation, and stores what it returns in the step's destinations.
+  // Arguments are supplied positionally, or by name where the row said so; destinations destructure the result in
   // declaration order.
   template<std::meta::info Fn, Call C>
   static void apply(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
-    // Gating the body on the arity, rather than only asserting it, keeps a wrong
-    // count from being one message followed by twenty: the `decltype` below
-    // instantiates a parameter type per operand, and an operand with no
-    // parameter would index past the end of the parameter list.
+    // Gating the body on the arity, rather than only asserting it, keeps a wrong count from being one message followed
+    // by twenty: the `decltype` below instantiates a parameter type per operand, and an operand with no parameter would
+    // index past the end of the parameter list.
     constexpr bool arity_matches = C.operands.size() == arity_of<Fn>;
     consteval { check_operands_fit<Fn, C>(); }
     if constexpr (arity_matches) {
       const auto call = [&machine](const auto &arguments) { return call_with<Fn, C>(machine, arguments); };
 
-      // Unevaluated, despite everything just said about operands having effects:
-      // `decltype` asks for the type and calls nothing.
+      // Unevaluated, despite everything just said about operands having effects: `decltype` asks for the type and calls
+      // nothing.
       using Result = decltype(call(operands_of<Fn, C>(machine, decoded, indexed)));
-      // A `std::span`, and safe to hold: `decomposes_into` promotes its contents
-      // with `define_static_array`, so what this points at has static storage and
-      // `members[at]` is a constant expression a splice can use.
+      // A `std::span`, and safe to hold: `decomposes_into` promotes its contents with `define_static_array`, so what
+      // this points at has static storage and `members[at]` is a constant expression a splice can use.
       static constexpr auto members = decomposes_into(^^Result, C.line);
       consteval { check_destinations_fit<Fn, C, Result>(members); }
       if constexpr (std::is_void_v<Result>) {
         call(operands_of<Fn, C>(machine, decoded, indexed));
       }
       else if constexpr (members.size() > 1) {
-        // A result that comes apart is typically a value and the flags it set,
-        // one destination per part.
+        // A result that comes apart is typically a value and the flags it set, one destination per part.
         const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
         template for (constexpr auto at: std::views::iota(0uz, C.destinations.size())) {
           store<C.destinations[at], C.line>(machine, decoded, indexed, member_of_result<members[at]>(result));
         }
       }
       else {
-        // More than one *destination* is how an instruction writes one result to
-        // two places, as the Z80's `dd cb d op` puts it through the addressing mode
-        // and into the register its low bits name.
+        // More than one *destination* is how an instruction writes one result to two places, as the Z80's `dd cb d op`
+        // puts it through the addressing mode and into the register its low bits name.
         const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
         template for (constexpr auto destination: C.destinations)
             store<destination, C.line>(machine, decoded, indexed, result);
@@ -873,23 +794,22 @@ struct Interpreter {
     }
   }
 
-  // Runs one `if` step and returns its answer. A condition is applied like any
-  // other operation; only what is done with the answer differs.
+  // Runs one `if` step and returns its answer. A condition is applied like any other operation; only what is done with
+  // the answer differs.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static bool evaluate(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     consteval { check_condition_fits<Fn, C>(); }
-    // Gated for the same reason `apply` is: a condition that does not fit gets
-    // one message rather than that message and the cascade from calling it.
+    // Gated for the same reason `apply` is: a condition that does not fit gets one message rather than that message and
+    // the cascade from calling it.
     if constexpr (!machine_member<Fn> && C.operands.size() == arity_of<Fn>)
       return call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
     else
       return false;
   }
 
-  // The vocabulary member a step's `{...}` operation reference names at this
-  // opcode, or an empty member for a step that wrote its operation by name. A
-  // member may bind the operation late, and may append an operand the encoding
-  // does not carry.
+  // The vocabulary member a step's `{...}` operation reference names at this opcode, or an empty member for a step that
+  // wrote its operation by name. A member may bind the operation late, and may append an operand the encoding does not
+  // carry.
   [[nodiscard]] static constexpr Member member_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
     if (!step.operation_reference)
@@ -898,8 +818,8 @@ struct Interpreter {
         *step.operation_reference);
   }
 
-  // The `Call` a step becomes: its operands and destinations resolved against
-  // this opcode, then whatever the vocabulary member appends.
+  // The `Call` a step becomes: its operands and destinations resolved against this opcode, then whatever the vocabulary
+  // member appends.
   [[nodiscard]] static constexpr Call call_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
     const auto member = member_for(step, matched, opcode, rules);
@@ -910,8 +830,8 @@ struct Interpreter {
         throw table_error(Compiled::file, line, "too many operands");
     for (const auto &written: step.destinations) {
       auto destination = resolve(at, written);
-      // The idle cycle belongs to a write-back, so only to something read through
-      // the same address it will be written through.
+      // The idle cycle belongs to a write-back, so only to something read through the same address it will be written
+      // through.
       const auto was_read = std::ranges::any_of(
           result.operands, [&](const Resolved &operand) { return same_address(operand, destination); });
       if (!was_read)
@@ -919,83 +839,69 @@ struct Interpreter {
       if (!result.destinations.try_push_back(destination))
         throw table_error(Compiled::file, line, "too many destinations");
     }
-    // A vocabulary member may append an operand the encoding does not carry. It
-    // named no vocabulary, so it is already resolved and has no scope: which enum
-    // a name means here is the parameter's business.
+    // A vocabulary member may append an operand the encoding does not carry. It named no vocabulary, so it is already
+    // resolved and has no scope: which enum a name means here is the parameter's business.
     for (const auto &argument: member.arguments)
       if (!result.operands.try_push_back(as_resolved(argument)))
         throw table_error(Compiled::file, line, "too many operands");
     return result;
   }
 
-  // The signature of every generated handler. One signature, because a table of
-  // function pointers has one, so `latch` and `view` ride on every handler even
-  // where no prefix can reach it; both are arguments because a prefix chooses
-  // them and the row's own bytes do not carry them. A handler does not report
-  // where to go next: a `goto` row tail-calls the next table's handler, so a run
-  // of prefix bytes costs a fetch a byte rather than a frame a byte.
+  // The signature of every generated handler. One signature, because a table of function pointers has one, so `latch`
+  // and `view` ride on every handler even where no prefix can reach it; both are arguments because a prefix chooses
+  // them and the row's own bytes do not carry them. A handler does not report where to go next: a `goto` row tail-calls
+  // the next table's handler, so a run of prefix bytes costs a fetch a byte rather than a frame a byte.
   //
-  // Positional rather than bundled into a struct, because bundling was measured
-  // to cost more through a function pointer (notes/MEASUREMENTS.md).
+  // Positional rather than bundled into a struct, because bundling was measured to cost more through a function pointer
+  // (notes/MEASUREMENTS.md).
   using Handler = void (*)(Machine &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
-  // One row, fully unrolled: every step spliced in, in order, with nothing of the
-  // table surviving into the generated code. There is one of these per *body*, a
-  // row together with the slices it reads, so every opcode of a row that reads
-  // none of its variable bits shares one; `body_key` is what decides. Each is
-  // typically a handful of instructions, because every choice below is made at
-  // compile time.
+  // One row, fully unrolled: every step spliced in, in order, with nothing of the table surviving into the generated
+  // code. There is one of these per *body*, a row together with the slices it reads, so every opcode of a row that
+  // reads none of its variable bits shares one; `body_key` is what decides. Each is typically a handful of
+  // instructions, because every choice below is made at compile time.
   //
-  // `Table` and `BodyKey` are template parameters rather than arguments precisely
-  // so that `Compiled::rows()[Index]`, the vocabulary lookups, and the renaming rules
-  // are all constants here. `BodyKey` is not the opcode: it is the opcode with
-  // every slice this body does not read cleared, so the compile-time lookups
-  // below see only the bits that vary the code they generate, while the run-time
-  // `opcode` parameter still carries all of them. See `body_key`.
+  // `Table` and `BodyKey` are template parameters rather than arguments precisely so that `Compiled::rows()[Index]`,
+  // the vocabulary lookups, and the renaming rules are all constants here. `BodyKey` is not the opcode: it is the
+  // opcode with every slice this body does not read cleared, so the compile-time lookups below see only the bits that
+  // vary the code they generate, while the run-time `opcode` parameter still carries all of them. See `body_key`.
   template<std::uint8_t Table, std::uint8_t BodyKey, std::size_t Index>
   static void execute_one(
       Machine &machine, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
-    // A reference into the compiled arrays, which have static storage, so the
-    // expansion statement below can walk `row.steps` as a range: a range's
-    // *address* has to be a constant, and a local copy's would not be.
+    // A reference into the compiled arrays, which have static storage, so the expansion statement below can walk
+    // `row.steps` as a range: a range's *address* has to be a constant, and a local copy's would not be.
     static constexpr auto row = Compiled::rows()[Index];
-    // A renaming applies to every row this table decodes, inherited or its own. A
-    // rule names the vocabulary it rewrites, not just the member, so a row can opt
-    // out of a renaming by naming a vocabulary no rule mentions. (That is how the
-    // Z80's `ld {real:y}, {index_mem:view}` keeps a real h.)
+    // A renaming applies to every row this table decodes, inherited or its own. A rule names the vocabulary it
+    // rewrites, not just the member, so a row can opt out of a renaming by naming a vocabulary no rule mentions. (That
+    // is how the Z80's `ld {real:y}, {index_mem:view}` keeps a real h.)
     static constexpr auto rules = Compiled::tables()[Table].rules;
-    // The base this body is displaced through, if any. `static` because the
-    // lambda below uses it without capturing it, so it has to have static
-    // storage.
+    // The base this body is displaced through, if any. `static` because the lambda below uses it without capturing it,
+    // so it has to have static storage.
     static constexpr auto displaced = displaced_through(Compiled::vocabularies(), row, BodyKey, rules);
     constexpr bool entered_latched = Compiled::latched()[Table];
-    // The displacement byte comes before any immediate, unless the table was
-    // entered with one already latched, in which case it arrived before this
-    // opcode did.
+    // The displacement byte comes before any immediate, unless the table was entered with one already latched, in which
+    // case it arrived before this opcode did.
     const std::uint8_t displacement =
         row.reads_displacement || (displaced && !entered_latched) ? machine.fetch_immediate() : latch;
-    // A `goto` is the whole of its row: a prefix reads no operands and has no
-    // immediate, so nothing below this line applies to one. It is also why the
-    // hand-over happens *here* rather than among the steps: a mandatory tail
-    // call abandons the frame, so it is refused wherever a local has had its
-    // address taken, and the lambda that forms `indexed` takes several.
+    // A `goto` is the whole of its row: a prefix reads no operands and has no immediate, so nothing below this line
+    // applies to one. It is also why the hand-over happens *here* rather than among the steps: a mandatory tail call
+    // abandons the frame, so it is refused wherever a local has had its address taken, and the lambda that forms
+    // `indexed` takes several.
     if constexpr (row.steps.size() == 1 && row.steps[0].kind == Step::Kind::Goto) {
       constexpr auto step = row.steps[0];
       constexpr std::uint8_t next_table = step.target;
       const auto next_view = static_cast<std::uint8_t>(step.forwards_view ? view : step.target_view);
-      // The next table's opcode is fetched here, since the hand-over is the loop.
-      // A latched table's opcode arrives as an operand read rather than an
-      // instruction fetch: the machine has already committed, so it costs less
-      // and does not refresh.
+      // The next table's opcode is fetched here, since the hand-over is the loop. A latched table's opcode arrives as
+      // an operand read rather than an instruction fetch: the machine has already committed, so it costs less and does
+      // not refresh.
       const auto next_opcode = Compiled::latched()[next_table] ? machine.fetch_immediate() : machine.fetch_opcode();
       [[gnu::musttail]] return dispatch<next_table>[next_opcode](machine, displacement, next_view, next_opcode);
     }
     else {
 
-      // The encoding column says what is fetched, and it is fetched once, before
-      // any step, rather than where it is used: the order arguments are
-      // evaluated in is unspecified, so a fetch inside a call could land after
-      // a memory access the row puts before it.
+      // The encoding column says what is fetched, and it is fetched once, before any step, rather than where it is
+      // used: the order arguments are evaluated in is unspecified, so a fetch inside a call could land after a memory
+      // access the row puts before it.
       const std::uint16_t immediate = [&machine] -> std::uint16_t {
         if constexpr (row.immediate_bytes == 2)
           return machine.fetch_immediate16();
@@ -1006,18 +912,16 @@ struct Interpreter {
           return 0;
         }
       }();
-      // Formed once, after both, and handed to every operand that shares it. The
-      // machine is told what else was read first, because a machine may fold
-      // those reads into the window that forms the address, as the Z80 does.
+      // Formed once, after both, and handed to every operand that shares it. The machine is told what else was read
+      // first, because a machine may fold those reads into the window that forms the address, as the Z80 does.
       const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
       const std::uint16_t indexed = [&machine, decoded, displacement] -> std::uint16_t {
         if constexpr (displaced) {
-          // A latched table read its opcode inside the same window, so that byte
-          // counts too, and the machine is charged for the window once rather
-          // than for each read inside it.
+          // A latched table read its opcode inside the same window, so that byte counts too, and the machine is charged
+          // for the window once rather than for each read inside it.
           //
-          // The count is a template argument so that the machine, which knows how
-          // long its window is, can refuse a count it cannot hold at compile time.
+          // The count is a template argument so that the machine, which knows how long its window is, can refuse a
+          // count it cannot hold at compile time.
           constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
           consteval { check_window_holds<read_inside>(row.line); }
           return machine.template displaced_address<read_inside>(
@@ -1026,20 +930,17 @@ struct Interpreter {
         else
           return 0;
       }();
-      // Expanded, not looped: the body is instantiated once per step, and `step` is
-      // `constexpr` inside it, which is what lets its contents be template
-      // arguments. A `return` here leaves `execute_one`, not the expansion.
+      // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
+      // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
       template for (constexpr auto step: row.steps) {
         {
           constexpr auto member = member_for(step, row.matched, BodyKey, rules);
           constexpr auto verb = step.operation_reference ? member.operation : step.operation;
           constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
           if constexpr (step.kind == Step::Kind::If) {
-            // The rest of the row is the conditional half, which is where the
-            // extra cycles of a taken branch come from too. `break` rather than
-            // `return`, because abandoning the rest of a row is not abandoning
-            // the run: the hand-over below still has to happen, and a `return`
-            // here stops the machine at the first untaken branch.
+            // The rest of the row is the conditional half, which is where the extra cycles of a taken branch come from
+            // too. `break` rather than `return`, because abandoning the rest of a row is not abandoning the run: the
+            // hand-over below still has to happen, and a `return` here stops the machine at the first untaken branch.
             if (!evaluate<find_operation(verb, row.line), call>(machine, decoded, indexed))
               break;
           }
@@ -1048,8 +949,7 @@ struct Interpreter {
         }
       }
     }
-    // The row is done, so hand on to the next instruction rather than returning:
-    // this hand-over is the run loop.
+    // The row is done, so hand on to the next instruction rather than returning: this hand-over is the run loop.
     [[gnu::musttail]] return continue_running(machine, 0, 0, 0);
   }
 
@@ -1057,16 +957,13 @@ struct Interpreter {
   // One function per instruction
   // ---------------------------------------------------------------------------
   //
-  // A row's distinct bodies are the combinations of the slices it *reads*: a
-  // catch-all reading none is one function for every opcode it claims, and a row
-  // reading two three-bit slices is sixty-four. The functions below enumerate
-  // those bodies once each and fill a table's 256 entries by pointing at them.
+  // A row's distinct bodies are the combinations of the slices it *reads*: a catch-all reading none is one function for
+  // every opcode it claims, and a row reading two three-bit slices is sixty-four. The functions below enumerate those
+  // bodies once each and fill a table's 256 entries by pointing at them.
 
-  // Which of a row's slices, as indices into `row.matched.slices`, change the
-  // generated code. Three kinds do not: a view is a run-time value, a numeric
-  // vocabulary is read straight out of the opcode, and the mnemonic's own
-  // references are the disassembler's business; nothing below this line ever
-  // looks at `row.pieces`.
+  // Which of a row's slices, as indices into `row.matched.slices`, change the generated code. Three kinds do not: a
+  // view is a run-time value, a numeric vocabulary is read straight out of the opcode, and the mnemonic's own
+  // references are the disassembler's business; nothing below this line ever looks at `row.pieces`.
   [[nodiscard]] static constexpr Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
     Vector<std::uint8_t, Pattern::max_slices> used;
     const auto note = [&used](const Reference reference) {
@@ -1074,8 +971,8 @@ struct Interpreter {
         return;
       if (std::ranges::contains(used, reference.slice_index))
         return;
-      // Cannot overflow: these are distinct slice indices of one pattern, and a
-      // pattern holds at most `Pattern::max_slices` of them.
+      // Cannot overflow: these are distinct slice indices of one pattern, and a pattern holds at most
+      // `Pattern::max_slices` of them.
       static_cast<void>(used.try_push_back(reference.slice_index));
     };
     for (const auto &step: row.steps) {
@@ -1091,13 +988,11 @@ struct Interpreter {
     return used;
   }
 
-  // The encoding with every unread variable bit cleared, which names the body
-  // this opcode wants: two opcodes of one row share a body exactly when this
-  // agrees. The slices `slices_read_by` leaves out must be exactly the ones the
-  // generated code does not branch on; a new kind of reference the code
-  // branches on has to be noted there, or two opcodes would share a body they
-  // disagree about. TableTest checks that every opcode of every body agrees
-  // with its key.
+  // The encoding with every unread variable bit cleared, which names the body this opcode wants: two opcodes of one row
+  // share a body exactly when this agrees. The slices `slices_read_by` leaves out must be exactly the ones the
+  // generated code does not branch on; a new kind of reference the code branches on has to be noted there, or two
+  // opcodes would share a body they disagree about. TableTest checks that every opcode of every body agrees with its
+  // key.
   [[nodiscard]] static constexpr std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
     auto result = row.matched.opcode_bits;
     for (const auto index: slices_read_by(row)) {
@@ -1107,8 +1002,8 @@ struct Interpreter {
     return result;
   }
 
-  // One generated function, named by the row it runs, as an index into `Compiled::rows()`, and the encoding that
-  // fixes every slice the row reads, which is its `body_key`.
+  // One generated function, named by the row it runs, as an index into `Compiled::rows()`, and the encoding that fixes
+  // every slice the row reads, which is its `body_key`.
   struct Body {
     std::size_t row{};
     std::uint8_t opcode{};
@@ -1124,9 +1019,8 @@ struct Interpreter {
   // decodes to some row, since `Compiled` checks that, so the lookup is dereferenced unasked.
   [[nodiscard]] static consteval Decoding decoding_for(const std::uint8_t table) {
     Decoding result;
-    // Indexed, never searched: `made[row][key]` is the body this row already has
-    // for that combination of the slices it reads. Per row as well as per key,
-    // because two rows may narrow to the same encoding and are still two rows.
+    // Indexed, never searched: `made[row][key]` is the body this row already has for that combination of the slices it
+    // reads. Per row as well as per key, because two rows may narrow to the same encoding and are still two rows.
     std::vector<std::array<std::optional<std::uint16_t>, 256>> made(Compiled::rows().size());
     for (const auto opcode: std::views::iota(0uz, 256uz)) {
       const auto row = *Compiled::find_row(table, static_cast<std::uint8_t>(opcode));
@@ -1148,10 +1042,9 @@ struct Interpreter {
   template<std::uint8_t Table>
   static constexpr auto body_of = decoding_for(Table).body_of;
 
-  // A table's 256 handlers, one per opcode, pointing at the bodies `bodies_of`
-  // enumerated. `execute_one` takes its row and encoding as template arguments,
-  // which a `template for` can supply and a loop cannot; filling the entries
-  // from the functions made is a loop, because by then they are values.
+  // A table's 256 handlers, one per opcode, pointing at the bodies `bodies_of` enumerated. `execute_one` takes its row
+  // and encoding as template arguments, which a `template for` can supply and a loop cannot; filling the entries from
+  // the functions made is a loop, because by then they are values.
   template<std::uint8_t Table>
   static constexpr auto dispatch = [] {
     std::array<Handler, bodies_of<Table>.size()> made{};
@@ -1163,15 +1056,13 @@ struct Interpreter {
     return handlers;
   }();
 
-  // Starts the next instruction: asks the machine whether there is one, fetches
-  // its opcode and tail-calls the entry table's handler for it. Every handler
-  // ends here, and this ends in the next handler, so a run of instructions is
-  // a chain of tail calls and the stack never grows. The machine decides
-  // whether there is a next one: `start_instruction` is where a Z80 takes its
-  // interrupt and idles its halt, none of which is the framework's business.
+  // Starts the next instruction: asks the machine whether there is one, fetches its opcode and tail-calls the entry
+  // table's handler for it. Every handler ends here, and this ends in the next handler, so a run of instructions is a
+  // chain of tail calls and the stack never grows. The machine decides whether there is a next one: `start_instruction`
+  // is where a Z80 takes its interrupt and idles its halt, none of which is the framework's business.
   //
-  // Handler-shaped so that the tail call out of a handler is a tail call: the
-  // three arguments a fresh instruction has no use for are passed as zero.
+  // Handler-shaped so that the tail call out of a handler is a tail call: the three arguments a fresh instruction has
+  // no use for are passed as zero.
   static void continue_running(Machine &machine, std::uint8_t, std::uint8_t, std::uint8_t) {
     if (!machine.start_instruction())
       return;
@@ -1179,10 +1070,9 @@ struct Interpreter {
     [[gnu::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
   }
 
-  // Asks whether the machine will form a displaced address with this many
-  // bytes already read inside its window. A machine refuses a count by
-  // constraining `displaced_address`; asking first turns that refusal into a
-  // diagnostic against the row that needs the count.
+  // Asks whether the machine will form a displaced address with this many bytes already read inside its window. A
+  // machine refuses a count by constraining `displaced_address`; asking first turns that refusal into a diagnostic
+  // against the row that needs the count.
   template<std::uint8_t BytesRead>
   static consteval void check_window_holds(const std::size_t line) {
     if constexpr (!requires(Machine &machine, const std::uint16_t base, const std::uint8_t offset) {
@@ -1193,11 +1083,10 @@ struct Interpreter {
                             "machine's window holds");
   }
 
-  // Starts the run. The handlers tail-call each other from here on, so this is
-  // the only frame the run keeps.
+  // Starts the run. The handlers tail-call each other from here on, so this is the only frame the run keeps.
   //
-  // The machine's locations are checked here rather than by `TargetLike`, because the check needs this class's own
-  // scan of the machine; this is the one entry point, so it runs once regardless. The description was checked when
+  // The machine's locations are checked here rather than by `TargetLike`, because the check needs this class's own scan
+  // of the machine; this is the one entry point, so it runs once regardless. The description was checked when
   // `Compiled` was instantiated.
   static void run(Machine &machine) {
     consteval { check_location_names_unique(); }

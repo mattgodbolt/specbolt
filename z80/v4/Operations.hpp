@@ -1,9 +1,8 @@
 #pragma once
 
-// The verbs of the description that touch no chip: a palette, every public
-// static function of which a row may name. Z80.hpp says which verbs are the
-// chip's own instead; the arithmetic the rows share with the other
-// implementations is in `Alu`, a second palette.
+// The verbs of the description that touch no chip: a palette, every public static function of which a row may name.
+// Z80.hpp says which verbs are the chip's own instead; the arithmetic the rows share with the other implementations is
+// in `Alu`, a second palette.
 
 #include "z80/common/Alu.hpp"
 #include "z80/common/Flags.hpp"
@@ -25,10 +24,9 @@ struct Operations {
     return static_cast<std::uint16_t>(value - 1);
   }
 
-  // The flags `bit b, value` leaves. `Alu::bit` takes a mask; the encoding
-  // carries an index, as `res` and `set` do. Flags 3 and 5 come from whatever
-  // was last on the bus, which the row names. Not `bit`, because `Alu::bit` is
-  // in the same search and the two would be ambiguous.
+  // The flags `bit b, value` leaves. `Alu::bit` takes a mask; the encoding carries an index, as `res` and `set` do.
+  // Flags 3 and 5 come from whatever was last on the bus, which the row names. Not `bit`, because `Alu::bit` is in the
+  // same search and the two would be ambiguous.
   [[nodiscard]] static constexpr Flags test_bit(
       const std::uint8_t value, const std::uint8_t bit, const Flags flags, const std::uint8_t bus) {
     return Alu::bit(value, static_cast<std::uint8_t>(1u << bit), flags, bus);
@@ -41,9 +39,8 @@ struct Operations {
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
-  // Conditions: an `if` step applies one of these and abandons the rest of the
-  // row when it answers false. A vocabulary member binds one and appends the
-  // flag bit it asks about, as `nz:is_clear(zero)` does.
+  // Conditions: an `if` step applies one of these and abandons the rest of the row when it answers false. A vocabulary
+  // member binds one and appends the flag bit it asks about, as `nz:is_clear(zero)` does.
   [[nodiscard]] static constexpr bool is_set(const bool flag) { return flag; }
   [[nodiscard]] static constexpr bool is_clear(const bool flag) { return !flag; }
   [[nodiscard]] static constexpr bool nonzero(const std::uint8_t value) { return value != 0; }

@@ -1,8 +1,7 @@
 #pragma once
 
-// What refract generates for: the Z80, the verbs its description may name, and
-// the description itself. This is the whole of the Z80's side of the contract
-// with the library; a second machine would be a second one of these.
+// What refract generates for: the Z80, the verbs its description may name, and the description itself. This is the
+// whole of the Z80's side of the contract with the library; a second machine would be a second one of these.
 
 #include "Operations.hpp"
 #include "refract/Compiled.hpp"
@@ -30,17 +29,15 @@ struct Z80Source {
   }();
 };
 
-// What `refract::Interpreter` is instantiated on: the machine, its compiled
-// description, and the palettes. `TargetLike` in refract/Machine.hpp is the
-// contract this meets.
+// What `refract::Interpreter` is instantiated on: the machine, its compiled description, and the palettes. `TargetLike`
+// in refract/Machine.hpp is the contract this meets.
 struct Target {
   using Machine = Z80;
   using Compiled = refract::Compiled<Z80Source>;
 
-  // The palettes: types built to be named, every public static function of
-  // which is a verb. The chip's own verbs are the members `Z80` publishes with
-  // `[[=refract::operation]]`, and its locations are whatever it can `read`,
-  // so neither is listed here.
+  // The palettes: types built to be named, every public static function of which is a verb. The chip's own verbs are
+  // the members `Z80` publishes with `[[=refract::operation]]`, and its locations are whatever it can `read`, so
+  // neither is listed here.
   static consteval std::vector<std::meta::info> palettes() { return {^^Operations, ^^Alu}; }
 };
 

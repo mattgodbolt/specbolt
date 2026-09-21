@@ -1,9 +1,8 @@
 #pragma once
 
-// Everything that parses a fragment of text without needing the whole
-// description: which kind of line this is, what an operand says, what a
-// vocabulary member says. Each takes a string and a line number and returns a
-// value, so each is testable a line at a time.
+// Everything that parses a fragment of text without needing the whole description: which kind of line this is, what an
+// operand says, what a vocabulary member says. Each takes a string and a line number and returns a value, so each is
+// testable a line at a time.
 
 #include "refract/Model.hpp"
 #include "refract/Parser.hpp"
@@ -24,17 +23,15 @@ namespace specbolt::refract {
   return text;
 }
 
-// Whether the line opens with `keyword` as a whole word. A keyword on its own
-// is still that keyword, so `table` with no name reaches the diagnostic that
-// says so rather than being silently ignored.
+// Whether the line opens with `keyword` as a whole word. A keyword on its own is still that keyword, so `table` with no
+// name reaches the diagnostic that says so rather than being silently ignored.
 [[nodiscard]] constexpr bool is_directive(const std::string_view line, const std::string_view keyword) {
   return line.starts_with(keyword) &&
          (line.size() == keyword.size() || line[keyword.size()] == ' ' || line[keyword.size()] == '\t');
 }
 [[nodiscard]] constexpr bool is_vocabulary(const std::string_view line) { return is_directive(line, "vocab"); }
 [[nodiscard]] constexpr bool is_table(const std::string_view line) { return is_directive(line, "table"); }
-// Whether the line is a row: not blank, a comment or a declaration, and with a
-// `|` in it.
+// Whether the line is a row: not blank, a comment or a declaration, and with a `|` in it.
 [[nodiscard]] constexpr bool is_row(const std::string_view line) {
   return !line.empty() && line.front() != '#' && !is_vocabulary(line) && !is_table(line) && line.contains('|');
 }
@@ -46,17 +43,14 @@ namespace specbolt::refract {
   return static_cast<std::uint8_t>(value.front() - '0');
 }
 
-// Parses an operand as a row or a member writes it: `-`, `n`, a number, or a
-// name, any of which may be wrapped `(...)` as an address, with `+d` inside
-// the parentheses for a displaced one, and `/delay=n` on the end for the idle
-// cycles a write back through it costs. Anything in braces is a vocabulary
-// reference, which is `parse_operand`'s business.
+// Parses an operand as a row or a member writes it: `-`, `n`, a number, or a name, any of which may be wrapped `(...)`
+// as an address, with `+d` inside the parentheses for a displaced one, and `/delay=n` on the end for the idle cycles a
+// write back through it costs. Anything in braces is a vocabulary reference, which is `parse_operand`'s business.
 [[nodiscard]] constexpr Operand parse_simple_operand(
     std::string_view word, const std::size_t line, const std::uint8_t immediate_bytes) {
   if (word.empty())
     throw table_error(line, "empty operand in action");
-  // An addressing mode written out in a row says what it costs the same way a
-  // vocabulary member does.
+  // An addressing mode written out in a row says what it costs the same way a vocabulary member does.
   if (const auto slash = word.find('/'); slash != std::string_view::npos) {
     Parser attribute(word.substr(slash + 1));
     if (attribute.take_until('=') != "delay")
@@ -90,9 +84,8 @@ namespace specbolt::refract {
   if (word.front() >= '0' && word.front() <= '9') {
     const auto hex = word.starts_with("0x");
     const auto digits = hex ? word.substr(2) : word;
-    // Into an `unsigned` and then range-checked, rather than straight into a
-    // `std::uint16_t`, so that "too big" and "not a number" stay separate
-    // answers however far past 16 bits the text goes.
+    // Into an `unsigned` and then range-checked, rather than straight into a `std::uint16_t`, so that "too big" and
+    // "not a number" stay separate answers however far past 16 bits the text goes.
     unsigned value = 0;
     const auto [end, failure] = std::from_chars(digits.data(), digits.data() + digits.size(), value, hex ? 16 : 10);
     if (failure == std::errc::result_out_of_range || value > 0xffff)
@@ -106,10 +99,9 @@ namespace specbolt::refract {
   return {{.name = Name{word}}, Operand::Kind::Named};
 }
 
-// Splits display text around the values it renders rather than spells: `$nn`
-// and `$nnnn` come from the encoding, `+d` is the displacement an indexed mode
-// carries. Both a row's mnemonic and a vocabulary member's text are lowered
-// with this, so neither is parsed at runtime.
+// Splits display text around the values it renders rather than spells: `$nn` and `$nnnn` come from the encoding, `+d`
+// is the displacement an indexed mode carries. Both a row's mnemonic and a vocabulary member's text are lowered with
+// this, so neither is parsed at runtime.
 [[nodiscard]] constexpr std::vector<Piece> pieces_of(Parser text, const std::size_t line) {
   std::vector<Piece> pieces;
 
@@ -152,10 +144,9 @@ namespace specbolt::refract {
   return pieces;
 }
 
-// Splits `name=rest` into the parameter an operand names and the operand, or
-// returns the word whole with an empty name. A keyword is an identifier
-// followed by `=`, which is what keeps `(hl)/delay=1` from looking like one:
-// what precedes its `=` is not an identifier.
+// Splits `name=rest` into the parameter an operand names and the operand, or returns the word whole with an empty name.
+// A keyword is an identifier followed by `=`, which is what keeps `(hl)/delay=1` from looking like one: what precedes
+// its `=` is not an identifier.
 [[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(
     const std::string_view word, const std::size_t line) {
   const auto at = word.find('=');
@@ -174,10 +165,9 @@ namespace specbolt::refract {
   return {Name{keyword}, word.substr(at + 1)};
 }
 
-// Parses one vocabulary member, written
-// `display[:operation[(argument, ...)]][/delay=n]`, or `-` for a hole. The
-// display is itself an operand, and the arguments are operands the member
-// appends to the row's, each of which may be `name=`d.
+// Parses one vocabulary member, written `display[:operation[(argument, ...)]][/delay=n]`, or `-` for a hole. The
+// display is itself an operand, and the arguments are operands the member appends to the row's, each of which may be
+// `name=`d.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);
   Parser parser(whole.take_until('/'));

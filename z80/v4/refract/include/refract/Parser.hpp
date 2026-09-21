@@ -6,16 +6,14 @@
 
 namespace specbolt::refract {
 
-// A cursor over one line of the description, consuming it from the front.
-// Ordinary text handling: everything it hands back is a `std::string_view` into
-// the original, and the position is the whole of its state.
+// A cursor over one line of the description, consuming it from the front. Ordinary text handling: everything it hands
+// back is a `std::string_view` into the original, and the position is the whole of its state.
 class Parser {
 public:
   constexpr explicit Parser(const std::string_view buf) : buf_(buf) {}
 
-  // What separates one word from the next. A newline and a backslash are in
-  // here because a logical line may span several physical ones: the text still
-  // holds the `\` and the newline it was joined at, and neither is a word.
+  // What separates one word from the next. A newline and a backslash are in here because a logical line may span
+  // several physical ones: the text still holds the `\` and the newline it was joined at, and neither is a word.
   static constexpr std::string_view blanks = " \t\r\n\\";
 
   // Text with leading and trailing blanks removed.
@@ -26,8 +24,7 @@ public:
     return text.substr(first, text.find_last_not_of(blanks) + 1 - first);
   }
 
-  // Everything up to the next `delim`, which is consumed with it; the whole of
-  // what is left if there is none.
+  // Everything up to the next `delim`, which is consumed with it; the whole of what is left if there is none.
   [[nodiscard]] constexpr std::string_view take_until(const char delim) {
     const auto pos = buf_.find(delim);
     if (pos == std::string_view::npos) {
@@ -43,8 +40,7 @@ public:
   // The next `delim`-separated field, blanks removed. A row is three of these.
   [[nodiscard]] constexpr std::string_view next_field(const char delim) { return trim(take_until(delim)); }
 
-  // The next word, or empty at the end. Any blank ends a word, so a tab
-  // separates as a space does.
+  // The next word, or empty at the end. Any blank ends a word, so a tab separates as a space does.
   [[nodiscard]] constexpr std::string_view next_word() {
     skip_any(blanks);
     const auto end = buf_.find_first_of(blanks);
@@ -53,8 +49,7 @@ public:
     return word;
   }
 
-  // Discards the next word: one that has already been recognised, such as the
-  // keyword a declaration opens with.
+  // Discards the next word: one that has already been recognised, such as the keyword a declaration opens with.
   constexpr void skip_word() { static_cast<void>(next_word()); }
 
   // Discards every leading character that is in `skip`.
@@ -79,12 +74,10 @@ struct Line {
   std::string_view text{};
 };
 
-// Splits a description into its logical lines, each numbered from one. This is
-// the only place that knows lines are numbered. A line ending in `\` continues
-// onto the next. The
-// description is one buffer, so a joined line is still one `std::string_view`
-// into it, holding the `\` and the newline, which are blanks to `Parser`. A
-// continued line is reported at the number it started on.
+// Splits a description into its logical lines, each numbered from one. This is the only place that knows lines are
+// numbered. A line ending in `\` continues onto the next. The description is one buffer, so a joined line is still one
+// `std::string_view` into it, holding the `\` and the newline, which are blanks to `Parser`. A continued line is
+// reported at the number it started on.
 [[nodiscard]] constexpr std::vector<Line> lines_of(const std::string_view description) {
   // Asked of the untrimmed text, because `trim` would take the `\` away.
   const auto continues = [](const std::string_view raw) {
@@ -109,16 +102,15 @@ struct Line {
     }
     if (continues(raw))
       continue;
-    // A continuation whose last line is blank has no trimmed text to end at, so
-    // the end comes from the untrimmed line instead. The join is trimmed again
-    // because that blank line, or a `\` with nothing after it, would otherwise
-    // leave trailing blanks inside the text.
+    // A continuation whose last line is blank has no trimmed text to end at, so the end comes from the untrimmed line
+    // instead. The join is trimmed again because that blank line, or a `\` with nothing after it, would otherwise leave
+    // trailing blanks inside the text.
     const char *end = text.empty() ? raw.data() : text.data() + text.size();
     lines.push_back({started_at, Parser::trim({begin, static_cast<std::size_t>(end - begin)})});
     begin = nullptr;
   }
-  // A `\` on the last line has nothing to join to. The text is kept rather than
-  // dropped, so whatever is wrong with it is diagnosed by whoever reads it.
+  // A `\` on the last line has nothing to join to. The text is kept rather than dropped, so whatever is wrong with it
+  // is diagnosed by whoever reads it.
   if (begin)
     lines.push_back(
         {started_at, Parser::trim({begin, static_cast<std::size_t>(description.data() + description.size() - begin)})});

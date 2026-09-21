@@ -1,55 +1,48 @@
-# The vocabularies. Each names one value per bit pattern of the slice that
-# selects it, so a vocabulary of eight members belongs to a three-bit slice and
-# one of four to a two-bit slice. A `-` member is a hole: the row does not cover
-# that opcode at all, which is how a general row leaves room for a specific one.
+# The vocabularies. Each names one value per bit pattern of the slice that selects it, so a vocabulary of eight members
+# belongs to a three-bit slice and one of four to a two-bit slice. A `-` member is a hole: the row does not cover that
+# opcode at all, which is how a general row leaves room for a specific one.
 
 # The sixteen-bit pairs, as most of the opcode space spells them.
 vocab pair : R16 = bc de hl sp
 
-# The eight-bit registers. Slot 6 is not a register but an addressing mode, and
-# it carries the idle cycle a read-modify-write through it costs.
+# The eight-bit registers. Slot 6 is not a register but an addressing mode, and it carries the idle cycle a
+# read-modify-write through it costs.
 vocab reg = b c d e h l (hl)/delay=1 a
 
-# The arithmetic group. Each member binds the primitive that does the work and
-# appends the carry it wants, so `adc` is `add8` with the carry flag on the end.
+# The arithmetic group. Each member binds the primitive that does the work and appends the carry it wants, so `adc` is
+# `add8` with the carry flag on the end.
 vocab arith = add:add8(0) adc:add8(carry) sub:sub8(0) sbc:sub8(carry)
 
-# The logical group. `cp` shares their encoding but returns flags only, so it
-# has its own rows and leaves a hole here.
+# The logical group. `cp` shares their encoding but returns flags only, so it has its own rows and leaves a hole here.
 vocab logic = and:and8 xor:xor8 or:or8 -
 
 # Which bit `bit`, `res` and `set` work on: the number is the operand.
 vocab bit = 0 1 2 3 4 5 6 7
 
-# The rotates and shifts of the cb table. `rl` and `rr` take the carry in the
-# same way the arithmetic group does. `sll` is undocumented, and shifts a one in
-# where `sla` shifts a zero.
+# The rotates and shifts of the cb table. `rl` and `rr` take the carry in the same way the arithmetic group does. `sll`
+# is undocumented, and shifts a one in where `sla` shifts a zero.
 vocab shift = rlc:rotate_circular8(left)  rrc:rotate_circular8(right) \
               rl:rotate8(left,carry)      rr:rotate8(right,carry) \
               sla:shift_arithmetic8(left) sra:shift_arithmetic8(right) \
               sll:shift_logical8(left)    srl:shift_logical8(right)
 
-# The accumulator-only rotates, which keep sign, zero and parity where the cb
-# forms above recompute them.
+# The accumulator-only rotates, which keep sign, zero and parity where the cb forms above recompute them.
 vocab arot = rlca:fast_rotate_circular8(direction=left)  rrca:fast_rotate_circular8(direction=right) \
              rla:fast_rotate8(direction=left)            rra:fast_rotate8(direction=right)
 
-# The real eight-bit registers, which no view renames: in `ld r, (ix+d)` the
-# register half is the true h or l. A rule names the vocabulary it rewrites, and
-# no rule names this one. Slot 6 is a hole so these rows leave `halt` alone.
+# The real eight-bit registers, which no view renames: in `ld r, (ix+d)` the register half is the true h or l. A rule
+# names the vocabulary it rewrites, and no rule names this one. Slot 6 is a hole so these rows leave `halt` alone.
 vocab real : R8 = b c d e h l - a
 
 # The stack's view of the pairs, which puts af where sp would be.
 vocab spair : R16 = bc de hl af
 
-# The two index registers, as a vocabulary rather than as two tables. A `dd` or
-# `fd` prefix decodes the same rows under a different *view*, and these four
-# parallel vocabularies are what a view selects between: one set of rows, one
-# set of handlers.
+# The two index registers, as a vocabulary rather than as two tables. A `dd` or `fd` prefix decodes the same rows under
+# a different *view*, and these four parallel vocabularies are what a view selects between: one set of rows, one set of
+# handlers.
 #
-# A view is an ordinal into all four at once, so they must list their registers
-# in the same order as each other: `ixh` has to sit where `ix` sits. Nothing
-# can check that, because only the Z80 knows the two are halves of a pair.
+# A view is an ordinal into all four at once, so they must list their registers in the same order as each other: `ixh`
+# has to sit where `ix` sits. Nothing can check that, because only the Z80 knows the two are halves of a pair.
 vocab index     : R16 = ix              iy
 vocab index_hi  : R8  = ixh             iyh
 vocab index_lo  : R8  = ixl             iyl
@@ -58,8 +51,8 @@ vocab index_mem : R16 = (ix+d)/delay=1  (iy+d)/delay=1
 # Where each `rst` goes. The member is the constant itself.
 vocab rst = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
 
-# The conditions. Each binds a test and appends the flag it asks about, so the
-# vocabulary is the whole of what `nz` means.
+# The conditions. Each binds a test and appends the flag it asks about, so the vocabulary is the whole of what `nz`
+# means.
 vocab cond = nz:is_clear(zero)   z:is_set(zero) \
              nc:is_clear(carry)  c:is_set(carry) \
              po:is_clear(parity) pe:is_set(parity) \
@@ -68,16 +61,15 @@ vocab cond = nz:is_clear(zero)   z:is_set(zero) \
 # The four conditions a relative jump has room to encode.
 vocab jcond = nz:is_clear(zero) z:is_set(zero) nc:is_clear(carry) c:is_set(carry)
 
-# Which way a block operation walks memory. Its members are neither locations
-# nor constants but the spellings `BlockDirection` declares for itself.
+# Which way a block operation walks memory. Its members are neither locations nor constants but the spellings
+# `BlockDirection` declares for itself.
 vocab dir : BlockDirection = i d
 
-# The interrupt modes, as the three-bit slice of the ed table spells them:
-# every mode has two encodings and mode 0 has four.
+# The interrupt modes, as the three-bit slice of the ed table spells them: every mode has two encodings and mode 0 has
+# four.
 vocab imode = 0 0 1 2 0 0 1 2
 
-# Decoding starts in the first table declared, whatever it is called.
-# Everything not reached by a prefix lives here.
+# Decoding starts in the first table declared, whatever it is called. Everything not reached by a prefix lives here.
 
 table base
 
@@ -137,23 +129,21 @@ table base
 11011101     | (dd)                 | goto indexed(ix)
 11111101     | (fd)                 | goto indexed(iy)
 
-# `cb` is a plain table switch: one more opcode fetch, decoded here instead.
-# Bit operations and the rotate family that `rlca` only hints at.
+# `cb` is a plain table switch: one more opcode fetch, decoded here instead. Bit operations and the rotate family that
+# `rlca` only hints at.
 
 table cb
 
 00yyyzzz | {shift:y} {reg:z}    | {shift:y} {reg:z}, flags <- {reg:z}
-# `bit b, (hl)` takes flags 3 and 5 from the high byte of the address on the
-# bus, which after reading through hl is h.
+# `bit b, (hl)` takes flags 3 and 5 from the high byte of the address on the bus, which after reading through hl is h.
 01bbb110 | bit {bit:b}, (hl)    | test_bit flags <- value=(hl) bit={bit:b} flags=flags bus=h ; delay 1
 01bbbzzz | bit {bit:b}, {reg:z} | test_bit flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
 10bbbzzz | res {bit:b}, {reg:z} | res {reg:z} <- {reg:z} {bit:b}
 11bbbzzz | set {bit:b}, {reg:z} | set {reg:z} <- {reg:z} {bit:b}
 
-# `dd` and `fd` are not table switches but *views*: they re-read the base table
-# with hl renamed, which is why two thirds of their entries are the base
-# instruction untouched. The rows below are the ones a rename alone gets wrong;
-# a table's own rows win over everything it inherits, wherever they are written.
+# `dd` and `fd` are not table switches but *views*: they re-read the base table with hl renamed, which is why two thirds
+# of their entries are the base instruction untouched. The rows below are the ones a rename alone gets wrong; a table's
+# own rows win over everything it inherits, wherever they are written.
 
 table indexed(view:index) = base with pair.hl  -> {index:view}, \
                                       spair.hl -> {index:view}, \
@@ -171,12 +161,11 @@ table indexed(view:index) = base with pair.hl  -> {index:view}, \
 01110zzz     | ld {index_mem:view}, {real:z} | ld8 {index_mem:view} <- {real:z}
 11001011 d   | (dd cb)                       | goto indexed_cb(view)
 
-# `dd cb d op` is the one encoding whose opcode is not its last byte, so the
-# `d` in the row above says the displacement is read here and handed on.
+# `dd cb d op` is the one encoding whose opcode is not its last byte, so the `d` in the row above says the displacement
+# is read here and handed on.
 #
-# These rows are emphatically not `cb` renamed: every one of them works on
-# memory, and the low bits name a register the result is *also* copied into.
-# Reading them as a view is wrong for most of the table (notes/PREFIXES.md).
+# These rows are emphatically not `cb` renamed: every one of them works on memory, and the low bits name a register the
+# result is *also* copied into. Reading them as a view is wrong for most of the table (notes/PREFIXES.md).
 
 table indexed_cb(view:index)
 
@@ -188,16 +177,13 @@ table indexed_cb(view:index)
 11bbb110 | set {bit:b}, {index_mem:view}           | set {index_mem:view} <- {index_mem:view} {bit:b}
 11bbbzzz | set {bit:b}, {index_mem:view}, {real:z} | set {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
 
-# `ed` is the second instruction set the Z80 grew, and the only place
-# `ld (nn), rr` exists for every pair rather than for hl alone. Its block
-# operations are the one family that repeats: they rewind the program counter
-# so the chip re-executes the opcode, which is what lets an interrupt land in
-# the middle of an `ldir`.
+# `ed` is the second instruction set the Z80 grew, and the only place `ld (nn), rr` exists for every pair rather than
+# for hl alone. Its block operations are the one family that repeats: they rewind the program counter so the chip
+# re-executes the opcode, which is what lets an interrupt land in the middle of an `ldir`.
 
 table ed
 
-# `in (c)` and `out (c), 0` are their own rows because slot 6 of `reg` is
-# `(hl)`, and neither touches memory.
+# `in (c)` and `out (c), 0` are their own rows because slot 6 of `reg` is `(hl)`, and neither touches memory.
 01110000     | in (c)               | in_c -, flags <- bc flags
 01yyy000     | in {reg:y}, (c)      | in_c {reg:y}, flags <- bc flags
 01110001     | out (c), 0           | out_c bc 0
@@ -225,6 +211,6 @@ table ed
 1011w010     | in{dir:w}r           | block_in flags <- {dir:w} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
 1011w011     | ot{dir:w}r           | block_out flags <- {dir:w} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
 
-# Everything the chip does not define in this table is a two-byte nop, which is
-# a row like any other and has to come last so the rest shadow it.
+# Everything the chip does not define in this table is a two-byte nop, which is a row like any other and has to come
+# last so the rest shadow it.
 xxxxxxxx     | nop                  | nop

@@ -2,8 +2,8 @@
 
 // Decoding: which row each opcode of each table decodes to, and what an instruction so decoded is. A row claims the
 // opcodes its pattern matches whose vocabulary members are all live; earlier rows win, and a derived table inherits
-// whatever it does not claim itself. Everything downstream, the disassembler and the interpreter alike, is built on
-// the answers here, and the whole-description rules that need them are in Checks.hpp.
+// whatever it does not claim itself. Everything downstream, the disassembler and the interpreter alike, is built on the
+// answers here, and the whole-description rules that need them are in Checks.hpp.
 
 #include "refract/Model.hpp"
 #include "refract/Pattern.hpp"
@@ -19,21 +19,17 @@
 
 namespace specbolt::refract {
 
-// The operand this opcode, decoded in this row under these rules, is displaced
-// through, or nothing if it is not displaced at all.
-// Nothing declares this: a row names a vocabulary member, a view says that
-// member is now a displaced one, and the answer is whatever the operands
-// resolve to. One per instruction, not one per operand: an instruction that
-// reads and writes through the same address wants one displacement read and
-// one sum formed, as the chip does (the Z80's `inc (ix+d)` is one).
+// The operand this opcode, decoded in this row under these rules, is displaced through, or nothing if it is not
+// displaced at all. Nothing declares this: a row names a vocabulary member, a view says that member is now a displaced
+// one, and the answer is whatever the operands resolve to. One per instruction, not one per operand: an instruction
+// that reads and writes through the same address wants one displacement read and one sum formed, as the chip does (the
+// Z80's `inc (ix+d)` is one).
 //
-// This is the one source of an instruction's length: Disassemble.hpp and
-// Execute.hpp both ask it, which is why the two agree about how many bytes an
-// instruction has.
+// This is the one source of an instruction's length: Disassemble.hpp and Execute.hpp both ask it, which is why the two
+// agree about how many bytes an instruction has.
 //
-// No `view` parameter: every member of a vocabulary a view selects is required
-// to have the same shape, so view 0 answers for all of them. That requirement
-// is `check_view_vocabulary` in Parse.hpp, without which one page of a
+// No `view` parameter: every member of a vocabulary a view selects is required to have the same shape, so view 0
+// answers for all of them. That requirement is `check_view_vocabulary` in Parse.hpp, without which one page of a
 // prefixed encoding would quietly get another's addressing mode.
 [[nodiscard]] constexpr std::optional<Resolved> displaced_through(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
@@ -56,9 +52,8 @@ namespace specbolt::refract {
   return found;
 }
 
-// Whether every vocabulary member this row names at this opcode is live. A `-`
-// member is a hole, so a row naming one does not cover that opcode even though
-// the bits fit.
+// Whether every vocabulary member this row names at this opcode is live. A `-` member is a hole, so a row naming one
+// does not cover that opcode even though the bits fit.
 [[nodiscard]] constexpr bool members_live(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode) {
   const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .opcode = opcode};
@@ -75,19 +70,17 @@ namespace specbolt::refract {
   });
 }
 
-// A set of opcodes, as bits, so containment and overlap are whole-set
-// operations. `std::bitset` has been usable in constant evaluation since C++23.
+// A set of opcodes, as bits, so containment and overlap are whole-set operations. `std::bitset` has been usable in
+// constant evaluation since C++23.
 using OpcodeSet = std::bitset<256>;
 
-// Whether every opcode of `mine` is also one of `theirs`: an override, rather
-// than an accident.
+// Whether every opcode of `mine` is also one of `theirs`: an override, rather than an accident.
 [[nodiscard]] constexpr bool within(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & ~theirs).none(); }
 // Whether the two sets share any opcode at all.
 [[nodiscard]] constexpr bool overlaps(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & theirs).any(); }
 
-// The opcodes a row claims: every opcode its pattern matches whose vocabulary
-// members are all live. A pattern *generates* them, walking the cartesian
-// product of its slices and placing each combination, rather than being tested
+// The opcodes a row claims: every opcode its pattern matches whose vocabulary members are all live. A pattern
+// *generates* them, walking the cartesian product of its slices and placing each combination, rather than being tested
 // against all 256. `BitSlice::place` exists for exactly this.
 [[nodiscard]] constexpr OpcodeSet opcodes_of(const std::span<const Vocabulary> vocabularies, const Row &row) {
   OpcodeSet result;
@@ -108,19 +101,17 @@ using OpcodeSet = std::bitset<256>;
   return result;
 }
 
-// The opcodes each row claims, index-coupled to `rows`. Walking a row's
-// cartesian product is the expensive part of evaluating a description, and
-// three of the checks below want the answer, so it is computed once here and
-// passed to each.
+// The opcodes each row claims, index-coupled to `rows`. Walking a row's cartesian product is the expensive part of
+// evaluating a description, and three of the checks below want the answer, so it is computed once here and passed to
+// each.
 [[nodiscard]] constexpr std::vector<OpcodeSet> opcodes_of_each(
     const std::span<const Vocabulary> vocabularies, const std::span<const Row> rows) {
   return rows | std::views::transform([&](const Row &row) { return opcodes_of(vocabularies, row); }) |
          std::ranges::to<std::vector>();
 }
 
-// One decoded instruction: a (table, opcode) that a row answers to, and the
-// renaming it answers under. The checks below are each one question asked of
-// every one of these, and walking is not what any of them is about.
+// One decoded instruction: a (table, opcode) that a row answers to, and the renaming it answers under. The checks below
+// are each one question asked of every one of these, and walking is not what any of them is about.
 struct Instruction {
   std::uint8_t table{};
   std::uint8_t opcode{};
@@ -128,8 +119,7 @@ struct Instruction {
   const Rules *rules{};
 };
 
-// Every (table, opcode) the description decodes to a row, each with that row
-// and the rules the table reads it under.
+// Every (table, opcode) the description decodes to a row, each with that row and the rules the table reads it under.
 [[nodiscard]] constexpr std::vector<Instruction> instructions_of(const Description &description) {
   std::vector<Instruction> all;
   // Every table is total, so this is the exact size.
@@ -144,16 +134,14 @@ struct Instruction {
   return all;
 }
 
-// Builds each table's decode table: which row, as an index into `rows`, each of
-// its 256 opcodes decodes to. Earlier rows win; then a derived table takes from
-// its parent whatever it did not claim itself. Declaration order resolves a
+// Builds each table's decode table: which row, as an index into `rows`, each of its 256 opcodes decodes to. Earlier
+// rows win; then a derived table takes from its parent whatever it did not claim itself. Declaration order resolves a
 // chain, because a parent is always declared before its children.
 [[nodiscard]] constexpr std::vector<DecodeTable> decode_tables(const std::span<const Row> rows,
     const std::span<const OpcodeSet> opcodes, const std::span<const TableDecl> tables) {
   std::vector<DecodeTable> all(tables.size());
-  // `rows` and `opcodes` are index-coupled by construction, because
-  // `opcodes_of_each` built one from the other, so zip says that rather than
-  // trusting it.
+  // `rows` and `opcodes` are index-coupled by construction, because `opcodes_of_each` built one from the other, so zip
+  // says that rather than trusting it.
   for (const auto [index, row, claimed]: std::views::zip(std::views::iota(0uz), rows, opcodes))
     for (const auto opcode: std::views::iota(0uz, 256uz))
       if (claimed.test(opcode) && !all[row.table][opcode])
@@ -166,16 +154,14 @@ struct Instruction {
   return all;
 }
 
-// Per table, whether it is entered with a displacement already read. Where an
-// encoding puts a byte before the opcode that decides what to do with it (the
-// Z80's `dd cb d op`), the row that meets that byte reads it and hands it on.
-// Derived from the gotos that reach a table rather than declared on it. A
-// latched table's rows use the displacement instead of reading one, and its
-// opcode arrives by an operand read rather than an instruction fetch.
+// Per table, whether it is entered with a displacement already read. Where an encoding puts a byte before the opcode
+// that decides what to do with it (the Z80's `dd cb d op`), the row that meets that byte reads it and hands it on.
+// Derived from the gotos that reach a table rather than declared on it. A latched table's rows use the displacement
+// instead of reading one, and its opcode arrives by an operand read rather than an instruction fetch.
 [[nodiscard]] constexpr std::vector<bool> latched_tables(
     const std::span<const Row> rows, const std::size_t num_tables) {
-  // Empty until some goto has said, so that "not reached yet" and "reached
-  // without a displacement" stay different answers rather than both being false.
+  // Empty until some goto has said, so that "not reached yet" and "reached without a displacement" stay different
+  // answers rather than both being false.
   std::vector<std::optional<bool>> reached(num_tables);
   for (const auto &row: rows)
     for (const auto &step: row.steps) {

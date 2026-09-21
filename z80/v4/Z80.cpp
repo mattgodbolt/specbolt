@@ -12,11 +12,9 @@ void Z80::run_until(const std::size_t cycle_count) {
   refract::Interpreter<Target>::run(*this);
 }
 
-// Runs one instruction, by setting a deadline one cycle away. An instruction
-// that starts before the deadline runs to its end, and the cheapest one takes
-// longer than a cycle, so a deadline one cycle away is exactly one
-// instruction. A halted chip spends a fetch per turn of the loop below, so it
-// stops after one of those too.
+// Runs one instruction, by setting a deadline one cycle away. An instruction that starts before the deadline runs to
+// its end, and the cheapest one takes longer than a cycle, so a deadline one cycle away is exactly one instruction. A
+// halted chip spends a fetch per turn of the loop below, so it stops after one of those too.
 void Z80::execute_one() { run_until(cycle_count() + 1); }
 
 bool Z80::start_instruction() {
@@ -27,20 +25,18 @@ bool Z80::start_instruction() {
       handle_interrupt();
     if (!halted_) [[likely]]
       return true;
-    // A halted Z80 is executing internal NOPs, not stopped: it still fetches
-    // at the address it parked on, without advancing, so it still spends an
-    // opcode cycle on the bus and still refreshes.
+    // A halted Z80 is executing internal NOPs, not stopped: it still fetches at the address it parked on, without
+    // advancing, so it still spends an opcode cycle on the bus and still refreshes.
     bus(Bus::opcode, pc());
     refresh();
   }
 }
 
-// The one sequence the table cannot describe: no opcode encodes it, and the
-// byte it reads in mode 0 comes from the interrupting device rather than from
-// memory. It is the machine's, not the instruction set's.
+// The one sequence the table cannot describe: no opcode encodes it, and the byte it reads in mode 0 comes from the
+// interrupting device rather than from memory. It is the machine's, not the instruction set's.
 void Z80::handle_interrupt() {
-  // The request is a level the device holds until it is acknowledged, so one
-  // arriving while interrupts are off waits rather than being lost.
+  // The request is a level the device holds until it is acknowledged, so one arriving while interrupts are off waits
+  // rather than being lost.
   if (!iff1_)
     return;
   irq_pending_ = false;
@@ -50,10 +46,8 @@ void Z80::handle_interrupt() {
     regs_.pc(static_cast<std::uint16_t>(regs_.pc() + 1));
   }
   iff1_ = iff2_ = false;
-  // The acknowledge is an opcode fetch stretched by two wait states, during
-  // which the device would put a vector on the bus. Those seven, then two
-  // writes, make the documented thirteen for modes 0 and 1 and nineteen for
-  // mode 2.
+  // The acknowledge is an opcode fetch stretched by two wait states, during which the device would put a vector on the
+  // bus. Those seven, then two writes, make the documented thirteen for modes 0 and 1 and nineteen for mode 2.
   delay(7);
   // The acknowledge is an M1 cycle, and every M1 refreshes.
   refresh();
@@ -93,30 +87,25 @@ namespace {
   return 0;
 }
 
-// `execute_one` relies on this: a deadline one cycle away is one instruction
-// only while every instruction passes time.
+// `execute_one` relies on this: a deadline one cycle away is one instruction only while every instruction passes time.
 static_assert(cost_of(Bus::opcode) >= 1);
 
 } // namespace
 
 void Z80::bus(const Bus kind, const std::uint16_t address) {
-  // A machine that contends or stretches does it here, from the kind, the
-  // address and the position within the frame. The Spectrum contends
-  // 0x4000-0x7fff while the display is being drawn; nothing models that yet.
-  // TODO: pass_time(contention(kind, address, cycle_count()));
+  // A machine that contends or stretches does it here, from the kind, the address and the position within the frame.
+  // The Spectrum contends 0x4000-0x7fff while the display is being drawn; nothing models that yet. TODO:
+  // pass_time(contention(kind, address, cycle_count()));
   pass_time(cost_of(kind));
   bus_address_ = address;
 }
 
-// Steps r. The refresh counter is seven bits; the top bit is whatever was last
-// written to it and does not count.
+// Steps r. The refresh counter is seven bits; the top bit is whatever was last written to it and does not count.
 void Z80::refresh() { regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f))); }
 
-// Spends `cycles` internal cycles in one go. An internal cycle presents the
-// address the last access left on the bus, so a run of them only moves the
-// clock, and spending them in one go is equivalent: `pass_time(n)` fires the
-// same tasks at the same cycles as n calls of one. A machine that contends
-// each internal cycle separately would loop here.
+// Spends `cycles` internal cycles in one go. An internal cycle presents the address the last access left on the bus, so
+// a run of them only moves the clock, and spending them in one go is equivalent: `pass_time(n)` fires the same tasks at
+// the same cycles as n calls of one. A machine that contends each internal cycle separately would loop here.
 void Z80::delay(const std::uint8_t cycles) { pass_time(cycles * cost_of(Bus::internal)); }
 
 std::uint16_t Z80::read_memory16(const std::uint16_t address) {
@@ -125,9 +114,8 @@ std::uint16_t Z80::read_memory16(const std::uint16_t address) {
   return static_cast<std::uint16_t>(read_memory(static_cast<std::uint16_t>(address + 1)) << 8 | low);
 }
 
-// Writes a word, low byte first, as `ld (nn), hl` does. A push writes high to
-// sp-1 then low to sp-2 on the chip and gets this order instead; the bytes
-// land in the same places, so only contention or a watchpoint could tell
+// Writes a word, low byte first, as `ld (nn), hl` does. A push writes high to sp-1 then low to sp-2 on the chip and
+// gets this order instead; the bytes land in the same places, so only contention or a watchpoint could tell
 // (notes/PREFIXES.md).
 void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {
   write_memory(address, static_cast<std::uint8_t>(value));
@@ -179,9 +167,8 @@ void Z80::out_c(const std::uint16_t port, const std::uint8_t value) {
   out(port, value);
 }
 
-// Swaps `value` with the word at sp and returns the old word. Nineteen
-// T-states with the fetch: two reads, an idle cycle, two writes, then two more
-// idle cycles, which is where the two `delay`s sit.
+// Swaps `value` with the word at sp and returns the old word. Nineteen T-states with the fetch: two reads, an idle
+// cycle, two writes, then two more idle cycles, which is where the two `delay`s sit.
 std::uint16_t Z80::ex_sp_hl(const std::uint16_t value) {
   const auto sp = regs_.sp();
   const auto low = read_memory(sp);
@@ -201,13 +188,10 @@ Alu::R8 Z80::ld_a_special(const std::uint8_t value, const Flags flags) const {
   return {value, Alu::iff2_flags_for(value, flags, iff2())};
 }
 
-// Rotates a nibble between `a` and `value`, changing `a` in place and
-// returning what goes back to memory with the flags. `right` is `rrd`: the low
-// nibble of `value` goes into `a`, `value`'s high nibble drops to the low half
-// of what is written back, and `a`'s old low nibble fills the high half. `rld`
-// rotates the other way: the high nibble of `value` goes into `a`, `value`'s
-// low nibble rises to the high half, and `a`'s old low nibble fills the low
-// half.
+// Rotates a nibble between `a` and `value`, changing `a` in place and returning what goes back to memory with the
+// flags. `right` is `rrd`: the low nibble of `value` goes into `a`, `value`'s high nibble drops to the low half of what
+// is written back, and `a`'s old low nibble fills the high half. `rld` rotates the other way: the high nibble of
+// `value` goes into `a`, `value`'s low nibble rises to the high half, and `a`'s old low nibble fills the low half.
 Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const bool right) {
   const auto a = regs_.get(RegisterFile::R8::A);
   const auto updated =
@@ -223,8 +207,7 @@ Alu::R8 Z80::rld8(const std::uint8_t value, const Flags flags) { return nibble(v
 
 Flags Z80::counted(const Flags flags, const std::uint16_t bc, const std::uint8_t noise) {
   auto result = flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow() | Flags::Flag3() | Flags::Flag5());
-  // `bc` is the value before this step's decrement, so this is "bc is nonzero
-  // after it".
+  // `bc` is the value before this step's decrement, so this is "bc is nonzero after it".
   if (bc != 1)
     result = result | Flags::Overflow();
   if (noise & 0x08)
@@ -251,8 +234,7 @@ Flags Z80::block_load(const BlockDirection direction, const Flags flags) {
   regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
   regs_.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
   regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
-  // Flags 3 and 5 come from the byte plus the accumulator; `counted` says
-  // which bits.
+  // Flags 3 and 5 come from the byte plus the accumulator; `counted` says which bits.
   return counted(flags, bc, static_cast<std::uint8_t>(byte + regs_.get(RegisterFile::R8::A)));
 }
 
@@ -267,8 +249,8 @@ Flags Z80::block_compare(const BlockDirection direction, const Flags flags) {
   const auto compared = Alu::sub8(regs_.get(RegisterFile::R8::A), byte, false);
   // Flags 3 and 5 come from the difference, less one where it borrowed.
   const auto noise = static_cast<std::uint8_t>(compared.flags.half_carry() ? compared.result - 1 : compared.result);
-  // The comparison's own sign, zero, half-carry and subtract go on last: the
-  // count clears two of them, and a compare is entitled to say otherwise.
+  // The comparison's own sign, zero, half-carry and subtract go on last: the count clears two of them, and a compare is
+  // entitled to say otherwise.
   constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
   return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
 }
@@ -289,8 +271,7 @@ Flags Z80::block_out(const BlockDirection direction, const Flags flags) {
   const auto hl = regs_.get(RegisterFile::R16::HL);
   const auto value = read_memory(hl);
   regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
-  // B is counted down before the port goes on the bus, so it addresses with
-  // the new value.
+  // B is counted down before the port goes on the bus, so it addresses with the new value.
   const auto result = stepped(flags);
   const auto port = regs_.get(RegisterFile::R16::BC);
   bus(Bus::io_write, port);

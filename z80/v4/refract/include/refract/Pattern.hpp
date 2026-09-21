@@ -1,8 +1,7 @@
 #pragma once
 
-// The opcode pattern a row's encoding column opens with: eight characters,
-// each a `0` or `1` fixing that bit or a letter naming a slice, a run of one
-// letter being one slice.
+// The opcode pattern a row's encoding column opens with: eight characters, each a `0` or `1` fixing that bit or a
+// letter naming a slice, a run of one letter being one slice.
 
 #include "refract/TableError.hpp"
 #include "refract/Vector.hpp"
@@ -13,9 +12,8 @@
 
 namespace specbolt::refract {
 
-// A run of bits in the opcode, named by its letter. `extract` reads what an
-// opcode carries there and `place` puts a value back, so `place(extract(x))`
-// is the slice's bits of `x` and nothing else.
+// A run of bits in the opcode, named by its letter. `extract` reads what an opcode carries there and `place` puts a
+// value back, so `place(extract(x))` is the slice's bits of `x` and nothing else.
 struct BitSlice {
   char name{};
   std::uint8_t shift{};
@@ -30,8 +28,7 @@ struct BitSlice {
   constexpr bool operator==(const BitSlice &) const = default;
 };
 
-// The fixed bits of a pattern, and its slices in the order their letters first
-// appear.
+// The fixed bits of a pattern, and its slices in the order their letters first appear.
 struct Pattern {
   static constexpr std::size_t max_slices = 4;
   static constexpr std::size_t num_bits = 8;
@@ -40,9 +37,8 @@ struct Pattern {
   Vector<BitSlice, max_slices> slices{};
 };
 
-// Parses an eight-character pattern such as `01yyyzzz`: the fixed bits go into
-// `opcode_bits`, and each distinct letter becomes a slice, whose bits must be
-// contiguous.
+// Parses an eight-character pattern such as `01yyyzzz`: the fixed bits go into `opcode_bits`, and each distinct letter
+// becomes a slice, whose bits must be contiguous.
 [[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
   if (bits.size() != Pattern::num_bits)
     throw table_error(line, "opcode pattern must be 8 characters");

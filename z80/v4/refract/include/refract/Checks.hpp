@@ -17,15 +17,13 @@
 
 namespace specbolt::refract {
 
-// Checks that every row wins some opcode, and that where two rows of one table
-// overlap the earlier is wholly contained in the later. Line order silently
-// decides who wins, so this says what the legal shapes are: containment is an
+// Checks that every row wins some opcode, and that where two rows of one table overlap the earlier is wholly contained
+// in the later. Line order silently decides who wins, so this says what the legal shapes are: containment is an
 // override, and a partial overlap is an accident.
 constexpr void check_row_precedence(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
-  // What each row wins once the rows before it have taken their share.
-  // Precedence is a fact about opcode sets, not about vocabularies, so this
-  // never resolves a name.
+  // What each row wins once the rows before it have taken their share. Precedence is a fact about opcode sets, not
+  // about vocabularies, so this never resolves a name.
   std::vector<OpcodeSet> claimed(description.tables.size());
 
   for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
@@ -45,11 +43,9 @@ constexpr void check_row_precedence(const Description &description, const std::s
   }
 }
 
-// Checks that every opcode of every table decodes to something. On real
-// hardware one always does, since an unassigned encoding still has an effect,
-// so a table that declines to say is an incomplete description rather than a
-// permissive one. A catch-all row is how a table says "and everything else
-// does this".
+// Checks that every opcode of every table decodes to something. On real hardware one always does, since an unassigned
+// encoding still has an effect, so a table that declines to say is an incomplete description rather than a permissive
+// one. A catch-all row is how a table says "and everything else does this".
 //
 // Requiring it here is what lets the dispatch loop call without checking.
 constexpr void check_tables_total(const Description &description) {
@@ -61,13 +57,11 @@ constexpr void check_tables_total(const Description &description) {
                                                               " does; add a row, or `xxxxxxxx` last to catch the rest");
 }
 
-// Whether any step of this row names `what` as a literal, where a rule cannot
-// reach it.
+// Whether any step of this row names `what` as a literal, where a rule cannot reach it.
 [[nodiscard]] constexpr bool names_literally(const Row &row, std::string_view what) {
-  // A rule's left side is written as the vocabulary writes it, so it may carry
-  // parentheses, as in the Z80's `reg.(hl) -> {index_mem:view}`. An operand
-  // keeps the name and the indirection apart, so compare both halves rather
-  // than the text.
+  // A rule's left side is written as the vocabulary writes it, so it may carry parentheses, as in the Z80's `reg.(hl)
+  // -> {index_mem:view}`. An operand keeps the name and the indirection apart, so compare both halves rather than the
+  // text.
   auto indirect = false;
   if (what.starts_with('(') && what.ends_with(')')) {
     indirect = true;
@@ -81,14 +75,12 @@ constexpr void check_tables_total(const Description &description) {
   });
 }
 
-// Checks that no inherited row spells out, as a literal, a name the table
-// inheriting it renames. A rule rewrites vocabulary references and never
-// literal text, which is what lets a row that means what it says mean it. The
-// same silence hides a mistake: a row spelling a renamed name out, inherited
-// unchanged by the table that renames it, is almost certainly wrong.
+// Checks that no inherited row spells out, as a literal, a name the table inheriting it renames. A rule rewrites
+// vocabulary references and never literal text, which is what lets a row that means what it says mean it. The same
+// silence hides a mistake: a row spelling a renamed name out, inherited unchanged by the table that renames it, is
+// almost certainly wrong.
 //
-// A row written *in* the derived table is exempt: putting it there is how one
-// says the literal was meant.
+// A row written *in* the derived table is exempt: putting it there is how one says the literal was meant.
 constexpr void check_inherited_literals(const Description &description) {
   for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
     if (row->table == table) // its own row, so the literal was meant
@@ -102,12 +94,10 @@ constexpr void check_inherited_literals(const Description &description) {
   }
 }
 
-// Checks that a derived table's own row overlapping a row it inherits is wholly
-// contained in it. A derived row wins over everything inherited, so one that
-// only partly overlaps an inherited row silently takes opcodes that row meant
-// to keep. Precedence within one table is `check_row_precedence`; this relates
-// a derived table's rows to the ones its parent decodes, whether the parent
-// wrote them or inherited them in turn.
+// Checks that a derived table's own row overlapping a row it inherits is wholly contained in it. A derived row wins
+// over everything inherited, so one that only partly overlaps an inherited row silently takes opcodes that row meant to
+// keep. Precedence within one table is `check_row_precedence`; this relates a derived table's rows to the ones its
+// parent decodes, whether the parent wrote them or inherited them in turn.
 constexpr void check_derived_rows_override(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
   const auto tables = description.tables;
@@ -128,9 +118,8 @@ constexpr void check_derived_rows_override(const Description &description, const
   }
 }
 
-// Whether this row's mnemonic renders a displacement at this opcode. It may say
-// so itself, as an override row spelling a displaced operand out in full does,
-// or through a vocabulary member that a view renamed to one.
+// Whether this row's mnemonic renders a displacement at this opcode. It may say so itself, as an override row spelling
+// a displaced operand out in full does, or through a vocabulary member that a view renamed to one.
 [[nodiscard]] constexpr bool renders_displacement(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   return std::ranges::any_of(row.pieces, [&](const Piece &piece) {
@@ -145,16 +134,14 @@ constexpr void check_derived_rows_override(const Description &description, const
   });
 }
 
-// Checks that a row's mnemonic renders a displacement exactly when one of its
-// operands is displaced. `check_immediates` asks the same about `n`; this one
-// needs an opcode, since whether a row is displaced depends on which vocabulary
-// member the opcode picks, and on the renaming the table it was decoded in
-// applies, so it belongs here rather than beside the row.
+// Checks that a row's mnemonic renders a displacement exactly when one of its operands is displaced. `check_immediates`
+// asks the same about `n`; this one needs an opcode, since whether a row is displaced depends on which vocabulary
+// member the opcode picks, and on the renaming the table it was decoded in applies, so it belongs here rather than
+// beside the row.
 //
-// A mismatch is not a length error: both the interpreter and the disassembler
-// take the length from `displaced_through`, so they agree about how many bytes
-// to read and disagree only about what to print. The disassembler would quietly
-// name an addressing mode the machine did not use, or omit the one it did.
+// A mismatch is not a length error: both the interpreter and the disassembler take the length from `displaced_through`,
+// so they agree about how many bytes to read and disagree only about what to print. The disassembler would quietly name
+// an addressing mode the machine did not use, or omit the one it did.
 constexpr void check_displacement_rendered(const Description &description) {
   const auto vocabularies = description.vocabularies;
   for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
@@ -167,18 +154,15 @@ constexpr void check_displacement_rendered(const Description &description) {
   }
 }
 
-// Checks that every table not derived has rows of its own, and that every table
-// is reachable from the entry table by some chain of gotos. A table nothing
-// reaches is a typo: nothing can ever decode in it, so nothing in it is ever
-// exercised. Reachable *from the entry table*, not merely named by some goto:
-// two tables that only reach each other are as dead as one nothing names. The
-// walk is over the decoded tables rather than the rows so that a derived table
+// Checks that every table not derived has rows of its own, and that every table is reachable from the entry table by
+// some chain of gotos. A table nothing reaches is a typo: nothing can ever decode in it, so nothing in it is ever
+// exercised. Reachable *from the entry table*, not merely named by some goto: two tables that only reach each other are
+// as dead as one nothing names. The walk is over the decoded tables rather than the rows so that a derived table
 // reaches wherever its parent's rows go.
 constexpr void check_tables_used(const Description &description) {
   const auto tables = description.tables;
   for (const auto [which, table]: std::views::enumerate(tables))
-    // A derived table with no rows of its own is its parent, renamed, which is
-    // the whole point of one.
+    // A derived table with no rows of its own is its parent, renamed, which is the whole point of one.
     if (!table.derived && !std::ranges::contains(description.rows, static_cast<std::uint8_t>(which), &Row::table))
       throw table_error(table.line, "this table has no rows");
 
@@ -194,8 +178,8 @@ constexpr void check_tables_used(const Description &description) {
   while (!pending.empty()) {
     const auto from = pending.back();
     pending.pop_back();
-    // Totality is checked separately and after this, so an opcode that decodes
-    // to nothing is somebody else's diagnostic rather than a reason to stop.
+    // Totality is checked separately and after this, so an opcode that decodes to nothing is somebody else's diagnostic
+    // rather than a reason to stop.
     for (const auto opcode: std::views::iota(0uz, 256uz))
       if (const auto *row = description.row_for(from, static_cast<std::uint8_t>(opcode)))
         for (const auto &step: row->steps)

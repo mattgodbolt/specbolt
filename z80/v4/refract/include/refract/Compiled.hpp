@@ -27,9 +27,9 @@
 
 namespace specbolt::refract {
 
-// Where a description comes from: its text, and the name diagnostics call it. A type rather than two template
-// arguments because a `std::string_view` is not structural, so it cannot be a template argument itself, and a type
-// carries both facts under one name:
+// Where a description comes from: its text, and the name diagnostics call it. A type rather than two template arguments
+// because a `std::string_view` is not structural, so it cannot be a template argument itself, and a type carries both
+// facts under one name:
 //
 //   struct Z80Source {
 //     static constexpr std::string_view file = "z80.cpu";
@@ -109,8 +109,8 @@ struct Compiled {
     return decoded()[table][opcode];
   }
 
-  // The rules the whole description must obey, run once when this class is instantiated: each throws against its
-  // line, `naming` puts the file in front, and that is the compile error.
+  // The rules the whole description must obey, run once when this class is instantiated: each throws against its line,
+  // `naming` puts the file in front, and that is the compile error.
   consteval {
     naming(file, [] { return check_every_line_means_something(text); });
     naming(file, [] { return check_row_precedence(description(), steps::row_opcodes<Source>); });
