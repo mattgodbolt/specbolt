@@ -89,10 +89,10 @@ namespace specbolt::refract {
 // it can only belong to a `switch` that is also inside it, and a 256-way
 // dispatch cannot be expanded into one. Hence a table of function pointers.
 //
-// **`consteval` functions that throw.** Nothing catches them. Throwing makes
-// the call not a constant expression, and *that* is the diagnostic: a mistake
-// in the description becomes a compile error carrying its line number. This is
-// the most surprising idiom in the file, and it is used everywhere.
+// **`consteval` functions that throw, called from `consteval {}` blocks.** Nothing catches them. A block runs its
+// statements during compilation, a throw that escapes one is not a constant expression, and *that* is the diagnostic:
+// a mistake in the description becomes a compile error carrying its line number. This is the most surprising idiom in
+// the file, and it is used everywhere a check has a line to report against.
 //
 // **`std::define_static_array`.** `nonstatic_data_members_of` returns a
 // `std::vector`, whose allocation cannot survive constant evaluation. This
@@ -216,7 +216,7 @@ struct Interpreter {
   // description writes; this makes it a property of the machine, so a CPU that
   // grows a second `carry` is told at once rather than whenever a row first
   // wants one.
-  [[nodiscard]] static consteval bool location_names_are_unique() {
+  static consteval void check_location_names_unique() {
     std::vector<std::pair<std::string, std::meta::info>> seen;
     for (const auto scope: location_scopes())
       for (const auto enumerator: std::meta::enumerators_of(scope)) {
@@ -230,7 +230,6 @@ struct Interpreter {
                                    "), so a description could not say which it meant");
         seen.emplace_back(name, scope);
       }
-    return true;
   }
 
   // Whether two names are the same once case is ignored.
@@ -387,7 +386,7 @@ struct Interpreter {
 
   // How many parameters `Fn` declares. A variable template so that the count
   // reads without parentheses, and is one spelling in `if constexpr`,
-  // `static_assert` and diagnostics alike.
+  // checks and diagnostics alike.
   template<std::meta::info Fn>
   static constexpr std::size_t arity_of = std::meta::parameters_of(Fn).size();
 
@@ -477,7 +476,7 @@ struct Interpreter {
   // Reads one operand that is not an address and returns it as the type of the
   // parameter it feeds: a constant or immediate converted, an enumerator
   // spliced, or a location read from the machine. Whether the operand suits
-  // the parameter was settled by `operand_fits` before this is instantiated. A
+  // the parameter was settled by `check_operand_fits` before this is instantiated. A
   // location converts the ordinary way, so whether a 16-bit register reaching
   // an 8-bit parameter is diagnosed depends on the build's warnings rather than
   // on anything here.
@@ -551,7 +550,7 @@ struct Interpreter {
 
   // Writes a value to one destination: through an address if the operand is
   // indirect, into the location it names otherwise, and nowhere for `-`.
-  // Whether the value suits the destination was settled by `destinations_fit`.
+  // Whether the value suits the destination was settled by `check_destinations_fit`.
   template<Resolved Op, std::size_t Line, typename T>
   static void store(Machine &machine, const Decoded decoded, const std::uint16_t indexed, const T value) {
     if constexpr (Op.kind == Resolved::Kind::Discard)
@@ -703,7 +702,7 @@ struct Interpreter {
   // by value, a number is not passed to an enum, a constant the row wrote fits,
   // and an address is read at a width the machine has.
   template<std::meta::info Fn, Call C, std::size_t I>
-  [[nodiscard]] static consteval bool operand_fits() {
+  static consteval void check_operand_fits() {
     constexpr auto operand = C.operands[I];
     constexpr auto at = parameter_for_operand<Fn, C>()[I];
     using Parameter = parameter_type<Fn, at>;
@@ -735,27 +734,26 @@ struct Interpreter {
       throw error(C.line, name + " reads " + parameter +
                               " through an address, so it must be std::uint8_t or "
                               "std::uint16_t, the widths the machine reads at");
-    return true;
   }
 
   // Checks every operand against the parameter it feeds; true if all fit.
   template<std::meta::info Fn, Call C>
-  [[nodiscard]] static consteval bool operands_each_fit() {
-    return []<std::size_t... I>(std::index_sequence<I...>) { return (operand_fits<Fn, C, I>() && ...); }(
-               std::make_index_sequence<C.operands.size()>{});
+  static consteval void check_each_operand_fits() {
+    []<std::size_t... I>(std::index_sequence<I...>) { (check_operand_fits<Fn, C, I>(), ...); }(
+        std::make_index_sequence<C.operands.size()>{});
   }
 
   // Checks a step against the operation it applies: the row supplies every
   // parameter the operation has, and each operand suits its parameter.
   template<std::meta::info Fn, Call C>
-  [[nodiscard]] static consteval bool operands_fit() {
+  static consteval void check_operands_fit() {
     if (asks_for_machine<Fn>)
       throw error(C.line, quoted_name_of(Fn) + " takes the machine as a parameter; an operation that needs the "
                                                "machine is a member of it, marked [[=refract::operation]]");
     if (C.operands.size() != arity_of<Fn>)
       throw error(C.line, quoted_name_of(Fn) + " takes " + decimal(arity_of<Fn>) +
                               " operand(s) and this row supplies " + decimal(C.operands.size()));
-    return operands_each_fit<Fn, C>();
+    check_each_operand_fits<Fn, C>();
   }
 
   // Checks a step's destinations against what the operation returns. The
@@ -766,7 +764,7 @@ struct Interpreter {
   // written differently depending on which was meant. Then each destination
   // must be able to take what it is handed.
   template<std::meta::info Fn, Call C, typename Result>
-  [[nodiscard]] static consteval bool destinations_fit(const std::span<const std::meta::info> parts) {
+  static consteval void check_destinations_fit(const std::span<const std::meta::info> parts) {
     const auto name = quoted_name_of(Fn);
     const auto destinations = C.destinations.size();
     if (parts.size() == 1)
@@ -805,7 +803,6 @@ struct Interpreter {
         throw error(C.line, "destination " + decimal(static_cast<std::size_t>(at) + 1) + " of " + name +
                                 " is not a location; a result goes to a named location, an address or '-'");
     }
-    return true;
   }
 
   // Checks a step used as a condition against the operation it applies: it
@@ -815,7 +812,7 @@ struct Interpreter {
   // the machine, even a `const` one, since a machine in hand can be asked
   // anything.
   template<std::meta::info Fn, Call C>
-  [[nodiscard]] static consteval bool condition_fits() {
+  static consteval void check_condition_fits() {
     const auto name = quoted_name_of(Fn);
     if (machine_member<Fn> || asks_for_machine<Fn>)
       throw error(C.line, name + " reaches the machine; a condition tests only what the row hands it, so that "
@@ -828,7 +825,7 @@ struct Interpreter {
                                  "no destination");
     if (std::meta::return_type_of(Fn) != ^^bool)
       throw error(C.line, name + " is used as a condition, so it must return bool");
-    return operands_each_fit<Fn, C>();
+    check_each_operand_fits<Fn, C>();
   }
 
   // Runs one step: reads its operands, calls the operation, and stores what it
@@ -842,7 +839,7 @@ struct Interpreter {
     // instantiates a parameter type per operand, and an operand with no
     // parameter would index past the end of the parameter list.
     constexpr bool arity_matches = C.operands.size() == arity_of<Fn>;
-    static_assert(operands_fit<Fn, C>());
+    consteval { check_operands_fit<Fn, C>(); }
     if constexpr (arity_matches) {
       const auto call = [&machine](const auto &arguments) { return call_with<Fn, C>(machine, arguments); };
 
@@ -853,7 +850,7 @@ struct Interpreter {
       // with `define_static_array`, so what this points at has static storage and
       // `members[at]` is a constant expression a splice can use.
       static constexpr auto members = decomposes_into(^^Result, C.line);
-      static_assert(destinations_fit<Fn, C, Result>(members));
+      consteval { check_destinations_fit<Fn, C, Result>(members); }
       if constexpr (std::is_void_v<Result>) {
         call(operands_of<Fn, C>(machine, decoded, indexed));
       }
@@ -880,7 +877,7 @@ struct Interpreter {
   // other operation; only what is done with the answer differs.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static bool evaluate(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
-    static_assert(condition_fits<Fn, C>());
+    consteval { check_condition_fits<Fn, C>(); }
     // Gated for the same reason `apply` is: a condition that does not fit gets
     // one message rather than that message and the cascade from calling it.
     if constexpr (!machine_member<Fn> && C.operands.size() == arity_of<Fn>)
@@ -1022,7 +1019,7 @@ struct Interpreter {
           // The count is a template argument so that the machine, which knows how
           // long its window is, can refuse a count it cannot hold at compile time.
           constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
-          static_assert(window_holds<read_inside>(row.line));
+          consteval { check_window_holds<read_inside>(row.line); }
           return machine.template displaced_address<read_inside>(
               direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement);
         }
@@ -1189,14 +1186,13 @@ struct Interpreter {
   // constraining `displaced_address`; asking first turns that refusal into a
   // diagnostic against the row that needs the count.
   template<std::uint8_t BytesRead>
-  [[nodiscard]] static consteval bool window_holds(const std::size_t line) {
+  static consteval void check_window_holds(const std::size_t line) {
     if constexpr (!requires(Machine &machine, const std::uint16_t base, const std::uint8_t offset) {
                     machine.template displaced_address<BytesRead>(base, offset);
                   })
       throw error(line, "this row reads " + decimal(BytesRead) +
                             " byte(s) inside the window that forms its displaced address, which is more than this "
                             "machine's window holds");
-    return true;
   }
 
   // Starts the run. The handlers tail-call each other from here on, so this is
@@ -1207,11 +1203,12 @@ struct Interpreter {
   // and line, which a failed constraint would not carry. This is the one entry
   // point, so they run once regardless.
   static void run(Machine &machine) {
-    static_assert(location_names_are_unique(), "two of this machine's readable locations are spelled the same, so a "
-                                               "description could not say which it meant");
     // The handlers reach the description's parts directly, so this is where
     // building an interpreter checks it.
-    static_assert(Compiled::check());
+    consteval {
+      check_location_names_unique();
+      Compiled::check();
+    }
     continue_running(machine, 0, 0, 0);
   }
 };

@@ -102,7 +102,7 @@ struct Compiled {
 
   // Runs every check the text must pass, each against its line, and returns true if all do; a failing one throws,
   // which makes it a compile error. `description()` asserts it, and so does an interpreter.
-  [[nodiscard]] static consteval bool check() {
+  static consteval bool check() {
     return checked<[] { return check_every_line_means_something(text); }> &&
            checked<[] { return check_row_precedence(unchecked(), steps::row_opcodes<Source>); }> &&
            checked<[] { return check_derived_rows_override(unchecked(), steps::row_opcodes<Source>); }> &&
@@ -116,7 +116,7 @@ struct Compiled {
   // disassembler, is handed. An interpreter's handlers are templates on the parts themselves, so they reach them
   // through the functions above and call `check()` on their own.
   [[nodiscard]] static constexpr Description description() {
-    static_assert(check());
+    consteval { check(); }
     return unchecked();
   }
 
