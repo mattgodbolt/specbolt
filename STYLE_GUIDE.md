@@ -173,7 +173,7 @@ import peripherals;
   };
   ```
 
-  The exception is an enumerator a `.cpu` description names. `FlagBit::carry`
+  The exception is an enumerator a `.cpu` description names. `Flags::Bit::carry`
   and `FlipFlop::iff1` are lowercase because reflection matches them against the
   text of a row, and a row is written the way assembly is written. The
   identifier is data there, not just a name.

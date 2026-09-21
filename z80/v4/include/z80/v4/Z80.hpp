@@ -25,11 +25,11 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 };
 
 // The state a description may name, beyond the registers it inherits from
-// `RegisterFile`. Each is an enum so that a flag bit, the halted state or the
-// program counter can appear in a row exactly as `a` or `hl` does; a splice of
-// one of these picks the matching `read` or `write` below by ordinary overload
-// resolution, which is why the framework needs no idea what kind of location it
-// is holding.
+// `RegisterFile` and the flags `Flags::Bit` already names one at a time. Each
+// is an enum so that the halted state or the program counter can appear in a
+// row exactly as `a` or `carry` does; a splice of one of these picks the
+// matching `read` or `write` below by ordinary overload resolution, which is
+// why the framework needs no idea what kind of location it is holding.
 //
 // They are enums even where there is only one of a thing, because a name is
 // looked up by walking `enumerators_of` over each scope: a tag struct would be
@@ -39,32 +39,6 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 // What makes them locations is that the machine can `read` one: the framework
 // derives the set from those overloads, so `Bus` above is not a location for
 // the plain reason that nothing reads a bus cycle kind.
-
-// Individually addressable flag bits, so `carry` is a location like any other.
-// The ordinal is the bit position, which is what `read` shifts by; the
-// static_asserts below hold that to what `Flags` actually says.
-// TODO this should be part of Flags not by "happy accident" in the same order. DRY please
-SPECBOLT_EXPORT enum class FlagBit : std::uint8_t { carry, subtract, parity, flag3, half_carry, flag5, zero, sign };
-
-// Reordering the enumerators above would silently retarget every condition in
-// the description: `jr nz` would test the wrong bit, with nothing to fail but
-// the exerciser. These say so at compile time instead.
-namespace detail {
-constexpr bool flag_bit_is(const Flags flag, const FlagBit bit) {
-  return flag.to_u8() == 1u << static_cast<unsigned>(bit);
-}
-} // namespace detail
-// TODO all this can go if we teach Flags how to do this. I appreciate the attempt to canonicalise this
-// but there must be a better way, if we make some minor changes to flags....like publishing Flags::Flag or similar.
-// all the shifting up and down by bits surely is something we could avoid too?
-static_assert(detail::flag_bit_is(Flags::Carry(), FlagBit::carry));
-static_assert(detail::flag_bit_is(Flags::Subtract(), FlagBit::subtract));
-static_assert(detail::flag_bit_is(Flags::Parity(), FlagBit::parity));
-static_assert(detail::flag_bit_is(Flags::Flag3(), FlagBit::flag3));
-static_assert(detail::flag_bit_is(Flags::HalfCarry(), FlagBit::half_carry));
-static_assert(detail::flag_bit_is(Flags::Flag5(), FlagBit::flag5));
-static_assert(detail::flag_bit_is(Flags::Zero(), FlagBit::zero));
-static_assert(detail::flag_bit_is(Flags::Sign(), FlagBit::sign));
 
 // The same register taken whole, distinct from R8::F so that only a
 // Flags-shaped value can be written to it.
@@ -132,11 +106,7 @@ public:
   void write(const RegisterFile::R8 location, const std::uint8_t value) { set(location, value); }
   void write(const RegisterFile::R16 location, const std::uint16_t value) { set(location, value); }
 
-  // TODO the flags should support this natively. I don't like this "accident" of FlagBit, and the whole
-  // shift down is dumb compared to the `& Flags` which is kinda the point of doing flags this way?
-  [[nodiscard]] bool read(const FlagBit which) const {
-    return ((flags().to_u8() >> static_cast<unsigned>(which)) & 1u) != 0;
-  }
+  [[nodiscard]] bool read(const Flags::Bit which) const { return flags().test(which); }
 
   [[nodiscard]] Flags read(FlagWord) const { return flags(); }
   void write(FlagWord, const Flags value) { flags(value); }

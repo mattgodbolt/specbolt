@@ -514,7 +514,7 @@ template<Resolved Op, std::size_t Line, typename Parameter>
   else
     // An *enumerator* splice: this yields a prvalue whose type is the enum the
     // name was found in, so the machine's overload set decides what reading it
-    // means: on the Z80, `machine.read(R8::A)` and `machine.read(FlagBit::carry)` are
+    // means: on the Z80, `machine.read(R8::A)` and `machine.read(Flags::Bit::carry)` are
     // different functions returning different types, chosen here by nothing
     // more exotic than overload resolution.
     return machine.read([:find_location(Op.name.view(), Line, Op.scope.view()):]);
