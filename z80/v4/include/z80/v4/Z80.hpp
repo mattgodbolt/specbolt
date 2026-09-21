@@ -92,9 +92,27 @@ public:
   // What the framework asks of a machine. See refract/Machine.hpp. These are
   // the chip's own names for what it does; the framework calls them directly
   // rather than through anything in between.
-  [[nodiscard]] std::uint8_t fetch_opcode();
-  [[nodiscard]] std::uint8_t fetch_immediate();
-  [[nodiscard]] std::uint16_t fetch_immediate16();
+  // Defined here rather than in Z80.cpp: one of these runs for every byte of
+  // every instruction, from every handler, and where they are defined was
+  // measured to matter (notes/MEASUREMENTS.md).
+  [[nodiscard]] std::uint8_t fetch_opcode() {
+    const auto address = regs_.pc();
+    regs_.pc(static_cast<std::uint16_t>(address + 1));
+    bus(Bus::opcode, address);
+    refresh();
+    return memory_.read(address);
+  }
+  [[nodiscard]] std::uint8_t fetch_immediate() {
+    const auto address = regs_.pc();
+    regs_.pc(static_cast<std::uint16_t>(address + 1));
+    bus(Bus::operand, address);
+    return memory_.read(address);
+  }
+  [[nodiscard]] std::uint16_t fetch_immediate16() {
+    const auto low = fetch_immediate();
+    const auto high = fetch_immediate();
+    return static_cast<std::uint16_t>(high << 8 | low);
+  }
   [[nodiscard]] std::uint8_t read_memory(std::uint16_t address);
   [[nodiscard]] std::uint16_t read_memory16(std::uint16_t address);
   void write_memory(std::uint16_t address, std::uint8_t value);

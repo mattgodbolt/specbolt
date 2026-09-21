@@ -419,8 +419,9 @@ struct Interpreter {
 
   // What the instruction carries: the immediate its encoding fetched, the view a
   // prefix chose, and the opcode itself. Fixed for the whole of one instruction.
-  // Passed by value, and it must be: a handler ends in a tail call, and gcc
-  // refuses one from a frame whose contents have had their address taken.
+  // Passed by value, and it must be: a handler ends in a mandatory tail call,
+  // which abandons the frame, so nothing in the frame may have had its address
+  // taken.
   struct Decoded {
     std::uint16_t immediate{};
     std::uint8_t view{};
@@ -898,9 +899,9 @@ struct Interpreter {
         row.reads_displacement || (displaced && !entered_latched) ? machine.fetch_immediate() : latch;
     // A `goto` is the whole of its row: a prefix reads no operands and has no
     // immediate, so nothing below this line applies to one. It is also why the
-    // hand-over happens *here* rather than among the steps: a tail call abandons
-    // the frame, and gcc will not allow one out of a function whose locals have
-    // had their address taken. The lambda that forms `indexed` takes several.
+    // hand-over happens *here* rather than among the steps: a mandatory tail
+    // call abandons the frame, so it is refused wherever a local has had its
+    // address taken, and the lambda that forms `indexed` takes several.
     if constexpr (row.steps.size() == 1 && row.steps[0].kind == Step::Kind::Goto) {
       constexpr auto step = row.steps[0];
       constexpr std::uint8_t next_table = step.target;

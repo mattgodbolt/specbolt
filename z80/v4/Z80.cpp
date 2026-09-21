@@ -19,11 +19,9 @@ void Z80::run_until(const std::size_t cycle_count) {
 void Z80::execute_one() { run_until(cycle_count() + 1); }
 
 bool Z80::start_instruction() {
-  // Called between instructions by the generated code, handles interrupts,
-  // and loops for halted CPUs.
-  // TODO: investigate how well the compiler can remove the likely true part
-  // and whether it's profitable to have an inlined, non-looping version
-  // deferring to the halting version out of line.
+  // Called between instructions by the generated code: takes the interrupt,
+  // idles a halted chip, and says whether there is another instruction to
+  // run.
   while (true) {
     if (cycle_count() >= until_)
       return false;
@@ -113,21 +111,6 @@ void Z80::bus(const Bus kind, const std::uint16_t address) {
 // to it and does not count.
 void Z80::refresh() { regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f))); }
 
-std::uint8_t Z80::fetch_opcode() {
-  const auto address = regs_.pc();
-  regs_.pc(static_cast<std::uint16_t>(address + 1));
-  bus(Bus::opcode, address);
-  refresh();
-  return memory_.read(address);
-}
-
-std::uint8_t Z80::fetch_immediate() {
-  const auto address = regs_.pc();
-  regs_.pc(static_cast<std::uint16_t>(address + 1));
-  bus(Bus::operand, address);
-  return memory_.read(address);
-}
-
 // An internal cycle presents whatever address the last access left on the bus,
 // so a run of them re-latches the same value every time and only the clock
 // actually moves. Spending them in one go is exactly equivalent, because
@@ -162,12 +145,6 @@ std::uint16_t Z80::displaced_address(
     const std::uint16_t base, const std::uint8_t offset, const std::uint8_t immediate_bytes) {
   delay(static_cast<std::uint8_t>(5 - 3 * immediate_bytes));
   return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
-}
-
-std::uint16_t Z80::fetch_immediate16() {
-  const auto low = fetch_immediate();
-  const auto high = fetch_immediate();
-  return static_cast<std::uint16_t>(high << 8 | low);
 }
 
 std::uint8_t Z80::read_memory(const std::uint16_t address) {

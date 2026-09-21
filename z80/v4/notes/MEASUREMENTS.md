@@ -618,3 +618,41 @@ static_assert(!refract::steps::latched<z80_cpu, "z80.cpu">.empty());
 Not adopted, because it is the boilerplate the change exists to remove, and 1.8 GB a unit fits
 the machines that build this. Written down because it is the first thing to reach for if it stops
 fitting, and because "where does the compiler collect" is not a question the source usually asks.
+
+## The fetch was the call that mattered, and two ideas that did not
+
+Retired user-space instructions over 20M instructions of zexdoc in `z80_bench_v4`, gcc 16.2
+`RelWithDebInfo`, two runs of each binary agreeing to within 100 instructions in 2.9 billion.
+
+| | retired instructions | per emulated instruction | |
+|---|---:|---:|---:|
+| as committed | 2,884,824,542 | 144.2 | |
+| `fetch_opcode`, `fetch_immediate`, `fetch_immediate16` inline in the header | **2,562,452,224** | **128.1** | **-11.2%** |
+| ... and `bus`, `refresh`, `delay` inline too | 2,562,452,220 | 128.1 | 0.0% |
+| ... and the deferred flag cleared only when set, instead of every instruction | 2,682,452,210 | 134.1 | +4.7% |
+
+**The fetches were the call.** `continue_running` is the one function every handler tail-calls,
+and gcc had already inlined `start_instruction` into it, halt loop and interrupt path out of line,
+without being asked; the disassembly showed one `call` left on the hot path, to `fetch_opcode`.
+The same lesson as `Memory::read` and `Scheduler::tick` in Notes.md: with LTO on, `inline` in a
+header tells the compiler nothing about visibility and everything about which budget applies, and
+for a function with a call site in every one of several hundred handlers the auto budget says no.
+
+**`bus`, `refresh` and `delay` were already inlined**, being small enough for the stingier budget;
+moving them to the header changed the count by four instructions in two and a half billion, so
+they went back.
+
+**The unconditional store is cheaper than the branch that avoids it.** `start_instruction` clears
+`interrupts_deferred_` with `std::exchange` on every instruction, and it looked like a store to
+save. Clearing it only when set costs six instructions per emulated instruction more: the branch
+and its compare replace one store that the store buffer absorbed for free.
+
+**`[[gnu::preserve_none]]` has nothing to remove.** The attribute makes a function preserve no
+registers, which CPython's tail-called interpreter uses so that a handler entered by a jump and
+left by a jump does no saving. Counted in the binary before trying it: of the 757 generated
+handlers, none saves a callee-saved register and none sets up a stack frame. gcc already knows a
+`musttail` chain returns nowhere, and the handlers' own calls out to the scheduler force their live
+values to memory whatever the convention. The one place it would act is a single `rbx` save in
+`continue_running`, two instructions per emulated instruction at most, for a gcc-15-and-clang-only
+attribute on a function pointer type. Not measured, because the count said there was nothing to
+measure.

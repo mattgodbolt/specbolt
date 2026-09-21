@@ -77,6 +77,15 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - `std::optional<T&>` is there, which an earlier note here had said it was not. `Description::row_for`
   and `rule_for` still return pointers and could return one.
 - `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`.
+- **`std::inplace_vector` of a non-trivial element type cannot be constant-evaluated**, and the
+  history matters for what to expect. C++26 as first adopted (P0843) said so outright: no member of
+  `inplace_vector<T, N>` is usable in a constant expression unless `T` is trivial. P3074, trivial
+  unions, struck that sentence in February 2025 and added the feature-test macro
+  `__cpp_lib_constexpr_inplace_vector` at `202502L`. libstdc++ 16 does not define that macro, and its
+  header's own TODO names what it waits on, GCC PR 121068, constexpr placement-new of an array. So
+  it is a not-yet-implemented part of the standard rather than a bug. It would not free `Vector`
+  either way: `Call` is a template argument, so its vectors must be structural, and `inplace_vector`
+  has private members.
 - `typename` before a splice is optional in an alias declaration, and required in a template
   argument list, where the splice would otherwise be read as an expression.
 

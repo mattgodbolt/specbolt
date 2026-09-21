@@ -7,9 +7,9 @@ namespace specbolt::refract {
 
 // A fixed-capacity vector that works during constant evaluation and is
 // structural, so it, and anything holding one, can be a template argument.
-// `std::inplace_vector` is neither: it is not structural, and gcc 16.2 can
-// only constant-evaluate it for trivial element types, which a `T` holding a
-// `std::string_view` is not.
+// `std::inplace_vector` is neither: it is not structural, and the standard
+// library's constant evaluation of it stops short of an element type holding a
+// `std::string_view` (notes/FINDINGS.md).
 //
 // Everything here is public because a structural type's members must be.
 // `try_push_back` reports a full container rather than throwing, like

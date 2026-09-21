@@ -212,10 +212,6 @@ journal now, most of their items struck through. This is what survived them.
 - **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a
   unit, because gcc collects only between top-level declarations. The six-line consumer-side
   workaround is in MEASUREMENTS.md; a library-side one has not been found.
-- **`[[preserve_none]]` on the handlers is untried.** Every handler ends in a tail call, so
-  callee-saved registers buy nothing across the chain; CPython's interpreter uses the attribute for
-  exactly this. gcc 16.2 accepts it as `[[gnu::preserve_none]]`. Worth measuring in retired instructions, with `start_instruction`
-  inlined as a non-looping fast path at the same time.
 
 ### /INT is a level, and v4 has no way to release it
 
