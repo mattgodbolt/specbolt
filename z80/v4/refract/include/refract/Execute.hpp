@@ -1,13 +1,17 @@
 #pragma once
 
 // Turns a compiled description into an interpreter for a machine. A target
-// names the two, and where the machine's operations are to be found:
+// names the two, and the palettes its description may draw verbs from:
 //
 //   struct Target {
 //     using Machine = ...;                       // see Machine.hpp
 //     using Compiled = refract::Compiled<text, "file">;  // see Compiled.hpp
-//     static consteval std::vector<std::meta::info> operation_scopes();
+//     static consteval std::vector<std::meta::info> palettes();
 //   };
+//
+// A palette is a type every public static function of which is a verb. The
+// machine's own verbs are the members it publishes with
+// `[[=refract::operation]]`, static or not; see Model.hpp.
 //
 // `Interpreter<Target>::run` then runs the machine until it says stop.
 
@@ -130,8 +134,7 @@ struct Interpreter {
   // hundred lines away.
   static_assert(MachineLike<Machine>, "this machine does not supply everything the framework needs; see Machine.hpp");
   static_assert(
-      requires { Target::operation_scopes(); },
-      "the target must say where a description's operation names are to be resolved");
+      requires { Target::palettes(); }, "the target must list the palettes a description may draw its operations from");
 
   // A mistake in the description, reported against its line and the file the
   // target says it came from.
@@ -168,16 +171,38 @@ struct Interpreter {
   // itself.
   [[nodiscard]] static consteval std::vector<std::meta::info> named_scopes() {
     auto scopes = location_scopes();
-    for (const auto scope: Target::operation_scopes())
-      for (const auto member: std::meta::members_of(scope, std::meta::access_context::current())) {
-        if (!std::meta::is_function(member))
-          continue;
-        for (const auto parameter: std::meta::parameters_of(member))
-          if (const auto type = std::meta::type_of(parameter);
-              std::meta::is_enum_type(type) && !std::ranges::contains(scopes, type))
-            scopes.push_back(type);
-      }
+    for (const auto candidate: operations())
+      for (const auto parameter: std::meta::parameters_of(candidate))
+        if (const auto type = std::meta::type_of(parameter);
+            std::meta::is_enum_type(type) && !std::ranges::contains(scopes, type))
+          scopes.push_back(type);
     return scopes;
+  }
+
+  // Whether a declaration carries `[[=refract::operation]]`. The annotation's
+  // type is const-qualified when it came from the constant, so the qualifier is
+  // taken off before comparing.
+  [[nodiscard]] static consteval bool is_operation(const std::meta::info fn) {
+    for (const auto annotation: std::meta::annotations_of(fn))
+      if (std::meta::remove_cv(std::meta::type_of(annotation)) == ^^Operation)
+        return true;
+    return false;
+  }
+
+  // Every function a description may name: the machine's marked members,
+  // static or not, and every public static function of each palette.
+  // `has_identifier` excludes the implicitly-declared special members, which
+  // have no name to compare.
+  [[nodiscard]] static consteval std::vector<std::meta::info> operations() {
+    std::vector<std::meta::info> found;
+    for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current()))
+      if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_operation(member))
+        found.push_back(member);
+    for (const auto palette: Target::palettes())
+      for (const auto member: std::meta::members_of(palette, std::meta::access_context::current()))
+        if (std::meta::is_function(member) && std::meta::is_static_member(member) && std::meta::has_identifier(member))
+          found.push_back(member);
+    return found;
   }
 
   // Names in a description are matched the way assembler is written, without regard to case.
@@ -234,7 +259,7 @@ struct Interpreter {
   // `type_of` on an annotation is const-qualified, hence `^^const Spelling`.
   [[nodiscard]] static consteval std::string spelling_of(const std::meta::info enumerator) {
     for (const auto annotation: std::meta::annotations_of(enumerator))
-      if (std::meta::type_of(annotation) == ^^const Spelling)
+      if (std::meta::remove_cv(std::meta::type_of(annotation)) == ^^Spelling)
         return std::string(std::meta::extract<Spelling>(annotation).text.view());
     return std::string(std::meta::identifier_of(enumerator));
   }
@@ -319,18 +344,22 @@ struct Interpreter {
     return locations;
   }
 
-  // A static member function of one of the CPU's operation scopes, such as the
-  // Z80's `inc8`, `add16` and `is_set`.
+  // The operation a row names, such as the Z80's `inc8`, `add16` and `is_set`.
   [[nodiscard]] static consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
     std::vector<std::meta::info> candidates;
-    for (const auto scope: Target::operation_scopes())
-      for (const auto member: std::meta::members_of(scope, std::meta::access_context::current()))
-        // `has_identifier` excludes the implicitly-declared special members, which
-        // have no name to compare. `is_static_member` excludes ordinary member
-        // functions, which cannot be called without an object.
-        if (std::meta::is_function(member) && std::meta::is_static_member(member) &&
-            std::meta::has_identifier(member) && same_ignoring_case(std::meta::identifier_of(member), name))
-          candidates.push_back(member);
+    for (const auto candidate: operations())
+      if (same_ignoring_case(std::meta::identifier_of(candidate), name))
+        candidates.push_back(candidate);
+    // A marked member the scan above could not see is a mistake worth its own
+    // message: access control would otherwise decide, in silence, that it is
+    // not an operation.
+    if (candidates.empty())
+      for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::unchecked()))
+        if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_operation(member) &&
+            same_ignoring_case(std::meta::identifier_of(member), name))
+          throw error(line, "'" + std::string(name) +
+                                "' is marked as an operation but is not public, so a "
+                                "description cannot reach it");
     return only_match(candidates, name, line);
   }
 
@@ -367,16 +396,25 @@ struct Interpreter {
     return std::define_static_array(visible);
   }
 
-  // Whether `Fn` takes the machine as its first parameter. An operation that
-  // wants the machine must ask for it first: the framework supplies argument
-  // zero and the row supplies the rest, so which argument is which is a property
-  // of the signature. One that only reads the machine may take it `const`.
+  // Whether `Fn` is a member of the machine, called on it, rather than a static
+  // function called on nothing. A member reaches the machine as `this`, which
+  // is not a parameter, so the row's operands are the whole parameter list
+  // either way; one that only reads the machine is `const`. `^^Machine`
+  // reflects the alias, and a parent is never an alias, hence `dealias`.
   template<std::meta::info Fn>
-  static constexpr bool takes_machine = [] {
+  static constexpr bool machine_member =
+      (std::meta::parent_of(Fn) == std::meta::dealias(^^Machine)) && !std::meta::is_static_member(Fn);
+
+  // Whether `Fn` asks for the machine as a parameter, which nothing may: an
+  // operation that needs the machine is a member of it. One asking this way
+  // would be handed a row's operand instead, and the error would be about that
+  // operand rather than about the signature, so it is named here.
+  template<std::meta::info Fn>
+  static constexpr bool asks_for_machine = [] {
     if constexpr (arity_of<Fn> == 0)
       return false;
     else
-      return std::is_same_v<parameter_type<Fn, 0>, Machine &> || std::is_same_v<parameter_type<Fn, 0>, const Machine &>;
+      return std::is_same_v<std::remove_cvref_t<parameter_type<Fn, 0>>, Machine>;
   }();
 
   // What the instruction carries: the immediate its encoding fetched, the view a
@@ -555,7 +593,6 @@ struct Interpreter {
   // there is no such rule to remember.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
-    constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
     std::array<std::size_t, C.operands.size()> written{};
     std::size_t named = 0;
     for (const auto &operand: C.operands)
@@ -573,13 +610,13 @@ struct Interpreter {
     const auto parameters = std::meta::parameters_of(Fn);
     std::string offered;
     for (std::size_t slot = 0; slot < written.size(); ++slot) {
-      const auto parameter = parameters[slot + supplied];
+      const auto parameter = parameters[slot];
       if (!std::meta::has_identifier(parameter))
         throw error(C.line, "this operation was declared without parameter names, so there is nothing to name here");
       offered += (offered.empty() ? " (it takes " : ", ") + std::string(std::meta::identifier_of(parameter));
     }
     for (std::size_t slot = 0; slot < written.size(); ++slot) {
-      const auto name = std::meta::identifier_of(parameters[slot + supplied]);
+      const auto name = std::meta::identifier_of(parameters[slot]);
       std::size_t found = 0;
       std::size_t matches = 0;
       for (const auto [at, operand]: std::views::enumerate(C.operands))
@@ -620,11 +657,10 @@ struct Interpreter {
   // statements, and an argument list needs a pack.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static auto operands_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
-    constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
     constexpr auto parameter = parameter_for_operand<Fn, C>();
     return [&]<std::size_t... I>(std::index_sequence<I...>) {
       return std::tuple{
-          value_of<C.operands[I], C.line, parameter_type<Fn, parameter[I] + supplied>>(machine, decoded, indexed)...};
+          value_of<C.operands[I], C.line, parameter_type<Fn, parameter[I]>>(machine, decoded, indexed)...};
     }(std::make_index_sequence<C.operands.size()>{});
   }
 
@@ -635,8 +671,8 @@ struct Interpreter {
   [[nodiscard]] static auto call_with(Machine &machine, const auto &arguments) {
     constexpr auto operand = operand_for_parameter<Fn, C>();
     return [&]<std::size_t... S>(std::index_sequence<S...>) {
-      if constexpr (takes_machine<Fn>)
-        return [:Fn:](machine, std::get<operand[S]>(arguments)...);
+      if constexpr (machine_member<Fn>)
+        return machine.[:Fn:](std::get<operand[S]>(arguments)...);
       else
         return [:Fn:](std::get<operand[S]>(arguments)...);
     }(std::make_index_sequence<C.operands.size()>{});
@@ -660,19 +696,14 @@ struct Interpreter {
   // description line and the operation, as every other mistake in a description
   // is reported.
   //
-  // The row supplies every parameter the operation has, less the machine if it
-  // asked for that.
+  // The row supplies every parameter the operation has.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval bool operands_fit() {
-    constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
-    // A machine taken any other way would be treated as an operand, and the
-    // error would be about a row's operand failing to convert rather than about
-    // the signature.
-    if constexpr (arity_of<Fn> > 0)
-      if (std::is_same_v<std::remove_cvref_t<parameter_type<Fn, 0>>, Machine> && !takes_machine<Fn>)
-        throw error(C.line, quoted_name_of(Fn) + " must take the machine by reference, `const` or not");
-    if (C.operands.size() + supplied != arity_of<Fn>)
-      throw error(C.line, quoted_name_of(Fn) + " takes " + decimal(arity_of<Fn> - supplied) +
+    if (asks_for_machine<Fn>)
+      throw error(C.line, quoted_name_of(Fn) + " takes the machine as a parameter; an operation that needs the "
+                                               "machine is a member of it, marked [[=refract::operation]]");
+    if (C.operands.size() != arity_of<Fn>)
+      throw error(C.line, quoted_name_of(Fn) + " takes " + decimal(arity_of<Fn>) +
                               " operand(s) and this row supplies " + decimal(C.operands.size()));
     return true;
   }
@@ -704,14 +735,14 @@ struct Interpreter {
   }
 
   // A condition tests only what the row hands it, so that the row says
-  // everything the branch depends on. That rules out taking the machine even
-  // `const`, since a machine in hand can be asked anything. It names no
-  // destination, and answers yes or no.
+  // everything the branch depends on. That rules out a member of the machine,
+  // even a `const` one, since a machine in hand can be asked anything. It
+  // names no destination, and answers yes or no.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval bool condition_fits() {
     const auto name = quoted_name_of(Fn);
-    if (takes_machine<Fn>)
-      throw error(C.line, name + " asks for the machine; a condition tests only what the row hands it, so that "
+    if (machine_member<Fn> || asks_for_machine<Fn>)
+      throw error(C.line, name + " reaches the machine; a condition tests only what the row hands it, so that "
                                  "the row states everything the branch depends on");
     if (C.operands.size() != arity_of<Fn>)
       throw error(C.line, name + " takes " + decimal(arity_of<Fn>) + " operand(s) and this condition supplies " +
@@ -728,19 +759,15 @@ struct Interpreter {
   // destinations destructure the result in declaration order.
   template<std::meta::info Fn, Call C>
   static void apply(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
-    constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
     // Gating the body on the same condition, rather than only asserting it,
     // keeps a wrong count from being one message followed by twenty. The
     // `decltype` below asks for the operation's return type, which instantiates
     // a parameter type per operand, and an operand the signature has no
     // parameter for indexes off the end of `parameters_of` inside libstdc++.
-    constexpr bool arity_matches = C.operands.size() + supplied == arity_of<Fn>;
+    constexpr bool arity_matches = C.operands.size() == arity_of<Fn>;
     static_assert(operands_fit<Fn, C>());
     if constexpr (arity_matches) {
-      // A default capture rather than `[&machine]`, because only one branch of the
-      // `if constexpr` names it: an operation that does not ask for the machine
-      // leaves an explicit capture unused, which clang diagnoses and gcc does not.
-      const auto call = [&](const auto &arguments) { return call_with<Fn, C>(machine, arguments); };
+      const auto call = [&machine](const auto &arguments) { return call_with<Fn, C>(machine, arguments); };
 
       // Unevaluated, despite everything just said about operands having effects:
       // `decltype` asks for the type and calls nothing.
@@ -778,7 +805,7 @@ struct Interpreter {
     static_assert(condition_fits<Fn, C>());
     // Gated for the same reason `apply` is: a condition that does not fit gets
     // one message rather than that message and the cascade from calling it.
-    if constexpr (!takes_machine<Fn> && C.operands.size() == arity_of<Fn>)
+    if constexpr (!machine_member<Fn> && C.operands.size() == arity_of<Fn>)
       return call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
     else
       return false;
@@ -928,7 +955,7 @@ struct Interpreter {
       template for (constexpr auto step: row.steps) {
         {
           constexpr auto member = member_for(step, row.matched, BodyKey, rules);
-          constexpr auto operation = step.operation_reference ? member.operation : step.operation;
+          constexpr auto verb = step.operation_reference ? member.operation : step.operation;
           constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
           if constexpr (step.kind == Step::Kind::If) {
             // The rest of the row is the conditional half, which is where the
@@ -938,11 +965,11 @@ struct Interpreter {
             // here stops the machine at the first untaken branch. It cannot tail
             // call from in here either, since the expansion's own induction
             // variable lives in the frame a tail call would abandon.
-            if (!evaluate<find_operation(operation, row.line), call>(machine, decoded, indexed))
+            if (!evaluate<find_operation(verb, row.line), call>(machine, decoded, indexed))
               break;
           }
           else
-            apply<find_operation(operation, row.line), call>(machine, decoded, indexed);
+            apply<find_operation(verb, row.line), call>(machine, decoded, indexed);
         }
       }
     }

@@ -187,4 +187,138 @@ void Z80::halted(const bool value) {
     halted_ = false;
 }
 
+
+// ---------------------------------------------------------------------------
+// The verbs marked as operations
+// ---------------------------------------------------------------------------
+
+void Z80::out_n(const std::uint8_t port, const std::uint8_t value) {
+  const auto address = static_cast<std::uint16_t>(value << 8 | port);
+  bus(Bus::io_write, address);
+  out(address, value);
+}
+
+std::uint8_t Z80::in_n(const std::uint8_t port, const std::uint8_t high) {
+  const auto address = static_cast<std::uint16_t>(high << 8 | port);
+  bus(Bus::io_read, address);
+  return in(address);
+}
+
+Alu::R8 Z80::in_c(const std::uint16_t port, const Flags flags) {
+  bus(Bus::io_read, port);
+  const auto value = in(port);
+  return {value, Alu::parity_flags_for(value) | (flags & Flags::Carry())};
+}
+
+void Z80::out_c(const std::uint16_t port, const std::uint8_t value) {
+  bus(Bus::io_write, port);
+  out(port, value);
+}
+
+std::uint16_t Z80::ex_sp_hl(const std::uint16_t value) {
+  const auto sp = regs_.sp();
+  const auto low = read_memory(sp);
+  const auto high = read_memory(static_cast<std::uint16_t>(sp + 1));
+  delay(1);
+  write_memory(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
+  write_memory(sp, static_cast<std::uint8_t>(value));
+  delay(2);
+  return static_cast<std::uint16_t>(high << 8 | low);
+}
+
+void Z80::exx() { regs_.exx(); }
+void Z80::ex_de_hl() { regs_.ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }
+void Z80::ex_af() { regs_.ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
+
+Alu::R8 Z80::ld_a_special(const std::uint8_t value, const Flags flags) const {
+  return {value, Alu::iff2_flags_for(value, flags, iff2())};
+}
+
+Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const bool right) {
+  const auto a = regs_.get(RegisterFile::R8::A);
+  const auto updated =
+      static_cast<std::uint8_t>(right ? (a & 0xf0) | (value & 0x0f) : (a & 0xf0) | (value >> 4 & 0x0f));
+  const auto written = static_cast<std::uint8_t>(right ? value >> 4 | (a & 0x0f) << 4 : value << 4 | (a & 0x0f));
+  delay(4);
+  regs_.set(RegisterFile::R8::A, updated);
+  return {written, (flags & Flags::Carry()) | Alu::parity_flags_for(updated)};
+}
+
+Alu::R8 Z80::rrd8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, true); }
+Alu::R8 Z80::rld8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, false); }
+
+Flags Z80::counted(const Flags flags, const std::uint16_t bc, const std::uint8_t noise) {
+  auto result = flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow() | Flags::Flag3() | Flags::Flag5());
+  if (bc != 1)
+    result = result | Flags::Overflow();
+  if (noise & 0x08)
+    result = result | Flags::Flag3();
+  if (noise & 0x02)
+    result = result | Flags::Flag5();
+  return result;
+}
+
+Flags Z80::stepped(const Flags flags) {
+  const auto b = static_cast<std::uint8_t>(regs_.get(RegisterFile::R8::B) - 1);
+  regs_.set(RegisterFile::R8::B, b);
+  return Alu::parity_flags_for(b) | Flags::Subtract() | (flags & Flags::Carry());
+}
+
+Flags Z80::block_load(const BlockDirection direction, const Flags flags) {
+  const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  const auto de = regs_.get(RegisterFile::R16::DE);
+  const auto bc = regs_.get(RegisterFile::R16::BC);
+  const auto byte = read_memory(hl);
+  write_memory(de, byte);
+  delay(2);
+  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
+  regs_.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
+  regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+  // Flags 3 and 5 come from the byte plus the accumulator, and swapped over.
+  return counted(flags, bc, static_cast<std::uint8_t>(byte + regs_.get(RegisterFile::R8::A)));
+}
+
+Flags Z80::block_compare(const BlockDirection direction, const Flags flags) {
+  const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  const auto bc = regs_.get(RegisterFile::R16::BC);
+  const auto byte = read_memory(hl);
+  delay(5);
+  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
+  regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+  const auto compared = Alu::sub8(regs_.get(RegisterFile::R8::A), byte, false);
+  // Flags 3 and 5 come from the difference, less one where it borrowed.
+  const auto noise = static_cast<std::uint8_t>(compared.flags.half_carry() ? compared.result - 1 : compared.result);
+  // The comparison's own sign, zero, half-carry and subtract go on last: the
+  // count clears two of them, and a compare is entitled to say otherwise.
+  constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
+  return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
+}
+
+Flags Z80::block_in(const BlockDirection direction, const Flags flags) {
+  delay(1);
+  const auto port = regs_.get(RegisterFile::R16::BC);
+  bus(Bus::io_read, port);
+  const auto value = in(port);
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  write_memory(hl, value);
+  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
+  return stepped(flags);
+}
+
+Flags Z80::block_out(const BlockDirection direction, const Flags flags) {
+  delay(1);
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  const auto value = read_memory(hl);
+  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
+  // B is counted down before the port goes on the bus, so it addresses with
+  // the new value.
+  const auto result = stepped(flags);
+  const auto port = regs_.get(RegisterFile::R16::BC);
+  bus(Bus::io_write, port);
+  out(port, value);
+  return result;
+}
+
 } // namespace specbolt::v4

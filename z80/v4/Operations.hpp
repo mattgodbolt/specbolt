@@ -1,86 +1,24 @@
 #pragma once
 
-// What a row's verbs mean: every operation a description of this chip may name,
-// and where reflection is to look for them.
-//
-// These are the semantics the table cannot express: the block moves, the
-// exchanges, the flag minutiae. The easy majority of the instruction set became
-// rows; this is the awkward remainder, and it is meant to be read as such.
+// The verbs of the description that touch no chip: a palette, every public
+// static function of which a row may name. The verbs that do touch the chip
+// are members of `Z80`, marked there one by one; the arithmetic the rows
+// share with the other implementations is in `Alu`, a second palette.
 
-#include "refract/Model.hpp"
 #include "z80/common/Alu.hpp"
-#include "z80/common/RegisterFile.hpp"
-#include "z80/v4/Z80.hpp"
+#include "z80/common/Flags.hpp"
 
 #include <cstdint>
-#include <meta>
-#include <vector>
 
 namespace specbolt::v4 {
 
-// Which way the block operations walk memory. The annotations are what
-// `z80.cpu` calls each direction: `i` and `d`, the letters `ldi` and `ldd`
-// end in. The description names a direction; nothing reads the values.
-enum class BlockDirection : std::uint8_t {
-  Up[[= refract::Spelling{"i"}]],
-  Down[[= refract::Spelling{"d"}]],
-};
-
-// TODO in general I'd like all these to be much more "adapter"-y; anything that
-// takes a `cpu` should delegate to a function on the `cpu` instead of puppeteering
-// the `cpu` from outside. I really want this to read as "the thing that tells"
-// refract the palette of things it can do, but not have to keep reading back
-// and forth between the CPU itself and this file to find the actual Z80 behaviour.
-// Even better if we can dream up a way to make this less painful but for now
-// I think this is ok :) (perhaps a future where the Cpu itself with _annotations_
-// is the Operations, like adding ^^Z80 to the scopes somehow, or ... anyway, future)
-
 struct Operations {
-  // A description can name only what is public here. `find_operation` looks
-  // with the framework's access context, so the helpers below are out of its
-  // reach.
-private:
-  // What every block operation does to the flags it does not otherwise touch:
-  // parity stands in for "bc has not run out", and flags 3 and 5 come from a
-  // value the instruction happens to have to hand, swapped over.
-  [[nodiscard]] static Flags counted(const Flags flags, const std::uint16_t bc, const std::uint8_t noise) {
-    auto result =
-        flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow() | Flags::Flag3() | Flags::Flag5());
-    if (bc != 1)
-      result = result | Flags::Overflow();
-    if (noise & 0x08)
-      result = result | Flags::Flag3();
-    if (noise & 0x02)
-      result = result | Flags::Flag5();
-    return result;
-  }
-  // The in and out block forms count b rather than bc. Their real parity comes
-  // from `(value + ((c ± 1) & 0xff)) & 7` exclusive-ored with b, and their half
-  // carry and carry from whether that sum passed 255; none of that is modelled,
-  // so only sign, zero and flags 3 and 5 are trustworthy here.
-  [[nodiscard]] static Flags stepped(Z80 &z80, const Flags flags) {
-    const auto b = static_cast<std::uint8_t>(z80.get(RegisterFile::R8::B) - 1);
-    z80.set(RegisterFile::R8::B, b);
-    return Alu::parity_flags_for(b) | Flags::Subtract() | (flags & Flags::Carry());
-  }
-  // A helper function for rrd and rld. Returns an Alu result but always affects the A register too.
-  [[nodiscard]] static Alu::R8 nibble(Z80 &z80, const std::uint8_t value, const Flags flags, const bool right) {
-    const auto a = z80.get(RegisterFile::R8::A);
-    const auto updated =
-        static_cast<std::uint8_t>(right ? (a & 0xf0) | (value & 0x0f) : (a & 0xf0) | (value >> 4 & 0x0f));
-    const auto written = static_cast<std::uint8_t>(right ? value >> 4 | (a & 0x0f) << 4 : value << 4 | (a & 0x0f));
-    z80.delay(4);
-    z80.set(RegisterFile::R8::A, updated);
-    return {written, (flags & Flags::Carry()) | Alu::parity_flags_for(updated)};
-  }
-
-public:
   static void nop() {}
   [[nodiscard]] static std::uint8_t ld8(const std::uint8_t value) { return value; }
   [[nodiscard]] static std::uint16_t ld16(const std::uint16_t value) { return value; }
   [[nodiscard]] static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
   [[nodiscard]] static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
-  static void delay(Z80 &z80, const std::uint8_t cycles) { z80.delay(cycles); }
+
   // `Alu::bit` takes a mask; the encoding carries an index, as `res` and `set`
   // do. Flags 3 and 5 come from whatever was last on the bus, which the row
   // names. Not `bit`, because `Alu::bit` is in the same search and the two
@@ -102,6 +40,7 @@ public:
   [[nodiscard]] static bool is_set(const bool flag) { return flag; }
   [[nodiscard]] static bool is_clear(const bool flag) { return !flag; }
   [[nodiscard]] static bool nonzero(const std::uint8_t value) { return value != 0; }
+  [[nodiscard]] static bool nonzero16(const std::uint16_t value) { return value != 0; }
 
   // `Alu::dec8` sets the flags; `djnz` counts without touching them.
   [[nodiscard]] static std::uint8_t dec8_no_flags(const std::uint8_t value) {
@@ -112,129 +51,8 @@ public:
     return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
   }
 
-  // The port is sixteen bits wide even when the encoding writes eight: the Z80
-  // puts the accumulator on the top half.
-  static void out_n(Z80 &z80, const std::uint8_t port, const std::uint8_t value) {
-    const auto address = static_cast<std::uint16_t>(value << 8 | port);
-    z80.bus(Bus::io_write, address);
-    z80.out(address, value);
-  }
-  [[nodiscard]] static std::uint8_t in_n(Z80 &z80, const std::uint8_t port, const std::uint8_t high) {
-    const auto address = static_cast<std::uint16_t>(high << 8 | port);
-    z80.bus(Bus::io_read, address);
-    return z80.in(address);
-  }
-
-  // Three accesses and two idle stretches, interleaved in an order no row could
-  // write as operands.
-  [[nodiscard]] static std::uint16_t ex_sp_hl(Z80 &z80, const std::uint16_t value) {
-    const auto sp = z80.get(RegisterFile::R16::SP);
-    const auto low = z80.read_memory(sp);
-    const auto high = z80.read_memory(static_cast<std::uint16_t>(sp + 1));
-    z80.delay(1);
-    z80.write_memory(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
-    z80.write_memory(sp, static_cast<std::uint8_t>(value));
-    z80.delay(2);
-    return static_cast<std::uint16_t>(high << 8 | low);
-  }
-
-  // `in r,(c)` addresses with the whole of bc and sets flags; `out (c),r` does
-  // not. Neither is expressible as an operand, because the port space is not
-  // memory.
-  // Sign, zero and parity come from the byte; the carry is explicitly *not*
-  // affected, so it has to be carried through rather than recomputed.
-  [[nodiscard]] static Alu::R8 in_c(Z80 &z80, const std::uint16_t port, const Flags flags) {
-    z80.bus(Bus::io_read, port);
-    const auto value = z80.in(port);
-    return {value, Alu::parity_flags_for(value) | (flags & Flags::Carry())};
-  }
-  static void out_c(Z80 &z80, const std::uint16_t port, const std::uint8_t value) {
-    z80.bus(Bus::io_write, port);
-    z80.out(port, value);
-  }
-
-  // `ld a,i` and `ld a,r` report iff2 in the parity flag, which is the one way
-  // a program can see the interrupt state.
-  [[nodiscard]] static Alu::R8 ld_a_special(const Z80 &z80, const std::uint8_t value, const Flags flags) {
-    return {value, Alu::iff2_flags_for(value, flags, z80.iff2())};
-  }
-
   // `neg` is `0 - a`, which sub8 already is.
   [[nodiscard]] static Alu::R8 neg8(const std::uint8_t value) { return Alu::sub8(0, value, false); }
-
-  [[nodiscard]] static bool nonzero16(const std::uint16_t value) { return value != 0; }
-
-  // `rrd` and `rld` move a nibble between the accumulator and memory, so both
-  // ends change at once and only one of them can be a destination.
-  [[nodiscard]] static Alu::R8 rrd8(Z80 &z80, const std::uint8_t value, const Flags flags) {
-    return nibble(z80, value, flags, true);
-  }
-  [[nodiscard]] static Alu::R8 rld8(Z80 &z80, const std::uint8_t value, const Flags flags) {
-    return nibble(z80, value, flags, false);
-  }
-
-  // The block operations move or compare one byte, step hl (and de), and count
-  // bc down. The repeating forms are the same row with a condition and a
-  // rewind: the chip really does re-execute the opcode, which is why an
-  // interrupt can land in the middle of an `ldir`.
-  [[nodiscard]] static Flags block_load(Z80 &z80, const BlockDirection direction, const Flags flags) {
-    const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
-    const auto hl = z80.get(RegisterFile::R16::HL);
-    const auto de = z80.get(RegisterFile::R16::DE);
-    const auto bc = z80.get(RegisterFile::R16::BC);
-    const auto byte = z80.read_memory(hl);
-    z80.write_memory(de, byte);
-    z80.delay(2);
-    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
-    z80.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
-    z80.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
-    // Flags 3 and 5 come from the byte plus the accumulator, and swapped over.
-    return counted(flags, bc, static_cast<std::uint8_t>(byte + z80.get(RegisterFile::R8::A)));
-  }
-  [[nodiscard]] static Flags block_compare(Z80 &z80, const BlockDirection direction, const Flags flags) {
-    const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
-    const auto hl = z80.get(RegisterFile::R16::HL);
-    const auto bc = z80.get(RegisterFile::R16::BC);
-    const auto byte = z80.read_memory(hl);
-    z80.delay(5);
-    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
-    z80.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
-    const auto compared = Alu::sub8(z80.get(RegisterFile::R8::A), byte, false);
-    // Flags 3 and 5 come from the difference, less one where it borrowed.
-    const auto noise = static_cast<std::uint8_t>(compared.flags.half_carry() ? compared.result - 1 : compared.result);
-    // The comparison's own sign, zero, half-carry and subtract go on last: the
-    // count clears two of them, and a compare is entitled to say otherwise.
-    constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
-    return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
-  }
-  [[nodiscard]] static Flags block_in(Z80 &z80, const BlockDirection direction, const Flags flags) {
-    z80.delay(1);
-    const auto port = z80.get(RegisterFile::R16::BC);
-    z80.bus(Bus::io_read, port);
-    const auto value = z80.in(port);
-    const auto hl = z80.get(RegisterFile::R16::HL);
-    z80.write_memory(hl, value);
-    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
-    return stepped(z80, flags);
-  }
-  [[nodiscard]] static Flags block_out(Z80 &z80, const BlockDirection direction, const Flags flags) {
-    z80.delay(1);
-    const auto hl = z80.get(RegisterFile::R16::HL);
-    const auto value = z80.read_memory(hl);
-    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
-    // B is counted down before the port goes on the bus, so it addresses with
-    // the new value.
-    const auto result = stepped(z80, flags);
-    const auto port = z80.get(RegisterFile::R16::BC);
-    z80.bus(Bus::io_write, port);
-    z80.out(port, value);
-    return result;
-  }
-
-  // The exchanges move whole register pairs about, which no operand can name.
-  static void exx(Z80 &z80) { z80.regs().exx(); }
-  static void ex_de_hl(Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }
-  static void ex_af(Z80 &z80) { z80.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
 };
 
 } // namespace specbolt::v4

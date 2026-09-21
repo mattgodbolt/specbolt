@@ -1379,3 +1379,30 @@ step in its own top-level `static_assert` in the consumer brought the unit back
 to 1.42 GB, which is the old figure plus the catch-and-rethrow wrapper. That is
 six lines of incantation per description, so the zero-boilerplate shape stands
 and the six lines are recorded in MEASUREMENTS.md for whoever needs the memory.
+
+## Done: the machine publishes its verbs
+
+`Operations` used to hold every verb a row could name, and eighteen of them
+took the Z80 by reference and worked it from outside: `block_load` reading
+`hl`, `de` and `bc` through accessors and writing them back through others.
+That was the chip's behaviour, written next door to the chip.
+
+Those eighteen are members of `Z80` now, declared with
+`[[=refract::operation]]`. The annotation is the whole of the mechanism: a
+machine's public interface is larger than a description's vocabulary
+(`run_until` and `bus` are public and must not be verbs), so the machine says
+which members are, one by one, on the declaration itself. It is the same move
+as `Spelling`: the thing that knows says so where it is declared. A member
+reaches the machine as `this`, which reflection does not count as a parameter,
+so the row's operands are the whole parameter list; a member that only reads
+the machine is `const`, the language's own word for what group 1's
+`const Z80 &` reached for.
+
+`Operations` keeps the verbs that touch nothing: loads, the conditions, `res`,
+`set` and `test_bit`. The target lists it and `Alu` as *palettes*, types built
+to be named, every public static function of which is a verb without saying
+so. Two defaults, one mechanism, and the asymmetry has a reason: `Alu` is
+shared with three other implementations and compiled by compilers with no
+annotation syntax, so it could not publish if it wanted to. The toy machine in
+`SecondMachineTest` publishes one static and one non-static member to show
+both call forms.

@@ -55,6 +55,17 @@ struct FileName {
   [[nodiscard]] constexpr std::string_view view() const { return {text.data(), N - 1}; }
 };
 
+// Marks a member function of a machine as one a description may name. A
+// machine has an interface a description must not reach, so its operations
+// are the members it marks, one by one, static or not:
+//
+//   [[=refract::operation]] Result verb(Operand operand);
+//
+// A palette the target lists needs none of this: it is a type built to be
+// named, so every public static function in it is an operation.
+struct Operation {};
+inline constexpr Operation operation{};
+
 // How a `.cpu` file spells an enumerator, when that differs from what C++ calls
 // it. Written as a C++26 annotation (P3394) on the enumerator itself:
 //

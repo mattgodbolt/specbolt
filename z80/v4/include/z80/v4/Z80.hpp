@@ -1,5 +1,7 @@
 #pragma once
 
+#include "refract/Model.hpp"
+#include "z80/common/Alu.hpp"
 #include "z80/common/Flags.hpp"
 #include "z80/common/RegisterFile.hpp"
 #include "z80/common/Z80Base.hpp"
@@ -65,6 +67,14 @@ SPECBOLT_EXPORT enum class Interrupt : std::uint8_t { i, im };
 // whether or not a description ever names it.
 SPECBOLT_EXPORT enum class Refresh : std::uint8_t { r };
 
+// Which way the block operations walk memory. The annotations are what
+// `z80.cpu` calls each direction: `i` and `d`, the letters `ldi` and `ldd`
+// end in. The description names a direction; nothing reads the values.
+SPECBOLT_EXPORT enum class BlockDirection : std::uint8_t {
+  Up[[= refract::Spelling{"i"}]],
+  Down[[= refract::Spelling{"d"}]],
+};
+
 SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
@@ -89,7 +99,50 @@ public:
   [[nodiscard]] std::uint16_t read_memory16(std::uint16_t address);
   void write_memory(std::uint16_t address, std::uint8_t value);
   void write_memory16(std::uint16_t address, std::uint16_t value);
-  void delay(std::uint8_t cycles);
+  // Also a verb: `delay 2` is a step a row may write.
+  [[= refract::operation]] void delay(std::uint8_t cycles);
+
+  // The verbs a description may name on the chip itself, marked one by
+  // one: what the rows cannot express as operands because it touches the
+  // machine in an order or a place no operand can. The verbs that touch no
+  // chip are in Operations.hpp.
+
+  // The port is sixteen bits wide even when the encoding writes eight: the Z80
+  // puts the accumulator on the top half.
+  [[= refract::operation]] void out_n(std::uint8_t port, std::uint8_t value);
+  [[nodiscard]][[= refract::operation]] std::uint8_t in_n(std::uint8_t port, std::uint8_t high);
+  // `in r,(c)` addresses with the whole of bc and sets flags; `out (c),r` does
+  // not. Neither is expressible as an operand, because the port space is not
+  // memory. Sign, zero and parity come from the byte; the carry is explicitly
+  // *not* affected, so it is carried through rather than recomputed.
+  [[nodiscard]][[= refract::operation]] Alu::R8 in_c(std::uint16_t port, Flags flags);
+  [[= refract::operation]] void out_c(std::uint16_t port, std::uint8_t value);
+
+  // Three accesses and two idle stretches, interleaved in an order no row could
+  // write as operands.
+  [[nodiscard]][[= refract::operation]] std::uint16_t ex_sp_hl(std::uint16_t value);
+  // The exchanges move whole register pairs about, which no operand can name.
+  [[= refract::operation]] void exx();
+  [[= refract::operation]] void ex_de_hl();
+  [[= refract::operation]] void ex_af();
+
+  // `ld a,i` and `ld a,r` report iff2 in the parity flag, which is the one way
+  // a program can see the interrupt state.
+  [[nodiscard]][[= refract::operation]] Alu::R8 ld_a_special(std::uint8_t value, Flags flags) const;
+
+  // `rrd` and `rld` move a nibble between the accumulator and memory, so both
+  // ends change at once and only one of them can be a destination.
+  [[nodiscard]][[= refract::operation]] Alu::R8 rrd8(std::uint8_t value, Flags flags);
+  [[nodiscard]][[= refract::operation]] Alu::R8 rld8(std::uint8_t value, Flags flags);
+
+  // The block operations move or compare one byte, step hl (and de), and count
+  // bc down. The repeating forms are the same row with a condition and a
+  // rewind: the chip really does re-execute the opcode, which is why an
+  // interrupt can land in the middle of an `ldir`.
+  [[nodiscard]][[= refract::operation]] Flags block_load(BlockDirection direction, Flags flags);
+  [[nodiscard]][[= refract::operation]] Flags block_compare(BlockDirection direction, Flags flags);
+  [[nodiscard]][[= refract::operation]] Flags block_in(BlockDirection direction, Flags flags);
+  [[nodiscard]][[= refract::operation]] Flags block_out(BlockDirection direction, Flags flags);
 
   // How a displacement offsets a base, and what forming that address costs.
   // The Z80 sign-extends and spends a five-T-state window doing it, but any
@@ -175,6 +228,18 @@ private:
   // What the address bus last held, which is what an internal cycle presents.
   std::uint16_t bus_address_{};
   bool interrupts_deferred_{};
+
+  // What every block operation does to the flags it does not otherwise touch:
+  // parity stands in for "bc has not run out", and flags 3 and 5 come from a
+  // value the instruction happens to have to hand, swapped over.
+  [[nodiscard]] static Flags counted(Flags flags, std::uint16_t bc, std::uint8_t noise);
+  // The in and out block forms count b rather than bc. Their real parity comes
+  // from `(value + ((c ± 1) & 0xff)) & 7` exclusive-ored with b, and their half
+  // carry and carry from whether that sum passed 255; none of that is modelled,
+  // so only sign, zero and flags 3 and 5 are trustworthy here.
+  [[nodiscard]] Flags stepped(Flags flags);
+  // `rrd` and `rld`: the nibble that ends up in memory, having changed `a`.
+  [[nodiscard]] Alu::R8 nibble(std::uint8_t value, Flags flags, bool right);
 };
 
 } // namespace specbolt::v4

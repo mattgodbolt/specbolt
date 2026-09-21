@@ -30,10 +30,11 @@ struct Target {
   using Machine = Z80;
   using Compiled = refract::Compiled<z80_cpu, "z80.cpu">;
 
-  // Where the description's operations may come from. Where its *locations*
-  // come from is not stated: a location is a thing the machine can read, so
-  // refract derives them from the machine's `read` overloads.
-  static consteval std::vector<std::meta::info> operation_scopes() { return {^^Operations, ^^Alu}; }
+  // The palettes: types built to be named, every public static function of
+  // which is a verb. The chip's own verbs are the members `Z80` publishes with
+  // `[[=refract::operation]]`, and its locations are whatever it can `read`,
+  // so neither is listed here.
+  static consteval std::vector<std::meta::info> palettes() { return {^^Operations, ^^Alu}; }
 };
 
 } // namespace specbolt::v4

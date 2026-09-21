@@ -39,6 +39,30 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - Reflection works inside module interface units, including `template for` in a module purview and
   exported templates that reflect on their own parameters and are instantiated in importing TUs.
 
+### Annotations on member functions
+
+- **An annotation goes on a member function as readily as on an enumerator**, in its own attribute
+  list after `[[nodiscard]]`, and `annotations_of` finds it. `[[=refract::operation]]` is how a
+  machine publishes a member a description may name. `parameters_of` a non-static member does not
+  count the implicit object, and `machine.[:Fn:](args...)` calls it; `is_class_member` with
+  `is_static_member` says which of the two call forms a function wants. A namespace-scope constant
+  named for the annotation must not share its name with any local, since `-Wshadow` sees through
+  the attribute. `members_of` does not walk base classes, so a marked member of a base is not found.
+- **`^^Alias` reflects the alias, not what it names.** `parent_of(^^Z80::delay) == ^^Machine` is
+  false when `Machine` is `using Machine = Z80;`, and quietly so; `dealias(^^Machine)` is what to
+  compare against. `members_of` dealiases for itself, which is why the same alias works there and
+  hides the mistake next door.
+- **`a == ^^T && b` does not mean what it says.** The line was
+
+  ```cpp
+  static constexpr bool machine_member = std::meta::parent_of(Fn) == ^^Machine && !std::meta::is_static_member(Fn);
+  ```
+
+  and gcc said `expected ';' before '!' token`. `^^` takes a type-id and the grammar reads
+  `Machine &&` as one, an rvalue reference to `Machine`, so the `&&` that was meant to join two
+  comparisons is eaten and the parse fails at the `!`. A reflection is not a `bool` and never
+  converts to one, so nothing was being tested for truth; parenthesise the comparison.
+
 ### Constant evaluation can catch
 
 - **`try`/`catch` works in constant evaluation on gcc 16.2** (P3068), including throwing a new

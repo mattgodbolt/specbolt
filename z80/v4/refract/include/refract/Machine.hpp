@@ -6,8 +6,8 @@
 // framework fetches, accesses memory, forms an indexed address and spends time.
 //
 // Where *operation* names are resolved is a separate question, answered by the
-// `operation_scopes()` the target supplies, since it takes no argument and no
-// concept can reach it by lookup. Where *location* names are resolved is not a
+// palettes the target lists and by the members the machine publishes with
+// `[[=refract::operation]]`; see Execute.hpp. Where *location* names are resolved is not a
 // question the target answers at all: a location is a thing the machine can
 // read, so the pool is its own `read` overloads. See `location_scopes` in
 // Execute.hpp.

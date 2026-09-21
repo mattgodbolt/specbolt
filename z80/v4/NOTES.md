@@ -33,7 +33,7 @@ are all complete, and the instruction set is finished.
 - **Disassembly.** Walks the row's lowered pieces, following a `goto` through a prefix table.
 - **Execution.** A 256-entry dispatch table per decoding table, built with a `template for`
   expansion statement, one `execute_one<Table, Opcode, Index>` instantiation per entry, each
-  resolving its verb by reflection over the CPU's `operation_scopes()`.
+  resolving its verb by reflection over the target's palettes and the machine's marked members.
 
 The pipeline is `#embed` → `consteval` parse → lower to validated pieces → `template for` → splice.
 
@@ -68,16 +68,18 @@ Lowering the table to a validated fixed shape at parse time removes that half en
 `Target.hpp`, `Operations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting
 means writing these and nothing else:
 
-- `Target`: which machine, which description, and where its operations live
-- `Z80` and `Operations`, the machine state and its non-ALU primitives
+- `Target`: which machine, which description, and which palettes
+- `Z80`, the machine state, marking with `[[=refract::operation]]` the verbs that touch it
+- `Operations`, the verbs that touch nothing
 - `read`/`write` overloads: how to touch storage, and, for `read`, what storage there is
 - `read_memory`/`write_memory`: how to touch memory through an address
 - `fetch_opcode`/`fetch_immediate`/`fetch_immediate16`: how to read the instruction stream
 - `delay`: how to spend an idle cycle
 
-A primitive may take the machine by reference as its first parameter, which the framework supplies. That is the one
-type it is parameterised on, so it is the one thing it can always hand over, and it is what `jp`,
-`call`, `push` and `in`/`out` will need.
+A verb that needs the machine is a member of it, called on it; a verb that does not is a static
+function of a palette, called on nothing. The machine's public interface is larger than its
+vocabulary, so it publishes its verbs one by one; a palette is built to be named, so everything in
+it counts.
 
 The framework names no CPU type at all: not `RegisterFile`, not `Alu`, not `Flags`. It knows only
 that a row has a verb, some operands and some destinations, and that the CPU can resolve a name.

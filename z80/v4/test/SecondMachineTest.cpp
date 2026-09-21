@@ -69,6 +69,16 @@ struct Toy {
 
   [[nodiscard]] std::uint8_t read(const Reg which) const { return which == Reg::a ? a : x; }
   void write(const Reg which, const std::uint8_t value) { (which == Reg::a ? a : x) = value; }
+
+  // Two verbs the machine marks, one that needs it and one that does not.
+  // `delay` above is public and is not a verb, because nothing says it is.
+  [[nodiscard]][[= refract::operation]] std::uint8_t swap(const std::uint8_t value) {
+    ++cycles;
+    return static_cast<std::uint8_t>(value << 4 | value >> 4);
+  }
+  [[nodiscard]][[= refract::operation]] static std::uint8_t twice(const std::uint8_t value) {
+    return static_cast<std::uint8_t>(value * 2);
+  }
 };
 
 struct ToyOperations {
@@ -85,25 +95,27 @@ table main
 00000000   | nop            | nop
 0000001r n | ld {reg:r}, $nn | ld8 {reg:r} <- n
 0000010r   | add a, {reg:r} | add8 a <- a {reg:r}
+00000110   | swap a         | swap a <- a
+00000111   | twice a        | twice a <- a
 xxxxxxxx   | ??             | nop
 )";
 
 struct ToyTarget {
   using Machine = Toy;
   using Compiled = refract::Compiled<toy_cpu, "toy.cpu">;
-  static consteval std::vector<std::meta::info> operation_scopes() { return {^^ToyOperations}; }
+  static consteval std::vector<std::meta::info> palettes() { return {^^ToyOperations}; }
 };
 
 } // namespace
 
 TEST_CASE("A second machine runs beside the Z80") {
-  // ld a, 5 ; ld x, 7 ; add a, x ; nop
-  Toy toy{.memory = {0x02, 0x05, 0x03, 0x07, 0x05, 0x00}, .instructions_left = 4};
+  // ld a, 5 ; ld x, 7 ; add a, x ; swap a ; twice a
+  Toy toy{.memory = {0x02, 0x05, 0x03, 0x07, 0x05, 0x06, 0x07}, .instructions_left = 5};
   refract::Interpreter<ToyTarget>::run(toy);
-  CHECK(toy.a == 12);
+  CHECK(toy.a == 0x80); // 12 is 0x0c, swapped is 0xc0, doubled is 0x80
   CHECK(toy.x == 7);
-  CHECK(toy.pc == 6);
-  CHECK(toy.cycles == 2 + 1 + 2 + 1 + 2 + 2);
+  CHECK(toy.pc == 7);
+  CHECK(toy.cycles == 2 + 1 + 2 + 1 + 2 + (2 + 1) + 2);
 
   const auto [text, length] = refract::disassemble(
       ToyTarget::Compiled::description(), 2, [&](const std::size_t offset) { return toy.memory[2 + offset]; });

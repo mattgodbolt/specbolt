@@ -104,7 +104,7 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 
 | the table writes | the CPU supplies |
 |---|---|
-| an **operation**: `inc8`, `add16` | a function of that name, found by reflection |
+| an **operation**: `inc8`, `add16` | a static function of that name in a palette the target lists, or a member the machine publishes with `[[=refract::operation]]` |
 | a **location**: `a`, `hl`, `pc` | an enumerator of that name, and a `read` taking its enum, which is what makes it a location |
 | a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
@@ -115,9 +115,10 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 
 An operation's signature is the interface:
 
-- it may take the machine itself as its **first** parameter, by mutable
-  reference, when it needs machine state or needs to charge time. The framework
-  supplies that argument; the row does not mention it.
+- an operation that needs machine state, or needs to charge time, is a member
+  of the machine, marked `[[=refract::operation]]`. It reaches the
+  machine as `this`, and one that only reads it is `const`; the row does not
+  mention the machine either way.
 - its remaining parameters are filled from the row's operands, **positionally**,
   or by name if the row writes them that way (see
   [keyword operands](#keyword-operands)). The parameter's type is what decides

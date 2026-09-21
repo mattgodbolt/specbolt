@@ -190,9 +190,9 @@ namespace specbolt::refract {
   member.operand.write_back_delay = delay_attribute;
   if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
     throw table_error(line, "a vocabulary member must name something the CPU can resolve");
-  Parser operation(member.operation);
-  member.operation = operation.take_until('(');
-  if (auto arguments = operation.rest(); !arguments.empty()) {
+  Parser bound(member.operation);
+  member.operation = bound.take_until('(');
+  if (auto arguments = bound.rest(); !arguments.empty()) {
     if (!arguments.ends_with(')'))
       throw table_error(line, "a member's argument list is not closed");
     arguments.remove_suffix(1);
