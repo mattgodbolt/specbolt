@@ -61,7 +61,7 @@ namespace specbolt::refract {
     return attributed;
   }
   if (word == "-")
-    return {.kind = Operand::Kind::Discard};
+    return {{}, Operand::Kind::Discard};
   if (word.starts_with('(')) {
     if (!word.ends_with(')'))
       throw table_error(line, "unterminated '(' in operand '" + std::string(word) + "'");
@@ -79,7 +79,7 @@ namespace specbolt::refract {
   if (word.ends_with("+d"))
     throw table_error(line, "a displacement only makes sense inside '(...)'");
   if (word == "n")
-    return {.kind = Operand::Kind::Immediate, .width = immediate_bytes};
+    return {{.width = immediate_bytes}, Operand::Kind::Immediate};
   if (word == "nn")
     throw table_error(line, "write 'n'; the encoding column says how many bytes it occupies");
   if (word.front() >= '0' && word.front() <= '9') {
@@ -94,11 +94,11 @@ namespace specbolt::refract {
       throw table_error(line, "constant '" + std::string(word) + "' does not fit in 16 bits");
     if (failure != std::errc{} || end != digits.data() + digits.size())
       throw table_error(line, "malformed constant '" + std::string(word) + "'");
-    return {.kind = Operand::Kind::Constant, .constant = static_cast<std::uint16_t>(value)};
+    return {{.constant = static_cast<std::uint16_t>(value)}, Operand::Kind::Constant};
   }
   if (word.size() > Name::capacity)
     throw table_error(line, "operand name '" + std::string(word) + "' is too long");
-  return {.kind = Operand::Kind::Named, .name = Name{word}};
+  return {{.name = Name{word}}, Operand::Kind::Named};
 }
 
 // Splits display text around the values it renders rather than spells: `$nn`

@@ -89,18 +89,16 @@ struct Reference {
   constexpr bool operator==(const Reference &) const = default;
 };
 
-// What a row wrote in an operand position: a constant, a name the machine can
-// resolve, the immediate the encoding fetched, a vocabulary reference, or `-`
-// to discard a result. A name is only a name here, whatever it is on the
-// machine (the Z80's `a`, `hl` and `carry` are a register, a pair and a flag
-// bit). Parentheses say to use it as an address, whichever kind it is.
-struct Operand {
-  enum class Kind : std::uint8_t { Constant, Named, Immediate, Vocabulary, Discard };
-  Kind kind{};
+// What an operand is on the machine, however it was written: the same whether
+// a row wrote it or a vocabulary member did, and carried unchanged from
+// `Operand` to `Resolved`, which both derive from it. A name is only a name
+// here, whatever it is on the machine (the Z80's `a`, `hl` and `carry` are a
+// register, a pair and a flag bit). Parentheses say to use it as an address,
+// whichever kind it is.
+struct Access {
   Name name{};
   std::uint16_t constant{};
   std::uint8_t width{};
-  Reference reference{};
   bool indirect{};
   // The address is this operand offset by a displacement byte the instruction
   // carries, as in the Z80's `(ix+d)`. Forming it is the machine's job because
@@ -112,29 +110,32 @@ struct Operand {
   // wrote it positionally, which is almost always. See `operand_for_parameter`
   // in Execute.hpp.
   Name parameter{};
+  constexpr bool operator==(const Access &) const = default;
+};
+
+// What a row wrote in an operand position: a constant, a name the machine can
+// resolve, the immediate the encoding fetched, a vocabulary reference, or `-`
+// to discard a result.
+struct Operand : Access {
+  enum class Kind : std::uint8_t { Constant, Named, Immediate, Vocabulary, Discard };
+  Kind kind{};
+  Reference reference{};
   constexpr bool operator==(const Operand &) const = default;
 };
 
 // An operand once an opcode has settled which vocabulary member it meant.
 // `Operand` is what a description wrote; this is what the generated code is
 // built from, and `resolve` is the only way to arrive at one. It has no
-// `Reference`, since that has been followed, and gains the five fields after
-// `parameter`, which mean nothing until the member is known.
+// `Reference`, since that has been followed, and gains the fields below,
+// which mean nothing until the member is known.
 //
 // A handler is a template on one of these, so every field is part of its
 // identity: two operands that differ anywhere are two handlers.
-struct Resolved {
+struct Resolved : Access {
   // No `Vocabulary`: resolving one is the lookup, so what is left names
   // whatever the member named.
   enum class Kind : std::uint8_t { Constant, Named, Immediate, Discard };
   Kind kind{};
-  Name name{};
-  std::uint16_t constant{};
-  std::uint8_t width{};
-  bool indirect{};
-  bool displaced{};
-  std::uint8_t write_back_delay{};
-  Name parameter{};
   // The scope of the vocabulary this came from, because by the time a name is
   // looked up the vocabulary is long gone. Empty for an operand no vocabulary
   // owns, such as one a member appends, where the parameter decides.
@@ -168,14 +169,7 @@ struct Resolved {
     }
     throw std::logic_error("a vocabulary reference resolves to a member, never to itself");
   }();
-  return {.kind = kind,
-      .name = operand.name,
-      .constant = operand.constant,
-      .width = operand.width,
-      .indirect = operand.indirect,
-      .displaced = operand.displaced,
-      .write_back_delay = operand.write_back_delay,
-      .parameter = operand.parameter};
+  return {operand, kind};
 }
 
 // Text with the values it carries taken out of it. A piece is a literal chunk,

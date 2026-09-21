@@ -325,10 +325,9 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
     const std::string_view word, const Pattern &matched, const std::size_t line, const std::uint8_t immediate_bytes,
     const TableDecl &table) {
   const auto [parameter, text] = split_keyword(word, line);
-  auto operand = text.starts_with('{')
-                     ? Operand{.kind = Operand::Kind::Vocabulary,
-                           .reference = reference_from_braces(vocabularies, text, matched, line, table)}
-                     : parse_simple_operand(text, line, immediate_bytes);
+  auto operand = text.starts_with('{') ? Operand{{}, Operand::Kind::Vocabulary,
+                                             reference_from_braces(vocabularies, text, matched, line, table)}
+                                       : parse_simple_operand(text, line, immediate_bytes);
   operand.parameter = parameter;
   return operand;
 }
