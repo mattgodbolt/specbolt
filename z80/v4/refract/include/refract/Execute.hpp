@@ -600,10 +600,10 @@ struct Interpreter {
 
   // Which of the row's operands feeds each parameter: by position, unless the
   // row wrote `value=…`, in which case by the parameter's declared name. Naming
-  // exists because position is a silent coupling: `test_bit(value, bit, flags,
-  // bus)` takes three `std::uint8_t`s, and a row could swap two and still
-  // compile. Naming is all or nothing within a step, so there is no rule about
-  // what "the next one" means.
+  // exists because position is a silent coupling: an operation taking several
+  // parameters of one type, as the Z80's `test_bit(value, bit, flags, bus)`
+  // does, lets a row swap two and still compile. Naming is all or nothing
+  // within a step, so there is no rule about what "the next one" means.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
     std::array<std::size_t, C.operands.size()> written{};
@@ -793,8 +793,8 @@ struct Interpreter {
         call(operands_of<Fn, C>(machine, decoded, indexed));
       }
       else if constexpr (members.size() > 1) {
-        // Two is a value and the flags it set, which is what almost every
-        // arithmetic operation returns.
+        // A result that comes apart is typically a value and the flags it set,
+        // one destination per part.
         const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
         template for (constexpr auto at: std::views::iota(0uz, C.destinations.size())) {
           store<C.destinations[at], C.line>(machine, decoded, indexed, member_of_result<members[at]>(result));
@@ -943,8 +943,8 @@ struct Interpreter {
         }
       }();
       // Formed once, after both, and handed to every operand that shares it. The
-      // machine is told what else was read first, because on a Z80 those reads
-      // happen *inside* the window that forms the address rather than before it.
+      // machine is told what else was read first, because a machine may fold
+      // those reads into the window that forms the address, as the Z80 does.
       const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
       const std::uint16_t indexed = [&machine, decoded, displacement] -> std::uint16_t {
         if constexpr (displaced) {

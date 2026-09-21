@@ -228,8 +228,9 @@ constexpr bool check_tables_total(const Description &description) {
 // it?
 [[nodiscard]] constexpr bool names_literally(const Row &row, std::string_view what) {
   // A rule's left side is written as the vocabulary writes it, so it may carry
-  // parentheses, as in the Z80's `reg.(hl) -> (ix+d)`. An operand keeps the name and the
-  // indirection apart, so compare both halves rather than the text.
+  // parentheses, as in the Z80's `reg.(hl) -> {index_mem:view}`. An operand
+  // keeps the name and the indirection apart, so compare both halves rather
+  // than the text.
   auto indirect = false;
   if (what.starts_with('(') && what.ends_with(')')) {
     indirect = true;

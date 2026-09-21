@@ -189,7 +189,7 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       table.view_name = inner.take_until(':');
       const auto vocabulary = inner.rest();
       if (table.view_name.empty() || vocabulary.empty())
-        throw table_error(at, "a table view names itself and a vocabulary, as in 'indexed(view:index)'");
+        throw table_error(at, "a table view names itself and a vocabulary, as in 'name(view:vocabulary)'");
       const auto named = find_vocabulary(vocabularies, vocabulary);
       if (!named)
         throw table_error(at, "table view names a vocabulary that does not exist");

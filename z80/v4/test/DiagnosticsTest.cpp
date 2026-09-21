@@ -357,7 +357,7 @@ TEST_CASE("Table diagnostics") {
   }
   SECTION("A table's view is declared with itself and a vocabulary") {
     CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view)\n"),
-        Equals("4: a table view names itself and a vocabulary, as in 'indexed(view:index)'"));
+        Equals("4: a table view names itself and a vocabulary, as in 'name(view:vocabulary)'"));
     CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view:i\n"),
         Equals("4: unterminated '(' in table view"));
     CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view:nope)\n"),

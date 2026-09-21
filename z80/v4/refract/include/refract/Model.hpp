@@ -402,7 +402,7 @@ struct Row {
   std::uint8_t immediate_bytes{};
   // `d` in the encoding: this row reads a displacement it does not use itself,
   // and hands it to the table it goes to. What it is for is an encoding whose
-  // opcode byte is not its last, which on the Z80 is `dd cb` and nothing else.
+  // opcode byte is not its last, as in the Z80's `dd cb d op`.
   bool reads_displacement{};
   std::uint8_t table{};
   Vector<Step, max_steps> steps{};
