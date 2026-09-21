@@ -18,10 +18,6 @@
 
 namespace specbolt::v4 {
 
-// Ideally let's not do this - this is unhelpful, this _is_ a Z80. Let's call it
-// such throughout this file.
-using Cpu = Z80;
-
 // TODO: see the todo at the end of this superlong comment (which needs trimming too).
 // Which way the block operations walk memory. Bit 3 of the opcode is exactly
 // this, so the values are the hardware's rather than anyone's choice and are
@@ -72,19 +68,19 @@ private:
   // from `(value + ((c ± 1) & 0xff)) & 7` exclusive-ored with b, and their half
   // carry and carry from whether that sum passed 255; none of that is modelled,
   // so only sign, zero and flags 3 and 5 are trustworthy here.
-  [[nodiscard]] static Flags stepped(Cpu &cpu, const Flags flags) {
-    const auto b = static_cast<std::uint8_t>(cpu.get(RegisterFile::R8::B) - 1);
-    cpu.set(RegisterFile::R8::B, b);
+  [[nodiscard]] static Flags stepped(Z80 &z80, const Flags flags) {
+    const auto b = static_cast<std::uint8_t>(z80.get(RegisterFile::R8::B) - 1);
+    z80.set(RegisterFile::R8::B, b);
     return Alu::parity_flags_for(b) | Flags::Subtract() | (flags & Flags::Carry());
   }
   // A helper function for rrd and rld. Returns an Alu result but always affects the A register too.
-  [[nodiscard]] static Alu::R8 nibble(Cpu &cpu, const std::uint8_t value, const Flags flags, const bool right) {
-    const auto a = cpu.get(RegisterFile::R8::A);
+  [[nodiscard]] static Alu::R8 nibble(Z80 &z80, const std::uint8_t value, const Flags flags, const bool right) {
+    const auto a = z80.get(RegisterFile::R8::A);
     const auto updated =
         static_cast<std::uint8_t>(right ? (a & 0xf0) | (value & 0x0f) : (a & 0xf0) | (value >> 4 & 0x0f));
     const auto written = static_cast<std::uint8_t>(right ? value >> 4 | (a & 0x0f) << 4 : value << 4 | (a & 0x0f));
-    cpu.delay(4);
-    cpu.set(RegisterFile::R8::A, updated);
+    z80.delay(4);
+    z80.set(RegisterFile::R8::A, updated);
     return {written, (flags & Flags::Carry()) | Alu::parity_flags_for(updated)};
   }
 
@@ -94,18 +90,19 @@ public:
   [[nodiscard]] static std::uint16_t ld16(const std::uint16_t value) { return value; }
   [[nodiscard]] static std::uint16_t inc16(const std::uint16_t value) { return static_cast<std::uint16_t>(value + 1); }
   [[nodiscard]] static std::uint16_t dec16(const std::uint16_t value) { return static_cast<std::uint16_t>(value - 1); }
-  static void delay(Cpu &cpu, const std::uint8_t cycles) { cpu.delay(cycles); }
-  // Alu::bit takes a mask; the encoding carries an index, as res and set do.
-  // Flags 3 and 5 come from whatever was last on the bus, which the row names.
-  // TODO: unless there's a compelling reason, let's call these bit, res, and set (we tend to only put the 8/16 suffix on ambiguous functions)
-  [[nodiscard]] static Flags bit8(
+  static void delay(Z80 &z80, const std::uint8_t cycles) { z80.delay(cycles); }
+  // `Alu::bit` takes a mask; the encoding carries an index, as `res` and `set`
+  // do. Flags 3 and 5 come from whatever was last on the bus, which the row
+  // names. Not `bit`, because `Alu::bit` is in the same search and the two
+  // would be ambiguous.
+  [[nodiscard]] static Flags test_bit(
       const std::uint8_t value, const std::uint8_t bit, const Flags flags, const std::uint8_t bus) {
     return Alu::bit(value, static_cast<std::uint8_t>(1u << bit), flags, bus);
   }
-  [[nodiscard]] static std::uint8_t res8(const std::uint8_t value, const std::uint8_t bit) {
+  [[nodiscard]] static std::uint8_t res(const std::uint8_t value, const std::uint8_t bit) {
     return static_cast<std::uint8_t>(value & ~(1u << bit));
   }
-  [[nodiscard]] static std::uint8_t set8(const std::uint8_t value, const std::uint8_t bit) {
+  [[nodiscard]] static std::uint8_t set(const std::uint8_t value, const std::uint8_t bit) {
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
@@ -115,10 +112,8 @@ public:
   [[nodiscard]] static bool is_clear(const bool flag) { return !flag; }
   [[nodiscard]] static bool nonzero(const std::uint8_t value) { return value != 0; }
 
-  // TODO: there appears to be no "dec8" and if this is only called from djnz then let's pick a useful name
-  // that obviates the need for a comment (maybe?)
-  // `djnz` counts without touching the flags, which `dec8` would, so it uses 
-  [[nodiscard]] static std::uint8_t dec8_quiet(const std::uint8_t value) {
+  // `Alu::dec8` sets the flags; `djnz` counts without touching them.
+  [[nodiscard]] static std::uint8_t dec8_no_flags(const std::uint8_t value) {
     return static_cast<std::uint8_t>(value - 1);
   }
 
@@ -128,26 +123,27 @@ public:
 
   // The port is sixteen bits wide even when the encoding writes eight: the Z80
   // puts the accumulator on the top half.
-  static void out_n(Cpu &cpu, const std::uint8_t port, const std::uint8_t value) {
+  static void out_n(Z80 &z80, const std::uint8_t port, const std::uint8_t value) {
     const auto address = static_cast<std::uint16_t>(value << 8 | port);
-    cpu.bus(Bus::io_write, address);
-    cpu.out(address, value);
+    z80.bus(Bus::io_write, address);
+    z80.out(address, value);
   }
-  [[nodiscard]] static std::uint8_t in_n(Cpu &cpu, const std::uint8_t port, const std::uint8_t high) {
+  [[nodiscard]] static std::uint8_t in_n(Z80 &z80, const std::uint8_t port, const std::uint8_t high) {
     const auto address = static_cast<std::uint16_t>(high << 8 | port);
-    cpu.bus(Bus::io_read, address);
-    return cpu.in(address);
+    z80.bus(Bus::io_read, address);
+    return z80.in(address);
   }
 
-  // Three accesses and two idle stretches, none of which an operand can spell. TODO please what do you mean, reprhase this comment please "can spell" perhaps not ideal terminology (check its use elsehwere)
-  [[nodiscard]] static std::uint16_t ex_sp_hl(Cpu &cpu, const std::uint16_t value) {
-    const auto sp = cpu.get(RegisterFile::R16::SP);
-    const auto low = cpu.read_memory(sp);
-    const auto high = cpu.read_memory(static_cast<std::uint16_t>(sp + 1));
-    cpu.delay(1);
-    cpu.write_memory(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
-    cpu.write_memory(sp, static_cast<std::uint8_t>(value));
-    cpu.delay(2);
+  // Three accesses and two idle stretches, none of which an operand can spell. TODO please what do you mean, reprhase
+  // this comment please "can spell" perhaps not ideal terminology (check its use elsehwere)
+  [[nodiscard]] static std::uint16_t ex_sp_hl(Z80 &z80, const std::uint16_t value) {
+    const auto sp = z80.get(RegisterFile::R16::SP);
+    const auto low = z80.read_memory(sp);
+    const auto high = z80.read_memory(static_cast<std::uint16_t>(sp + 1));
+    z80.delay(1);
+    z80.write_memory(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
+    z80.write_memory(sp, static_cast<std::uint8_t>(value));
+    z80.delay(2);
     return static_cast<std::uint16_t>(high << 8 | low);
   }
 
@@ -156,20 +152,20 @@ public:
   // memory.
   // Sign, zero and parity come from the byte; the carry is explicitly *not*
   // affected, so it has to be carried through rather than recomputed.
-  [[nodiscard]] static Alu::R8 in_c(Cpu &cpu, const std::uint16_t port, const Flags flags) {
-    cpu.bus(Bus::io_read, port);
-    const auto value = cpu.in(port);
+  [[nodiscard]] static Alu::R8 in_c(Z80 &z80, const std::uint16_t port, const Flags flags) {
+    z80.bus(Bus::io_read, port);
+    const auto value = z80.in(port);
     return {value, Alu::parity_flags_for(value) | (flags & Flags::Carry())};
   }
-  static void out_c(Cpu &cpu, const std::uint16_t port, const std::uint8_t value) {
-    cpu.bus(Bus::io_write, port);
-    cpu.out(port, value);
+  static void out_c(Z80 &z80, const std::uint16_t port, const std::uint8_t value) {
+    z80.bus(Bus::io_write, port);
+    z80.out(port, value);
   }
 
   // `ld a,i` and `ld a,r` report iff2 in the parity flag, which is the one way
   // a program can see the interrupt state.
-  [[nodiscard]] static Alu::R8 ld_a_special(const Cpu &cpu, const std::uint8_t value, const Flags flags) {
-    return {value, Alu::iff2_flags_for(value, flags, cpu.iff2())};
+  [[nodiscard]] static Alu::R8 ld_a_special(const Z80 &z80, const std::uint8_t value, const Flags flags) {
+    return {value, Alu::iff2_flags_for(value, flags, z80.iff2())};
   }
 
   // `neg` is `0 - a`, which sub8 already is.
@@ -179,40 +175,40 @@ public:
 
   // `rrd` and `rld` move a nibble between the accumulator and memory, so both
   // ends change at once and only one of them can be a destination.
-  [[nodiscard]] static Alu::R8 rrd8(Cpu &cpu, const std::uint8_t value, const Flags flags) {
-    return nibble(cpu, value, flags, true);
+  [[nodiscard]] static Alu::R8 rrd8(Z80 &z80, const std::uint8_t value, const Flags flags) {
+    return nibble(z80, value, flags, true);
   }
-  [[nodiscard]] static Alu::R8 rld8(Cpu &cpu, const std::uint8_t value, const Flags flags) {
-    return nibble(cpu, value, flags, false);
+  [[nodiscard]] static Alu::R8 rld8(Z80 &z80, const std::uint8_t value, const Flags flags) {
+    return nibble(z80, value, flags, false);
   }
 
   // The block operations move or compare one byte, step hl (and de), and count
   // bc down. The repeating forms are the same row with a condition and a
   // rewind: the chip really does re-execute the opcode, which is why an
   // interrupt can land in the middle of an `ldir`.
-  [[nodiscard]] static Flags block_load(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+  [[nodiscard]] static Flags block_load(Z80 &z80, const BlockDirection direction, const Flags flags) {
     const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
-    const auto hl = cpu.get(RegisterFile::R16::HL);
-    const auto de = cpu.get(RegisterFile::R16::DE);
-    const auto bc = cpu.get(RegisterFile::R16::BC);
-    const auto byte = cpu.read_memory(hl);
-    cpu.write_memory(de, byte);
-    cpu.delay(2);
-    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
-    cpu.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
-    cpu.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+    const auto hl = z80.get(RegisterFile::R16::HL);
+    const auto de = z80.get(RegisterFile::R16::DE);
+    const auto bc = z80.get(RegisterFile::R16::BC);
+    const auto byte = z80.read_memory(hl);
+    z80.write_memory(de, byte);
+    z80.delay(2);
+    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
+    z80.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
+    z80.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
     // Flags 3 and 5 come from the byte plus the accumulator, and swapped over.
-    return counted(flags, bc, static_cast<std::uint8_t>(byte + cpu.get(RegisterFile::R8::A)));
+    return counted(flags, bc, static_cast<std::uint8_t>(byte + z80.get(RegisterFile::R8::A)));
   }
-  [[nodiscard]] static Flags block_compare(Cpu &cpu, const BlockDirection direction, const Flags flags) {
+  [[nodiscard]] static Flags block_compare(Z80 &z80, const BlockDirection direction, const Flags flags) {
     const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
-    const auto hl = cpu.get(RegisterFile::R16::HL);
-    const auto bc = cpu.get(RegisterFile::R16::BC);
-    const auto byte = cpu.read_memory(hl);
-    cpu.delay(5);
-    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
-    cpu.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
-    const auto compared = Alu::sub8(cpu.get(RegisterFile::R8::A), byte, false);
+    const auto hl = z80.get(RegisterFile::R16::HL);
+    const auto bc = z80.get(RegisterFile::R16::BC);
+    const auto byte = z80.read_memory(hl);
+    z80.delay(5);
+    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
+    z80.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+    const auto compared = Alu::sub8(z80.get(RegisterFile::R8::A), byte, false);
     // Flags 3 and 5 come from the difference, less one where it borrowed.
     const auto noise = static_cast<std::uint8_t>(compared.flags.half_carry() ? compared.result - 1 : compared.result);
     // The comparison's own sign, zero, half-carry and subtract go on last: the
@@ -220,34 +216,34 @@ public:
     constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
     return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
   }
-  [[nodiscard]] static Flags block_in(Cpu &cpu, const BlockDirection direction, const Flags flags) {
-    cpu.delay(1);
-    const auto port = cpu.get(RegisterFile::R16::BC);
-    cpu.bus(Bus::io_read, port);
-    const auto value = cpu.in(port);
-    const auto hl = cpu.get(RegisterFile::R16::HL);
-    cpu.write_memory(hl, value);
-    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
-    return stepped(cpu, flags);
+  [[nodiscard]] static Flags block_in(Z80 &z80, const BlockDirection direction, const Flags flags) {
+    z80.delay(1);
+    const auto port = z80.get(RegisterFile::R16::BC);
+    z80.bus(Bus::io_read, port);
+    const auto value = z80.in(port);
+    const auto hl = z80.get(RegisterFile::R16::HL);
+    z80.write_memory(hl, value);
+    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
+    return stepped(z80, flags);
   }
-  [[nodiscard]] static Flags block_out(Cpu &cpu, const BlockDirection direction, const Flags flags) {
-    cpu.delay(1);
-    const auto hl = cpu.get(RegisterFile::R16::HL);
-    const auto value = cpu.read_memory(hl);
-    cpu.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
+  [[nodiscard]] static Flags block_out(Z80 &z80, const BlockDirection direction, const Flags flags) {
+    z80.delay(1);
+    const auto hl = z80.get(RegisterFile::R16::HL);
+    const auto value = z80.read_memory(hl);
+    z80.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
     // B is counted down before the port goes on the bus, so it addresses with
     // the new value.
-    const auto result = stepped(cpu, flags);
-    const auto port = cpu.get(RegisterFile::R16::BC);
-    cpu.bus(Bus::io_write, port);
-    cpu.out(port, value);
+    const auto result = stepped(z80, flags);
+    const auto port = z80.get(RegisterFile::R16::BC);
+    z80.bus(Bus::io_write, port);
+    z80.out(port, value);
     return result;
   }
 
   // The exchanges move whole register pairs about, which no operand can name.
-  static void exx(Cpu &cpu) { cpu.regs().exx(); }
-  static void ex_de_hl(Cpu &cpu) { cpu.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }
-  static void ex_af(Cpu &cpu) { cpu.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
+  static void exx(Z80 &z80) { z80.regs().exx(); }
+  static void ex_de_hl(Z80 &z80) { z80.regs().ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }
+  static void ex_af(Z80 &z80) { z80.regs().ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
 };
 
 // Where the table may name operations from, and the only scope question a

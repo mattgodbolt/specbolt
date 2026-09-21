@@ -68,14 +68,14 @@ Lowering the table to a validated fixed shape at parse time removes that half en
 `Operations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting means
 writing these and nothing else:
 
-- `Cpu` and `Operations`, the machine state and its non-ALU primitives
+- `Z80` and `Operations`, the machine state and its non-ALU primitives
 - `operation_scopes()`, where the table may name operations from
 - `read`/`write` overloads: how to touch storage, and, for `read`, what storage there is
 - `read_memory`/`write_memory`: how to touch memory through an address
 - `fetch_opcode`/`fetch_immediate`: how to read the instruction stream
 - `delay`: how to spend an idle cycle
 
-A primitive may take `Cpu &` as its first parameter, which the framework supplies. That is the one
+A primitive may take the machine by reference as its first parameter, which the framework supplies. That is the one
 type it is parameterised on, so it is the one thing it can always hand over, and it is what `jp`,
 `call`, `push` and `in`/`out` will need.
 
@@ -90,7 +90,7 @@ meaning from a C++ type rather than reading it off the row:
 - `Operand::Kind::Accumulator` presumed a CPU has one.
 - `CarrySource` filled a `bool` parameter from the carry flag. Already wrong for
   `Alu::iff2_flags_for(u8, Flags, bool iff2)`, whose `bool` is not carry.
-- `is_supplied_by_framework` did the same for `Flags` and `Cpu &`.
+- `is_supplied_by_framework` did the same for `Flags` and the machine.
 
 All three became one operand concept, constant, immediate, name, field reference, or discard, where `a`, `carry` and `flags` are just names the CPU resolves. Vocabulary members may append an
 operand (`add:add8+0`, `adc:add8+carry`), so the carry policy is data in the table. Destinations
@@ -243,4 +243,4 @@ Matt's random extra C++26 and other notes
 - std::function_ref or std::copyable_function ?
 - anywhere we can use optional<T&> ?
 - python folks use `[[preserve_none]]` for some routines for great success esp with jump threading
-- 
+-

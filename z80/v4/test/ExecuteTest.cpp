@@ -515,7 +515,7 @@ TEST_CASE("Indexed addressing") {
   }
 
   SECTION("bit n, (ix+d) reads wzh after the memory access, not before") {
-    // `bit8 flags <- (ix+d) {b} flags wzh` has two operands that touch the bus:
+    // `test_bit flags <- (ix+d) {b} flags wzh` has two operands that touch the bus:
     // the memory read sets the address wzh then reports. If the arguments were
     // evaluated in the other order, wzh would report the *previous* address:
     // the opcode fetch, near zero, whose bits 3 and 5 are clear. So choose an

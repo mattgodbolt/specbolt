@@ -77,8 +77,8 @@ vocab dir : BlockDirection = i d
 # every mode has two encodings and mode 0 has four.
 vocab imode = 0 0 1 2 0 0 1 2
 
-# Decoding starts in the first table declared; no name is special to the
-# framework. Everything not reached by a prefix lives here.
+# Decoding starts in the first table declared, whatever it is called.
+# Everything not reached by a prefix lives here.
 
 table base
 
@@ -124,7 +124,7 @@ table base
 11001101 n n | call $nnnn           | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
 11001001     | ret                  | ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
 11yyy111     | rst {rst:y}          | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- {rst:y}
-00010000 n   | djnz $e              | delay 1 ; dec8_quiet b <- b ; if nonzero b ; delay 5 ; relative pc <- pc n
+00010000 n   | djnz $e              | delay 1 ; dec8_no_flags b <- b ; if nonzero b ; delay 5 ; relative pc <- pc n
 00011000 n   | jr $e                | delay 5 ; relative pc <- pc n
 001jj000 n   | jr {jcond:j}, $e     | if {jcond:j} ; delay 5 ; relative pc <- pc n
 11yyy010 n n | jp {cond:y}, $nnnn   | if {cond:y} ; ld16 pc <- n
@@ -144,10 +144,10 @@ table base
 table cb
 
 00yyyzzz | {shift:y} {reg:z}    | {shift:y} {reg:z}, flags <- {reg:z}
-01bbb110 | bit {bit:b}, (hl)    | bit8 flags <- value=(hl) bit={bit:b} flags=flags bus=h ; delay 1
-01bbbzzz | bit {bit:b}, {reg:z} | bit8 flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
-10bbbzzz | res {bit:b}, {reg:z} | res8 {reg:z} <- {reg:z} {bit:b}
-11bbbzzz | set {bit:b}, {reg:z} | set8 {reg:z} <- {reg:z} {bit:b}
+01bbb110 | bit {bit:b}, (hl)    | test_bit flags <- value=(hl) bit={bit:b} flags=flags bus=h ; delay 1
+01bbbzzz | bit {bit:b}, {reg:z} | test_bit flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
+10bbbzzz | res {bit:b}, {reg:z} | res {reg:z} <- {reg:z} {bit:b}
+11bbbzzz | set {bit:b}, {reg:z} | set {reg:z} <- {reg:z} {bit:b}
 
 # `dd` and `fd` are not table switches but *views*: they re-read the base table
 # with hl renamed, which is why two thirds of their entries are the base
@@ -180,11 +180,11 @@ table indexed_cb(view:index)
 
 00yyy110 | {shift:y} {index_mem:view}              | {shift:y} {index_mem:view}, flags <- {index_mem:view}
 00yyyzzz | {shift:y} {index_mem:view}, {real:z}    | {shift:y} {real:z}, flags <- {index_mem:view} ; delay 1 ; ld8 {index_mem:view} <- {real:z}
-01bbbzzz | bit {bit:b}, {index_mem:view}           | bit8 flags <- value={index_mem:view} bit={bit:b} flags=flags bus=wzh ; delay 1
-10bbb110 | res {bit:b}, {index_mem:view}           | res8 {index_mem:view} <- {index_mem:view} {bit:b}
-10bbbzzz | res {bit:b}, {index_mem:view}, {real:z} | res8 {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
-11bbb110 | set {bit:b}, {index_mem:view}           | set8 {index_mem:view} <- {index_mem:view} {bit:b}
-11bbbzzz | set {bit:b}, {index_mem:view}, {real:z} | set8 {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
+01bbbzzz | bit {bit:b}, {index_mem:view}           | test_bit flags <- value={index_mem:view} bit={bit:b} flags=flags bus=wzh ; delay 1
+10bbb110 | res {bit:b}, {index_mem:view}           | res {index_mem:view} <- {index_mem:view} {bit:b}
+10bbbzzz | res {bit:b}, {index_mem:view}, {real:z} | res {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
+11bbb110 | set {bit:b}, {index_mem:view}           | set {index_mem:view} <- {index_mem:view} {bit:b}
+11bbbzzz | set {bit:b}, {index_mem:view}, {real:z} | set {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
 
 # `ed` is the second instruction set the Z80 grew, and the only place
 # `ld (nn), rr` exists for every pair rather than for hl alone. Its block

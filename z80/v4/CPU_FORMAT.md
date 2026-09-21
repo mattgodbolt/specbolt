@@ -335,7 +335,8 @@ the overview.
 table base
 ```
 
-Decoding starts in the **first table declared**; no name is special.
+Decoding starts in the **first table declared**; there is no reserved name
+for the entry table.
 
 A table is entered from another by a `goto` step. This is not a jump inside the
 decoder: it makes the machine *read another byte and decode it as an opcode*,
@@ -684,7 +685,7 @@ addressing mode written out in a row rather than named by one.
 An operand may name the parameter it feeds instead of relying on its position:
 
 ```
-01bbbzzz | bit {bit:b}, {reg:z} | bit8 flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
+01bbbzzz | bit {bit:b}, {reg:z} | test_bit flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
 ```
 
 The names are the parameter names in the CPU's own declaration, read off it by
@@ -692,7 +693,7 @@ reflection. Nothing restates them, so a parameter that is renamed in C++ is
 renamed here, and a row that still uses the old name fails to build with the
 line that wrote it.
 
-This exists because position is a silent coupling. `bit8` above takes three
+This exists because position is a silent coupling. `test_bit` above takes three
 `std::uint8_t` parameters, so a row that swaps two of them compiles, runs, and
 quietly tests the wrong bit. Types cannot catch it and neither can a reader.
 

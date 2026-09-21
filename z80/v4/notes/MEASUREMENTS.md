@@ -404,9 +404,9 @@ the row. The mechanism is one separator:
 ```
 
 `delay` is not a framework concept: it is an ordinary primitive in the CPU's `Ops`, and the only
-new framework rule is that **a primitive may take `Cpu &` as its first parameter**, which the
+new framework rule is that **a primitive may take the machine by reference as its first parameter**, which the
 framework supplies. That is not the `is_supplied_by_framework` mistake returning, that one
-special-cased `Flags`, a *domain* type. `Cpu` is the single type the framework is parameterised on,
+special-cased `Flags`, a *domain* type. The machine is the single type the framework is parameterised on,
 so it is the one thing it can always hand over, and it is what `jp`, `call`, `push` and `in`/`out`
 will all need.
 
@@ -517,7 +517,7 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 ## Memoising the reflection queries buys nothing, and nearly said otherwise
 
 `arity_of<Fn>` is a variable template rather than a function, with a comment saying the point is that
-the answer is computed once. `takes_cpu<Fn>()` and `operand_for_parameter<Fn, C>()` were not, and
+the answer is computed once. `takes_machine<Fn>()` and `operand_for_parameter<Fn, C>()` were not, and
 were called five and three times per step, so making them variable templates too looked like free
 speed on a translation unit that costs a minute and a half.
 
@@ -547,7 +547,7 @@ of A-runs followed by a sequence of B-runs, on a laptop whose first runs of a se
 slowest. The rule that keeps working is to interleave, and to distrust any wall-clock difference
 that a reordering can produce.
 
-`takes_cpu` kept its variable-template form, because five call sites read better without the
+`takes_machine` kept its variable-template form, because five call sites read better without the
 parentheses, which is a reason that survives the measurement. `operand_for_parameter` went back to
 being a function: memoising it needed a second name, `compute_operand_for_parameter`, and paying a
 name for nothing is a bad trade. The claim in `arity_of`'s own comment is now unproven, and is left

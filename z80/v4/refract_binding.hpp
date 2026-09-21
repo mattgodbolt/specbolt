@@ -8,7 +8,7 @@
 // which is where the machine and the table already live.
 //
 // A second description would be a second one of these, and also a second
-// binary, because the table constants and `Cpu` are definitions rather than
+// binary, because the table constants and `Machine` are definitions rather than
 // parameters. That is the limit of this arrangement.
 // TODO this absolutley has to change; I'd like to be able to embed more than one
 // CPU in a project. Think about this please.
@@ -20,5 +20,6 @@ namespace specbolt::refract {
 
 // Where this build's machine and table are to be found.
 namespace target = v4;
+using Machine = v4::Z80;
 
 } // namespace specbolt::refract

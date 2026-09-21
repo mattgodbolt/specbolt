@@ -422,7 +422,8 @@ struct Description {
   std::span<const Row> rows;
   std::span<const TableDecl> tables;
   std::span<const DecodeTable> decoded;
-  // Decoding starts here; no name is special.
+  // Decoding starts here. The format reserves no name for the entry table;
+  // whoever built the description says which it is.
   std::uint8_t entry{};
 
   // What this table decodes this opcode to, or nothing. Every table is total in

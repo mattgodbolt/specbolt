@@ -47,7 +47,7 @@ inline constexpr std::string_view read_verb = "read";
 // separate because how a base and an offset combine, and what that costs, is
 // the machine's business rather than the format's.
 template<typename M>
-concept Machine = requires(M &machine, const std::uint16_t address, const std::uint8_t byte) {
+concept MachineLike = requires(M &machine, const std::uint16_t address, const std::uint8_t byte) {
   // Reading the instruction stream.
   { machine.fetch_opcode() } -> std::same_as<std::uint8_t>;
   // Between instructions: false ends the run. The machine does whatever it

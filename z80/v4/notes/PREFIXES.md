@@ -19,11 +19,11 @@ Part of [v4's notes](../NOTES.md).
 
 table cb
 
-01bbb110     | bit {b}, (hl)   | bit8 flags <- (hl) {b} flags ; delay 1
-01bbbzzz     | bit {b}, {r:z}  | bit8 flags <- {r:z} {b} flags
+01bbb110     | bit {b}, (hl)   | test_bit flags <- (hl) {b} flags ; delay 1
+01bbbzzz     | bit {b}, {r:z}  | test_bit flags <- {r:z} {b} flags
 ```
 
-Decoding starts in the first table declared, so no name is special to the framework. Dispatch,
+Decoding starts in the first table declared, and the framework reserves no name for it. Dispatch,
 precedence checking and coverage are all per-table; the `(hl)` override rows inside `cb` are checked
 for containment exactly as the ones in `base` are.
 
@@ -171,13 +171,13 @@ Three things the exploration got wrong first, each caught by a test rather than 
 **The customisation point is one function.** Not a DSL attribute, and not framework arithmetic:
 
 ```cpp
-[[nodiscard]] std::uint16_t displaced_address(Cpu &, std::uint16_t base, std::uint8_t offset,
+[[nodiscard]] std::uint16_t displaced_address(std::uint16_t base, std::uint8_t offset,
     std::uint8_t immediate_bytes);
 ```
 
 It owns both how a base and an offset combine *and* what forming the address costs, because both are
 facts about the machine, a 6502 wraps within page zero for one mode and charges for a page crossing
-in another. Taking `Cpu &` is what lets the cost live there. Everything else the table already said.
+in another. Being a member of the machine is what lets the cost live there. Everything else the table already said.
 
 Verified in `ExecuteTest.cpp` against the counts `OpcodeTests.cpp` asserts of v1/v2/v3: 19 for
 `ld r,(ix+d)`, `ld (ix+d),r`, `ld (ix+d),n` and `add a,(ix+d)`; 23 for `inc (ix+d)`; 8 for a DD that

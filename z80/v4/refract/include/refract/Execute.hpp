@@ -1,6 +1,6 @@
 #pragma once
 
-// The consumer provides this: it must define `Cpu`, the scope functions, and
+// The consumer provides this: it must define `Machine`, the scope functions, and
 // the table constants this generates from. See Machine.hpp for the contract.
 // ^^^ TODO what is this comment referring to? seems confusing.
 
@@ -26,15 +26,11 @@
 
 namespace specbolt::refract {
 
-// The machine this build generates for. TODO as noted in many places we can't do this, if we want to support multiple
-// cpus
-using Cpu = target::Cpu;
-
-// The machine this build generates for. `Cpu` and the functions below come from
-// the CPU description the consumer includes; checking the contract here means a
-// machine missing one of them is told which, rather than finding out inside a
-// generated instruction three hundred lines away.
-static_assert(Machine<Cpu>, "this machine does not supply everything the framework needs; see Machine.hpp");
+// `Machine` and `target` come from the binding header above. Checking the
+// contract here means a machine missing one of its functions is told which,
+// rather than finding out inside a generated instruction three hundred lines
+// away.
+static_assert(MachineLike<Machine>, "this machine does not supply everything the framework needs; see Machine.hpp");
 static_assert(
     requires { target::operation_scopes(); },
     "the target must say where a description's operation names are to be resolved");
@@ -72,7 +68,7 @@ static_assert(
 //                                      the parser cannot know what a splice
 //                                      yields until it is instantiated.
 //   [:Fn:](arguments...)               a function, in callee position.
-//   cpu.read([:find_location(…):])     an enumerator, yielding a prvalue of the
+//   machine.read([:find_location(…):]) an enumerator, yielding a prvalue of the
 //                                      enum type, so ordinary overload
 //                                      resolution picks whichever `read` that
 //                                      kind of location has. The framework does
@@ -134,7 +130,7 @@ static_assert(
 // is excluded by arity.
 [[nodiscard]] consteval std::vector<std::meta::info> location_scopes() {
   std::vector<std::meta::info> scopes;
-  for (const auto member: std::meta::members_of(^^Cpu, std::meta::access_context::current())) {
+  for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current())) {
     if (!std::meta::is_function(member) || !std::meta::has_identifier(member))
       continue;
     if (std::meta::identifier_of(member) != read_verb)
@@ -328,7 +324,7 @@ template<Resolved Op, std::size_t Line>
 
 // Arity and parameter types live in the template system rather than in a local
 // `constexpr`, and the reason is narrower than "reflection cannot go in a
-// local": `takes_cpu` and `decomposes_into` are both called into locals
+// local": `takes_machine` and `decomposes_into` are both called into locals
 // further down, and both are fine.
 //
 // What is not fine is `parameters_of` specifically: it returns a `std::vector`,
@@ -405,11 +401,11 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 // The machine is handed over by reference, and an operation that only reads it
 // may say so by taking it `const`.
 template<std::meta::info Fn>
-inline constexpr bool takes_cpu = [] {
+inline constexpr bool takes_machine = [] {
   if constexpr (arity_of<Fn> == 0)
     return false;
   else
-    return std::is_same_v<parameter_type<Fn, 0>, Cpu &> || std::is_same_v<parameter_type<Fn, 0>, const Cpu &>;
+    return std::is_same_v<parameter_type<Fn, 0>, Machine &> || std::is_same_v<parameter_type<Fn, 0>, const Machine &>;
 }();
 
 // What the instruction carries: the immediate its encoding fetched, the view a
@@ -471,7 +467,7 @@ static_assert(std::meta::nonstatic_data_members_of(^^Resolved, std::meta::access
 // whether a 16-bit register reaching an 8-bit parameter is diagnosed depends on
 // the build's warnings rather than on anything this file does.
 template<Resolved Op, std::size_t Line, typename Parameter>
-[[nodiscard]] Parameter direct_value_of(Cpu &cpu, const Decoded decoded) {
+[[nodiscard]] Parameter direct_value_of(Machine &machine, const Decoded decoded) {
   static_assert(!std::is_reference_v<Parameter>,
       "an operation takes its operands by value; there is nothing here for a reference to bind to");
   if constexpr (Op.kind == Resolved::Kind::Constant) {
@@ -505,7 +501,7 @@ template<Resolved Op, std::size_t Line, typename Parameter>
     // Which member is not known until the table's view has been chosen, so the
     // choice is an array index rather than a splice. See `locations_of_view`.
     static constexpr auto locations = locations_of_view<Op, Line>();
-    return cpu.read(locations[decoded.view]);
+    return machine.read(locations[decoded.view]);
   }
   else if constexpr (std::is_enum_v<Parameter>)
     // The name is one of the enum's members rather than a place to read from:
@@ -518,20 +514,20 @@ template<Resolved Op, std::size_t Line, typename Parameter>
   else
     // An *enumerator* splice: this yields a prvalue whose type is the enum the
     // name was found in, so the machine's overload set decides what reading it
-    // means: on the Z80, `cpu.read(R8::A)` and `cpu.read(FlagBit::carry)` are
+    // means: on the Z80, `machine.read(R8::A)` and `machine.read(FlagBit::carry)` are
     // different functions returning different types, chosen here by nothing
     // more exotic than overload resolution.
-    return cpu.read([:find_location(Op.name.view(), Line, Op.scope.view()):]);
+    return machine.read([:find_location(Op.name.view(), Line, Op.scope.view()):]);
 }
 
 // The address an indirect operand addresses through. A displaced one was formed
 // once for the whole instruction, before any operand was touched.
 template<Resolved Op, std::size_t Line>
-[[nodiscard]] std::uint16_t address_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
+[[nodiscard]] std::uint16_t address_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
   if constexpr (Op.displaced)
     return indexed;
   else
-    return direct_value_of<Op, Line, std::uint16_t>(cpu, decoded);
+    return direct_value_of<Op, Line, std::uint16_t>(machine, decoded);
 }
 
 // An indirect operand is whatever it would have been, read as an address. How
@@ -540,7 +536,7 @@ template<Resolved Op, std::size_t Line>
 // (On the Z80 that is `ld16 hl <- (n)` reading two bytes where `ld8 a <- (n)`
 // reads one.)
 template<Resolved Op, std::size_t Line, typename Parameter>
-[[nodiscard]] Parameter value_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
+[[nodiscard]] Parameter value_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
   if constexpr (Op.indirect) {
     // The machine offers two widths and the parameter's type picks. Said out
     // loud because the alternative is an `else` that quietly means "one byte":
@@ -548,18 +544,18 @@ template<Resolved Op, std::size_t Line, typename Parameter>
     // half of what it asked for and zero-extend the rest.
     static_assert(std::same_as<Parameter, std::uint8_t> || std::same_as<Parameter, std::uint16_t>,
         "an indirect operand is read at one of the two widths the machine offers");
-    const auto address = address_of<Op, Line>(cpu, decoded, indexed);
+    const auto address = address_of<Op, Line>(machine, decoded, indexed);
     if constexpr (std::same_as<Parameter, std::uint16_t>)
-      return cpu.read_memory16(address);
+      return machine.read_memory16(address);
     else
-      return cpu.read_memory(address);
+      return machine.read_memory(address);
   }
   else
-    return direct_value_of<Op, Line, Parameter>(cpu, decoded);
+    return direct_value_of<Op, Line, Parameter>(machine, decoded);
 }
 
 template<Resolved Op, std::size_t Line, typename T>
-void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T value) {
+void store(Machine &machine, const Decoded decoded, const std::uint16_t indexed, const T value) {
   if constexpr (Op.kind == Resolved::Kind::Discard)
     static_cast<void>(value);
   else if constexpr (Op.indirect) {
@@ -567,21 +563,21 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
         "an indirect destination is written at one of the two widths the machine offers");
     // The addressing mode says how long the machine idles before writing back.
     if constexpr (Op.write_back_delay != 0)
-      cpu.delay(Op.write_back_delay);
-    const auto address = address_of<Op, Line>(cpu, decoded, indexed);
+      machine.delay(Op.write_back_delay);
+    const auto address = address_of<Op, Line>(machine, decoded, indexed);
     if constexpr (std::same_as<T, std::uint16_t>)
-      cpu.write_memory16(address, value);
+      machine.write_memory16(address, value);
     else
-      cpu.write_memory(address, value);
+      machine.write_memory(address, value);
   }
   else {
     static_assert(Op.kind == Resolved::Kind::Named, "only a named location can be a destination");
     if constexpr (Op.from_view) {
       static constexpr auto locations = locations_of_view<Op, Line>();
-      cpu.write(locations[decoded.view], value);
+      machine.write(locations[decoded.view], value);
     }
     else
-      cpu.write([:find_location(Op.name.view(), Line, Op.scope.view()):], value);
+      machine.write([:find_location(Op.name.view(), Line, Op.scope.view()):], value);
   }
 }
 
@@ -591,7 +587,7 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
 // of the declaration rather than written down anywhere.
 //
 // This exists because position is a silent coupling. An operation taking
-// several parameters of one type, as the Z80's `bit8(value, bit, flags, bus)`
+// several parameters of one type, as the Z80's `test_bit(value, bit, flags, bus)`
 // takes three `std::uint8_t`s, lets a row swap two of them and still compile,
 // run, and quietly test the wrong bit.
 //
@@ -600,7 +596,7 @@ void store(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed, const T
 // there is no such rule to remember.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
-  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
+  constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
   std::array<std::size_t, C.operands.size()> written{};
   std::size_t named = 0;
   for (const auto &operand: C.operands)
@@ -676,12 +672,12 @@ template<std::meta::info Fn, Call C>
 // needs a pack, and an expansion statement produces statements, not pack
 // elements. The two C++26 features do not substitute for each other here.
 template<std::meta::info Fn, Call C>
-[[nodiscard]] auto operands_of(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
-  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
+[[nodiscard]] auto operands_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
   constexpr auto parameter = parameter_for_operand<Fn, C>();
   return [&]<std::size_t... I>(std::index_sequence<I...>) {
     return std::tuple{
-        value_of<C.operands[I], C.line, parameter_type<Fn, parameter[I] + supplied>>(cpu, decoded, indexed)...};
+        value_of<C.operands[I], C.line, parameter_type<Fn, parameter[I] + supplied>>(machine, decoded, indexed)...};
   }(std::make_index_sequence<C.operands.size()>{});
 }
 
@@ -689,11 +685,11 @@ template<std::meta::info Fn, Call C>
 // holds the values in the order they were read, and this hands them over in the
 // order the parameters want them.
 template<std::meta::info Fn, Call C>
-[[nodiscard]] auto call_with(Cpu &cpu, const auto &arguments) {
+[[nodiscard]] auto call_with(Machine &machine, const auto &arguments) {
   constexpr auto operand = operand_for_parameter<Fn, C>();
   return [&]<std::size_t... S>(std::index_sequence<S...>) {
-    if constexpr (takes_cpu<Fn>)
-      return [:Fn:](cpu, std::get<operand[S]>(arguments)...);
+    if constexpr (takes_machine<Fn>)
+      return [:Fn:](machine, std::get<operand[S]>(arguments)...);
     else
       return [:Fn:](std::get<operand[S]>(arguments)...);
   }(std::make_index_sequence<C.operands.size()>{});
@@ -718,12 +714,12 @@ template<std::meta::info Member>
 // asked for that.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] consteval bool operands_fit() {
-  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
+  constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
   // A machine taken any other way would be treated as an operand, and the
   // error would be about a row's operand failing to convert rather than about
   // the signature.
   if constexpr (arity_of<Fn> > 0)
-    if (std::is_same_v<std::remove_cvref_t<parameter_type<Fn, 0>>, Cpu> && !takes_cpu<Fn>)
+    if (std::is_same_v<std::remove_cvref_t<parameter_type<Fn, 0>>, Machine> && !takes_machine<Fn>)
       throw table_error(C.line, quoted_name_of(Fn) + " must take the machine by reference, `const` or not");
   if (C.operands.size() + supplied != arity_of<Fn>)
     throw table_error(C.line, quoted_name_of(Fn) + " takes " + decimal(arity_of<Fn> - supplied) +
@@ -764,7 +760,7 @@ template<std::meta::info Fn, Call C, typename Result>
 template<std::meta::info Fn, Call C>
 [[nodiscard]] consteval bool condition_fits() {
   const auto name = quoted_name_of(Fn);
-  if (takes_cpu<Fn>)
+  if (takes_machine<Fn>)
     throw table_error(C.line, name + " asks for the machine; a condition tests only what the row hands it, so that "
                                      "the row states everything the branch depends on");
   if (C.operands.size() != arity_of<Fn>)
@@ -781,8 +777,8 @@ template<std::meta::info Fn, Call C>
 // Arguments are supplied positionally, or by name where the row said so;
 // destinations destructure the result in declaration order.
 template<std::meta::info Fn, Call C>
-void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
-  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
+void apply(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  constexpr std::size_t supplied = takes_machine<Fn> ? 1 : 0;
   // Gating the body on the same condition, rather than only asserting it,
   // keeps a wrong count from being one message followed by twenty. The
   // `decltype` below asks for the operation's return type, which instantiates
@@ -791,36 +787,36 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   constexpr bool arity_matches = C.operands.size() + supplied == arity_of<Fn>;
   static_assert(operands_fit<Fn, C>());
   if constexpr (arity_matches) {
-    // A default capture rather than `[&cpu]`, because only one branch of the
+    // A default capture rather than `[&machine]`, because only one branch of the
     // `if constexpr` names it: an operation that does not ask for the machine
     // leaves an explicit capture unused, which clang diagnoses and gcc does not.
-    const auto call = [&](const auto &arguments) { return call_with<Fn, C>(cpu, arguments); };
+    const auto call = [&](const auto &arguments) { return call_with<Fn, C>(machine, arguments); };
 
     // Unevaluated, despite everything just said about operands having effects:
     // `decltype` asks for the type and calls nothing.
-    using Result = decltype(call(operands_of<Fn, C>(cpu, decoded, indexed)));
+    using Result = decltype(call(operands_of<Fn, C>(machine, decoded, indexed)));
     // A `std::span`, and safe to hold: `decomposes_into` promotes its contents
     // with `define_static_array`, so what this points at has static storage and
     // `members[at]` is a constant expression a splice can use.
     static constexpr auto members = decomposes_into(^^Result, C.line);
     static_assert(destinations_fit<Fn, C, Result>(members));
     if constexpr (std::is_void_v<Result>) {
-      call(operands_of<Fn, C>(cpu, decoded, indexed));
+      call(operands_of<Fn, C>(machine, decoded, indexed));
     }
     else if constexpr (members.size() > 1) {
       // Two is a value and the flags it set, which is what almost every
       // arithmetic operation returns.
-      const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
+      const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
       template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
-          store<C.destinations[at], C.line>(cpu, decoded, indexed, member_of_result<members[at]>(result));
+          store<C.destinations[at], C.line>(machine, decoded, indexed, member_of_result<members[at]>(result));
     }
     else {
       // More than one *destination* is how an instruction writes one result to
       // two places, as the Z80's `dd cb d op` puts it through the addressing mode
       // and into the register its low bits name.
-      const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
+      const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
       template for (constexpr auto destination: C.destinations)
-          store<destination, C.line>(cpu, decoded, indexed, result);
+          store<destination, C.line>(machine, decoded, indexed, result);
     }
   }
 }
@@ -828,12 +824,12 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
 // A condition is applied like any other operation; only what is done with the
 // answer differs.
 template<std::meta::info Fn, Call C>
-[[nodiscard]] bool evaluate(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
+[[nodiscard]] bool evaluate(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
   static_assert(condition_fits<Fn, C>());
   // Gated for the same reason `apply` is: a condition that does not fit gets
   // one message rather than that message and the cascade from calling it.
-  if constexpr (!takes_cpu<Fn> && C.operands.size() == arity_of<Fn>)
-    return call_with<Fn, C>(cpu, operands_of<Fn, C>(cpu, decoded, indexed));
+  if constexpr (!takes_machine<Fn> && C.operands.size() == arity_of<Fn>)
+    return call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
   else
     return false;
 }
@@ -899,7 +895,7 @@ template<std::meta::info Fn, Call C>
 // would stop two of them being swapped unnoticed; it also costs 3.1% more
 // retired instructions through this function-pointer table, which is too much
 // for a signature with two call sites. See notes/MEASUREMENTS.md.
-using Handler = void (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
+using Handler = void (*)(Machine &, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
 // A handler tail-calls into another table's dispatch, and a dispatch is built
 // out of handlers, so one of the two has to be named before it is defined. A
@@ -907,7 +903,7 @@ using Handler = void (*)(Cpu &, std::uint8_t latch, std::uint8_t view, std::uint
 template<std::uint8_t Table>
 [[nodiscard]] const std::array<Handler, 256> &dispatch_for();
 
-void continue_running(Cpu &cpu, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
+void continue_running(Machine &machine, std::uint8_t latch, std::uint8_t view, std::uint8_t opcode);
 
 // One row, fully unrolled: every step spliced in, in order, with nothing of the
 // table surviving into the generated code. There is one of these per *body*, a
@@ -923,7 +919,7 @@ void continue_running(Cpu &cpu, std::uint8_t latch, std::uint8_t view, std::uint
 // below see only the bits that vary the code they generate, while the run-time
 // `opcode` parameter still carries all of them. See `body_key`.
 template<std::uint8_t Table, std::uint8_t BodyKey, std::size_t Index>
-void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
+void execute_one(Machine &machine, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
   // `static` is not an optimisation here: the expansion statement below walks
   // this as a range, and a range's *address* has to be a constant. A local
   // `constexpr` has a constant value but not a constant address.
@@ -945,7 +941,7 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
   static constexpr auto displaced = displaced_through(target::vocabularies, row, BodyKey, rules);
   constexpr bool entered_latched = target::latched[Table];
   const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
-                                        ? static_cast<std::uint8_t>(cpu.fetch_immediate(1))
+                                        ? static_cast<std::uint8_t>(machine.fetch_immediate(1))
                                         : latch;
   // A `goto` is the whole of its row: a prefix reads no operands and has no
   // immediate, so nothing below this line applies to one. It is also why the
@@ -960,8 +956,8 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     // table's opcode arrives as an operand read rather than an instruction
     // fetch, which is cheaper and does not refresh.
     const auto next_opcode =
-        static_cast<std::uint8_t>(target::latched[next_table] ? cpu.fetch_immediate(1) : cpu.fetch_opcode());
-    [[gnu::musttail]] return dispatch_for<next_table>()[next_opcode](cpu, displacement, next_view, next_opcode);
+        static_cast<std::uint8_t>(target::latched[next_table] ? machine.fetch_immediate(1) : machine.fetch_opcode());
+    [[gnu::musttail]] return dispatch_for<next_table>()[next_opcode](machine, displacement, next_view, next_opcode);
   }
   else {
 
@@ -969,13 +965,13 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
     // step: argument order within a call is unspecified, and a later step may
     // store through an address an earlier one read.
     // TODO: this is the only place we conditionally read 8 or 16 bits -- perhaphs this
-    // is the one place we use a ternary to cpu.read_immediate() and cast or cpu.read_immediate16()
-    const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : cpu.fetch_immediate(row.immediate_bytes);
+    // is the one place we use a ternary to machine.read_immediate() and cast or machine.read_immediate16()
+    const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : machine.fetch_immediate(row.immediate_bytes);
     // Formed once, after both, and handed to every operand that shares it. The
     // machine is told what else was read first, because on a Z80 those reads
     // happen *inside* the window that forms the address rather than before it.
     const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
-    const std::uint16_t indexed = [&cpu, decoded, displacement] -> std::uint16_t {
+    const std::uint16_t indexed = [&machine, decoded, displacement] -> std::uint16_t {
       if constexpr (displaced) {
         // A latched table read its opcode inside the same window, so that byte
         // counts too, and the machine is charged for the window once rather
@@ -988,8 +984,8 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
         constexpr auto read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
         static_assert(
             read_inside <= 1, "this row reads more inside the window that forms its address than the window can hold");
-        return cpu.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(cpu, decoded), displacement,
-            static_cast<std::uint8_t>(read_inside));
+        return machine.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded),
+            displacement, static_cast<std::uint8_t>(read_inside));
       }
       else
         return 0;
@@ -1010,17 +1006,17 @@ void execute_one(Cpu &cpu, const std::uint8_t latch, const std::uint8_t view, co
           // here stops the machine at the first untaken branch. It cannot tail
           // call from in here either, since the expansion's own induction
           // variable lives in the frame a tail call would abandon.
-          if (!evaluate<find_operation(operation, row.line), call>(cpu, decoded, indexed))
+          if (!evaluate<find_operation(operation, row.line), call>(machine, decoded, indexed))
             break;
         }
         else
-          apply<find_operation(operation, row.line), call>(cpu, decoded, indexed);
+          apply<find_operation(operation, row.line), call>(machine, decoded, indexed);
       }
     }
   }
   // The row is done, so hand on to the next instruction rather than returning.
   // This is the whole of the run loop: it used to be a `while` in the caller.
-  [[gnu::musttail]] return continue_running(cpu, 0, 0, 0);
+  [[gnu::musttail]] return continue_running(machine, 0, 0, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -1153,15 +1149,15 @@ template<std::uint8_t Table>
 //
 // Handler-shaped so that the tail call out of a handler is a tail call: the
 // three arguments a fresh instruction has no use for are passed as zero.
-inline void continue_running(Cpu &cpu, std::uint8_t, std::uint8_t, std::uint8_t) {
-  if (!cpu.start_instruction())
+inline void continue_running(Machine &machine, std::uint8_t, std::uint8_t, std::uint8_t) {
+  if (!machine.start_instruction())
     return;
-  const auto opcode = cpu.fetch_opcode();
-  [[gnu::musttail]] return dispatch_for<target::entry_table>()[opcode](cpu, 0, 0, opcode);
+  const auto opcode = machine.fetch_opcode();
+  [[gnu::musttail]] return dispatch_for<target::entry_table>()[opcode](machine, 0, 0, opcode);
 }
 
 // The whole of the run loop. What used to be a `while (true)` around a dispatch
 // is now the handlers themselves, and this only starts them off.
-inline void execute_instruction(Cpu &cpu) { continue_running(cpu, 0, 0, 0); }
+inline void execute_instruction(Machine &machine) { continue_running(machine, 0, 0, 0); }
 
 } // namespace specbolt::refract
