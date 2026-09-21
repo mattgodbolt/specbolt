@@ -204,9 +204,6 @@ journal now, most of their items struck through. This is what survived them.
   condition, which states both rather than asserting a range.
 - **A row is scanned rather than projected.** The disassembler walks a row's pieces at run time
   where it could be handed a table built at compile time.
-- **The write-back-delay rule compares only the name**, not that both ends are indirect.
-- **A tab does not separate words.** `Parser::trim` treats tabs as blanks but `next_word` splits
-  on spaces alone, so a tab-indented declaration is one long word.
 - **v4's `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so nothing checks
   them; the table is a header included into more than one partition and its definitions duplicate.
 - **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a

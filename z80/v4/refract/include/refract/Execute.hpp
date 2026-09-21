@@ -834,9 +834,8 @@ struct Interpreter {
       auto destination = resolve(at, written);
       // The idle cycle belongs to a write-back, so only to something read through
       // the same address it will be written through.
-      const auto was_read = destination.indirect && std::ranges::any_of(result.operands, [&](const Resolved &operand) {
-        return operand.indirect && operand.name == destination.name;
-      });
+      const auto was_read = std::ranges::any_of(
+          result.operands, [&](const Resolved &operand) { return same_address(operand, destination); });
       if (!was_read)
         destination.write_back_delay = 0;
       if (!result.destinations.try_push_back(destination))

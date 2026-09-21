@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <stdexcept>
 
 namespace specbolt::refract {
 
@@ -35,8 +36,19 @@ struct Vector {
   [[nodiscard]] constexpr auto end() const { return storage.begin() + static_cast<std::ptrdiff_t>(count); }
   [[nodiscard]] constexpr auto begin() { return storage.begin(); }
   [[nodiscard]] constexpr auto end() { return storage.begin() + static_cast<std::ptrdiff_t>(count); }
-  [[nodiscard]] constexpr const T &operator[](const std::size_t at) const { return storage[at]; }
-  [[nodiscard]] constexpr T &operator[](const std::size_t at) { return storage[at]; }
+  // Indexing past the count is a mistake in this library rather than in a
+  // description, so it throws rather than reading a default-constructed slot.
+  [[nodiscard]] constexpr const T &operator[](const std::size_t at) const {
+    if (at >= count)
+      throw std::out_of_range("index past the end of a Vector");
+    return storage[at];
+  }
+  [[nodiscard]] constexpr T &operator[](const std::size_t at) {
+    if (at >= count)
+      throw std::out_of_range("index past the end of a Vector");
+    return storage[at];
+  }
+  [[nodiscard]] constexpr const T *data() const { return storage.data(); }
   // The unused tail counts as well as the used part, which is sound only because
   // nothing here ever shrinks: two vectors holding the same sequence reached it
   // by the same appends, so their spare slots are equally untouched.

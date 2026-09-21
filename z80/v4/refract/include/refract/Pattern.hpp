@@ -45,7 +45,7 @@ struct Pattern {
     }
     const auto found = std::ranges::find(result.slices, character, &BitSlice::name);
     if (found == result.slices.end()) {
-      if (!result.slices.try_push_back({character, bit, 1}))
+      if (!result.slices.try_push_back({.name = character, .shift = bit, .mask = 1}))
         throw table_error(line, "opcode pattern has too many slices");
       continue;
     }

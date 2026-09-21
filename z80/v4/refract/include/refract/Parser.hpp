@@ -43,10 +43,14 @@ public:
   // The next `delim`-separated field, blanks removed. A row is three of these.
   [[nodiscard]] constexpr std::string_view next_field(const char delim) { return trim(take_until(delim)); }
 
-  // The next whitespace-separated word, or empty at the end.
+  // The next word, or empty at the end. Any blank ends a word, so a tab
+  // separates as a space does.
   [[nodiscard]] constexpr std::string_view next_word() {
     skip_any(blanks);
-    return next_field(' ');
+    const auto end = buf_.find_first_of(blanks);
+    const auto word = buf_.substr(0, end);
+    consume(end == std::string_view::npos ? buf_.size() : end);
+    return word;
   }
 
   // For a word that has already been recognised, such as the keyword a

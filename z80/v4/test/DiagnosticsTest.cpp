@@ -443,6 +443,38 @@ TEST_CASE("Table diagnostics") {
     // nothing is ambiguous there, and the reference means the view.
     CHECK_NOTHROW(parse(std::string(prefix) + "table u(y:i)\n00000000 | ld {r:y} | ld8 {r:y} <- a\n"));
   }
+  SECTION("A mistyped step is caught where it is written, not inside the generator") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- b <- c\n"),
+        Equals("2: a step has one '<-', between its destinations and its operands"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop | extra\n"),
+        Equals("2: a row has three columns; a fourth '|' is one too many"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 5 <- a\n"),
+        Equals("2: '5' is a value, not somewhere a result can go; a destination is a location, or an address in "
+               "parentheses"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | ld $nn | ld8 n <- a\n"),
+        Equals("2: 'n' is a value, not somewhere a result can go; a destination is a location, or an address in "
+               "parentheses"));
+    CHECK_NOTHROW(parse("table t\n00000000 n | ld $nn | ld8 (n) <- a\n"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | jr $ee | relative pc <- pc n\n"),
+        Equals("2: expected $nn, $nnnn or $e in mnemonic"));
+    CHECK_THROWS_WITH(parse("vocab r = a:add8(-) b\ntable t\n"),
+        Equals("1: '-' discards a result, and a member's argument is something the operation is given"));
+    CHECK_THROWS_WITH(parse("vocab r = a:(0) b\ntable t\n"),
+        Equals("1: a member's argument list needs an operation to hand them to"));
+    CHECK_THROWS_WITH(parse("vocab r = a -\ntable t\n0000000y | ld {r:y} | nop\ntable u = t with r.- -> b\n"),
+        Equals("4: a hole is not a member; a substitution cannot rename one"));
+  }
+  SECTION("A vocabulary that is its own slice cannot be renamed") {
+    // The interpreter reads such a member straight out of the opcode and would
+    // never see the rule; the disassembler would. Refused rather than left to
+    // disagree.
+    CHECK_THROWS_WITH(parse("vocab bit = 0 1\ntable t\n0000000b | bit {bit:b} | nop\ntable u = t with bit.0 -> 1\n"),
+        Equals("4: vocabulary 'bit' is its own slice, its members being the numbers the opcode carries, so a "
+               "substitution cannot rename one"));
+  }
+  SECTION("A tab is a blank") {
+    CHECK_NOTHROW(parse("vocab\tr\t=\tb\tc\ntable\tt\n0000000y\t| ld {r:y}\t| ld8 {r:y}\t<-\ta\n"));
+  }
   SECTION("A well-formed table raises nothing") {
     CHECK_NOTHROW(parse("vocab r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
   }

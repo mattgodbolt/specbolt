@@ -283,17 +283,27 @@ using Rules = Vector<Rule, 6>;
 struct Resolution {
   std::span<const Vocabulary> vocabularies{};
   Pattern matched{};
-  Rules rules{};
+  std::span<const Rule> rules{};
   std::uint8_t opcode{};
   std::uint8_t view{};
 };
+
+// Whether two indirect operands address the same place: the same name or
+// constant, reached the same way. Which is what makes a write-back a
+// write-back, rather than a write through one address after a read through
+// another.
+[[nodiscard]] constexpr bool same_address(const Resolved &lhs, const Resolved &rhs) {
+  return lhs.indirect && rhs.indirect && lhs.kind == rhs.kind && lhs.name == rhs.name && lhs.constant == rhs.constant &&
+         lhs.displaced == rhs.displaced && lhs.from_opcode == rhs.from_opcode && lhs.slice == rhs.slice &&
+         lhs.from_view == rhs.from_view && lhs.view_vocabulary == rhs.view_vocabulary;
+}
 
 // Which rule, if any, rewrites this member of this vocabulary. The two
 // functions below must agree about which rule fires, since one returns the
 // member it produces and the other where that member came from, so they ask the
 // same question rather than each spelling it out.
 [[nodiscard]] constexpr const Rule *rule_for(
-    const Rules &rules, const Reference reference, const std::string_view display) {
+    const std::span<const Rule> rules, const Reference reference, const std::string_view display) {
   const auto found = std::ranges::find_if(rules,
       [&](const Rule &rule) { return rule.vocabulary_index == reference.vocabulary_index && rule.from == display; });
   return found == rules.end() ? nullptr : &*found;

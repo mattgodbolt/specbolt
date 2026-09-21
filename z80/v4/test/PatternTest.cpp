@@ -14,14 +14,14 @@ TEST_CASE("Opcode bit parsing") {
     constexpr auto matched = parse_pattern("00pp0001", 1);
     STATIC_CHECK(matched.opcode_bits == 0b00000001);
     STATIC_CHECK(matched.slices.size() == 1);
-    STATIC_CHECK(matched.slices[0] == BitSlice{'p', 4, 3});
+    STATIC_CHECK(matched.slices[0] == BitSlice{.name = 'p', .shift = 4, .mask = 3});
   }
   SECTION("LD r, r'") {
     constexpr auto matched = parse_pattern("01yyyzzz", 1);
     STATIC_CHECK(matched.opcode_bits == 0b01000000);
     STATIC_CHECK(matched.slices.size() == 2);
-    STATIC_CHECK(matched.slices[0] == BitSlice{'y', 3, 7});
-    STATIC_CHECK(matched.slices[1] == BitSlice{'z', 0, 7});
+    STATIC_CHECK(matched.slices[0] == BitSlice{.name = 'y', .shift = 3, .mask = 7});
+    STATIC_CHECK(matched.slices[1] == BitSlice{.name = 'z', .shift = 0, .mask = 7});
   }
   SECTION("Wholly fixed") {
     constexpr auto matched = parse_pattern("11001001", 1);
@@ -31,7 +31,7 @@ TEST_CASE("Opcode bit parsing") {
   SECTION("Wholly variable") {
     constexpr auto matched = parse_pattern("nnnnnnnn", 1);
     STATIC_CHECK(matched.opcode_bits == 0);
-    STATIC_CHECK(matched.slices[0] == BitSlice{'n', 0, 0xff});
+    STATIC_CHECK(matched.slices[0] == BitSlice{.name = 'n', .shift = 0, .mask = 0xff});
   }
   SECTION("Rejects bad patterns") {
     CHECK_THROWS(parse_pattern("0101", 1));

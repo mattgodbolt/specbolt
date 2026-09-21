@@ -26,7 +26,8 @@ namespace specbolt::refract {
 // A keyword on its own is still that keyword, so `table` with no name reaches
 // the diagnostic that says so rather than being silently ignored.
 [[nodiscard]] constexpr bool is_directive(const std::string_view line, const std::string_view keyword) {
-  return line.starts_with(keyword) && (line.size() == keyword.size() || line[keyword.size()] == ' ');
+  return line.starts_with(keyword) &&
+         (line.size() == keyword.size() || line[keyword.size()] == ' ' || line[keyword.size()] == '\t');
 }
 [[nodiscard]] constexpr bool is_vocabulary(const std::string_view line) { return is_directive(line, "vocab"); }
 [[nodiscard]] constexpr bool is_table(const std::string_view line) { return is_directive(line, "table"); }
@@ -112,7 +113,9 @@ namespace specbolt::refract {
       if (const auto literal = chunk.take_until('$'); !literal.empty())
         pieces.push_back({.kind = Piece::Kind::Literal, .text = literal});
       if (chunk.rest().starts_with('e')) {
-        chunk.skip_any("e");
+        chunk = Parser(chunk.rest().substr(1));
+        if (chunk.rest().starts_with('e'))
+          throw table_error(line, "expected $nn, $nnnn or $e in mnemonic");
         pieces.push_back({.kind = Piece::Kind::Relative});
         continue;
       }
@@ -193,6 +196,8 @@ namespace specbolt::refract {
   Parser bound(member.operation);
   member.operation = bound.take_until('(');
   if (auto arguments = bound.rest(); !arguments.empty()) {
+    if (member.operation.empty())
+      throw table_error(line, "a member's argument list needs an operation to hand them to");
     if (!arguments.ends_with(')'))
       throw table_error(line, "a member's argument list is not closed");
     arguments.remove_suffix(1);
@@ -206,6 +211,8 @@ namespace specbolt::refract {
       argument.parameter = parameter;
       if (argument.kind == Operand::Kind::Immediate)
         throw table_error(line, "a member cannot pass an immediate; only the encoding fetches those");
+      if (argument.kind == Operand::Kind::Discard)
+        throw table_error(line, "'-' discards a result, and a member's argument is something the operation is given");
       if (!member.arguments.try_push_back(argument))
         throw table_error(line, "a member passes more arguments than an operation can take");
     }

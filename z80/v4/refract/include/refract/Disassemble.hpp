@@ -113,6 +113,11 @@ inline constexpr std::size_t max_instruction_bytes = 8;
     }
   };
 
+  const Resolution at{.vocabularies = description.vocabularies,
+      .matched = row->matched,
+      .rules = rules,
+      .opcode = opcode,
+      .view = view};
   for (const auto &part: row->pieces) {
     if (part.kind != Piece::Kind::Vocabulary) {
       render(part);
@@ -120,11 +125,6 @@ inline constexpr std::size_t max_instruction_bytes = 8;
     }
     // A member renders itself, because an indexed mode writes its displacement
     // in the middle of its own text.
-    const Resolution at{.vocabularies = description.vocabularies,
-        .matched = row->matched,
-        .rules = rules,
-        .opcode = opcode,
-        .view = view};
     for (const auto &inner: member_of(at, part.reference).pieces)
       render(inner);
   }

@@ -135,6 +135,15 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
       throw table_error(line, "a table substitution needs a name on each side of '->'");
     if (!std::ranges::contains(vocabularies[*named].members, from, &Member::display))
       throw table_error(line, "vocabulary '" + std::string(vocabulary) + "' has no member '" + std::string(from) + "'");
+    if (from == "-")
+      throw table_error(line, "a hole is not a member; a substitution cannot rename one");
+    // The generated code reads such a vocabulary's value straight out of the
+    // opcode, so a rule renaming one of its members would be honoured by the
+    // disassembler and ignored by the interpreter.
+    if (is_numeric(vocabularies[*named]))
+      throw table_error(line, "vocabulary '" + std::string(vocabulary) +
+                                  "' is its own slice, its members being the numbers the opcode carries, so a "
+                                  "substitution cannot rename one");
     Rule substitution{.vocabulary_index = static_cast<std::uint8_t>(*named), .from = from};
     if (to.starts_with('{')) {
       if (!table.takes_view())
@@ -462,11 +471,17 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     if (word.empty())
       continue;
     if (word == "<-") {
+      if (!writing_destination)
+        throw table_error(row.line, "a step has one '<-', between its destinations and its operands");
       writing_destination = false;
       continue;
     }
     const auto operand = parse_operand(vocabularies, word, row.matched, row.line, row.immediate_bytes, table);
     if (writing_destination) {
+      if (!operand.indirect && (operand.kind == Operand::Kind::Constant || operand.kind == Operand::Kind::Immediate))
+        throw table_error(row.line, "'" + std::string(word) +
+                                        "' is a value, not somewhere a result can go; a "
+                                        "destination is a location, or an address in parentheses");
       if (!operand.parameter.empty())
         throw table_error(row.line, "'" + std::string(operand.parameter.view()) +
                                         "=' names a parameter, and a destination is not one: it is where the result "
@@ -504,6 +519,8 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     Row row{.table = *current, .line = at};
     parse_encoding(Parser(parser.next_field('|')), row);
     row.mnemonic = parser.next_field('|');
+    if (parser.rest().contains('|'))
+      throw table_error(at, "a row has three columns; a fourth '|' is one too many");
     // Steps run in order, separated by `;`.
     Parser sequence(Parser::trim(parser.rest()));
     while (!sequence.eof()) {
