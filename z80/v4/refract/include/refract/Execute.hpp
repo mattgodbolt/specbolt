@@ -940,9 +940,8 @@ void execute_one(Machine &machine, const std::uint8_t latch, const std::uint8_t 
   // the frame, so anything the compiler thinks lives in it blocks one.
   static constexpr auto displaced = displaced_through(target::vocabularies, row, BodyKey, rules);
   constexpr bool entered_latched = target::latched[Table];
-  const std::uint8_t displacement = row.reads_displacement || (displaced && !entered_latched)
-                                        ? static_cast<std::uint8_t>(machine.fetch_immediate(1))
-                                        : latch;
+  const std::uint8_t displacement =
+      row.reads_displacement || (displaced && !entered_latched) ? machine.fetch_immediate() : latch;
   // A `goto` is the whole of its row: a prefix reads no operands and has no
   // immediate, so nothing below this line applies to one. It is also why the
   // hand-over happens *here* rather than among the steps: a tail call abandons
@@ -955,8 +954,7 @@ void execute_one(Machine &machine, const std::uint8_t latch, const std::uint8_t 
     // The fetch the loop used to do, now done by whoever hands over. A latched
     // table's opcode arrives as an operand read rather than an instruction
     // fetch, which is cheaper and does not refresh.
-    const auto next_opcode =
-        static_cast<std::uint8_t>(target::latched[next_table] ? machine.fetch_immediate(1) : machine.fetch_opcode());
+    const auto next_opcode = target::latched[next_table] ? machine.fetch_immediate() : machine.fetch_opcode();
     [[gnu::musttail]] return dispatch_for<next_table>()[next_opcode](machine, displacement, next_view, next_opcode);
   }
   else {
@@ -964,9 +962,16 @@ void execute_one(Machine &machine, const std::uint8_t latch, const std::uint8_t 
     // The encoding column says what is fetched, and it is fetched once before any
     // step: argument order within a call is unspecified, and a later step may
     // store through an address an earlier one read.
-    // TODO: this is the only place we conditionally read 8 or 16 bits -- perhaphs this
-    // is the one place we use a ternary to machine.read_immediate() and cast or machine.read_immediate16()
-    const std::uint16_t immediate = row.immediate_bytes == 0 ? 0 : machine.fetch_immediate(row.immediate_bytes);
+    const std::uint16_t immediate = [&machine] -> std::uint16_t {
+      if constexpr (row.immediate_bytes == 2)
+        return machine.fetch_immediate16();
+      else if constexpr (row.immediate_bytes == 1)
+        return machine.fetch_immediate();
+      else {
+        static_assert(row.immediate_bytes == 0, "the parser allows at most two immediate bytes");
+        return 0;
+      }
+    }();
     // Formed once, after both, and handed to every operand that shares it. The
     // machine is told what else was read first, because on a Z80 those reads
     // happen *inside* the window that forms the address rather than before it.

@@ -72,7 +72,7 @@ writing these and nothing else:
 - `operation_scopes()`, where the table may name operations from
 - `read`/`write` overloads: how to touch storage, and, for `read`, what storage there is
 - `read_memory`/`write_memory`: how to touch memory through an address
-- `fetch_opcode`/`fetch_immediate`: how to read the instruction stream
+- `fetch_opcode`/`fetch_immediate`/`fetch_immediate16`: how to read the instruction stream
 - `delay`: how to spend an idle cycle
 
 A primitive may take the machine by reference as its first parameter, which the framework supplies. That is the one

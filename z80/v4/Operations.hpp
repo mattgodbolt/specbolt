@@ -18,21 +18,12 @@
 
 namespace specbolt::v4 {
 
-// TODO: see the todo at the end of this superlong comment (which needs trimming too).
-// Which way the block operations walk memory. Bit 3 of the opcode is exactly
-// this, so the values are the hardware's rather than anyone's choice and are
-// written out: nothing here should depend on the order the enumerators happen
-// to be declared in.
-//
-// The spellings are how `z80.cpu` names these, and they are here rather than
-// there because the enum is what knows: `ldi` steps forwards, and `i` is the
-// Z80's name for forwards. `refract` finds them by annotation.
-// TODO: remind me why the 0 and 1 are important here? seems at this point the
-// number is no longer important? or is this information better encoded in the
-// .cpu file (being more about the encoding of the insturction)?
+// Which way the block operations walk memory. The annotations are what
+// `z80.cpu` calls each direction: `i` and `d`, the letters `ldi` and `ldd`
+// end in. The description names a direction; nothing reads the values.
 enum class BlockDirection : std::uint8_t {
-  Up[[= refract::Spelling{"i"}]] = 0,
-  Down[[= refract::Spelling{"d"}]] = 1,
+  Up[[= refract::Spelling{"i"}]],
+  Down[[= refract::Spelling{"d"}]],
 };
 
 // TODO in general I'd like all these to be much more "adapter"-y; anything that

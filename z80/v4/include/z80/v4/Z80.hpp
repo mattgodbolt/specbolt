@@ -5,7 +5,6 @@
 #include "z80/common/Z80Base.hpp"
 
 #include <cstdint>
-#include <functional> // TODO is this used/needed?
 #include <utility>
 
 #include "peripherals/Memory.hpp"
@@ -96,13 +95,12 @@ SPECBOLT_EXPORT class Z80 : public Z80Base {
 public:
   explicit Z80(Scheduler &scheduler, Memory &memory) : Z80Base(scheduler, memory) {}
 
-  void execute_one();
-  // Run until `instructions` have started or the machine says stop. The
-  // handlers tail-call each other for the whole of it, so this returns once.
-  void run(std::size_t instructions);
-  // The same, bounded by the clock rather than by a count, which is what a
-  // scheduler wants: run to the next thing that is due.
+  // Run until the clock reaches `cycle_count` or the machine says stop, which
+  // is what a scheduler wants: run to the next thing that is due. The handlers
+  // tail-call each other for the whole of it, so this returns once.
   void run_until(std::size_t cycle_count);
+  // One instruction, however long it takes.
+  void execute_one();
   // Called between instructions by the generated code. Takes the interrupt,
   // idles a halted chip, and says whether there is another instruction to run.
   bool start_instruction();
@@ -110,14 +108,9 @@ public:
   // What the framework asks of a machine. See refract/Machine.hpp. These are
   // the chip's own names for what it does; the framework calls them directly
   // rather than through anything in between.
-  std::uint8_t fetch_opcode();
-  // TODO: This should be either a template function on width OR two functions.
-  // We shouldn't have to rely on this passing a param and we don't even support
-  // anything but 1 or 2 here, so an `enum class` would be more appopriate if
-  // needed at all. Why not have callers call read_immediate or read_immediate16?
-  // NB seems like this is part of the `refract` contract but I think we should fix
-  // that. (see comments in Execute.hpp and Machine.hpp)
-  std::uint16_t fetch_immediate(std::uint8_t width);
+  [[nodiscard]] std::uint8_t fetch_opcode();
+  [[nodiscard]] std::uint8_t fetch_immediate();
+  [[nodiscard]] std::uint16_t fetch_immediate16();
   [[nodiscard]] std::uint8_t read_memory(std::uint16_t address);
   [[nodiscard]] std::uint16_t read_memory16(std::uint16_t address);
   void write_memory(std::uint16_t address, std::uint8_t value);
@@ -202,11 +195,7 @@ public:
   void interrupts_deferred(const bool value) { interrupts_deferred_ = value; }
 
 private:
-  std::size_t remaining_{};
   std::size_t until_{};
-
-  std::uint8_t read_immediate();
-  std::uint16_t read_immediate16();
 
   // Accepting an interrupt is not an instruction: no encoding matches it, so it
   // cannot be a row. It belongs to the machine that drives the decoder.

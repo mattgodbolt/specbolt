@@ -107,7 +107,7 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 | a **location**: `a`, `hl`, `pc` | an enumerator of that name, and a `read` taking its enum, which is what makes it a location |
 | a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, in 8- and 16-bit widths |
-| an **immediate**: `n` | `fetch_immediate` |
+| an **immediate**: `n` | `fetch_immediate` or `fetch_immediate16`, by width |
 | any **opcode fetch** | `fetch_opcode` |
 | `delay`, and any `/delay=` | `delay` |
 | a **displacement**: `(ix+d)` | `displaced_address` |
@@ -602,7 +602,7 @@ list because nothing else here says so.
 | what | charged by |
 |---|---|
 | the opcode fetch, including every prefix byte | the CPU's `fetch_opcode` |
-| each immediate byte, and any displacement | the CPU's `fetch_immediate` |
+| each immediate, and any displacement | the CPU's `fetch_immediate`, or `fetch_immediate16` for a wide one |
 | each read or write through an indirect operand | the CPU's `read_memory` / `write_memory` |
 | forming an indexed address | the CPU's `displaced_address` |
 | an explicit `delay` step, or a `/delay=` on an addressing mode | the CPU's `delay` |

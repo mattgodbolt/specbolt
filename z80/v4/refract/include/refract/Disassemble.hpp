@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <optional>
 #include <string>
 
@@ -33,8 +34,8 @@ inline constexpr std::size_t max_instruction_bytes = 8;
 // `byte_at(n)` is the nth byte of the instruction, counting from `address`.
 // `address` itself is needed because a relative jump renders where it lands
 // rather than how far it goes.
-[[nodiscard]] inline Disassembly disassemble(
-    const Description &description, const std::uint16_t address, const auto &byte_at) { // TODO why is this auto? surely std::function_ref or a constrained callable at least?
+[[nodiscard]] inline Disassembly disassemble(const Description &description, const std::uint16_t address,
+    const std::function_ref<std::uint8_t(std::size_t)> byte_at) {
   // Follow prefixes until a row that renders something is reached. An encoding
   // may take its displacement between the prefix and the byte that says what to
   // do (the Z80's `dd cb d op`), so the latch is filled inside this loop rather
@@ -42,13 +43,13 @@ inline constexpr std::size_t max_instruction_bytes = 8;
   std::size_t offset = 0;
   auto table = description.entry;
   const Row *row = nullptr;
-  std::optional<unsigned> latch;
+  std::optional<std::uint8_t> latch;
   // The view a prefix chose, carried for the same reason the interpreter
   // carries it: the row is decoded under it and the text depends on it.
   std::uint8_t view = 0;
   std::uint8_t opcode = 0;
   while (true) {
-    opcode = static_cast<std::uint8_t>(byte_at(offset));
+    opcode = byte_at(offset);
     row = description.row_for(table, opcode);
     ++offset;
     if (!row)

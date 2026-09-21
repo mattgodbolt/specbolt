@@ -2,24 +2,20 @@
 
 #include "refract/Execute.hpp"
 
-#include <limits>
 #include <utility>
 
 namespace specbolt::v4 {
 
-void Z80::execute_one() { run(1); }
-
-void Z80::run(const std::size_t instructions) {
-  remaining_ = instructions;
-  until_ = std::numeric_limits<std::size_t>::max();
-  refract::execute_instruction(*this);
-}
-
 void Z80::run_until(const std::size_t cycle_count) {
-  remaining_ = std::numeric_limits<std::size_t>::max();
   until_ = cycle_count;
   refract::execute_instruction(*this);
 }
+
+// An instruction that starts before the deadline runs to its end, and the
+// cheapest one takes longer than a cycle, so a deadline one cycle away is
+// exactly one instruction. A halted chip spends a fetch per turn of the loop
+// below, so it stops after one of those too.
+void Z80::execute_one() { run_until(cycle_count() + 1); }
 
 bool Z80::start_instruction() {
   // Called between instructions by the generated code, handles interrupts,
@@ -28,13 +24,8 @@ bool Z80::start_instruction() {
   // and whether it's profitable to have an inlined, non-looping version
   // deferring to the halting version out of line.
   while (true) {
-    // TODO consider if we can avoid two checks here: remaining vs until_ seem
-    // like the same concept and anything we can do to remove this; even if it
-    // means breaking the run(instructions) version as that is less common and
-    // used in tests only (check this claim).
-    if (remaining_ == 0 || cycle_count() >= until_)
+    if (cycle_count() >= until_)
       return false;
-    --remaining_;
     if (const auto deferred = std::exchange(interrupts_deferred_, false); irq_pending_ && !deferred) [[unlikely]]
       handle_interrupt();
     if (!halted_) [[likely]]
@@ -102,6 +93,10 @@ namespace {
   return 0;
 }
 
+// `execute_one` relies on this: a deadline one cycle away is one instruction
+// only while every instruction passes time.
+static_assert(cost_of(Bus::opcode) >= 1);
+
 } // namespace
 
 void Z80::bus(const Bus kind, const std::uint16_t address) {
@@ -125,11 +120,7 @@ std::uint8_t Z80::fetch_opcode() {
   return memory_.read(address);
 }
 
-std::uint16_t Z80::fetch_immediate(const std::uint8_t width) {
-  return width == 1 ? read_immediate() : read_immediate16();
-}
-
-std::uint8_t Z80::read_immediate() {
+std::uint8_t Z80::fetch_immediate() {
   const auto address = regs_.pc();
   regs_.pc(static_cast<std::uint16_t>(address + 1));
   bus(Bus::operand, address);
@@ -172,9 +163,9 @@ std::uint16_t Z80::displaced_address(
   return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
 }
 
-std::uint16_t Z80::read_immediate16() {
-  const auto low = read_immediate();
-  const auto high = read_immediate();
+std::uint16_t Z80::fetch_immediate16() {
+  const auto low = fetch_immediate();
+  const auto high = fetch_immediate();
   return static_cast<std::uint16_t>(high << 8 | low);
 }
 
