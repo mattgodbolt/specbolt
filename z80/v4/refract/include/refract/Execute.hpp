@@ -453,39 +453,30 @@ struct Interpreter {
     constexpr bool operator==(const Call &) const = default;
   };
 
-  // The rule the paragraph above states, said in a way the compiler checks. Give
-  // `Resolved` a `std::string_view` and this fires here, rather than as a
-  // deduction failure several hundred lines away from the cause.
-  static_assert(std::meta::is_structural_type(^^Name));
-  static_assert(std::meta::is_structural_type(^^Resolved));
-  static_assert(std::meta::is_structural_type(^^Call));
+  // The rule the paragraph above states, said in a way the compiler checks, in
+  // one place rather than at whichever template first takes the type.
+  static_assert(std::meta::is_structural_type(^^Name),
+      "Name is a template argument, so every member must be public and itself structural");
+  static_assert(std::meta::is_structural_type(^^Resolved),
+      "Resolved is a template argument, so every member and base must be public and itself structural");
+  static_assert(std::meta::is_structural_type(^^Call),
+      "Call is a template argument, so every member must be public and itself structural");
 
-  // An operand becomes the type the parameter it feeds asks for. A constant is
-  // checked here, because the table wrote it and a value too big for its
-  // parameter is a mistake worth naming. A location converts the ordinary way, so
-  // whether a 16-bit register reaching an 8-bit parameter is diagnosed depends on
-  // the build's warnings rather than on anything this file does.
+  // Reads one operand that is not an address and returns it as the type of the
+  // parameter it feeds: a constant or immediate converted, an enumerator
+  // spliced, or a location read from the machine. Whether the operand suits
+  // the parameter was settled by `operand_fits` before this is instantiated. A
+  // location converts the ordinary way, so whether a 16-bit register reaching
+  // an 8-bit parameter is diagnosed depends on the build's warnings rather than
+  // on anything here.
   template<Resolved Op, std::size_t Line, typename Parameter>
   [[nodiscard]] static Parameter direct_value_of(Machine &machine, const Decoded decoded) {
-    static_assert(!std::is_reference_v<Parameter>,
-        "an operation takes its operands by value; there is nothing here for a reference to bind to");
     if constexpr (Op.kind == Resolved::Kind::Constant) {
-      // An enum parameter has names for its values, and a spelling annotation
-      // exists to expose them, so a description must name one rather than cast
-      // a number into it. That holds for a number read from the opcode as much
-      // as one written in the row.
-      static_assert(!std::is_enum_v<Parameter>,
-          "this parameter is an enum, so name one of its spellings rather than passing a number");
       if constexpr (Op.from_opcode)
-        // The instruction carries the number and the slice says where. Nothing to
-        // check against the parameter: the mask already bounds it.
+        // The instruction carries the number and the slice says where.
         return static_cast<Parameter>(Op.slice.extract(decoded.opcode));
-      else {
-        if constexpr (std::integral<Parameter>)
-          static_assert(Op.constant <= static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()),
-              "this constant does not fit the parameter it is passed to");
+      else
         return static_cast<Parameter>(Op.constant);
-      }
     }
     else if constexpr (Op.kind == Resolved::Kind::Immediate) {
       if constexpr (Op.width == 1)
@@ -527,20 +518,15 @@ struct Interpreter {
       return direct_value_of<Op, Line, std::uint16_t>(machine, decoded);
   }
 
-  // An indirect operand is whatever it would have been, read as an address. How
-  // wide the read is comes from the parameter it feeds rather than from anything
-  // the row says, so one operand spelling serves every width the machine offers.
-  // (On the Z80 that is `ld16 hl <- (n)` reading two bytes where `ld8 a <- (n)`
-  // reads one.)
+  // Reads one operand and returns it as the type of the parameter it feeds.
+  // An indirect operand is whatever it would have been, read as an address;
+  // how wide the read is comes from the parameter rather than from anything
+  // the row says, so one operand spelling serves every width the machine
+  // offers. (On the Z80 that is `ld16 hl <- (n)` reading two bytes where
+  // `ld8 a <- (n)` reads one.)
   template<Resolved Op, std::size_t Line, typename Parameter>
   [[nodiscard]] static Parameter value_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     if constexpr (Op.indirect) {
-      // The machine offers two widths and the parameter's type picks. Said out
-      // loud because the alternative is an `else` that quietly means "one byte":
-      // an operation declaring `unsigned` rather than `std::uint16_t` would read
-      // half of what it asked for and zero-extend the rest.
-      static_assert(std::same_as<Parameter, std::uint8_t> || std::same_as<Parameter, std::uint16_t>,
-          "an indirect operand is read at one of the two widths the machine offers");
       const auto address = address_of<Op, Line>(machine, decoded, indexed);
       if constexpr (std::same_as<Parameter, std::uint16_t>)
         return machine.read_memory16(address);
@@ -551,16 +537,14 @@ struct Interpreter {
       return direct_value_of<Op, Line, Parameter>(machine, decoded);
   }
 
-  // The counterpart of `value_of`: a value goes to an operand, written through
-  // an address if the operand is indirect and into the location it names
-  // otherwise. A `-` destination drops it.
+  // Writes a value to one destination: through an address if the operand is
+  // indirect, into the location it names otherwise, and nowhere for `-`.
+  // Whether the value suits the destination was settled by `destinations_fit`.
   template<Resolved Op, std::size_t Line, typename T>
   static void store(Machine &machine, const Decoded decoded, const std::uint16_t indexed, const T value) {
     if constexpr (Op.kind == Resolved::Kind::Discard)
       static_cast<void>(value);
     else if constexpr (Op.indirect) {
-      static_assert(std::same_as<T, std::uint8_t> || std::same_as<T, std::uint16_t>,
-          "an indirect destination is written at one of the two widths the machine offers");
       // The addressing mode says how long the machine idles before writing back.
       if constexpr (Op.write_back_delay != 0)
         machine.delay(Op.write_back_delay);
@@ -571,7 +555,6 @@ struct Interpreter {
         machine.write_memory(address, value);
     }
     else {
-      static_assert(Op.kind == Resolved::Kind::Named, "only a named location can be a destination");
       if constexpr (Op.from_view) {
         static constexpr auto locations = locations_of_view<Op, Line>();
         machine.write(locations[decoded.view], value);
@@ -687,12 +670,68 @@ struct Interpreter {
     return "'" + std::string(std::meta::identifier_of(fn)) + "'";
   }
 
-  // The three checks on a step's shape follow. Each throws from `consteval`, so
-  // a step that does not fit its operation is a compile error naming the
+  // One of its parameters, likewise, or its position when it has no name.
+  template<std::meta::info Fn>
+  [[nodiscard]] static consteval std::string quoted_parameter_of(const std::size_t at) {
+    const auto parameter = std::meta::parameters_of(Fn)[at];
+    if (std::meta::has_identifier(parameter))
+      return "'" + std::string(std::meta::identifier_of(parameter)) + "'";
+    return "parameter " + decimal(at + 1);
+  }
+
+  // The checks on a step's shape follow. Each throws from `consteval`, so a
+  // step that does not fit its operation is a compile error naming the
   // description line and the operation, as every other mistake in a description
   // is reported.
   //
-  // The row supplies every parameter the operation has.
+  // Checks one operand against the parameter it feeds: the parameter takes it
+  // by value, a number is not passed to an enum, a constant the row wrote fits,
+  // and an address is read at a width the machine has.
+  template<std::meta::info Fn, Call C, std::size_t I>
+  [[nodiscard]] static consteval bool operand_fits() {
+    constexpr auto operand = C.operands[I];
+    constexpr auto at = parameter_for_operand<Fn, C>()[I];
+    using Parameter = parameter_type<Fn, at>;
+    const auto name = quoted_name_of(Fn);
+    const auto parameter = quoted_parameter_of<Fn>(at);
+    if (std::is_reference_v<Parameter>)
+      throw error(C.line, name + " takes " + parameter + " by reference; an operation takes its operands by value");
+    if constexpr (operand.kind == Resolved::Kind::Constant) {
+      // An enum parameter has names for its values, and a spelling annotation
+      // exists to expose them, so a description must name one rather than cast
+      // a number into it. That holds for a number read from the opcode as much
+      // as one written in the row.
+      if (std::is_enum_v<Parameter>)
+        throw error(C.line, name + " takes " + parameter +
+                                " as an enum, so name one of its spellings rather than "
+                                "passing a number");
+      // A number from the opcode is bounded by its slice; one the row wrote is
+      // bounded by nothing but this.
+      if constexpr (std::integral<Parameter>)
+        if (!operand.from_opcode &&
+            operand.constant > static_cast<std::uintmax_t>(std::numeric_limits<Parameter>::max()))
+          throw error(C.line, "constant " + decimal(operand.constant) + " does not fit " + parameter + " of " + name);
+    }
+    // The machine reads at two widths and the parameter's type picks between
+    // them, so any other type is refused rather than quietly read as one byte:
+    // an operation declaring `unsigned` rather than `std::uint16_t` would
+    // otherwise get half of what it asked for, zero-extended.
+    if (operand.indirect && !std::same_as<Parameter, std::uint8_t> && !std::same_as<Parameter, std::uint16_t>)
+      throw error(C.line, name + " reads " + parameter +
+                              " through an address, so it must be std::uint8_t or "
+                              "std::uint16_t, the widths the machine reads at");
+    return true;
+  }
+
+  // Every operand, against the parameter each feeds.
+  template<std::meta::info Fn, Call C>
+  [[nodiscard]] static consteval bool operands_each_fit() {
+    return []<std::size_t... I>(std::index_sequence<I...>) { return (operand_fits<Fn, C, I>() && ...); }(
+               std::make_index_sequence<C.operands.size()>{});
+  }
+
+  // Checks a step against the operation it applies: the row supplies every
+  // parameter the operation has, and each operand suits its parameter.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval bool operands_fit() {
     if (asks_for_machine<Fn>)
@@ -701,14 +740,16 @@ struct Interpreter {
     if (C.operands.size() != arity_of<Fn>)
       throw error(C.line, quoted_name_of(Fn) + " takes " + decimal(arity_of<Fn>) +
                               " operand(s) and this row supplies " + decimal(C.operands.size()));
-    return true;
+    return operands_each_fit<Fn, C>();
   }
 
-  // What the operation returns decides how many destinations the row names:
-  // none for `void`, one or more for a single value, and exactly one per part for
-  // a result that comes apart. A result with one part is refused rather than
-  // guessed at: it describes one value as well as it describes a bundle holding
-  // one, and a row would be written differently depending on which was meant.
+  // Checks a step's destinations against what the operation returns. The
+  // result decides how many the row names: none for `void`, one or more for a
+  // single value, and exactly one per part for a result that comes apart. A
+  // result with one part is refused rather than guessed at: it describes one
+  // value as well as it describes a bundle holding one, and a row would be
+  // written differently depending on which was meant. Then each destination
+  // must be able to take what it is handed.
   template<std::meta::info Fn, Call C, typename Result>
   [[nodiscard]] static consteval bool destinations_fit(const std::span<const std::meta::info> parts) {
     const auto name = quoted_name_of(Fn);
@@ -727,6 +768,28 @@ struct Interpreter {
     }
     else if (destinations == 0)
       throw error(C.line, name + " returns a value, so this row must name a destination");
+    // A `-` drops anything, a location takes whatever the machine can write
+    // there, and an address takes only the widths the machine writes at. The
+    // widths are spelled through aliases of our own because a reflect-expression
+    // may not name a using-declarator, which is how a standard library may bring
+    // `uint8_t` into `std`.
+    using Byte = std::uint8_t;
+    using Word = std::uint16_t;
+    for (const auto [at, destination]: std::views::enumerate(C.destinations)) {
+      if (destination.kind == Resolved::Kind::Discard)
+        continue;
+      const auto handed = std::meta::dealias(
+          std::meta::remove_cv(parts.size() > 1 ? std::meta::type_of(parts[static_cast<std::size_t>(at)]) : ^^Result));
+      if (destination.indirect) {
+        if (handed != std::meta::dealias(^^Byte) && handed != std::meta::dealias(^^Word))
+          throw error(C.line, name + " returns " + std::meta::display_string_of(handed) +
+                                  ", which cannot be written through an address; the machine writes std::uint8_t "
+                                  "or std::uint16_t");
+      }
+      else if (destination.kind != Resolved::Kind::Named)
+        throw error(C.line, "destination " + decimal(static_cast<std::size_t>(at) + 1) + " of " + name +
+                                " is not a location; a result goes to a named location, an address or '-'");
+    }
     return true;
   }
 
@@ -748,7 +811,7 @@ struct Interpreter {
                                  "no destination");
     if (std::meta::return_type_of(Fn) != ^^bool)
       throw error(C.line, name + " is used as a condition, so it must return bool");
-    return true;
+    return operands_each_fit<Fn, C>();
   }
 
   // Arguments are supplied positionally, or by name where the row said so;
@@ -938,6 +1001,7 @@ struct Interpreter {
           // The count is a template argument so that the machine, which knows how
           // long its window is, can refuse a count it cannot hold at compile time.
           constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
+          static_assert(window_holds<read_inside>(row.line));
           return machine.template displaced_address<read_inside>(
               direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement);
         }
@@ -1090,6 +1154,21 @@ struct Interpreter {
       return;
     const auto opcode = machine.fetch_opcode();
     [[gnu::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
+  }
+
+  // Asks whether the machine will form a displaced address with this many
+  // bytes already read inside its window. A machine refuses a count by
+  // constraining `displaced_address`; asking first turns that refusal into a
+  // diagnostic against the row that needs the count.
+  template<std::uint8_t BytesRead>
+  [[nodiscard]] static consteval bool window_holds(const std::size_t line) {
+    if constexpr (!requires(Machine &machine, const std::uint16_t base, const std::uint8_t offset) {
+                    machine.template displaced_address<BytesRead>(base, offset);
+                  })
+      throw error(line, "this row reads " + decimal(BytesRead) +
+                            " byte(s) inside the window that forms its displaced address, which is more than this "
+                            "machine's window holds");
+    return true;
   }
 
   // Starts the run. The handlers tail-call each other from here on, so this is
