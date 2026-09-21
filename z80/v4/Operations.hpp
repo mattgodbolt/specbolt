@@ -1,9 +1,9 @@
 #pragma once
 
 // The verbs of the description that touch no chip: a palette, every public
-// static function of which a row may name. The verbs that do touch the chip
-// are members of `Z80`, marked there one by one; the arithmetic the rows
-// share with the other implementations is in `Alu`, a second palette.
+// static function of which a row may name. Z80.hpp says which verbs are the
+// chip's own instead; the arithmetic the rows share with the other
+// implementations is in `Alu`, a second palette.
 
 #include "z80/common/Alu.hpp"
 #include "z80/common/Flags.hpp"

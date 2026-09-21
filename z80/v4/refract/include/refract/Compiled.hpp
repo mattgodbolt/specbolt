@@ -23,7 +23,6 @@ namespace specbolt::refract {
 // Each constant is the answer of one step of the pipeline, fixed by
 // `to_array`; the size of each is whatever the text turned out to say. A step
 // that rejects the text throws with the line, and `naming` adds the file.
-//
 namespace steps {
 
 template<const std::string_view &Text, FileName File>
@@ -71,10 +70,7 @@ struct Compiled {
   template<auto Check>
   static constexpr bool checked = naming(file, Check);
 
-  // Each step, evaluated on first use. Functions rather than static data
-  // members only so that they read as `description()` and `check()` do; the
-  // language instantiates either on use. (What the compiler's memory does with
-  // any arrangement inside a template is measured in the design journal.)
+  // Each step, evaluated on first use, as `description()` and `check()` are.
   [[nodiscard]] static constexpr const auto &vocabularies() { return steps::vocabularies<Text, File>; }
   [[nodiscard]] static constexpr const auto &tables() { return steps::tables<Text, File>; }
   [[nodiscard]] static constexpr const auto &rows() { return steps::rows<Text, File>; }

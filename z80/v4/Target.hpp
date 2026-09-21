@@ -15,8 +15,10 @@
 
 namespace specbolt::v4 {
 
-// The description, embedded. The bytes are local to the lambda so that only
-// the view of them is visible.
+// The description, embedded. `#embed` into a braced array gives the bytes with
+// no terminator, so `sizeof raw` is exactly their length; the array is local
+// to the lambda so that the view is formed from it there, and only the view
+// is visible.
 inline constexpr std::string_view z80_cpu = [] {
   // clang-format off
   static constexpr char raw[] = {

@@ -19,9 +19,6 @@ void Z80::run_until(const std::size_t cycle_count) {
 void Z80::execute_one() { run_until(cycle_count() + 1); }
 
 bool Z80::start_instruction() {
-  // Called between instructions by the generated code: takes the interrupt,
-  // idles a halted chip, and says whether there is another instruction to
-  // run.
   while (true) {
     if (cycle_count() >= until_)
       return false;
@@ -52,9 +49,10 @@ void Z80::handle_interrupt() {
     regs_.pc(static_cast<std::uint16_t>(regs_.pc() + 1));
   }
   iff1_ = iff2_ = false;
-  // The acknowledge cycle: an opcode fetch stretched by two wait states, during
-  // which the device would put a vector on the bus. Seven, then two writes,
-  // makes the documented thirteen for modes 0 and 1 and nineteen for mode 2.
+  // The acknowledge is an opcode fetch stretched by two wait states, during
+  // which the device would put a vector on the bus. Those seven, then two
+  // writes, make the documented thirteen for modes 0 and 1 and nineteen for
+  // mode 2.
   delay(7);
   // The acknowledge is an M1 cycle, and every M1 refreshes.
   refresh();
@@ -113,16 +111,11 @@ void Z80::bus(const Bus kind, const std::uint16_t address) {
 // to it and does not count.
 void Z80::refresh() { regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f))); }
 
-// An internal cycle presents whatever address the last access left on the bus,
-// so a run of them re-latches the same value every time and only the clock
-// actually moves. Spending them in one go is exactly equivalent, because
-// `tick(n)` and n `tick(1)`s leave the same cycle count and fire the same tasks
-// at the same cycles. It was worth 6% of v4 when it was measured, because
-// `delay 7` had been seven calls.
-//
-// This is the line contention will have to undo. A contended machine can
-// stretch each internal cycle separately, so it would want the loop back, with
-// `bus` deciding what each individual cycle costs.
+// An internal cycle presents the address the last access left on the bus, so
+// a run of them only moves the clock, and spending them in one go is
+// equivalent: `pass_time(n)` fires the same tasks at the same cycles as n
+// calls of one. A machine that contends each internal cycle separately would
+// loop here.
 void Z80::delay(const std::uint8_t cycles) { pass_time(cycles * cost_of(Bus::internal)); }
 
 std::uint16_t Z80::read_memory16(const std::uint16_t address) {
@@ -131,10 +124,9 @@ std::uint16_t Z80::read_memory16(const std::uint16_t address) {
   return static_cast<std::uint16_t>(read_memory(static_cast<std::uint16_t>(address + 1)) << 8 | low);
 }
 
-// Low byte first, which is what `ld (nn), hl` does. A push does the opposite:
-// high byte to sp-1, then low to sp-2, and gets this order instead. The bytes
-// land in the same places either way, so nothing can see the difference until
-// `bus` starts contending or a watchpoint watches. Recorded in NOTES.
+// Low byte first, as `ld (nn), hl` does. A push writes high to sp-1 then low
+// to sp-2 on the chip and gets this order instead; the bytes land in the same
+// places, so only contention or a watchpoint could tell (notes/PREFIXES.md).
 void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {
   write_memory(address, static_cast<std::uint8_t>(value));
   write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
@@ -185,6 +177,8 @@ void Z80::out_c(const std::uint16_t port, const std::uint8_t value) {
   out(port, value);
 }
 
+// Nineteen T-states with the fetch: two reads, an idle cycle, two writes, then
+// two more idle cycles, which is where the two `delay`s sit.
 std::uint16_t Z80::ex_sp_hl(const std::uint16_t value) {
   const auto sp = regs_.sp();
   const auto low = read_memory(sp);
@@ -204,6 +198,11 @@ Alu::R8 Z80::ld_a_special(const std::uint8_t value, const Flags flags) const {
   return {value, Alu::iff2_flags_for(value, flags, iff2())};
 }
 
+// `right` is `rrd`: the low nibble of `value` goes into `a`, `value`'s high
+// nibble drops to the low half of what is written back, and `a`'s old low
+// nibble fills the high half. `rld` rotates the other way: the high nibble of
+// `value` goes into `a`, `value`'s low nibble rises to the high half, and
+// `a`'s old low nibble fills the low half.
 Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const bool right) {
   const auto a = regs_.get(RegisterFile::R8::A);
   const auto updated =
@@ -219,6 +218,8 @@ Alu::R8 Z80::rld8(const std::uint8_t value, const Flags flags) { return nibble(v
 
 Flags Z80::counted(const Flags flags, const std::uint16_t bc, const std::uint8_t noise) {
   auto result = flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow() | Flags::Flag3() | Flags::Flag5());
+  // `bc` is the value before this step's decrement, so this is "bc is nonzero
+  // after it".
   if (bc != 1)
     result = result | Flags::Overflow();
   if (noise & 0x08)
@@ -245,7 +246,8 @@ Flags Z80::block_load(const BlockDirection direction, const Flags flags) {
   regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
   regs_.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
   regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
-  // Flags 3 and 5 come from the byte plus the accumulator, and swapped over.
+  // Flags 3 and 5 come from the byte plus the accumulator; `counted` says
+  // which bits.
   return counted(flags, bc, static_cast<std::uint8_t>(byte + regs_.get(RegisterFile::R8::A)));
 }
 

@@ -13,9 +13,9 @@
 
 namespace specbolt::v4 {
 
-// What the outside world sees the CPU do. A machine may stretch or contend an
-// access depending on its kind and address, so both reach `Z80::bus`, which is
-// the only place in this CPU where time passes.
+// What the outside world sees the CPU do: the kind of each access, which a
+// machine may stretch or contend by kind and address. Every access reaches
+// `Z80::bus`; idle cycles reach `Z80::delay`.
 SPECBOLT_EXPORT enum class Bus : std::uint8_t {
   opcode, // instruction fetch: four cycles on the Z80, including the refresh
   operand, // a byte of the instruction following the opcode
@@ -26,21 +26,13 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
   internal, // no transfer at all, but the address bus still holds something
 };
 
-// The state a description may name, beyond the registers it inherits from
-// `RegisterFile` and the flags `Flags::Bit` already names one at a time. Each
-// is an enum so that the halted state or the program counter can appear in a
-// row exactly as `a` or `carry` does; a splice of one of these picks the
-// matching `read` or `write` below by ordinary overload resolution, which is
-// why the framework needs no idea what kind of location it is holding.
-//
-// They are enums even where there is only one of a thing, because a name is
-// looked up by walking `enumerators_of` over each scope: a tag struct would be
-// invisible to that search, and an enumerator is what carries the spelling a
-// row writes.
-//
-// What makes them locations is that the machine can `read` one: the framework
-// derives the set from those overloads, so `Bus` above is not a location for
-// the plain reason that nothing reads a bus cycle kind.
+// The state a description may name beyond the registers of `RegisterFile` and
+// the bits of `Flags::Bit`. Each is an enum so that a row can write `halted`
+// or `pc` exactly as it writes `a`: a splice of one picks the matching `read`
+// or `write` below by overload resolution, so the framework never knows what
+// kind of location it holds. A name is found by walking `enumerators_of`, so
+// even a lone location is an enumerator. What makes a type a location is that
+// the machine can `read` one: `Bus` above is not, because nothing reads it.
 
 // The same register taken whole, distinct from R8::F so that only a
 // Flags-shaped value can be written to it.
@@ -54,8 +46,8 @@ SPECBOLT_EXPORT enum class FlipFlop : std::uint8_t { halted, iff1, iff2, deferre
 // The program counter, which is not in the programmer's register file.
 SPECBOLT_EXPORT enum class ProgramCounter : std::uint8_t { pc };
 
-// The high byte of the last address the machine formed. WZ, as the Z80
-// literature calls it. `bit n, (ix+d)` takes flags 3 and 5 from it.
+// The high byte of the last address on the bus. WZ, as the Z80 literature
+// calls it. `bit n, (ix+d)` takes flags 3 and 5 from it.
 SPECBOLT_EXPORT enum class AddressLatch : std::uint8_t { wzh };
 
 // How the chip is to answer an interrupt: `i` supplies the high byte of the
@@ -89,12 +81,10 @@ public:
   // idles a halted chip, and says whether there is another instruction to run.
   [[nodiscard]] bool start_instruction();
 
-  // What the framework asks of a machine. See refract/Machine.hpp. These are
-  // the chip's own names for what it does; the framework calls them directly
-  // rather than through anything in between.
-  // Defined here rather than in Z80.cpp: one of these runs for every byte of
-  // every instruction, from every handler, and where they are defined was
-  // measured to matter (notes/MEASUREMENTS.md).
+  // What the framework asks of a machine; see refract/Machine.hpp. The
+  // framework calls these directly, under the chip's own names. The fetches
+  // are defined here because one runs for every byte of every instruction,
+  // and their being inline was measured to matter (notes/MEASUREMENTS.md).
   [[nodiscard]] std::uint8_t fetch_opcode() {
     const auto address = regs_.pc();
     regs_.pc(static_cast<std::uint16_t>(address + 1));
@@ -176,7 +166,8 @@ public:
 
   // Reading and writing a named location. One overload per kind of location,
   // all called `read` or `write`, then the framework has only the one name
-  // to call.
+  // to call. A public `read(E)` overload publishes every enumerator of `E` to
+  // descriptions.
   [[nodiscard]] std::uint8_t read(const RegisterFile::R8 location) const { return get(location); }
   [[nodiscard]] std::uint16_t read(const RegisterFile::R16 location) const { return get(location); }
   void write(const RegisterFile::R8 location, const std::uint8_t value) { set(location, value); }
@@ -232,6 +223,9 @@ public:
   [[nodiscard]] std::uint16_t bus_address() const { return bus_address_; }
 
   using Z80Base::halted;
+  // Halting goes through `halt()`, which parks the program counter on the
+  // instruction as well as setting the flag; waking only clears the flag,
+  // since whoever wakes the chip steps the counter off it.
   void halted(bool value);
 
   // `ei` takes effect only after the instruction that follows it, so that
@@ -253,15 +247,16 @@ private:
   bool interrupts_deferred_{};
 
   // What every block operation does to the flags it does not otherwise touch:
-  // parity stands in for "bc has not run out", and flags 3 and 5 come from a
-  // value the instruction happens to have to hand, swapped over.
+  // parity stands in for "bc has not run out", and flag 3 comes from bit 3 and
+  // flag 5 from bit 1 of `noise`, a value the instruction happens to have to
+  // hand.
   [[nodiscard]] static Flags counted(Flags flags, std::uint16_t bc, std::uint8_t noise);
   // The in and out block forms count b rather than bc. Their real parity comes
   // from `(value + ((c ± 1) & 0xff)) & 7` exclusive-ored with b, and their half
   // carry and carry from whether that sum passed 255; none of that is modelled,
   // so only sign, zero and flags 3 and 5 are trustworthy here.
   [[nodiscard]] Flags stepped(Flags flags);
-  // `rrd` and `rld`: the nibble that ends up in memory, having changed `a`.
+  // `rrd` and `rld`: the byte that ends up in memory, having changed `a`.
   [[nodiscard]] Alu::R8 nibble(std::uint8_t value, Flags flags, bool right);
 };
 

@@ -21,12 +21,13 @@ namespace specbolt::refract {
 // What this opcode, decoded here, is displaced through, or nothing if it is not.
 // Nothing declares this: a row names a vocabulary member, a view says that
 // member is now a displaced one, and the answer is whatever the operands
-// resolve to.
+// resolve to. One per instruction, not one per operand: an instruction that
+// reads and writes through the same address wants one displacement read and
+// one sum formed, as the chip does (the Z80's `inc (ix+d)` is one).
 //
-// One per instruction, not one per operand. An instruction that reads and
-// writes through the same address wants one displacement read and one sum
-// formed, as the chip does; forming it per operand would pay for it twice. (The
-// Z80's `inc (ix+d)` is such an instruction.)
+// This is the one source of an instruction's length: Disassemble.hpp and
+// Execute.hpp both ask it, which is why the two agree about how many bytes an
+// instruction has.
 //
 // No `view` parameter: every member of a vocabulary a view selects is required
 // to have the same shape, so view 0 answers for all of them. That requirement
@@ -122,8 +123,7 @@ struct Instruction {
 
 [[nodiscard]] constexpr std::vector<Instruction> instructions_of(const Description &description) {
   std::vector<Instruction> all;
-  // Every table is total, so this is the exact size rather than a guess. Worth
-  // saying: growing it instead costs a second of constant evaluation.
+  // Every table is total, so this is the exact size.
   all.reserve(description.tables.size() * 256);
   for (std::size_t table = 0; table < description.tables.size(); ++table)
     for (std::size_t opcode = 0; opcode < 256; ++opcode) {
@@ -185,13 +185,11 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 }
 
 // Which tables are entered with a displacement already read. Where an encoding
-// interleaves a byte before the opcode that decides what to do with it (the
-// Z80's `dd cb d op`, for example), the row that meets that byte reads it and
-// hands it on rather than using it. Two consequences, both derived from the
-// gotos that reach a table rather than declared on it: its rows use the
-// displacement instead of reading one, and its opcode arrives by an operand
-// read rather than an instruction fetch, because the machine has committed,
-// which is why the Z80 does not advance its refresh register for that byte.
+// puts a byte before the opcode that decides what to do with it (the Z80's
+// `dd cb d op`), the row that meets that byte reads it and hands it on. Derived
+// from the gotos that reach a table rather than declared on it. A latched
+// table's rows use the displacement instead of reading one, and its opcode
+// arrives by an operand read rather than an instruction fetch.
 [[nodiscard]] constexpr std::vector<bool> latched_tables(
     const std::span<const Row> rows, const std::size_t num_tables) {
   // Empty until some goto has said, so that "not reached yet" and "reached
@@ -333,15 +331,11 @@ constexpr bool check_displacement_rendered(const Description &description) {
   return true;
 }
 
-// A table nothing reaches is a typo: nothing can ever decode in it. It is still
-// generated, because every table's dispatch is instantiated whether or not a
-// goto names it, so this catches the mistake rather than un-checked code.
-//
-// Reachable *from the entry table*, rather than merely named by some goto: two
-// tables that only reach each other are as unreachable as one nothing names at
-// all, and cost just as much to generate. Walking the decoded tables rather
-// than the rows is what accounts for inheritance: a derived table reaches
-// wherever its parent's rows go.
+// A table nothing reaches is a typo: nothing can ever decode in it, so nothing
+// in it is ever exercised. Reachable *from the entry table*, not merely named
+// by some goto: two tables that only reach each other are as dead as one
+// nothing names. The walk is over the decoded tables rather than the rows so
+// that a derived table reaches wherever its parent's rows go.
 constexpr bool check_tables_used(const Description &description) {
   const auto tables = description.tables;
   for (const auto [which, table]: std::views::enumerate(tables))
@@ -372,7 +366,7 @@ constexpr bool check_tables_used(const Description &description) {
   }
   for (const auto [which, table]: std::views::enumerate(tables))
     if (!reachable[static_cast<std::size_t>(which)])
-      throw table_error(table.line, "no goto reaches this table, so nothing in it is ever checked");
+      throw table_error(table.line, "no goto reaches this table, so nothing in it is ever exercised");
   return true;
 }
 

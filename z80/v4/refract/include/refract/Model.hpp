@@ -66,18 +66,14 @@ struct FileName {
 struct Operation {};
 inline constexpr Operation operation{};
 
-// How a `.cpu` file spells an enumerator, when that differs from what C++ calls
-// it. Written as a C++26 annotation (P3394) on the enumerator itself:
+// How a `.cpu` file spells an enumerator, when that differs from its C++ name,
+// as a C++26 annotation (P3394) on the enumerator itself:
 //
 //   enum class Direction { Up [[=Spelling{"i"}]], Down [[=Spelling{"d"}]] };
 //
-// The enum is the thing that knows. `Direction::Up` means "step forwards", and
-// that the Z80 writes it `i` is a fact about the Z80's assembly syntax, not
-// about the direction, so it belongs on the declaration rather than in a
-// table the description has to keep in step.
-//
-// An annotation's type must be *structural*, which is exactly what `Name` was
-// built for: `std::string_view` here is rejected outright.
+// The spelling is a fact about the machine's assembly syntax, so it lives on
+// the declaration. An annotation's type must be structural, which `Name` is
+// and `std::string_view` is not.
 struct Spelling {
   Name text{};
 };
@@ -93,11 +89,11 @@ struct Reference {
   constexpr bool operator==(const Reference &) const = default;
 };
 
-// An operand is a constant, a name the CPU can resolve, or a vocabulary
-// reference. A name is only a name here, whatever it denotes on the machine: a
-// register, a register pair, a single flag bit (the Z80's `a`, `hl` and `carry`
-// are one of each). Wrapping one in parentheses says to use it as an address
-// rather than as a value, which is orthogonal to all of the above.
+// What a row wrote in an operand position: a constant, a name the machine can
+// resolve, the immediate the encoding fetched, a vocabulary reference, or `-`
+// to discard a result. A name is only a name here, whatever it is on the
+// machine (the Z80's `a`, `hl` and `carry` are a register, a pair and a flag
+// bit). Parentheses say to use it as an address, whichever kind it is.
 struct Operand {
   enum class Kind : std::uint8_t { Constant, Named, Immediate, Vocabulary, Discard };
   Kind kind{};
@@ -119,13 +115,14 @@ struct Operand {
   constexpr bool operator==(const Operand &) const = default;
 };
 
-// What an operand becomes once an opcode has settled which vocabulary member it
-// meant. `Operand` is what a description wrote; this is what the generated code
-// is built from, and `resolve` below is the only way to arrive at one.
+// An operand once an opcode has settled which vocabulary member it meant.
+// `Operand` is what a description wrote; this is what the generated code is
+// built from, and `resolve` is the only way to arrive at one. It has no
+// `Reference`, since that has been followed, and gains the five fields after
+// `parameter`, which mean nothing until the member is known.
 //
-// The two share their shape and differ at both ends, which is the point of
-// there being two of them: a `Reference` means nothing here, and the four
-// fields below it mean nothing until an opcode has been chosen.
+// A handler is a template on one of these, so every field is part of its
+// identity: two operands that differ anywhere are two handlers.
 struct Resolved {
   // No `Vocabulary`: resolving one is the lookup, so what is left names
   // whatever the member named.
@@ -192,6 +189,8 @@ struct Piece {
   constexpr bool operator==(const Piece &) const = default;
 };
 
+// One member of a vocabulary: the text a row's reference to it displays, the
+// operation it may bind, and the operand it stands for in a step.
 struct Member {
   static constexpr std::size_t max_pieces = 3;
   std::string_view display{};
@@ -204,12 +203,13 @@ struct Member {
   // What this member decides about the operation it names, as a call: the row
   // fills the arguments the encoding varies, and these are the rest.
   Vector<Operand, max_arguments> arguments{};
-  // The text is an operand, parsed once here rather than per opcode at splice time.
+  // The text is an operand, parsed once here.
   Operand operand{};
   bool hole{};
   constexpr bool operator==(const Member &) const = default;
 };
 
+// A named list of members, one per value of the slice that selects among them.
 struct Vocabulary {
   static constexpr std::size_t max_members = 8;
   std::string_view name{};
@@ -227,12 +227,12 @@ struct Vocabulary {
 };
 
 // A derived table re-reads its parent's rows with some vocabulary members
-// renamed; the Z80's `dd` page is its `base` page read with `pair.hl -> ix`. A
-// rule names the vocabulary it rewrites as well as the member, because the same
-// text means different things in different vocabularies (there, `reg.h` is
-// renamed by a view and the `real.h` of an indexed load is not). The right side
-// is a whole member, so a substitute may bring its own operation and its own
-// access sequence.
+// renamed; the Z80's `indexed` table is `base` read with
+// `pair.hl -> {index:view}`. A rule names the vocabulary as well as the member,
+// because the same text means different things in different vocabularies:
+// `reg.h` is renamed by a view and the `real.h` of an indexed load is not. The
+// right side is a whole member, so a substitute may bring its own access
+// sequence.
 struct Rule {
   std::uint8_t vocabulary_index{};
   std::string_view from{};
@@ -248,18 +248,10 @@ struct Rule {
 using Rules = Vector<Rule, 6>;
 
 // A vocabulary that *is* its slice: member n is the number n, as in the Z80's
-// `bit = 0 1 2 3 4 5 6 7`. Its members differ in a value and nothing else, with
-// no operation to splice, no location to name and no addressing mode to pay
-// for, so the choice between them need not be baked into a function, because
-// the opcode already carries it.
-//
-// Identity is the load-bearing half, and it is easy to miss. A vocabulary whose
-// member is a *function* of the slice rather than the slice itself looks just
-// as numeric, and reading the bits would answer with the index instead of the
-// value: the Z80's `rst = 0x00 0x08 ... 0x38` would give `rst 3` where
-// `rst 0x18` was meant, and its `imode = 0 0 1 2 0 0 1 2` is not even injective.
-// Those keep a function each, which for the handful of members involved is
-// cheaper than a lookup table.
+// `bit = 0 1 2 3 4 5 6 7`. Its members differ in a value and nothing else, so
+// the opcode can supply it at run time and no function per member is needed.
+// Identity is required, not just numbers: a member that is a *function* of the
+// slice, as in `rst = 0x00 0x08 ... 0x38`, would be read as its index.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
@@ -352,7 +344,9 @@ struct Resolution {
   result.scope = Name{at.vocabularies[operand.reference.vocabulary_index].scope};
   // A number the opcode already carries: say where, rather than which. Every
   // member of the vocabulary then resolves to the same operand, so the
-  // functions that differed only in a constant become one.
+  // functions that differed only in a constant become one. `constant` is
+  // cleared for sharing, not correctness: it is part of the handler's
+  // identity, and the member's own value would split them again.
   if (!operand.reference.from_view && is_numeric(at.vocabularies[operand.reference.vocabulary_index])) {
     result.from_opcode = true;
     result.slice = at.matched.slices[operand.reference.slice_index];
@@ -380,9 +374,10 @@ struct Step {
   // row when it is false. That is the whole of what a condition can do here:
   // there is no way to guard a step in the middle and resume after it, so a
   // description whose conditionals are not a tail cannot be written. (Every
-  // Z80 conditional is, which is why this has been enough.)
+  // Z80 conditional is one.)
   enum class Kind : std::uint8_t { Apply, Goto, If };
   Kind kind{};
+  // The table a `goto` hands decoding to.
   std::uint8_t target{};
   // A goto may name a member of the target's view vocabulary, as the Z80's
   // `goto indexed(ix)` does, or write `view` to hand on the view this table was
@@ -396,6 +391,8 @@ struct Step {
   constexpr bool operator==(const Step &) const = default;
 };
 
+// One line of a table: the encoding it matches, the mnemonic it renders, and
+// the steps it runs, in order.
 struct Row {
   static constexpr std::size_t max_pieces = 12;
   static constexpr std::size_t max_steps = 6;
@@ -412,6 +409,8 @@ struct Row {
   std::size_t line{};
 };
 
+// A decoding table as declared: its name, the parent and renaming it derives
+// from if it does, and the view it takes if it takes one.
 struct TableDecl {
   std::string_view name{};
   std::size_t line{};
@@ -442,8 +441,9 @@ using DecodeTable = std::array<std::optional<std::size_t>, 256>;
 
 // A whole parsed description, as everything downstream of the parse sees it.
 // Spans, because the storage belongs to whoever did the parsing: a `Compiled`
-// for a description a target names, a test for one of its own. Holding it as one value is what lets a consumer be
-// handed "the table" rather than five of its parts.
+// for a description a target names, a test for one of its own. Holding it as
+// one value is what lets a consumer be handed "the table" rather than five of
+// its parts.
 struct Description {
   std::span<const Vocabulary> vocabularies;
   std::span<const Row> rows;

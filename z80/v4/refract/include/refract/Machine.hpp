@@ -14,14 +14,11 @@
 //
 // This is what the *framework* calls, not everything the machine is asked for:
 // an operation is free to use whatever the machine offers, and the Z80's use
-// `bus`, `in`, `out` and the register file besides. Those are between the
-// description and its own chip, and a concept here would only get in the way.
-//
-// These are member functions, called directly on the machine. Nothing sits
-// between the framework and the chip: no adapter, no traits class, no free
-// function found by lookup. Stating the set as a concept means a machine that
-// is missing one, or has one with the wrong shape, is told so here rather than
-// through a failure deep inside a generated instruction.
+// `bus`, `in`, `out` and the register file besides, which are between the
+// description and its own chip. The framework calls these as member functions,
+// directly on the machine, and stating the set as a concept means a machine
+// that is missing one, or has one with the wrong shape, is told so here rather
+// than through a failure deep inside a generated instruction.
 //
 // A machine also needs `read` and `write` overloads for each kind of location
 // it declares, but those cannot be written down here: how many there are, and
@@ -37,10 +34,10 @@ namespace specbolt::refract {
 
 // `read` is named here because the scan that derives a machine's location
 // scopes looks for overloads by that spelling, and this is the file stating
-// what a machine must provide. `write` needs no such constant: the generator
-// spells it once, at the point of the call it splices.
+// what a machine must provide: a public `read(E)` overload publishes every
+// enumerator of `E` to descriptions. `write` needs no such constant: the
+// generator spells it at the calls it splices.
 inline constexpr std::string_view read_verb = "read";
-
 
 // Everything the framework does *to* a machine. `delay` is separate from the
 // accesses because an idle cycle is not a transfer, and `displaced_address` is
@@ -50,8 +47,8 @@ template<typename M>
 concept MachineLike = requires(M &machine, const std::uint16_t address, const std::uint8_t byte) {
   // Reading the instruction stream.
   { machine.fetch_opcode() } -> std::same_as<std::uint8_t>;
-  // Between instructions: false ends the run. The machine does whatever it
-  // does in between, which on a Z80 is interrupts and the halt idle.
+  // Between instructions: false ends the run. What the machine does in between
+  // is its own business.
   { machine.start_instruction() } -> std::same_as<bool>;
   // Reading the bytes that follow an opcode, in the two widths a row can ask
   // for. Exact rather than convertible: a machine answering the wide one with

@@ -54,9 +54,9 @@ inline constexpr std::size_t max_instruction_bytes = 8;
     ++offset;
     if (!row)
       return {"??", offset};
-    // Taken before the terminal test, because the opcode is this row's own byte
-    // and the displacement follows it: reading it back afterwards would find
-    // the displacement instead.
+    // Read here, inside the loop, because the displacement belongs to the
+    // prefix row that declares `d`, and the loop moves on to the next table
+    // before the row that uses it is reached.
     if (row->reads_displacement)
       latch = byte_at(offset++);
     const auto next = transfers_to(*row);
@@ -97,9 +97,7 @@ inline constexpr std::size_t max_instruction_bytes = 8;
       case Piece::Kind::Relative: {
         // Measured from the byte after the offset, which is the end of the
         // instruction: a relative jump never carries anything else. The sum is
-        // formed at the width the machine forms it at. Adding a signed
-        // displacement to a `std::size_t` offset first would take a backwards
-        // jump through 64 bits of wraparound on its way to the same answer.
+        // formed at the width the machine forms it at.
         const auto to = static_cast<std::int8_t>(byte_at(offset));
         offset += 1;
         const auto end_of_instruction = static_cast<std::uint16_t>(address + offset);

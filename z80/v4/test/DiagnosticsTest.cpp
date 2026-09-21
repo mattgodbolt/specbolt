@@ -326,7 +326,7 @@ TEST_CASE("Table diagnostics") {
   SECTION("Tables must be reachable and non-empty") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\ntable dead\n"), Equals("3: this table has no rows"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\ntable dead\n00000000 | frob | nop\n"),
-        Equals("3: no goto reaches this table, so nothing in it is ever checked"));
+        Equals("3: no goto reaches this table, so nothing in it is ever exercised"));
   }
   SECTION("A latched table must be reached the same way every time") {
     CHECK_NOTHROW(parse("table t\n11001011 d | (cb) | goto u\n00000000 | nop | nop\n"

@@ -26,6 +26,7 @@ namespace specbolt::refract {
 inline constexpr std::size_t max_vocabularies = 256;
 inline constexpr std::size_t max_tables = 256;
 
+// `vocab name [: scope] = member member...`, one per line, from the whole text.
 [[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
   std::vector<Vocabulary> result;
   for (const auto [at, text]: lines_of(description)) {
@@ -104,10 +105,9 @@ constexpr bool check_every_line_means_something(const std::string_view descripti
 [[nodiscard]] constexpr Reference reference_from_braces(std::span<const Vocabulary> vocabularies, std::string_view text,
     const Pattern &matched, std::size_t line, const TableDecl &table);
 
-// `from -> to`, comma separated, with either spacing, because both read
-// naturally: the Z80's is `pair.hl->ix, reg.h -> ixh`. A right side written as
-// a view reference substitutes whichever member the table's view selects, which
-// is what lets one table stand for every one of them.
+// `vocabulary.member -> replacement`, comma separated, with either spacing. A
+// right side written as a view reference substitutes whichever member the
+// table's view selects, as the Z80's `pair.hl -> {index:view}` does.
 constexpr void parse_substitutions(const std::string_view text, const std::span<const Vocabulary> vocabularies,
     TableDecl &table, const std::size_t line) {
   Parser list(text);
@@ -166,6 +166,8 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   }
 }
 
+// `table name[(view:vocabulary)] [= parent with substitutions]`, one per line,
+// from the whole text.
 [[nodiscard]] constexpr std::vector<TableDecl> parse_tables(
     const std::string_view description, const std::span<const Vocabulary> vocabularies) {
   std::vector<TableDecl> result;
@@ -260,9 +262,8 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   };
   for (const auto &member: vocabulary.members) {
     // The operation is spliced from member 0, so a member that brought its own
-    // would be ignored for every view but the first. Rather than require them to
-    // agree, which permits only a spelling the row could give once, a member a
-    // view selects names a location and nothing else.
+    // would be ignored for every view but the first: a member a view selects
+    // names a location and nothing else.
     if (!member.operation.empty())
       throw complaint(member.display, "each of its members may only name a location, since a view is chosen long "
                                       "after the operation has been spliced");
@@ -499,6 +500,10 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
   return step;
 }
 
+// `encoding | mnemonic | step ; step...`: every line with `|` in it. A row
+// belongs to the nearest `table` line above it, which is why this pass tracks
+// the current table where the vocabulary and table passes read the whole file
+// flat.
 [[nodiscard]] constexpr std::vector<Row> parse_rows(const std::string_view description,
     const std::span<const Vocabulary> vocabularies, const std::span<const TableDecl> tables) {
   std::vector<Row> result;

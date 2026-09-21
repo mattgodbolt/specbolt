@@ -41,6 +41,11 @@ namespace specbolt::refract {
   return static_cast<std::uint8_t>(value.front() - '0');
 }
 
+// An operand as a row or a member writes it: `-`, `n`, a number, or a name,
+// any of which may be wrapped `(...)` as an address, with `+d` inside the
+// parentheses for a displaced one, and `/delay=n` on the end for the idle
+// cycles a write back through it costs. Anything in braces is a vocabulary
+// reference, which is `parse_operand`'s business.
 [[nodiscard]] constexpr Operand parse_simple_operand(
     std::string_view word, const std::size_t line, const std::uint8_t immediate_bytes) {
   if (word.empty())
@@ -142,11 +147,10 @@ namespace specbolt::refract {
   return pieces;
 }
 
-// Splits `name=rest` into the parameter an operand names and the operand
-// itself, or returns the word whole with an empty name when it names none. A
-// keyword is an identifier followed by `=`, and nothing else is, which is what
-// keeps a member's `/delay=1` attribute from looking like one: everything before its `=` is
-// punctuation.
+// Splits `name=rest` into the parameter an operand names and the operand, or
+// returns the word whole with an empty name. A keyword is an identifier
+// followed by `=`, which is what keeps `(hl)/delay=1` from looking like one:
+// what precedes its `=` is not an identifier.
 [[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(
     const std::string_view word, const std::size_t line) {
   const auto at = word.find('=');
@@ -165,6 +169,9 @@ namespace specbolt::refract {
   return {Name{keyword}, word.substr(at + 1)};
 }
 
+// A vocabulary member: `display[:operation[(argument, ...)]][/delay=n]`, or
+// `-` for a hole. The display is itself an operand, and the arguments are
+// operands the member appends to the row's, each of which may be `name=`d.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
   Parser whole(text);
   Parser parser(whole.take_until('/'));

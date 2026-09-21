@@ -78,14 +78,11 @@ struct Line {
   std::string_view text{};
 };
 
-// A description is its lines, numbered from one. This is the only place that knows lines are numbered at all.
-//
-// A line ending in `\` continues onto the next.The description is one buffer, so a joined line is still a single
-// `std::string_view` into it, just a longer one that happens to contain the `\` and the newline. Those are blanks to
-// `Parser`, so no consumer of a line has to know this happened.
-//
-// A continued line is reported at the number it *started* on, which is where a
-// reader would look for it.
+// A description is its lines, numbered from one; this is the only place that
+// knows lines are numbered. A line ending in `\` continues onto the next. The
+// description is one buffer, so a joined line is still one `std::string_view`
+// into it, holding the `\` and the newline, which are blanks to `Parser`. A
+// continued line is reported at the number it started on.
 [[nodiscard]] constexpr std::vector<Line> lines_of(const std::string_view description) {
   // Asked of the untrimmed text, because `trim` would take the `\` away.
   const auto continues = [](const std::string_view raw) {

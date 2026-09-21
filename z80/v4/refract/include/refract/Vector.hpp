@@ -8,9 +8,8 @@ namespace specbolt::refract {
 
 // A fixed-capacity vector that works during constant evaluation and is
 // structural, so it, and anything holding one, can be a template argument.
-// `std::inplace_vector` is neither: it is not structural, and the standard
-// library's constant evaluation of it stops short of an element type holding a
-// `std::string_view` (notes/FINDINGS.md).
+// `std::inplace_vector` is not structural; notes/FINDINGS.md has the rest of
+// why it is not used here.
 //
 // Everything here is public because a structural type's members must be.
 // `try_push_back` reports a full container rather than throwing, like
@@ -49,15 +48,11 @@ struct Vector {
     return storage[at];
   }
   [[nodiscard]] constexpr const T *data() const { return storage.data(); }
-  // The unused tail counts as well as the used part, which is sound only because
-  // nothing here ever shrinks: two vectors holding the same sequence reached it
-  // by the same appends, so their spare slots are equally untouched.
-  //
-  // That is a fact about `storage` and `count`, not about this operator. Two
-  // `Call`s are the same template argument when they are *memberwise* equal
-  // ([temp.type]), which never consults `operator==`. This is here so that
-  // ordinary code can compare one, and it agrees with the language by
-  // construction because it is defaulted.
+  // Defaulted, so it compares the unused tail as well as the used part. That is
+  // sound because nothing here ever shrinks: two vectors holding the same
+  // sequence reached it by the same appends, and their spare slots are equally
+  // untouched. Template-argument equivalence compares members the same way and
+  // never consults this operator; it is here for ordinary code, and agrees.
   constexpr bool operator==(const Vector &) const = default;
 };
 
