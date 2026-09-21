@@ -285,7 +285,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
   const auto name = parser.take_until(':');
   const auto slice = parser.rest();
   if (name.empty() || slice.empty())
-    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:z}");
+    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:s}");
   const auto field = find_vocabulary(vocabularies, name);
   if (!field)
     throw std::runtime_error("reference names a vocabulary that does not exist");
@@ -303,7 +303,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
     return {.vocabulary_index = static_cast<std::uint8_t>(*field), .from_view = true};
   }
   if (slice.size() != 1)
-    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:z}");
+    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:s}");
   const auto found = find_slice(matched, slice.front());
   if (!found)
     throw std::runtime_error("reference names a slice the opcode pattern does not define");
@@ -316,7 +316,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
 [[nodiscard]] constexpr Reference reference_from_braces(const std::span<const Vocabulary> vocabularies,
     const std::string_view text, const Pattern &matched, const TableDecl &table) {
   if (!text.starts_with('{') || !text.ends_with('}'))
-    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:z}");
+    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:s}");
   return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, table);
 }
 

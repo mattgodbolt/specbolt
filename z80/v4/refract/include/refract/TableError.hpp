@@ -9,8 +9,8 @@
 
 namespace specbolt::refract {
 
-// Renders a number for a diagnostic. `std::to_chars` is usable during constant evaluation; `std::to_string` and
-// `std::format` are not.
+// Renders a number for a diagnostic. `std::to_chars` is the one of the standard's number formatters usable during
+// constant evaluation.
 [[nodiscard]] constexpr std::string decimal(const std::size_t value) {
   std::array<char, 20> digits{}; // enough for any 64-bit value
   const auto [end, _] = std::to_chars(digits.data(), digits.data() + digits.size(), value);

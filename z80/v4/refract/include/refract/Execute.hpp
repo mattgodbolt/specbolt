@@ -94,9 +94,9 @@ namespace specbolt::refract {
 //
 // **`std::meta::access_context::current()`** means the context of the function that names it, `Interpreter`'s own scope
 // here rather than the caller's, and `Interpreter` is nobody's friend. Load-bearing twice: it is why asking what a
-// result decomposes into gives the same answer here as a structured binding would give anywhere (a machine's flags type
-// keeps its byte private, so it is one value and not a pair), and why a private helper in an operation scope cannot be
-// named by a table.
+// result decomposes into gives the same answer here as a structured binding would give anywhere (the Z80's `Flags`, for
+// one, keeps its byte private, so it reaches a row as one value rather than a pair), and why a private helper in an
+// operation scope cannot be named by a table.
 //
 // ---------------------------------------------------------------------------
 // Why the data looks the way it does
@@ -124,7 +124,7 @@ struct Interpreter {
 
   // The enums a location name may come from: the parameter type of each of the machine's public one-argument `read`
   // overloads. A location is a thing the machine can read, so the pool is the capability itself. An enum with no `read`
-  // taking it is not a location, which is why a bus cycle kind cannot be one.
+  // taking it is not a location: the Z80's `Bus`, which nothing reads, is one such.
   //
   // `read_memory` is excluded by name; an overload taking more than the location is excluded by arity.
   [[nodiscard]] static consteval std::vector<std::meta::info> location_scopes() {
@@ -269,7 +269,7 @@ struct Interpreter {
         if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
           candidates.push_back(enumerator);
     // A spelling is consulted only when no identifier matched: almost every name is an identifier, and reading every
-    // enumerator's annotations on every lookup was measured to cost more than it is worth.
+    // enumerator's annotations on every lookup was measured to cost more than it is worth (notes/MEASUREMENTS.md).
     if (candidates.empty())
       for (const auto everywhere: location_scopes())
         for (const auto enumerator: std::meta::enumerators_of(everywhere))

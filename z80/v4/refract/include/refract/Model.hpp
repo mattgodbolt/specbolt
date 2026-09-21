@@ -207,8 +207,8 @@ using Rules = Vector<Rule, 6>;
 
 // Whether a vocabulary *is* its slice: member n is the number n, as in the Z80's `bit = 0 1 2 3 4 5 6 7`. Its members
 // differ in a value and nothing else, so the opcode can supply it at run time and no function per member is needed.
-// Identity is required, not just numbers: a member that is a *function* of the slice, as in `rst = 0x00 0x08 ... 0x38`,
-// would be read as its index.
+// Identity is required, not just numbers: a member that is a *function* of the slice, as the Z80's
+// `rst = 0x00 0x08 ... 0x38` is, would be read as its index.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {

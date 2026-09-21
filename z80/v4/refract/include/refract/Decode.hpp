@@ -102,16 +102,16 @@ using OpcodeSet = std::bitset<256>;
 }
 
 // The opcodes each row claims, index-coupled to `rows`. Walking a row's cartesian product is the expensive part of
-// evaluating a description, and three of the checks below want the answer, so it is computed once here and passed to
-// each.
+// evaluating a description, and `decode_tables` below and two of the checks in Checks.hpp want the answer, so it is
+// computed once here and passed to each.
 [[nodiscard]] constexpr std::vector<OpcodeSet> opcodes_of_each(
     const std::span<const Vocabulary> vocabularies, const std::span<const Row> rows) {
   return rows | std::views::transform([&](const Row &row) { return opcodes_of(vocabularies, row); }) |
          std::ranges::to<std::vector>();
 }
 
-// One decoded instruction: a (table, opcode) that a row answers to, and the renaming it answers under. The checks below
-// are each one question asked of every one of these, and walking is not what any of them is about.
+// One decoded instruction: a (table, opcode) that a row answers to, and the renaming it answers under. The checks in
+// Checks.hpp are each one question asked of every one of these, and walking is not what any of them is about.
 struct Instruction {
   std::uint8_t table{};
   std::uint8_t opcode{};

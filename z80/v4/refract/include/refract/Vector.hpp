@@ -11,8 +11,8 @@
 namespace specbolt::refract {
 
 // A fixed-capacity vector that works during constant evaluation and is structural, so it, and anything holding one, can
-// be a template argument. `std::inplace_vector` is not structural; notes/FINDINGS.md has the rest of why it is not used
-// here.
+// be a template argument. Nothing requires `std::inplace_vector` to be structural, and the implementations tried are
+// not; notes/FINDINGS.md has the rest of why it is not used here.
 //
 // Everything here is public because a structural type's members must be. `push_back` throws when the container is
 // full, naming the capacity and the element type; during constant evaluation that throw is the compile error. Which
