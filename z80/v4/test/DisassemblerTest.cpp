@@ -325,7 +325,19 @@ TEST_CASE("Opcode generation tests") {
     // and only vocabulary members are renamed by a view. See #39.
     CHECK(dis(0xdd, 0xeb) == "ex de, hl");
   }
-  SECTION("Test fd prefixes") { CHECK(dis(0xfd, 0xeb) == "ex de, hl"); }
+  SECTION("Test fd prefixes") {
+    CHECK(dis(0xfd, 0xeb) == "ex de, hl");
+    // The four index vocabularies must list iy where ix sits, which nothing
+    // in the format can check; these are the rows that would print ix.
+    CHECK(dis(0xfd, 0x65) == "ld iyh, iyl");
+    CHECK(dis(0xfd, 0x26, 0x12) == "ld iyh, 0x12");
+    CHECK(dis(0xfd, 0x7c) == "ld a, iyh");
+    CHECK(dis(0xfd, 0x86, 0x05) == "add a, (iy+0x05)");
+    CHECK(dis(0xfd, 0x21, 0x34, 0x12) == "ld iy, 0x1234");
+  }
+  SECTION("A run of prefixes is given up on rather than followed") {
+    CHECK(dis(0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd) == "??");
+  }
   SECTION("Test ddcb prefixes") {
     CHECK(dis(0xdd, 0xcb, 0xff, 0x06) == "rlc (ix-0x01)");
     CHECK(dis(0xdd, 0xcb, 0x23, 0xf6) == "set 6, (ix+0x23)");

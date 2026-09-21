@@ -402,6 +402,14 @@ TEST_CASE("Indexed addressing") {
   Tester t;
   auto &regs = t.regs;
 
+  SECTION("fd renames the halves too, and to iy's halves rather than ix's") {
+    regs.set(RegisterFile::R16::IY, 0x1234);
+    regs.set(RegisterFile::R16::IX, 0x5678);
+    t.run(0xfd, 0x65); // ld iyh, iyl
+    CHECK(regs.get(RegisterFile::R16::IY) == 0x3434);
+    CHECK(regs.get(RegisterFile::R16::IX) == 0x5678);
+    CHECK(t.z80.cycle_count() == 8);
+  }
   SECTION("dd renames hl, and every byte of a prefix chain costs a fetch") {
     regs.set(RegisterFile::R16::IX, 0x12ff);
     regs.set(RegisterFile::R16::HL, 0x1111);

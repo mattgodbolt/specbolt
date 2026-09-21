@@ -87,6 +87,7 @@ struct ToyOperations {
   [[nodiscard]] static std::uint8_t add8(const std::uint8_t lhs, const std::uint8_t rhs) {
     return static_cast<std::uint8_t>(lhs + rhs);
   }
+  [[nodiscard]] static bool zero(const std::uint8_t value) { return value == 0; }
 };
 
 inline constexpr std::string_view toy_cpu = R"(vocab reg : Reg = a x
@@ -97,7 +98,12 @@ table main
 0000010r   | add a, {reg:r} | add8 a <- a {reg:r}
 00000110   | swap a         | swap a <- a
 00000111   | twice a        | twice a <- a
+00001000   | (pre)          | goto other
+00001001   | clear a if 0   | if zero a ; ld8 a <- x
 xxxxxxxx   | ??             | nop
+
+table other
+xxxxxxxx   | copy a         | ld8 x <- a
 )";
 
 struct ToyTarget {
@@ -109,18 +115,22 @@ struct ToyTarget {
 } // namespace
 
 TEST_CASE("A second machine runs beside the Z80") {
-  // ld a, 5 ; ld x, 7 ; add a, x ; swap a ; twice a
-  Toy toy{.memory = {0x02, 0x05, 0x03, 0x07, 0x05, 0x06, 0x07}, .instructions_left = 5};
+  // ld a, 5 ; ld x, 7 ; add a, x ; swap a ; twice a ; (pre) copy a ; clear a if 0
+  Toy toy{.memory = {0x02, 0x05, 0x03, 0x07, 0x05, 0x06, 0x07, 0x08, 0x00, 0x09}, .instructions_left = 7};
   refract::Interpreter<ToyTarget>::run(toy);
-  CHECK(toy.a == 0x80); // 12 is 0x0c, swapped is 0xc0, doubled is 0x80
-  CHECK(toy.x == 7);
-  CHECK(toy.pc == 7);
-  CHECK(toy.cycles == 2 + 1 + 2 + 1 + 2 + (2 + 1) + 2);
+  CHECK(toy.a == 0x80); // 12 is 0x0c, swapped is 0xc0, doubled is 0x80, and not zero, so kept
+  CHECK(toy.x == 0x80); // copied through the second table
+  CHECK(toy.pc == 10);
+  CHECK(toy.cycles == 2 + 1 + 2 + 1 + 2 + (2 + 1) + 2 + (2 + 2) + 2);
 
-  const auto [text, length] = refract::disassemble(
-      ToyTarget::Compiled::description(), 2, [&](const std::size_t offset) { return toy.memory[2 + offset]; });
-  CHECK(text == "ld x, 0x07");
-  CHECK(length == 2);
+  const auto at = [&](const std::size_t address) {
+    return refract::disassemble(ToyTarget::Compiled::description(), static_cast<std::uint16_t>(address),
+        [&](const std::size_t offset) { return toy.memory[address + offset]; });
+  };
+  CHECK(at(2).text == "ld x, 0x07");
+  CHECK(at(2).length == 2);
+  CHECK(at(7).text == "copy a"); // the prefix renders nothing; the row it reaches does
+  CHECK(at(7).length == 2);
 }
 
 } // namespace specbolt::refract
