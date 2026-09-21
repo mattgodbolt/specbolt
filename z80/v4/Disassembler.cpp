@@ -1,6 +1,6 @@
 #include "z80/v4/Disassembler.hpp"
 
-#include "Table.hpp"
+#include "Target.hpp"
 #include "peripherals/Memory.hpp"
 #include "refract/Disassemble.hpp"
 
@@ -13,7 +13,7 @@ namespace specbolt::v4 {
 // lowered pieces are all facts about the description rather than about this
 // chip, so `refract` does them for any description.
 Disassembled disassemble(const Memory &memory, const std::uint16_t address) {
-  auto [text, length] = refract::disassemble(description, address,
+  auto [text, length] = refract::disassemble(Target::Compiled::description(), address,
       [&](const std::size_t offset) { return memory.read(static_cast<std::uint16_t>(address + offset)); });
   return {std::move(text), length};
 }

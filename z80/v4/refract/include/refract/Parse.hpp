@@ -246,7 +246,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::si
   };
   const auto complaint = [&](const std::string_view what, const std::string_view because) {
     return table_error(vocabulary.line, "vocabulary '" + std::string(vocabulary.name) + "' is selected by a view (at " +
-                                            at_line(used_at) + "), so " + std::string(because) + "; '" +
+                                            "line " + decimal(used_at) + "), so " + std::string(because) + "; '" +
                                             std::string(what) + "' does not");
   };
   for (const auto &member: vocabulary.members) {

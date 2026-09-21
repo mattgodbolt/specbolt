@@ -581,3 +581,40 @@ pointer.
 So `Handler` stays positional, with a comment saying it was measured rather than merely preferred.
 The safety it gives up is real: the two call sites are `execute_one`'s hand-over and
 `continue_running`, and nothing but reading them would catch a transposition.
+
+## Making the target a parameter costs peak memory, and where gcc collects is why
+
+Peak RSS and wall clock of one compile, gcc 16.2 `RelWithDebInfo`, `/usr/bin/time`, same machine,
+each configuration compiled twice and agreeing to 0.1% on memory. `Disassembler.cpp` is the parse
+and every check with no handlers; `Z80.cpp` is the same plus the interpreter.
+
+| | `Disassembler.cpp` | `Z80.cpp` |
+|---|---:|---:|
+| namespace-scope constants, macro-named file (before) | 14.6s / 1.17 GB | 52.6s / 1.23 GB |
+| `Compiled<Text, File>`, checks and steps all pulled in by one instantiation | 17.7s / 1.79 GB | 55.5s / 1.81 GB |
+| the same without the catch-and-rethrow wrapper | 15.5s / 1.55 GB | |
+| the same with each step named by its own top-level `static_assert` in `Target.hpp` | 18.3s / 1.42 GB | |
+
+gcc's `-ftime-report` for `Disassembler.cpp`: constant expression evaluation allocated 1399M before
+and 1723M after (+23%), but garbage collection took 0.85s before and 0.37s after. The allocation
+grew a little; the collections halved. gcc collects between top-level declarations, and the old
+layout had six of them where the new one has a single instantiation.
+
+Three arrangements inside the library made no difference, because none of them is a top-level
+declaration: variable templates at namespace scope instantiated from `Compiled`, member functions
+so that `Compiled` itself evaluates nothing, and the seven checks as separate `static_assert`s.
+
+The six lines that do help, in a consumer, before its `Target`:
+
+```cpp
+static_assert(!refract::steps::vocabularies<z80_cpu, "z80.cpu">.empty());
+static_assert(!refract::steps::tables<z80_cpu, "z80.cpu">.empty());
+static_assert(!refract::steps::rows<z80_cpu, "z80.cpu">.empty());
+static_assert(!refract::steps::row_opcodes<z80_cpu, "z80.cpu">.empty());
+static_assert(!refract::steps::decoded<z80_cpu, "z80.cpu">.empty());
+static_assert(!refract::steps::latched<z80_cpu, "z80.cpu">.empty());
+```
+
+Not adopted, because it is the boilerplate the change exists to remove, and 1.8 GB a unit fits
+the machines that build this. Written down because it is the first thing to reach for if it stops
+fitting, and because "where does the compiler collect" is not a question the source usually asks.

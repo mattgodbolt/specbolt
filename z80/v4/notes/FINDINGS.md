@@ -39,6 +39,14 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - Reflection works inside module interface units, including `template for` in a module purview and
   exported templates that reflect on their own parameters and are instantiated in importing TUs.
 
+### Constant evaluation can catch
+
+- **`try`/`catch` works in constant evaluation on gcc 16.2** (P3068), including throwing a new
+  exception from the handler. `Compiled` uses it to put the description's file name in front of a
+  message the parser threw with only a line, so the library never has to know what file it is
+  reading. The idiom that a mistake in the description is a thrown `consteval` exception survives:
+  nothing catches the rethrow.
+
 ### Library, on libstdc++ 16
 
 - `std::function_ref` and `std::copyable_function` are there; `disassemble` takes the former.

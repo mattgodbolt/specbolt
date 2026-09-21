@@ -11,7 +11,6 @@ target_link_libraries(z80_v4 PUBLIC z80_common peripherals)
 target_link_libraries(z80_v4 PUBLIC opt::pedantic opt::c++26)
 
 target_include_directories(z80_v4 PUBLIC include refract/include)
-target_compile_definitions(z80_v4 PUBLIC SPECBOLT_CPU_TABLE="z80.cpu")
 
 target_sources(z80_v4 PRIVATE
         Disassembler.cpp
@@ -19,8 +18,10 @@ target_sources(z80_v4 PRIVATE
 )
 target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
         Operations.hpp
+        Target.hpp
         include/z80/v4/Disassembler.hpp
         include/z80/v4/Z80.hpp
+        refract/include/refract/Compiled.hpp
         refract/include/refract/Coverage.hpp
         refract/include/refract/Disassemble.hpp
         refract/include/refract/Execute.hpp

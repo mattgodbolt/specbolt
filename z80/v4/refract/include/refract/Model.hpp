@@ -25,9 +25,8 @@ namespace specbolt::refract {
 // where a `std::string_view` cannot.
 struct Name {
   std::array<char, 15> storage{};
-  // A byte, not a `std::size_t`: `Resolved` is a template argument on a
-  // translation unit that peaks above a gigabyte, so the eight bytes are worth
-  // not spending.
+  // A byte, not a `std::size_t`: `Resolved` is a template argument, part of
+  // every handler's identity, so a byte here is worth the seven it saves.
   std::uint8_t length{};
   constexpr Name() = default;
   template<std::size_t N>
@@ -42,6 +41,18 @@ struct Name {
   [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), length}; }
   [[nodiscard]] constexpr bool empty() const { return length == 0; }
   constexpr bool operator==(const Name &) const = default;
+};
+
+// A string literal as a template argument, for the name of a description's
+// file: what its diagnostics call it. Sized by the literal, since a file name
+// has no reason to fit in a `Name`.
+template<std::size_t N>
+struct FileName {
+  std::array<char, N> text{};
+  constexpr FileName(const char (&literal)[N]) { // NOLINT(*-explicit-constructor)
+    std::ranges::copy(literal, text.begin());
+  }
+  [[nodiscard]] constexpr std::string_view view() const { return {text.data(), N - 1}; }
 };
 
 // How a `.cpu` file spells an enumerator, when that differs from what C++ calls
@@ -409,10 +420,9 @@ struct TableDecl {
 using DecodeTable = std::array<std::optional<std::size_t>, 256>;
 
 // A whole parsed description, as everything downstream of the parse sees it.
-// Spans, because the storage belongs to whoever did the parsing: `Table.hpp`
-// for the description this build was compiled against, a test for one of its
-// own. Holding it as one value is what lets a consumer be handed "the table"
-// rather than five of its parts.
+// Spans, because the storage belongs to whoever did the parsing: a `Compiled`
+// for a description a target names, a test for one of its own. Holding it as one value is what lets a consumer be
+// handed "the table" rather than five of its parts.
 struct Description {
   std::span<const Vocabulary> vocabularies;
   std::span<const Row> rows;

@@ -1342,3 +1342,40 @@ one. An operation that needs the machine currently says so in its signature,
 where `takes_cpu` finds it and hands the machine over as argument zero. A member
 function reaches the whole machine implicitly, so a row's `<-` would quietly
 stop being the whole truth about what an instruction touches.
+
+## Done: a target is a parameter, so one binary can hold two machines
+
+refract used to reach its consumer through a binding header: a namespace alias
+to wherever the table constants and the machine lived, and a macro naming the
+`.cpu` file for diagnostics. One build, one description.
+
+Two class templates replace that. `refract::Compiled<Text, File>` is what
+`Table.hpp` was: the parsed constants and every check, made from a
+`string_view` of the text and a name for diagnostics. `refract::Interpreter<Target>`
+is `Execute.hpp` with the machine, the compiled description and the operation
+scopes read off a target struct. `z80/v4/Target.hpp` is the whole of the Z80's
+side, three declarations, and `#embed "z80.cpu"` needs no macro.
+
+The file name reaches diagnostics by a route that was not available before
+C++26: the parser throws with a line alone, and `Compiled` catches during
+constant evaluation and rethrows with the file in front. `Interpreter` knows
+its file and names it directly.
+
+`SecondMachineTest.cpp` is the evidence: a toy machine with two registers and
+a four-row description runs through its own `Interpreter` in the same binary as
+the Z80, and disassembles through the same `disassemble`. That is what a 6502
+would need, less the addressing modes NOTES.md already lists.
+
+**It costs peak memory, and the reason is where the compiler collects.** The
+Compiled-only translation unit went from 1.17 GB to 1.79 GB and the interpreter's
+from 1.23 GB to 1.81 GB, with time up by a fifth and a twentieth. gcc's own
+accounting says constant evaluation allocated 19% more but garbage collection
+ran half as often: it collects between top-level declarations, and six
+`inline constexpr` constants at namespace scope had a collection between each,
+where six steps instantiated from inside one template have none. Putting the
+steps in namespace-scope variable templates, or behind member functions, or
+splitting the checks into separate assertions, changed nothing; naming each
+step in its own top-level `static_assert` in the consumer brought the unit back
+to 1.42 GB, which is the old figure plus the catch-and-rethrow wrapper. That is
+six lines of incantation per description, so the zero-boilerplate shape stands
+and the six lines are recorded in MEASUREMENTS.md for whoever needs the memory.

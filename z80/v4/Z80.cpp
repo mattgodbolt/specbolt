@@ -1,5 +1,6 @@
 #include "z80/v4/Z80.hpp"
 
+#include "Target.hpp"
 #include "refract/Execute.hpp"
 
 #include <utility>
@@ -8,7 +9,7 @@ namespace specbolt::v4 {
 
 void Z80::run_until(const std::size_t cycle_count) {
   until_ = cycle_count;
-  refract::execute_instruction(*this);
+  refract::Interpreter<Target>::run(*this);
 }
 
 // An instruction that starts before the deadline runs to its end, and the

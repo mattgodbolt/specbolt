@@ -2,17 +2,10 @@
 
 #include <array>
 #include <charconv>
+#include <concepts>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-
-// The description this build compiles, named by whoever is compiling one. The
-// library never names a particular machine's file; diagnostics quote whatever
-// the consumer set.
-// TODO: this is utterly hateful and cannot be allowed to stay. #define? wth. hardcoding? wth?
-#ifndef SPECBOLT_CPU_TABLE
-#define SPECBOLT_CPU_TABLE "cpu"
-#endif
 
 namespace specbolt::refract {
 
@@ -24,12 +17,29 @@ namespace specbolt::refract {
   return {digits.data(), end};
 }
 
-// The file and line together, for a message that has to name a second line
-// besides the one it is reported against.
-[[nodiscard]] constexpr std::string at_line(const std::size_t line) { return SPECBOLT_CPU_TABLE ":" + decimal(line); }
-
+// A mistake in a description, reported against its line. The parser does not
+// know which file it is reading, so the line stands alone here and `naming`
+// puts the file in front of it.
 [[nodiscard]] constexpr std::runtime_error table_error(const std::size_t line, const std::string_view what) {
-  return std::runtime_error(at_line(line) + ": " + std::string(what));
+  return std::runtime_error(decimal(line) + ": " + std::string(what));
+}
+
+// The same, from a place that knows the file.
+[[nodiscard]] constexpr std::runtime_error table_error(
+    const std::string_view file, const std::size_t line, const std::string_view what) {
+  return std::runtime_error(std::string(file) + ":" + decimal(line) + ": " + std::string(what));
+}
+
+// Runs `make`, and if it throws, rethrows with the file in front of the
+// message. Constant evaluation can catch and throw since C++26.
+template<std::invocable Make>
+[[nodiscard]] constexpr auto naming(const std::string_view file, Make make) {
+  try {
+    return make();
+  }
+  catch (const std::exception &error) {
+    throw std::runtime_error(std::string(file) + ":" + error.what());
+  }
 }
 
 } // namespace specbolt::refract

@@ -65,11 +65,11 @@ Lowering the table to a validated fixed shape at parse time removes that half en
 
 ## Where the framework/CPU boundary sits
 
-`Operations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting means
-writing these and nothing else:
+`Target.hpp`, `Operations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting
+means writing these and nothing else:
 
+- `Target`: which machine, which description, and where its operations live
 - `Z80` and `Operations`, the machine state and its non-ALU primitives
-- `operation_scopes()`, where the table may name operations from
 - `read`/`write` overloads: how to touch storage, and, for `read`, what storage there is
 - `read_memory`/`write_memory`: how to touch memory through an address
 - `fetch_opcode`/`fetch_immediate`/`fetch_immediate16`: how to read the instruction stream
@@ -203,12 +203,13 @@ journal now, most of their items struck through. This is what survived them.
 - **A row is scanned rather than projected.** The disassembler walks a row's pieces at run time
   where it could be handed a table built at compile time.
 - **The write-back-delay rule compares only the name**, not that both ends are indirect.
-- **One binary cannot hold two descriptions.** `SPECBOLT_CPU_TABLE` and the binding header are
-  per-build, not per-description.
 - **A tab does not separate words.** `Parser::trim` treats tabs as blanks but `next_word` splits
   on spaces alone, so a tab-indented declaration is one long word.
 - **v4's `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so nothing checks
   them; the table is a header included into more than one partition and its definitions duplicate.
+- **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a
+  unit, because gcc collects only between top-level declarations. The six-line consumer-side
+  workaround is in MEASUREMENTS.md; a library-side one has not been found.
 - **`[[preserve_none]]` on the handlers is untried.** Every handler ends in a tail call, so
   callee-saved registers buy nothing across the chain; CPython's interpreter uses the attribute for
   exactly this. gcc 16.2 accepts it as `[[gnu::preserve_none]]`. Worth measuring in retired instructions, with `start_instruction`
