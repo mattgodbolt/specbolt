@@ -7,6 +7,7 @@
 #include "refract_binding.hpp"
 
 #include "refract/Machine.hpp"
+#include "refract/TableError.hpp"
 
 #include <algorithm>
 #include <array>
@@ -400,12 +401,15 @@ using parameter_type = typename[:std::meta::type_of(std::meta::parameters_of(Fn)
 // better without the parentheses. Not for the reason `arity_of` gives for
 // being one: memoising these was measured and bought nothing, gcc apparently
 // folding the repeated `consteval` calls already.
+//
+// The machine is handed over by reference, and an operation that only reads it
+// may say so by taking it `const`.
 template<std::meta::info Fn>
 inline constexpr bool takes_cpu = [] {
   if constexpr (arity_of<Fn> == 0)
     return false;
   else
-    return std::is_same_v<parameter_type<Fn, 0>, Cpu &>;
+    return std::is_same_v<parameter_type<Fn, 0>, Cpu &> || std::is_same_v<parameter_type<Fn, 0>, const Cpu &>;
 }();
 
 // What the instruction carries: the immediate its encoding fetched, the view a
@@ -703,6 +707,77 @@ template<std::meta::info Member>
   return result.[:Member:];
 }
 
+// The checks on a step's shape. Each throws from `consteval`, so a step that
+// does not fit its operation is a compile error naming the description line and
+// the operation, the way every other mistake in a description is reported.
+[[nodiscard]] consteval std::string quoted_name_of(const std::meta::info fn) {
+  return "'" + std::string(std::meta::identifier_of(fn)) + "'";
+}
+
+// The row supplies every parameter the operation has, less the machine if it
+// asked for that.
+template<std::meta::info Fn, Call C>
+[[nodiscard]] consteval bool operands_fit() {
+  constexpr std::size_t supplied = takes_cpu<Fn> ? 1 : 0;
+  // A machine taken any other way would be treated as an operand, and the
+  // error would be about a row's operand failing to convert rather than about
+  // the signature.
+  if constexpr (arity_of<Fn> > 0)
+    if (std::is_same_v<std::remove_cvref_t<parameter_type<Fn, 0>>, Cpu> && !takes_cpu<Fn>)
+      throw table_error(C.line, quoted_name_of(Fn) + " must take the machine by reference, `const` or not");
+  if (C.operands.size() + supplied != arity_of<Fn>)
+    throw table_error(C.line, quoted_name_of(Fn) + " takes " + decimal(arity_of<Fn> - supplied) +
+                                  " operand(s) and this row supplies " + decimal(C.operands.size()));
+  return true;
+}
+
+// What the operation returns decides how many destinations the row names:
+// none for `void`, one or more for a single value, and exactly one per part for
+// a result that comes apart. A result with one part is refused rather than
+// guessed at: it describes one value as well as it describes a bundle holding
+// one, and a row would be written differently depending on which was meant.
+template<std::meta::info Fn, Call C, typename Result>
+[[nodiscard]] consteval bool destinations_fit(const std::span<const std::meta::info> parts) {
+  const auto name = quoted_name_of(Fn);
+  const auto destinations = C.destinations.size();
+  if (parts.size() == 1)
+    throw table_error(C.line, name + " returns a type with one part, which could mean one value or a bundle holding "
+                                     "one; give it a second part, or keep its state private so it is one value");
+  if constexpr (std::is_void_v<Result>) {
+    if (destinations != 0)
+      throw table_error(C.line, name + " returns nothing, so this row may not name a destination");
+  }
+  else if (parts.size() > 1) {
+    if (destinations != parts.size())
+      throw table_error(C.line, name + " returns " + decimal(parts.size()) + " parts and this row names " +
+                                    decimal(destinations) + " destination(s)");
+  }
+  else if (destinations == 0)
+    throw table_error(C.line, name + " returns a value, so this row must name a destination");
+  return true;
+}
+
+// A condition tests only what the row hands it, so that the row says
+// everything the branch depends on. That rules out taking the machine even
+// `const`, since a machine in hand can be asked anything. It names no
+// destination, and answers yes or no.
+template<std::meta::info Fn, Call C>
+[[nodiscard]] consteval bool condition_fits() {
+  const auto name = quoted_name_of(Fn);
+  if (takes_cpu<Fn>)
+    throw table_error(C.line, name + " asks for the machine; a condition tests only what the row hands it, so that "
+                                     "the row states everything the branch depends on");
+  if (C.operands.size() != arity_of<Fn>)
+    throw table_error(C.line, name + " takes " + decimal(arity_of<Fn>) + " operand(s) and this condition supplies " +
+                                  decimal(C.operands.size()));
+  if (!C.destinations.empty())
+    throw table_error(C.line, name + " is a condition, which decides whether the rest of the row happens and names "
+                                     "no destination");
+  if (std::meta::return_type_of(Fn) != ^^bool)
+    throw table_error(C.line, name + " is used as a condition, so it must return bool");
+  return true;
+}
+
 // Arguments are supplied positionally, or by name where the row said so;
 // destinations destructure the result in declaration order.
 template<std::meta::info Fn, Call C>
@@ -714,12 +789,8 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
   // a parameter type per operand, and an operand the signature has no
   // parameter for indexes off the end of `parameters_of` inside libstdc++.
   constexpr bool arity_matches = C.operands.size() + supplied == arity_of<Fn>;
-  if (!arity_matches) // TODO: this _used_ to be static_assert() but would fail maybe "spuriously"?? please put it back
-                      // to a static_assert and see if yo ucan get it to trip and why, and then also please fix up all
-                      // these error messages to get some kind of line/name reference in them as it's impossible to
-                      // debug if it goes wrong. also in the original v4 branch this seemed to work ok? so I broke something that cused it? maybe?
-    throw std::invalid_argument("the row supplies the wrong number of operands for this operation");
-  if constexpr (arity_matches) { // if constexpr here prevents cascading errors if the above fails.
+  static_assert(operands_fit<Fn, C>());
+  if constexpr (arity_matches) {
     // A default capture rather than `[&cpu]`, because only one branch of the
     // `if constexpr` names it: an operation that does not ask for the machine
     // leaves an explicit capture unused, which clang diagnoses and gcc does not.
@@ -732,29 +803,18 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
     // with `define_static_array`, so what this points at has static storage and
     // `members[at]` is a constant expression a splice can use.
     static constexpr auto members = decomposes_into(^^Result, C.line);
-    // The language would decompose a one-member class quite happily; refusing to
-    // is this framework's own policy, because such a result is as good a
-    // description of one value as of a bundle holding one, and a row would be
-    // written differently depending on which was meant.
-    static_assert(members.size() != 1,
-        "a result with one part is ambiguous: give it a second part, or keep its state to itself and be one value");
+    static_assert(destinations_fit<Fn, C, Result>(members));
     if constexpr (std::is_void_v<Result>) {
-      static_assert(
-          C.destinations.size() == 0, "this operation returns nothing, so the row may not name a destination");
       call(operands_of<Fn, C>(cpu, decoded, indexed));
     }
     else if constexpr (members.size() > 1) {
       // Two is a value and the flags it set, which is what almost every
-      // arithmetic operation returns. One accessible member is caught above as
-      // ambiguous.
-      static_assert(
-          C.destinations.size() == members.size(), "the row's destinations do not match what this operation returns");
+      // arithmetic operation returns.
       const auto result = call(operands_of<Fn, C>(cpu, decoded, indexed));
       template for (constexpr auto at: std::views::iota(0uz, C.destinations.size()))
           store<C.destinations[at], C.line>(cpu, decoded, indexed, member_of_result<members[at]>(result));
     }
     else {
-      static_assert(C.destinations.size() >= 1, "this operation returns a value, so the row must name a destination");
       // More than one *destination* is how an instruction writes one result to
       // two places, as the Z80's `dd cb d op` puts it through the addressing mode
       // and into the register its low bits name.
@@ -769,11 +829,13 @@ void apply(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
 // answer differs.
 template<std::meta::info Fn, Call C>
 [[nodiscard]] bool evaluate(Cpu &cpu, const Decoded decoded, const std::uint16_t indexed) {
-  static_assert(C.operands.size() == arity_of<Fn>, "the row supplies the wrong number of operands for this condition");
-  static_assert(C.destinations.size() == 0, "a condition names no destination; it decides whether the rest happens");
-  static_assert(!takes_cpu<Fn>, "a condition may not ask for the machine; it only reads what the row hands it");
-  static_assert(std::is_same_v<typename[:std::meta::return_type_of(Fn):], bool>, "a condition must answer yes or no");
-  return call_with<Fn, C>(cpu, operands_of<Fn, C>(cpu, decoded, indexed));
+  static_assert(condition_fits<Fn, C>());
+  // Gated for the same reason `apply` is: a condition that does not fit gets
+  // one message rather than that message and the cascade from calling it.
+  if constexpr (!takes_cpu<Fn> && C.operands.size() == arity_of<Fn>)
+    return call_with<Fn, C>(cpu, operands_of<Fn, C>(cpu, decoded, indexed));
+  else
+    return false;
 }
 
 // A vocabulary member may bind the operation late, and may append an operand the

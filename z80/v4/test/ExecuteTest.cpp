@@ -253,6 +253,26 @@ TEST_CASE("Interrupts") {
     CHECK(t.z80.cycle_count() == 12);
   }
 
+  SECTION("ld a, i and ld a, r report iff2 in the parity flag") {
+    // These are the only rows whose operation reads the machine without
+    // changing it, so they are also where a `const` machine parameter has to
+    // keep being recognised as the machine.
+    // Each value's own parity is the opposite of the iff2 it is read under, so
+    // an ordinary parity flag would fail both halves.
+    regs.i(0x43); // three bits set
+    t.z80.iff2(true);
+    t.run(0xed, 0x57); // ld a, i
+    CHECK(regs.get(RegisterFile::R8::A) == 0x43);
+    CHECK(t.z80.flags().parity());
+    CHECK(t.z80.cycle_count() == 9);
+    regs.r(0x01); // two opcode fetches later, r is 3: two bits set
+    t.z80.iff2(false);
+    t.run(0xed, 0x5f); // ld a, r
+    CHECK(regs.get(RegisterFile::R8::A) == 0x03);
+    CHECK_FALSE(t.z80.flags().parity());
+    CHECK(t.z80.cycle_count() == 18);
+  }
+
   SECTION("ei lets one more instruction run before an interrupt is taken") {
     // `ei ; halt` and `ei ; reti` both depend on this: without it the interrupt
     // arrives before the instruction that was meant to run under it.
