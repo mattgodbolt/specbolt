@@ -209,6 +209,10 @@ journal now, most of their items struck through. This is what survived them.
   on spaces alone, so a tab-indented declaration is one long word.
 - **v4's `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so nothing checks
   them; the table is a header included into more than one partition and its definitions duplicate.
+- **`[[preserve_none]]` on the handlers is untried.** Every handler ends in a tail call, so
+  callee-saved registers buy nothing across the chain; CPython's interpreter uses the attribute for
+  exactly this. gcc 16.2 accepts it as `[[gnu::preserve_none]]`. Worth measuring in retired instructions, with `start_instruction`
+  inlined as a non-looping fast path at the same time.
 
 ### /INT is a level, and v4 has no way to release it
 
@@ -235,12 +239,3 @@ Two ways out, both out of scope for the change that found it:
 Until one of them lands, v4 differs from the other three in a way real software could notice, and
 the difference is *more* wrong than what it replaced for long `di` regions, and *less* wrong for
 short ones.
-
-
----
-
-Matt's random extra C++26 and other notes
-- std::function_ref or std::copyable_function ?
-- anywhere we can use optional<T&> ?
-- python folks use `[[preserve_none]]` for some routines for great success esp with jump threading
--

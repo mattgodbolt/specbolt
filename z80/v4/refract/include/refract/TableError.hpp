@@ -17,7 +17,7 @@
 namespace specbolt::refract {
 
 // `std::to_string` is not usable during constant evaluation and `std::format`
-// is not either; `std::to_chars` has been since C++23. TODO please double check std::format with gcc 16.2 as it ought to be constexpr now
+// is not either, in libstdc++ 16 at least; `std::to_chars` has been since C++23.
 [[nodiscard]] constexpr std::string decimal(const std::size_t value) {
   std::array<char, 20> digits{}; // enough for any 64-bit value
   const auto [end, _] = std::to_chars(digits.data(), digits.data() + digits.size(), value);

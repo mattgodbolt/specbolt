@@ -6,23 +6,17 @@
 
 namespace specbolt::refract {
 
-// TODO you're describing the use of this function not what this does. stop it. describe what this does. We don't
-// explain the reason for this here, it's a useful utility to make an array. if _necessray_ explain _examples_ of it
-// usage. TODO why do we call `Make()` multiple times? That seems SUPER DUMB and surely adds to compilation time.
-
-// The one place compile-time data becomes run-time data.
+// Copies what `Make()` returns into a `std::array` of exactly its size.
 //
-// Everything that reads a description works in `std::vector`, because that is
-// how one writes a parser. None of those vectors can survive: storage allocated
-// during constant evaluation must be given back before that evaluation ends, so
-// no `constexpr` variable can hold one. Whatever outlives the parse has to be a
-// fixed-size array, and an array's size has to be known before it is filled.
+// `Make` is called twice, once for the size and once for the contents. The
+// array's size must be a constant expression, so the first result would have
+// to be a `constexpr` local, and a `std::vector` cannot be one: storage built
+// in one constant evaluation is given back when that evaluation ends. This is where
+// the vectors the parse works in become the fixed-size arrays that outlive it,
+// and the second evaluation is a cost measured in notes/MEASUREMENTS.md.
 //
-// Hence twice: once to ask how big the answer is, and once for the answer.
-// `Make` is a captureless lambda, which is a structural type and therefore a
-// legal template argument, and that is what lets the same expression be evaluated in
-// both places. It costs a second parse and buys a pipeline in which nothing but
-// this function has to know a count in advance.
+// `Make` is a captureless lambda, so it is a structural type and can be the
+// template argument that names the same expression in both places.
 template<auto Make>
 [[nodiscard]] consteval auto to_array() {
   constexpr auto size = Make().size();

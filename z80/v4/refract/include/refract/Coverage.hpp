@@ -71,12 +71,8 @@ namespace specbolt::refract {
   });
 }
 
-// Earlier rows win, so a specific encoding must precede the general one that
-// would otherwise swallow it, as the Z80's `halt` must precede its
-// `ld {reg:y}, {reg:z}`.
 // A set of opcodes, as bits, so containment and overlap are whole-set
-// operations rather than 256. C++23 made `std::bitset` usable during constant
-// evaluation, which is the only reason this is not written out by hand.
+// operations. `std::bitset` has been usable in constant evaluation since C++23.
 using OpcodeSet = std::bitset<256>;
 
 // Every opcode of mine is also one of theirs: an override, rather than an accident.
@@ -220,7 +216,6 @@ constexpr bool check_row_precedence(const Description &description, const std::s
 // catch-all row is how a table says "and everything else does this".
 //
 // Requiring it here is what lets the dispatch loop call without checking.
-// The one check about absence, so the only one that cannot walk `instructions_of`.
 constexpr bool check_tables_total(const Description &description) {
   for (std::size_t table = 0; table < description.tables.size(); ++table)
     for (std::size_t opcode = 0; opcode < 256; ++opcode)
@@ -271,16 +266,12 @@ constexpr bool check_inherited_literals(const Description &description) {
   return true;
 }
 
-// Precedence within a table is checked pairwise, and a derived table's own rows
-// win over everything it inherits, but nothing yet relates the two. A derived
-// row that overlaps a parent row without being contained in it is silently
-// taking opcodes the parent meant to keep.
-//
-// This is the check that would have caught a mistake made while writing the
-// Z80's description: naming the vocabulary a rule rewrites where the one it
-// leaves alone was meant, so the row claimed an opcode the parent had reserved
-// for something else and that instruction quietly vanished from the derived
-// pages.
+// A derived table's own row that overlaps a row it inherits must be wholly
+// contained in it. A derived row wins over everything inherited, so one that
+// only partly overlaps an inherited row silently takes opcodes that row meant
+// to keep. Precedence within one table is `check_row_precedence`; this relates
+// a derived table's rows to the ones its parent decodes, whether the parent
+// wrote them or inherited them in turn.
 constexpr bool check_derived_rows_override(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
   const auto tables = description.tables;
@@ -288,9 +279,13 @@ constexpr bool check_derived_rows_override(const Description &description, const
     const auto &table = tables[rows[mine].table];
     if (!table.derived)
       continue;
+    // The rows the parent decodes to, which is what this table inherits.
+    std::vector<bool> inherited(rows.size());
+    for (const auto &decoded: description.decoded[table.parent])
+      if (decoded)
+        inherited[*decoded] = true;
     for (std::size_t theirs = 0; theirs < rows.size(); ++theirs)
-      if (rows[theirs].table == table.parent && overlaps(covers[mine], covers[theirs]) &&
-          !within(covers[mine], covers[theirs]))
+      if (inherited[theirs] && overlaps(covers[mine], covers[theirs]) && !within(covers[mine], covers[theirs]))
         throw table_error(rows[mine].line,
             "this row overlaps one it inherits from '" + std::string(tables[table.parent].name) +
                 "' without replacing it or fitting inside it, so it takes opcodes that row meant to keep");

@@ -162,6 +162,13 @@ TEST_CASE("Table diagnostics") {
                                                   "table u = t with r.b -> ixh\n0000000y | frob | nop\n"),
         Equals("z80.cpu:7: this row overlaps one it inherits from 't' without replacing it or fitting inside it, "
                "so it takes opcodes that row meant to keep"));
+    // The same through a grandparent: `v` inherits the row from `t` by way of
+    // `u`, and is held to it just the same.
+    CHECK_THROWS_WITH(parse(std::string(shared) + "00000000 | special | nop\n0000000y | ld {r:y} | nop\n"
+                                                  "table u = t with r.b -> ixh\n"
+                                                  "table v = u with r.c -> ixl\n0000000y | frob | nop\n"),
+        Equals("z80.cpu:8: this row overlaps one it inherits from 'u' without replacing it or fitting inside it, "
+               "so it takes opcodes that row meant to keep"));
   }
   SECTION("A view must not silently inherit a row that spells the renamed name out") {
     constexpr std::string_view shared = "vocab p = bc hl\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | ";

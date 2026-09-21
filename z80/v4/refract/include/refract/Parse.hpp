@@ -229,21 +229,15 @@ constexpr void parse_substitutions(const std::string_view text, const std::span<
   return static_cast<std::size_t>(found - matched.slices.begin());
 }
 
-// A view is chosen by a prefix, long after everything about the instruction
-// that a compile-time check can see has been settled. So every check resolves
-// such a reference at member 0 and applies the answer to all of them;
-// `displaced_through` does not even take a view, which is only sound if the
-// members agree about everything except which location they name.
+// Every member of a vocabulary a view selects must share one shape, as
+// `shape_of` below defines it, and bring no operation. A view is chosen by a prefix at run time, so every compile-time
+// check resolves such a reference at member 0 and trusts the answer for all of
+// them (`displaced_through` takes no view at all); a member that differed would
+// run one addressing mode while printing another.
 //
-// Without this, the Z80's `vocab index_mem = (ix+d)/delay=1 (iy)` would compile
-// clean and its `fd` page would silently run one addressing mode while printing
-// another. It is the
-// one mistake in the format that would otherwise produce a wrong emulator
-// rather than a line number.
-//
-// Reported against the declaration rather than the row that selects it, because
-// that is the line to edit; the row is named in the message, since a vocabulary
-// nothing selects by a view is free to hold whatever it likes.
+// Reported against the declaration, which is the line to edit, naming the row
+// that made it a requirement: a vocabulary nothing selects by a view may hold
+// whatever it likes.
 constexpr void check_view_vocabulary(const Vocabulary &vocabulary, const std::size_t used_at) {
   const auto &first = vocabulary.members[0];
   const auto shape_of = [](const Member &member) {

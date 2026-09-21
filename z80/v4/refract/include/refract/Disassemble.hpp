@@ -62,10 +62,8 @@ inline constexpr std::size_t max_instruction_bytes = 8;
     const auto next = transfers_to(*row);
     if (!next)
       break;
-    // `dd dd dd ...` is a legal and unbounded Z80 instruction, and the chip is
-    // right to spend a fetch a byte on it forever. A disassembler is asked what is
-    // at an address and has to answer, so it gives up rather than following a
-    // run of prefixes to the end of memory.
+    // A run of prefixes may be unbounded, and a disassembler has to answer, so
+    // it gives up rather than follow one to the end of memory.
     if (offset >= max_instruction_bytes)
       return {"??", offset};
     view = row->steps[0].forwards_view ? view : row->steps[0].target_view;

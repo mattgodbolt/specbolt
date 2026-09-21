@@ -36,10 +36,9 @@ enum class BlockDirection : std::uint8_t {
 // is the Operations, like adding ^^Z80 to the scopes somehow, or ... anyway, future)
 
 struct Operations {
-  // TODO what the heck is this comment supposed to be? refers to what?
-  // Not nameable from a description: `find_operation` looks with
-  // `access_context::current()`, which is the framework's, so what a row may
-  // call is exactly what is public here.
+  // A description can name only what is public here. `find_operation` looks
+  // with the framework's access context, so the helpers below are out of its
+  // reach.
 private:
   // What every block operation does to the flags it does not otherwise touch:
   // parity stands in for "bc has not run out", and flags 3 and 5 come from a
@@ -97,8 +96,9 @@ public:
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
-  // Conditional operation helpers.
-  // TODO i removed the confusing comment as `flag` and Flags and flag bits are all confusing here to me, anyway.
+  // Conditions: an `if` step applies one of these and abandons the rest of the
+  // row when it answers false. A vocabulary member binds one and appends the
+  // flag bit it asks about, as `nz:is_clear(zero)` does.
   [[nodiscard]] static bool is_set(const bool flag) { return flag; }
   [[nodiscard]] static bool is_clear(const bool flag) { return !flag; }
   [[nodiscard]] static bool nonzero(const std::uint8_t value) { return value != 0; }
@@ -125,8 +125,8 @@ public:
     return z80.in(address);
   }
 
-  // Three accesses and two idle stretches, none of which an operand can spell. TODO please what do you mean, reprhase
-  // this comment please "can spell" perhaps not ideal terminology (check its use elsehwere)
+  // Three accesses and two idle stretches, interleaved in an order no row could
+  // write as operands.
   [[nodiscard]] static std::uint16_t ex_sp_hl(Z80 &z80, const std::uint16_t value) {
     const auto sp = z80.get(RegisterFile::R16::SP);
     const auto low = z80.read_memory(sp);

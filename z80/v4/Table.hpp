@@ -13,7 +13,8 @@ namespace specbolt::v4 {
 
 using namespace refract;
 
-// TODO: check my terrible hackery here worked, essentially let's not expose "cpu_raw" to anyone.
+// The description, embedded. The bytes are local to the lambda so that only
+// the view of them is visible.
 inline constexpr std::string_view cpu_description = [] {
   // clang-format off
   static constexpr char cpu_raw[] = {

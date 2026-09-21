@@ -21,8 +21,8 @@
 
 namespace specbolt::refract {
 
-// Structural, so it can be a template argument. v2 has its own for the same
-// reason; this one is v4's.
+// A short fixed-capacity string. Structural, so it can be a template argument,
+// where a `std::string_view` cannot.
 struct Name {
   std::array<char, 15> storage{};
   // A byte, not a `std::size_t`: `Resolved` is a template argument on a
@@ -256,9 +256,8 @@ using Rules = Vector<Rule, 6>;
 // row matched, the opcode that selects within it, the renaming the table
 // applies to what it decodes, and the view a prefix chose.
 //
-// Taken by const reference throughout. `Rules` holds whole members, so this is
-// large enough that copying it per call would be paid for in constant
-// evaluation, which is where this file's cost lives.
+// Passed by const reference: `Rules` holds whole members, so copying it per
+// call would be paid for in constant evaluation.
 struct Resolution {
   std::span<const Vocabulary> vocabularies{};
   Pattern matched{};
@@ -278,14 +277,11 @@ struct Resolution {
   return found == rules.end() ? nullptr : &*found;
 }
 
-// The one place a reference is followed, and therefore the one place a derived
-// table's renaming has to happen. Every column resolves the same way: the slice
-// picks a member, the opcode says which.
-// A parameterised table is decoded once per value its view can take without
-// being generated once per value, so `view` reaches here alongside the opcode.
-// Checks pass the default: every member of a view vocabulary must have the same
-// shape, which `check_view_vocabulary` in Parse.hpp requires, so anything a
-// check asks is true of all of them or none.
+// Follows a reference to the member it names: the opcode's slice, or the
+// table's view, says which, and the table's rules may rename it. This is the
+// one place a reference is followed, so it is the one place renaming happens.
+// A check asks with view 0 and trusts the answer for every view, which
+// `check_view_vocabulary` in Parse.hpp makes sound.
 [[nodiscard]] constexpr Member member_of(const Resolution &at, const Reference reference) {
   const auto which = reference.from_view ? at.view : at.matched.slices[reference.slice_index].extract(at.opcode);
   const auto &member = at.vocabularies[reference.vocabulary_index].members[which];

@@ -39,6 +39,15 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - Reflection works inside module interface units, including `template for` in a module purview and
   exported templates that reflect on their own parameters and are instantiated in importing TUs.
 
+### Library, on libstdc++ 16
+
+- `std::function_ref` and `std::copyable_function` are there; `disassemble` takes the former.
+- `std::optional<T&>` is there, which an earlier note here had said it was not. `Description::row_for`
+  and `rule_for` still return pointers and could return one.
+- `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`.
+- `typename` before a splice is optional in an alias declaration, and required in a template
+  argument list, where the splice would otherwise be read as an expression.
+
 ### Structural types and static promotion
 
 The single most useful architectural fact:
