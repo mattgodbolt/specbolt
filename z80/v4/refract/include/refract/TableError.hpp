@@ -41,4 +41,17 @@ template<std::invocable Make>
   }
 }
 
+// Runs `parse`, and if it throws, rethrows with the line in front of the message. Each line of a description is read
+// inside one of these, so nothing beneath it needs to know which line that is: a throw says what is wrong, and this
+// says where.
+template<std::invocable Parse>
+[[nodiscard]] constexpr auto at_line(const std::size_t line, Parse parse) {
+  try {
+    return parse();
+  }
+  catch (const std::exception &error) {
+    throw table_error(line, error.what());
+  }
+}
+
 } // namespace specbolt::refract

@@ -85,7 +85,7 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`.
 ### Why refract has its own `Vector`, and what it would take to use `std::inplace_vector`
 
-`Vector<T, N>` in Vector.hpp is a `std::array<T, N>` and a count, with `try_push_back`. It exists
+`Vector<T, N>` in Vector.hpp is a `std::array<T, N>` and a count, with a `push_back` that throws when full. It exists
 because `std::inplace_vector`, which is exactly the right container for a parser that knows its
 limits, fails two requirements this library has. One is permanent and one is temporary, and they
 fall on different uses.
@@ -120,8 +120,8 @@ parse and fixed into `Compiled`'s arrays, which the disassembler walks at run ti
 
 So this half is a conformance gap with a bug number, not a bug and not a prohibition. The test
 that it has closed is `#ifdef __cpp_lib_constexpr_inplace_vector`, and on the day it does, the
-seven uses above could become `std::inplace_vector` with `try_push_back` unchanged, since that
-name was chosen to match.
+seven uses above could become `std::inplace_vector` with `push_back` unchanged: both throw when
+full, though `std::inplace_vector` throws `std::bad_alloc`.
 
 **What is left over.** Two uses are trivial already, `Pattern::slices` and a local in
 `slices_read_by`, and could be `inplace_vector` today; a second fixed-capacity vector for two

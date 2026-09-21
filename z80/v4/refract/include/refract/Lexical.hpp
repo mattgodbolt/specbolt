@@ -1,14 +1,14 @@
 #pragma once
 
 // Everything that parses a fragment of text without needing the whole description: which kind of line this is, what an
-// operand says, what a vocabulary member says. Each takes a string and a line number and returns a value, so each is
-// testable a line at a time.
+// operand says, what a vocabulary member says. Each takes a string and returns a value, so each is testable a line at
+// a time; none knows which line it is reading, since `at_line` names that when one of them throws.
 
 #include "refract/Model.hpp"
 #include "refract/Parser.hpp"
-#include "refract/TableError.hpp"
 
 #include <charconv>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -37,50 +37,49 @@ namespace specbolt::refract {
 }
 
 // The count of idle cycles a `delay=` attribute gives, which is one digit.
-[[nodiscard]] constexpr std::uint8_t parse_delay(const std::string_view value, const std::size_t line) {
+[[nodiscard]] constexpr std::uint8_t parse_delay(const std::string_view value) {
   if (value.size() != 1 || value.front() < '0' || value.front() > '9')
-    throw table_error(line, "delay must be a single digit");
+    throw std::runtime_error("delay must be a single digit");
   return static_cast<std::uint8_t>(value.front() - '0');
 }
 
 // Parses an operand as a row or a member writes it: `-`, `n`, a number, or a name, any of which may be wrapped `(...)`
 // as an address, with `+d` inside the parentheses for a displaced one, and `/delay=n` on the end for the idle cycles a
 // write back through it costs. Anything in braces is a vocabulary reference, which is `parse_operand`'s business.
-[[nodiscard]] constexpr Operand parse_simple_operand(
-    std::string_view word, const std::size_t line, const std::uint8_t immediate_bytes) {
+[[nodiscard]] constexpr Operand parse_simple_operand(std::string_view word, const std::uint8_t immediate_bytes) {
   if (word.empty())
-    throw table_error(line, "empty operand in action");
+    throw std::runtime_error("empty operand in action");
   // An addressing mode written out in a row says what it costs the same way a vocabulary member does.
   if (const auto slash = word.find('/'); slash != std::string_view::npos) {
     Parser attribute(word.substr(slash + 1));
     if (attribute.take_until('=') != "delay")
-      throw table_error(line, "'" + std::string(word.substr(slash + 1)) + "' is not an operand attribute");
-    auto attributed = parse_simple_operand(word.substr(0, slash), line, immediate_bytes);
-    attributed.write_back_delay = parse_delay(attribute.rest(), line);
+      throw std::runtime_error("'" + std::string(word.substr(slash + 1)) + "' is not an operand attribute");
+    auto attributed = parse_simple_operand(word.substr(0, slash), immediate_bytes);
+    attributed.write_back_delay = parse_delay(attribute.rest());
     return attributed;
   }
   if (word == "-")
     return {{}, Operand::Kind::Discard};
   if (word.starts_with('(')) {
     if (!word.ends_with(')'))
-      throw table_error(line, "unterminated '(' in operand '" + std::string(word) + "'");
+      throw std::runtime_error("unterminated '(' in operand '" + std::string(word) + "'");
     word = word.substr(1, word.size() - 2);
     const auto displaced = word.ends_with("+d");
     if (displaced)
       word.remove_suffix(2);
-    auto addressed = parse_simple_operand(word, line, immediate_bytes);
+    auto addressed = parse_simple_operand(word, immediate_bytes);
     if (addressed.indirect)
-      throw table_error(line, "an address cannot itself be indirect");
+      throw std::runtime_error("an address cannot itself be indirect");
     addressed.indirect = true;
     addressed.displaced = displaced;
     return addressed;
   }
   if (word.ends_with("+d"))
-    throw table_error(line, "a displacement only makes sense inside '(...)'");
+    throw std::runtime_error("a displacement only makes sense inside '(...)'");
   if (word == "n")
     return {{.width = immediate_bytes}, Operand::Kind::Immediate};
   if (word == "nn")
-    throw table_error(line, "write 'n'; the encoding column says how many bytes it occupies");
+    throw std::runtime_error("write 'n'; the encoding column says how many bytes it occupies");
   if (word.front() >= '0' && word.front() <= '9') {
     const auto hex = word.starts_with("0x");
     const auto digits = hex ? word.substr(2) : word;
@@ -89,20 +88,20 @@ namespace specbolt::refract {
     unsigned value = 0;
     const auto [end, failure] = std::from_chars(digits.data(), digits.data() + digits.size(), value, hex ? 16 : 10);
     if (failure == std::errc::result_out_of_range || value > 0xffff)
-      throw table_error(line, "constant '" + std::string(word) + "' does not fit in 16 bits");
+      throw std::runtime_error("constant '" + std::string(word) + "' does not fit in 16 bits");
     if (failure != std::errc{} || end != digits.data() + digits.size())
-      throw table_error(line, "malformed constant '" + std::string(word) + "'");
+      throw std::runtime_error("malformed constant '" + std::string(word) + "'");
     return {{.constant = static_cast<std::uint16_t>(value)}, Operand::Kind::Constant};
   }
   if (word.size() > Name::capacity)
-    throw table_error(line, "operand name '" + std::string(word) + "' is too long");
+    throw std::runtime_error("operand name '" + std::string(word) + "' is too long");
   return {{.name = Name{word}}, Operand::Kind::Named};
 }
 
 // Splits display text around the values it renders rather than spells: `$nn` and `$nnnn` come from the encoding, `+d`
 // is the displacement an indexed mode carries. Both a row's mnemonic and a vocabulary member's text are lowered with
 // this, so neither is parsed at runtime.
-[[nodiscard]] constexpr std::vector<Piece> pieces_of(Parser text, const std::size_t line) {
+[[nodiscard]] constexpr std::vector<Piece> pieces_of(Parser text) {
   std::vector<Piece> pieces;
 
   const auto lower_immediates = [&](Parser chunk) {
@@ -117,7 +116,7 @@ namespace specbolt::refract {
       if (chunk.rest().starts_with('e')) {
         chunk = Parser(chunk.rest().substr(1));
         if (chunk.rest().starts_with('e'))
-          throw table_error(line, "expected $nn, $nnnn or $e in mnemonic");
+          throw std::runtime_error("expected $nn, $nnnn or $e in mnemonic");
         pieces.push_back({.kind = Piece::Kind::Relative});
         continue;
       }
@@ -126,7 +125,7 @@ namespace specbolt::refract {
       switch (before - chunk.rest().size()) {
         case 2: pieces.push_back({.kind = Piece::Kind::Imm8}); break;
         case 4: pieces.push_back({.kind = Piece::Kind::Imm16}); break;
-        default: throw table_error(line, "expected $nn, $nnnn or $e in mnemonic");
+        default: throw std::runtime_error("expected $nn, $nnnn or $e in mnemonic");
       }
     }
   };
@@ -147,8 +146,7 @@ namespace specbolt::refract {
 // Splits `name=rest` into the parameter an operand names and the operand, or returns the word whole with an empty name.
 // A keyword is an identifier followed by `=`, which is what keeps `(hl)/delay=1` from looking like one: what precedes
 // its `=` is not an identifier.
-[[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(
-    const std::string_view word, const std::size_t line) {
+[[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(const std::string_view word) {
   const auto at = word.find('=');
   if (at == std::string_view::npos || at == 0)
     return {{}, word};
@@ -159,16 +157,16 @@ namespace specbolt::refract {
   if (!std::ranges::all_of(keyword, in_identifier))
     return {{}, word};
   if (keyword.size() > Name::capacity)
-    throw table_error(line, "'" + std::string(keyword) + "' is too long to be a parameter name");
+    throw std::runtime_error("'" + std::string(keyword) + "' is too long to be a parameter name");
   if (at + 1 == word.size())
-    throw table_error(line, "'" + std::string(keyword) + "=' names a parameter but gives it no operand");
+    throw std::runtime_error("'" + std::string(keyword) + "=' names a parameter but gives it no operand");
   return {Name{keyword}, word.substr(at + 1)};
 }
 
 // Parses one vocabulary member, written `display[:operation[(argument, ...)]][/delay=n]`, or `-` for a hole. The
 // display is itself an operand, and the arguments are operands the member appends to the row's, each of which may be
 // `name=`d.
-[[nodiscard]] constexpr Member parse_member(const std::string_view text, const std::size_t line) {
+[[nodiscard]] constexpr Member parse_member(const std::string_view text) {
   Parser whole(text);
   Parser parser(whole.take_until('/'));
   Member member{.display = parser.take_until(':'), .operation = parser.rest()};
@@ -178,49 +176,47 @@ namespace specbolt::refract {
     const auto key = attribute.take_until('=');
     const auto value = attribute.rest();
     if (key != "delay")
-      throw table_error(line, "'" + std::string(key) + "' is not a member attribute; expected 'delay'");
-    delay_attribute = parse_delay(value, line);
+      throw std::runtime_error("'" + std::string(key) + "' is not a member attribute; expected 'delay'");
+    delay_attribute = parse_delay(value);
   }
   if (member.display.empty())
-    throw table_error(line, "a vocabulary member has no name");
+    throw std::runtime_error("a vocabulary member has no name");
   if (member.display.contains('$'))
-    throw table_error(line, "a vocabulary member cannot render an immediate; only the encoding fetches those");
+    throw std::runtime_error("a vocabulary member cannot render an immediate; only the encoding fetches those");
   if (member.display == "-") {
     member.hole = true;
     return member;
   }
-  for (const auto &piece: pieces_of(Parser(member.display), line))
-    if (!member.pieces.try_push_back(piece))
-      throw table_error(line, "member text is too complicated");
-  member.operand = parse_simple_operand(member.display, line, 0);
+  for (const auto &piece: pieces_of(Parser(member.display)))
+    member.pieces.push_back(piece);
+  member.operand = parse_simple_operand(member.display, 0);
   member.operand.write_back_delay = delay_attribute;
   if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
-    throw table_error(line, "a vocabulary member must name something the CPU can resolve");
+    throw std::runtime_error("a vocabulary member must name something the CPU can resolve");
   Parser bound(member.operation);
   member.operation = bound.take_until('(');
   if (auto arguments = bound.rest(); !arguments.empty()) {
     if (member.operation.empty())
-      throw table_error(line, "a member's argument list needs an operation to hand them to");
+      throw std::runtime_error("a member's argument list needs an operation to hand them to");
     if (!arguments.ends_with(')'))
-      throw table_error(line, "a member's argument list is not closed");
+      throw std::runtime_error("a member's argument list is not closed");
     arguments.remove_suffix(1);
     Parser list(arguments);
     while (!list.eof()) {
       const auto word = trim_comma(list.take_until(','));
       if (word.empty())
         continue;
-      const auto [parameter, rest] = split_keyword(word, line);
-      auto argument = parse_simple_operand(rest, line, 0);
+      const auto [parameter, rest] = split_keyword(word);
+      auto argument = parse_simple_operand(rest, 0);
       argument.parameter = parameter;
       if (argument.kind == Operand::Kind::Immediate)
-        throw table_error(line, "a member cannot pass an immediate; only the encoding fetches those");
+        throw std::runtime_error("a member cannot pass an immediate; only the encoding fetches those");
       if (argument.kind == Operand::Kind::Discard)
-        throw table_error(line, "'-' discards a result, and a member's argument is something the operation is given");
-      if (!member.arguments.try_push_back(argument))
-        throw table_error(line, "a member passes more arguments than an operation can take");
+        throw std::runtime_error("'-' discards a result, and a member's argument is something the operation is given");
+      member.arguments.push_back(argument);
     }
     if (member.arguments.empty())
-      throw table_error(line, "a member's argument list is empty; leave it off rather than writing '()'");
+      throw std::runtime_error("a member's argument list is empty; leave it off rather than writing '()'");
   }
   return member;
 }

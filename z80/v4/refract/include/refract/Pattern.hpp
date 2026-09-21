@@ -3,11 +3,11 @@
 // The opcode pattern a row's encoding column opens with: eight characters, each a `0` or `1` fixing that bit or a
 // letter naming a slice, a run of one letter being one slice.
 
-#include "refract/TableError.hpp"
 #include "refract/Vector.hpp"
 
 #include <algorithm>
 #include <cstdint>
+#include <stdexcept>
 #include <string_view>
 
 namespace specbolt::refract {
@@ -39,9 +39,9 @@ struct Pattern {
 
 // Parses an eight-character pattern such as `01yyyzzz`: the fixed bits go into `opcode_bits`, and each distinct letter
 // becomes a slice, whose bits must be contiguous.
-[[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits, const std::size_t line) {
+[[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits) {
   if (bits.size() != Pattern::num_bits)
-    throw table_error(line, "opcode pattern must be 8 characters");
+    throw std::runtime_error("opcode pattern must be 8 characters");
   Pattern result;
   for (std::size_t index = 0; index < bits.size(); ++index) {
     const auto bit = static_cast<std::uint8_t>(Pattern::num_bits - 1 - index);
@@ -53,12 +53,11 @@ struct Pattern {
     }
     const auto found = std::ranges::find(result.slices, character, &BitSlice::name);
     if (found == result.slices.end()) {
-      if (!result.slices.try_push_back({.name = character, .shift = bit, .mask = 1}))
-        throw table_error(line, "opcode pattern has too many slices");
+      result.slices.push_back({.name = character, .shift = bit, .mask = 1});
       continue;
     }
     if (found->shift != bit + 1)
-      throw table_error(line, "opcode pattern has non-contiguous bits for a slice");
+      throw std::runtime_error("opcode pattern has non-contiguous bits for a slice");
     found->shift = bit;
     found->mask = static_cast<std::uint8_t>((found->mask << 1) | 1);
   }

@@ -819,32 +819,34 @@ struct Interpreter {
   }
 
   // The `Call` a step becomes: its operands and destinations resolved against this opcode, then whatever the vocabulary
-  // member appends.
+  // member appends. Anything that goes wrong is reported against the row's file and line.
   [[nodiscard]] static constexpr Call call_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
-    const auto member = member_for(step, matched, opcode, rules);
-    const Resolution at{.vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode};
-    Call result{.line = line};
-    for (const auto &operand: step.operands)
-      if (!result.operands.try_push_back(resolve(at, operand)))
-        throw table_error(Compiled::file, line, "too many operands");
-    for (const auto &written: step.destinations) {
-      auto destination = resolve(at, written);
-      // The idle cycle belongs to a write-back, so only to something read through the same address it will be written
-      // through.
-      const auto was_read = std::ranges::any_of(
-          result.operands, [&](const Resolved &operand) { return same_address(operand, destination); });
-      if (!was_read)
-        destination.write_back_delay = 0;
-      if (!result.destinations.try_push_back(destination))
-        throw table_error(Compiled::file, line, "too many destinations");
-    }
-    // A vocabulary member may append an operand the encoding does not carry. It named no vocabulary, so it is already
-    // resolved and has no scope: which enum a name means here is the parameter's business.
-    for (const auto &argument: member.arguments)
-      if (!result.operands.try_push_back(as_resolved(argument)))
-        throw table_error(Compiled::file, line, "too many operands");
-    return result;
+    return naming(Compiled::file, [&] {
+      return at_line(line, [&] {
+        const auto member = member_for(step, matched, opcode, rules);
+        const Resolution at{
+            .vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode};
+        Call result{.line = line};
+        for (const auto &operand: step.operands)
+          result.operands.push_back(resolve(at, operand));
+        for (const auto &written: step.destinations) {
+          auto destination = resolve(at, written);
+          // The idle cycle belongs to a write-back, so only to something read through the same address it will be
+          // written through.
+          const auto was_read = std::ranges::any_of(
+              result.operands, [&](const Resolved &operand) { return same_address(operand, destination); });
+          if (!was_read)
+            destination.write_back_delay = 0;
+          result.destinations.push_back(destination);
+        }
+        // A vocabulary member may append an operand the encoding does not carry. It named no vocabulary, so it is
+        // already resolved and has no scope: which enum a name means here is the parameter's business.
+        for (const auto &argument: member.arguments)
+          result.operands.push_back(as_resolved(argument));
+        return result;
+      });
+    });
   }
 
   // The signature of every generated handler. One signature, because a table of function pointers has one, so `latch`
@@ -971,9 +973,7 @@ struct Interpreter {
         return;
       if (std::ranges::contains(used, reference.slice_index))
         return;
-      // Cannot overflow: these are distinct slice indices of one pattern, and a pattern holds at most
-      // `Pattern::max_slices` of them.
-      static_cast<void>(used.try_push_back(reference.slice_index));
+      used.push_back(reference.slice_index);
     };
     for (const auto &step: row.steps) {
       if (step.operation_reference)

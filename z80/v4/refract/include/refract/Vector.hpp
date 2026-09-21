@@ -1,8 +1,12 @@
 #pragma once
 
+#include "refract/TableError.hpp"
+
 #include <array>
 #include <cstddef>
+#include <meta>
 #include <stdexcept>
+#include <string>
 
 namespace specbolt::refract {
 
@@ -10,9 +14,9 @@ namespace specbolt::refract {
 // be a template argument. `std::inplace_vector` is not structural; notes/FINDINGS.md has the rest of why it is not used
 // here.
 //
-// Everything here is public because a structural type's members must be. `try_push_back` reports a full container
-// rather than throwing, like `std::inplace_vector`'s, and leaves what that means to the caller: only it knows which of
-// the format's limits was reached, and on which line.
+// Everything here is public because a structural type's members must be. `push_back` throws when the container is
+// full, naming the capacity and the element type; during constant evaluation that throw is the compile error. Which
+// line of a description was being read is not this container's business: `at_line` puts it in front.
 template<typename T, std::size_t N>
 struct Vector {
   std::array<T, N> storage{};
@@ -20,11 +24,10 @@ struct Vector {
 
   static constexpr std::size_t capacity = N;
 
-  [[nodiscard]] constexpr bool try_push_back(const T &value) {
+  constexpr void push_back(const T &value) {
     if (count == N)
-      return false;
+      throw std::length_error("more than " + decimal(N) + " " + std::string(std::meta::display_string_of(^^T)));
     storage[count++] = value;
-    return true;
   }
 
   [[nodiscard]] constexpr std::size_t size() const { return count; }

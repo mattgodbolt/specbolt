@@ -11,41 +11,41 @@ using namespace refract;
 
 TEST_CASE("Opcode bit parsing") {
   SECTION("LD xx, IMM16") {
-    constexpr auto matched = parse_pattern("00pp0001", 1);
+    constexpr auto matched = parse_pattern("00pp0001");
     STATIC_CHECK(matched.opcode_bits == 0b00000001);
     STATIC_CHECK(matched.slices.size() == 1);
     STATIC_CHECK(matched.slices[0] == BitSlice{.name = 'p', .shift = 4, .mask = 3});
   }
   SECTION("LD r, r'") {
-    constexpr auto matched = parse_pattern("01yyyzzz", 1);
+    constexpr auto matched = parse_pattern("01yyyzzz");
     STATIC_CHECK(matched.opcode_bits == 0b01000000);
     STATIC_CHECK(matched.slices.size() == 2);
     STATIC_CHECK(matched.slices[0] == BitSlice{.name = 'y', .shift = 3, .mask = 7});
     STATIC_CHECK(matched.slices[1] == BitSlice{.name = 'z', .shift = 0, .mask = 7});
   }
   SECTION("Wholly fixed") {
-    constexpr auto matched = parse_pattern("11001001", 1);
+    constexpr auto matched = parse_pattern("11001001");
     STATIC_CHECK(matched.opcode_bits == 0xc9);
     STATIC_CHECK(matched.slices.size() == 0);
   }
   SECTION("Wholly variable") {
-    constexpr auto matched = parse_pattern("nnnnnnnn", 1);
+    constexpr auto matched = parse_pattern("nnnnnnnn");
     STATIC_CHECK(matched.opcode_bits == 0);
     STATIC_CHECK(matched.slices[0] == BitSlice{.name = 'n', .shift = 0, .mask = 0xff});
   }
   SECTION("Rejects bad patterns") {
-    CHECK_THROWS(parse_pattern("0101", 1));
-    CHECK_THROWS(parse_pattern("011011011", 1));
-    CHECK_THROWS(parse_pattern("00pp0p01", 1));
-    CHECK_THROWS(parse_pattern("abcde001", 1));
+    CHECK_THROWS(parse_pattern("0101"));
+    CHECK_THROWS(parse_pattern("011011011"));
+    CHECK_THROWS(parse_pattern("00pp0p01"));
+    CHECK_THROWS(parse_pattern("abcde001"));
   }
   SECTION("Accepts the widest supported field count") {
-    constexpr auto matched = parse_pattern("wwxxyyzz", 1);
+    constexpr auto matched = parse_pattern("wwxxyyzz");
     STATIC_CHECK(matched.slices.size() == Pattern::max_slices);
   }
 }
 
-constexpr auto ld_rr_imm16 = parse_pattern("00pp0001", 1);
+constexpr auto ld_rr_imm16 = parse_pattern("00pp0001");
 
 // A pattern is only ever read in one direction: `place` builds the opcodes a
 // row claims, and `extract` reads a value back out of one. Nothing tests an
