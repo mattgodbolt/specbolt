@@ -24,6 +24,7 @@
 #include "refract/Model.hpp"
 #include "refract/TableError.hpp"
 #include "refract/ToArray.hpp"
+#include "refract/Workarounds.hpp"
 
 #include <algorithm>
 #include <array>
@@ -424,6 +425,10 @@ struct Interpreter {
       "Name is a template argument, so every member must be public and itself structural");
   static_assert(std::meta::is_structural_type(^^Resolved),
       "Resolved is a template argument, so every member and base must be public and itself structural");
+#if REFRACT_CLANG_WORKAROUNDS
+  // Completes `Call` before it is asked about. See WASM.md, "is_structural_type of a nested class".
+  static_assert(sizeof(Call) > 0);
+#endif
   static_assert(std::meta::is_structural_type(^^Call),
       "Call is a template argument, so every member must be public and itself structural");
 
@@ -435,9 +440,16 @@ struct Interpreter {
   template<Resolved Op, std::size_t Line, typename Parameter>
   [[nodiscard]] static Parameter direct_value_of(Machine &machine, const Decoded decoded) {
     if constexpr (Op.kind == Resolved::Kind::Constant) {
-      if constexpr (Op.from_opcode)
+      if constexpr (Op.from_opcode) {
         // The instruction carries the number and the slice says where.
+#if REFRACT_CLANG_WORKAROUNDS
+        // Copied out before the call. See WASM.md, "A member call on a template argument's subobject".
+        constexpr auto slice = Op.slice;
+        return static_cast<Parameter>(slice.extract(decoded.opcode));
+#else
         return static_cast<Parameter>(Op.slice.extract(decoded.opcode));
+#endif
+      }
       else
         return static_cast<Parameter>(Op.constant);
     }
@@ -714,8 +726,14 @@ struct Interpreter {
     // A `-` drops anything, a location takes whatever the machine can write there, and an address takes only the widths
     // the machine writes at. The widths are spelled through aliases of our own because a reflect-expression may not
     // name a using-declarator, which is how a standard library may bring `uint8_t` into `std`.
+#if REFRACT_CLANG_WORKAROUNDS
+    // Marked because a reflect-expression is not counted as a use. See WASM.md, "An alias used only by `^^`".
+    using Byte [[maybe_unused]] = std::uint8_t;
+    using Word [[maybe_unused]] = std::uint16_t;
+#else
     using Byte = std::uint8_t;
     using Word = std::uint16_t;
+#endif
     for (const auto [at, destination]: std::views::enumerate(C.destinations)) {
       if (destination.kind == Resolved::Kind::Discard)
         continue;
@@ -897,14 +915,14 @@ struct Interpreter {
       // an operand read rather than an instruction fetch: the machine has already committed, so it costs less and does
       // not refresh.
       const auto next_opcode = Compiled::latched()[next_table] ? machine.fetch_immediate() : machine.fetch_opcode();
-      [[gnu::musttail]] return dispatch<next_table>[next_opcode](machine, displacement, next_view, next_opcode);
+      [[clang::musttail]] return dispatch<next_table>[next_opcode](machine, displacement, next_view, next_opcode);
     }
     else {
 
       // The encoding column says what is fetched, and it is fetched once, before any step, rather than where it is
       // used: the order arguments are evaluated in is unspecified, so a fetch inside a call could land after a memory
       // access the row puts before it.
-      const std::uint16_t immediate = [&machine] -> std::uint16_t {
+      const std::uint16_t immediate = [&] -> std::uint16_t {
         if constexpr (row.immediate_bytes == 2)
           return machine.fetch_immediate16();
         else if constexpr (row.immediate_bytes == 1)
@@ -917,7 +935,7 @@ struct Interpreter {
       // Formed once, after both, and handed to every operand that shares it. The machine is told what else was read
       // first, because a machine may fold those reads into the window that forms the address, as the Z80 does.
       const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
-      const std::uint16_t indexed = [&machine, decoded, displacement] -> std::uint16_t {
+      const std::uint16_t indexed = [&] -> std::uint16_t {
         if constexpr (displaced) {
           // A latched table read its opcode inside the same window, so that byte counts too, and the machine is charged
           // for the window once rather than for each read inside it.
@@ -952,7 +970,7 @@ struct Interpreter {
       }
     }
     // The row is done, so hand on to the next instruction rather than returning: this hand-over is the run loop.
-    [[gnu::musttail]] return continue_running(machine, 0, 0, 0);
+    [[clang::musttail]] return continue_running(machine, 0, 0, 0);
   }
 
   // ---------------------------------------------------------------------------
@@ -1068,7 +1086,7 @@ struct Interpreter {
     if (!machine.start_instruction())
       return;
     const auto opcode = machine.fetch_opcode();
-    [[gnu::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
+    [[clang::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
   }
 
   // Whether the machine will form a displaced address with this many bytes already read inside its window. A machine

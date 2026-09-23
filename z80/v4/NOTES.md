@@ -16,6 +16,7 @@ what belongs in it, so that this one stops growing:
 | [notes/FINDINGS.md](notes/FINDINGS.md) | what C++26 actually did, on a real compiler | any new language fact |
 | [notes/MEASUREMENTS.md](notes/MEASUREMENTS.md) | speed, build cost, what accuracy buys | any number, with its method |
 | [notes/PREFIXES.md](notes/PREFIXES.md) | how prefixes, views and latched tables work | that one argument, kept whole |
+| [notes/WASM.md](notes/WASM.md) | getting v4 into the browser, and what that took | anything about the wasm build |
 | [notes/JOURNAL.md](notes/JOURNAL.md) | what was decided and why, in order | **new "Done:" entries** |
 
 The journal is a record, not a reference: every entry was true when it was written and describes

@@ -82,6 +82,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SPECBOLT_MODULES": "OFF",
+        "SPECBOLT_TESTS": "OFF",
         "SPECBOLT_WASM": "ON"
       }
     }

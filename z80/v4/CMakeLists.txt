@@ -35,4 +35,5 @@ target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
         refract/include/refract/TableError.hpp
         refract/include/refract/ToArray.hpp
         refract/include/refract/Vector.hpp
+        refract/include/refract/Workarounds.hpp
 )

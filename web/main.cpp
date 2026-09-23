@@ -1,6 +1,10 @@
 #include "peripherals/Video.hpp"
 #include "spectrum/Spectrum.hpp"
+#if SPECBOLT_WEB_V4
+#include "z80/v4/Z80.hpp"
+#else
 #include "z80/v2/Z80.hpp"
+#endif
 
 #include <cstdint>
 #include <format>
@@ -9,6 +13,9 @@
 
 #include "spectrum/Snapshot.hpp"
 
+// Stand-ins for the runtime a build without exceptions lacks. A build with them (v4's, see z80/v4/notes/WASM.md) links
+// the real ones.
+#if !defined(__cpp_exceptions)
 extern "C" void __cxa_allocate_exception() {}
 extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)(void *)) {
   fprintf(stderr, "*** C++ exception (%s) thrown ***\n", tinfo->name());
@@ -16,9 +23,16 @@ extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)
   fprintf(stderr, "*** C++ exception: %s ***\n", static_cast<const std::exception *>(p)->what());
   abort();
 }
+#endif
+
+#if SPECBOLT_WEB_V4
+using WebZ80 = specbolt::v4::Z80;
+#else
+using WebZ80 = specbolt::v2::Z80;
+#endif
 
 struct WebSpectrum {
-  specbolt::Spectrum<specbolt::v2::Z80> spectrum{specbolt::Variant::Spectrum48, "assets/48.rom", 16000};
+  specbolt::Spectrum<WebZ80> spectrum{specbolt::Variant::Spectrum48, "assets/48.rom", 16000};
   std::vector<std::uint32_t> frame;
   std::vector<std::int16_t> audio;
   WebSpectrum(const specbolt::Variant variant, const char *rom, const std::size_t audio_sample_rate) :

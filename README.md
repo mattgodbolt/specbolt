@@ -83,6 +83,11 @@ echo "VITE_SPECBOLT_WASI_SYSROOT=/home/user/path/to/build/root" > .env.local
 npm start
 ```
 
+The web build uses v2, because stock clang has no reflection. v4 builds for the browser too, with a reflection clang and
+`cmake/wasm-reflection.cmake`; [z80/v4/notes/WASM.md](z80/v4/notes/WASM.md) has the recipe. Any wasm build runs its tests
+under Node through `ctest`, and `node web/tools/boot.mjs build/<dir>/web/spectrum.wasm` boots one without a browser and
+writes the screen out.
+
 ## Project Documentation
 
 - [The `.cpu` format](z80/v4/CPU_FORMAT.md) - Reference for the instruction-set description v4 compiles
