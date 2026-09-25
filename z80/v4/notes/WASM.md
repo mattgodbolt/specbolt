@@ -14,7 +14,7 @@ Part of [v4's notes](../NOTES.md).
 
 **It works, with one patch to the fork.** On 2026-09-22, v4 built for `wasm32-wasip1`:
 
-- passes all 1824 assertions of `z80_v4_test` under Node 24's WASI, through `ctest`;
+- passes every assertion of `z80_v4_test` under Node 24's WASI, through `ctest`;
 - boots the 48K and 128K ROMs in the web front end's own `spectrum.wasm`, driven headlessly by `web/tools/boot.mjs`,
   at about 0.24 ms of wasm time per emulated 20 ms frame;
 - runs zexdoc at 25.5 ns per instruction under Node, against 9.6 ns for the same source natively under gcc 16.2
@@ -26,8 +26,8 @@ only `@bjorn3/browser_wasi_shim` in place of Node's WASI and its own engine's ta
 current engines have. zexdoc's *correctness* under wasm is also unchecked, because `zexdoc_test` links v3, which does
 not build for wasm; the benchmark runs the same program without checking its answers.
 
-What it needs from the fork is below under "For Barry": one crash with a one-line fix, which blocks wasm outright, and
-two things with workarounds on our side.
+What it needs from the fork is below under "For Barry": a crash with a one-line fix, which blocks wasm outright, and
+bugs we work around on our side.
 
 ## The recipe
 
@@ -72,7 +72,7 @@ two things with workarounds on our side.
    node web/tools/boot.mjs build/wasm-v4/web/spectrum.wasm --model 128
    ```
 
-   About three minutes for those three targets. For the front end, `VITE_WASM_BUILD_DIR=build/wasm-v4 npm start` in
+   About three minutes for those targets. For the front end, `VITE_WASM_BUILD_DIR=build/wasm-v4 npm start` in
    `web/`.
 
 ## What the project needed
@@ -114,7 +114,7 @@ made since June is not in it until Barry merges.
    in `Type::isStructuralType`). gcc completes it and answers. `Interpreter` asserts this of its nested `Call`.
    Workaround: `static_assert(sizeof(Call) > 0)` first. [Reduced](https://compiler-explorer.com/z/M9GohWEEa).
 2. **`[[gnu::musttail]]` is unknown to clang.** clang's spelling is `[[clang::musttail]]`, which gcc accepts as well,
-   so the three tail calls now use that. Not a workaround: it is the spelling both compilers take.
+   so the tail calls now use that. Not a workaround: it is the spelling both compilers take.
 3. **`std::function_ref` is not in libc++.** `disassemble` takes a constrained `auto` parameter instead when
    `__cpp_lib_function_ref` is not defined.
 4. **Two warnings, which `-Werror` makes errors.** Lambdas in `execute_one` captured `machine` by name where only one
@@ -125,16 +125,16 @@ made since June is not in it until Barry merges.
 5. **v3's generator cannot run** (`libc++.so.1: cannot open shared object file`). The top-level CMake bakes in an
    rpath for the standard library it assumes, which is libstdc++ unless modules are on, and the fork defaults to
    libc++. Host-only; `LD_LIBRARY_PATH=<fork>/lib/x86_64-unknown-linux-gnu` gets past it, and it does not touch v4.
-6. **`set`, `res` and `bit` under `cb` used bit 0 whatever the opcode said.** 1816 of 1824 assertions passed; the 8
-   that failed were all those. The resolved operand was right at compile time (from the opcode, shift 3, mask 7) and
-   the opcode was right at run time, but `Op.slice.extract(decoded.opcode)` returned 0. Reduced to about 30 lines of
-   C++20 with no reflection in it: calling a member function on a subobject of a class-type template argument that
+6. **`set`, `res` and `bit` under `cb` used bit 0 whatever the opcode said.** Every other assertion passed. The
+   resolved operand was right at compile time (from the opcode, with the slice's shift and mask) and the opcode was
+   right at run time, but `Op.slice.extract(decoded.opcode)` returned 0. Reduced to a short C++20 program with no
+   reflection in it: calling a member function on a subobject of a class-type template argument that
    has a base class reads the wrong bytes. `Resolved` gained its `Access` base on 2026-09-21, which is why this did not
    show in May. clang 19 to 22.1 get it wrong, 23.1 and trunk get it right, and gcc always did; the fork's merge base
    predates the fix. Workaround: copy the slice into a local `constexpr` before calling `extract`.
    [Reduced](https://compiler-explorer.com/z/YzPo69Tzr).
 
-With those, `z80_v4_test` passes all 1824 assertions under the fork natively, and under gcc 16.2 unchanged.
+With those, `z80_v4_test` passes every assertion under the fork natively, and under gcc 16.2 unchanged.
 
 ## Then wasm
 
@@ -143,12 +143,12 @@ With those, `z80_v4_test` passes all 1824 assertions under the fork natively, an
    destructuring forms all do it, inside a template. `SemaExpand.cpp` builds the expansion index as
    `llvm::APSInt::get(Instantiations.size())`, which is a 64-bit value, and gives it type `size_t`, which is 32 bits
    there. `Context.MakeIntValue(Instantiations.size(), Context.getSizeType())` sizes it for the target, and with that
-   change the fork compiles all of v4 for wasm. There is no reasonable workaround on our side: refract has six
-   expansion statements and they are the interpreter's core. [Reduced](https://compiler-explorer.com/z/T7eExY4oh).
+   change the fork compiles all of v4 for wasm. There is no reasonable workaround on our side: expansion statements
+   are the interpreter's core. [Reduced](https://compiler-explorer.com/z/T7eExY4oh).
    Upstream clang has expansion statements only in part, and refuses the iterating form ("iterating expansion
    statements are not yet supported"), so the fork is the only way there for now.
 8. Everything after that was toolchain plumbing, recorded under "The recipe" and "What the project needed": the
-   libc++ header guard, the linker and archiver from the same build, and the four link and Catch2 settings.
+   libc++ header guard, the linker and archiver from the same build, and the link and Catch2 settings.
 
 ## The workarounds, and how to find them
 
@@ -167,7 +167,7 @@ one that is a library gap rather than a compiler bug tests the standard feature 
 
 ## For Barry
 
-Three reports, each reduced and each checked against gcc 16.2:
+The reports, each reduced and each checked against gcc 16.2:
 
 1. Every expansion statement crashes with a 32-bit `size_t`, with the one-line fix (item 7). This is the one that
    blocks wasm.

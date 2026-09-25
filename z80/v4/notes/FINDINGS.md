@@ -105,8 +105,8 @@ use it there the design would have to stop passing a `Call` by value: pass an in
 already records for `string_view`. That is a real change to the generator's shape, not a swap of
 containers.
 
-**Requirement 2, constant evaluation of a non-trivial element type: temporary.** Seven of the
-twelve uses hold `Piece`, `Operand`, `Member`, `Rule` or `Step`, each of which carries a
+**Requirement 2, constant evaluation of a non-trivial element type: temporary.** Most of the
+uses hold `Piece`, `Operand`, `Member`, `Rule` or `Step`, each of which carries a
 `std::string_view` into the description or a `Name`, so none is trivial. They are built during the
 parse and fixed into `Compiled`'s arrays, which the disassembler walks at run time. The history:
 
@@ -125,14 +125,24 @@ parse and fixed into `Compiled`'s arrays, which the disassembler walks at run ti
 
 So this half is a conformance gap with a bug number, not a bug and not a prohibition. The test
 that it has closed is `#ifdef __cpp_lib_constexpr_inplace_vector`, and on the day it does, the
-seven uses above could become `std::inplace_vector` with `push_back` unchanged: both throw when
+uses above could become `std::inplace_vector` with `push_back` unchanged: both throw when
 full, though `std::inplace_vector` throws `std::bad_alloc`.
 
-**What is left over.** Two uses are trivial already, `Pattern::slices` and a local in
-`slices_read_by`, and could be `inplace_vector` today; a second fixed-capacity vector for two
-sites is not worth having. And `Call`'s two would stay on `Vector` regardless, for requirement 1.
-That is the order the header comment gives the reasons in, structural first, and it is why
-"eventually `inplace_vector`" is true of most of the parser and false of the generator.
+**What is left over, tried 2026-09-25.** An earlier version of this note said `Pattern::slices` and the local in
+`slices_read_by` were trivial already and could be `std::inplace_vector` today. Only the second was. `BitSlice`
+gave its members `{}` default initialisers, which make its default constructor non-trivial, and with
+`std::inplace_vector<BitSlice, Pattern::max_slices>` every `static_assert` in PatternTest failed on the
+`__builtin_unreachable()` above. Dropping the initialisers makes it trivial, and then gcc 16.2 compiles both uses and
+every test passes save one: a slice past the limit reports `std::bad_alloc`, which names neither what overflowed nor
+the limit, where `Vector`'s message names both.
+
+What stops it is the other compiler. The fork's libc++, which the wasm build needs (WASM.md), has no
+`<inplace_vector>` at all; its `<version>` has `__cpp_lib_inplace_vector` commented out. So `Pattern` keeps `Vector`
+for three reasons, in the order they bite: libc++ has no `std::inplace_vector`; libstdc++'s works in constant
+evaluation only for trivial element types, which `BitSlice` is not while it has default initialisers; and a full one
+throws `std::bad_alloc` with no message, so a malformed pattern would lose its diagnostic. None of those is a rule of
+the language. `Call`'s uses stay on `Vector` regardless, for requirement 1, which is why "eventually
+`inplace_vector`" is true of most of the parser and false of the generator.
 
 ### Compile time, and where it went when it moved
 
