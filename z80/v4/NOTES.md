@@ -214,6 +214,12 @@ journal now, most of their items struck through. This is what survived them.
   about the combined binary is open: indirect-branch prediction on a function-pointer chain is the
   first suspect, and `perf stat -e br_misp_retired.all_branches` per core on each machine is the
   first measurement.
+- **A handler's tail call depends on a lambda being inlined.** The lambda that forms `indexed` in
+  `execute_one` captures by reference (`[&]`, since 2026-09-22, to quiet clang's unused-capture
+  warning), so `displacement` and `decoded` have their addresses taken. Built with `-fno-inline`, gcc
+  rejects the handler: "address of automatic variable 'displacement' can escape to 'musttail' call".
+  Ordinary builds pass only because the lambda is inlined away. Passing those as the lambda's
+  arguments rather than capturing them keeps them by value and satisfies both compilers.
 - **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a
   unit, because gcc collects only between top-level declarations. The six-line consumer-side
   workaround is in MEASUREMENTS.md; a library-side one has not been found.

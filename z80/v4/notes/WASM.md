@@ -174,3 +174,8 @@ The reports, each reduced and each checked against gcc 16.2:
 2. `is_structural_type` of a not-yet-instantiated nested class crashes (item 1).
 3. The fork lacks an upstream fix for member calls on template-argument subobjects with a base (item 6); a merge of
    upstream `main` would bring it in, along with the `__MVS__` guard in `locale_base_api.h`.
+4. Found 2026-09-25 while trying alternatives to passing `Call` by value (FINDINGS.md): a `static constexpr` local
+   declared inside `template for` and used as a reference template argument gives every expansion the first
+   expansion's instantiation. Silent wrong code; gcc 16.2 gets it right. [Reduced](https://compiler-explorer.com/z/EqEc1sfjh).
+   The same exploration found the fork crashing on a lambda inside `template for` used as a closure-type carrier;
+   that one was not reduced.

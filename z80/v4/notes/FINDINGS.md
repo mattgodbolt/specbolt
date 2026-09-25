@@ -96,14 +96,48 @@ limits, fails two requirements this library has. One is permanent and one is tem
 fall on different uses.
 
 **Requirement 1, structural: permanent.** `Call` in Execute.hpp is a non-type template parameter:
-every generated step is `apply<Fn, Call>`, and the `Call` holds two `Vector<Resolved, 4>`. A class
-type used that way must be *structural* ([temp.param]/7): every base and every non-static data
-member public, non-mutable, and itself structural, recursively. `std::inplace_vector` keeps its
-storage and its size private, so it is not structural and no paper proposes that it should be. To
-use it there the design would have to stop passing a `Call` by value: pass an index into a
-`constexpr` table of calls instead and look the object up inside, which is the trick the journal
-already records for `string_view`. That is a real change to the generator's shape, not a swap of
-containers.
+every generated step is `apply<Fn, Call>`, and the `Call` holds its operands and destinations as
+`Vector<Resolved, max_operands>`. A class type used that way must be *structural* ([temp.param]/7):
+every base and every non-static data member public, non-mutable, and itself structural,
+recursively. `std::inplace_vector` keeps its storage and its size private, so it is not structural
+and no paper proposes that it should be.
+
+A function parameter will not do instead: it is never a constant expression, even in a `consteval`
+function (P1045, `constexpr` function parameters, was not adopted). The handler needs the `Call` as
+a constant to size a pack from `operands.size()`, to branch with `if constexpr` on each operand, to
+splice a location's name, and to hand each operand on as a template argument of its own.
+
+**The other channels, tried 2026-09-25** on gcc 16.2 and Barry's fork, with a `Call` deliberately
+made non-structural (private members, a `std::string_view`, and on gcc a `std::inplace_vector`):
+
+- *`template<const Call &C>`, the object held in a variable template keyed on table, body key, row
+  and step.* Works on both compilers, and a prototype in the tree passed every test with a
+  `std::string_view` in `Call`. The cost is sharing: a reference argument is identified by its
+  object's address, so equal steps in different bodies of a row stop sharing instantiations. One
+  compile of `Z80.cpp` without LTO: text grew by about a tenth, from 152 KB to 170 KB, and compile
+  time from 83 s to 95 s; `apply` instantiations, counted with `-fno-inline`, roughly doubled.
+  Pointing each step at the first equal `Call` won the sharing back but the search took the compile
+  to 212 s on gcc and the test build to 17.5 minutes on the fork; a per-row table built once would
+  be cheaper and was not tried.
+- *Keep the `Call` a `constexpr` local in the handler and pass it nowhere.* The checks become
+  `consteval` functions taking it as an ordinary argument inside a `static_assert` (a `consteval {}`
+  block cannot name an enclosing local), and the operand expansion moves into lambdas in
+  `execute_one`. Correct on both compilers with nothing structural, but `apply`, `value_of` and
+  `store` stop being named templates, which is the part of the generator a reader can follow.
+- *`std::meta::reflect_object` of a static object, spliced inside.* The reference form again, with
+  the same identity by address, and harder to read.
+- *Indices passed all the way down* (`value_of<Table, Body, Step, I>` looking the operand up).
+  What the reference form amounts to, spelled longhand.
+- *A closure type carrying the value.* gcc accepts it; the fork crashes compiling a lambda inside
+  `template for`.
+- *`std::meta::reflect_constant(call)` and `std::define_static_object(call)`.* gcc rejects both:
+  "'Call' must be a cv-unqualified structural type that is not a reference type". They ask for the
+  very property being avoided.
+
+So passing the `Call` by value stays. It is what makes "equal steps, same code" the compiler's job:
+two `Call`s that compare equal are the same template argument wherever they came from, and the
+reference forms have to rebuild that by hand. None of the alternatives would let `Call` hold a
+`std::inplace_vector` today in any case, for requirement 2 and because the fork's libc++ has none.
 
 **Requirement 2, constant evaluation of a non-trivial element type: temporary.** Most of the
 uses hold `Piece`, `Operand`, `Member`, `Rule` or `Step`, each of which carries a
