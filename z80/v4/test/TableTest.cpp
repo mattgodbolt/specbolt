@@ -69,11 +69,10 @@ TEST_CASE("Table parsing") {
     constexpr auto ld = C::rows()[*C::find_row(C::entry_table, 0x21)];
     STATIC_CHECK(ld.immediate_bytes == 2);
     STATIC_CHECK(ld.pieces.size() == 4);
-    STATIC_CHECK(ld.pieces[0].kind == Piece::Kind::Literal);
-    STATIC_CHECK(ld.pieces[0].text == "ld ");
-    STATIC_CHECK(ld.pieces[1].kind == Piece::Kind::Vocabulary);
-    STATIC_CHECK(ld.pieces[2].text == ", ");
-    STATIC_CHECK(ld.pieces[3].kind == Piece::Kind::Imm16);
+    STATIC_CHECK(ld.pieces[0] == Piece{Piece::Literal{"ld "}});
+    STATIC_CHECK(std::holds_alternative<Piece::Vocabulary>(ld.pieces[1].kind));
+    STATIC_CHECK(ld.pieces[2] == Piece{Piece::Literal{", "}});
+    STATIC_CHECK(ld.pieces[3] == Piece{Piece::Imm16{}});
     STATIC_CHECK(C::rows()[*C::find_row(C::entry_table, 0x00)].immediate_bytes == 0);
   }
   SECTION("Extracts field values from the opcode") {

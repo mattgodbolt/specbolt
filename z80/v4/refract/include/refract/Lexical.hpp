@@ -108,23 +108,23 @@ namespace specbolt::refract {
     while (!chunk.eof()) {
       if (!chunk.rest().contains('$')) {
         if (!chunk.rest().empty())
-          pieces.push_back({.kind = Piece::Kind::Literal, .text = chunk.rest()});
+          pieces.push_back({Piece::Literal{chunk.rest()}});
         return;
       }
       if (const auto literal = chunk.take_until('$'); !literal.empty())
-        pieces.push_back({.kind = Piece::Kind::Literal, .text = literal});
+        pieces.push_back({Piece::Literal{literal}});
       if (chunk.rest().starts_with('e')) {
         chunk = Parser(chunk.rest().substr(1));
         if (chunk.rest().starts_with('e'))
           throw std::runtime_error("expected $nn, $nnnn or $e in mnemonic");
-        pieces.push_back({.kind = Piece::Kind::Relative});
+        pieces.push_back({Piece::Relative{}});
         continue;
       }
       const auto before = chunk.rest().size();
       chunk.skip_any("n");
       switch (before - chunk.rest().size()) {
-        case 2: pieces.push_back({.kind = Piece::Kind::Imm8}); break;
-        case 4: pieces.push_back({.kind = Piece::Kind::Imm16}); break;
+        case 2: pieces.push_back({Piece::Imm8{}}); break;
+        case 4: pieces.push_back({Piece::Imm16{}}); break;
         default: throw std::runtime_error("expected $nn, $nnnn or $e in mnemonic");
       }
     }
@@ -137,7 +137,7 @@ namespace specbolt::refract {
       return pieces;
     }
     lower_immediates(Parser(text.rest().substr(0, at)));
-    pieces.push_back({.kind = Piece::Kind::Displacement});
+    pieces.push_back({Piece::Displacement{}});
     text = Parser(text.rest().substr(at + 2));
   }
   return pieces;

@@ -8,6 +8,7 @@
 
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
+#include "refract/Overloaded.hpp"
 #include "refract/Workarounds.hpp"
 
 #include <concepts>
@@ -16,6 +17,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <variant>
 
 namespace specbolt::refract {
 
@@ -83,49 +85,47 @@ inline constexpr std::size_t max_instruction_bytes = 8;
   if (displaced && !latch)
     ++offset;
 
-  std::string result;
-  const auto render = [&](const Piece &part) {
-    switch (part.kind) {
-      case Piece::Kind::Literal: result += part.text; break;
-      case Piece::Kind::Vocabulary: break; // only the caller can follow one
-      case Piece::Kind::Displacement:
-        result += displacement < 0x80 ? std::format("+0x{:02x}", displacement)
-                                      : std::format("-0x{:02x}", 0x100 - displacement);
-        break;
-      case Piece::Kind::Imm8:
-        result += std::format("0x{:02x}", byte_at(offset));
-        offset += 1;
-        break;
-      case Piece::Kind::Relative: {
-        // Measured from the byte after the offset, which is the end of the instruction: a relative jump never carries
-        // anything else. The sum is formed at the width the machine forms it at.
-        const auto to = static_cast<std::int8_t>(byte_at(offset));
-        offset += 1;
-        const auto end_of_instruction = static_cast<std::uint16_t>(address + offset);
-        result += std::format("0x{:04x}", static_cast<std::uint16_t>(end_of_instruction + to));
-        break;
-      }
-      case Piece::Kind::Imm16:
-        result += std::format("0x{:04x}", static_cast<std::uint16_t>(byte_at(offset) | byte_at(offset + 1) << 8));
-        offset += 2;
-        break;
-    }
-  };
-
   const Resolution at{.vocabularies = description.vocabularies,
       .matched = row->matched,
       .rules = rules,
       .opcode = opcode,
       .view = view};
-  for (const auto &part: row->pieces) {
-    if (part.kind != Piece::Kind::Vocabulary) {
-      render(part);
-      continue;
-    }
-    // A member renders itself, because an indexed mode writes its displacement in the middle of its own text.
-    for (const auto &inner: member_of(at, part.reference).pieces)
-      render(inner);
-  }
+  std::string result;
+  // Renders one piece. A vocabulary member renders its own pieces, because an indexed mode writes its displacement in
+  // the middle of its own text.
+  const auto render = [&](this const auto &self, const Piece &piece) -> void {
+    std::visit(Overloaded{
+                   [&](const Piece::Literal &literal) { result += literal.text; },
+                   [&](const Piece::Vocabulary &vocabulary) {
+                     for (const auto &inner: member_of(at, vocabulary.reference).pieces)
+                       self(inner);
+                   },
+                   [&](const Piece::Displacement) {
+                     result += displacement < 0x80 ? std::format("+0x{:02x}", displacement)
+                                                   : std::format("-0x{:02x}", 0x100 - displacement);
+                   },
+                   [&](const Piece::Imm8) {
+                     result += std::format("0x{:02x}", byte_at(offset));
+                     offset += 1;
+                   },
+                   [&](const Piece::Relative) {
+                     // Measured from the byte after the offset, which is the end of the instruction: a relative jump
+                     // never carries anything else. The sum is formed at the width the machine forms it at.
+                     const auto to = static_cast<std::int8_t>(byte_at(offset));
+                     offset += 1;
+                     const auto end_of_instruction = static_cast<std::uint16_t>(address + offset);
+                     result += std::format("0x{:04x}", static_cast<std::uint16_t>(end_of_instruction + to));
+                   },
+                   [&](const Piece::Imm16) {
+                     result += std::format(
+                         "0x{:04x}", static_cast<std::uint16_t>(byte_at(offset) | byte_at(offset + 1) << 8));
+                     offset += 2;
+                   },
+               },
+        piece.kind);
+  };
+  for (const auto &piece: row->pieces)
+    render(piece);
   return {result, offset};
 }
 

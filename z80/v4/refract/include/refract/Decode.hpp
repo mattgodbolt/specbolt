@@ -6,6 +6,7 @@
 // answers here, and the whole-description rules that need them are in Checks.hpp.
 
 #include "refract/Model.hpp"
+#include "refract/Overloaded.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/TableError.hpp"
 
@@ -15,6 +16,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <variant>
 #include <vector>
 
 namespace specbolt::refract {
@@ -63,7 +65,14 @@ namespace specbolt::refract {
         [&](const Operand &operand) { return operand.kind != Operand::Kind::Vocabulary || live(operand.reference); });
   };
   return std::ranges::all_of(row.pieces, [&](const Piece &piece) {
-    return piece.kind != Piece::Kind::Vocabulary || live(piece.reference);
+    return std::visit(
+        Overloaded{
+            [&](const Piece::Vocabulary &vocabulary) { return live(vocabulary.reference); },
+            [](const OneOf<Piece::Literal, Piece::Imm8, Piece::Imm16, Piece::Displacement, Piece::Relative> auto &) {
+              return true;
+            },
+        },
+        piece.kind);
   }) && std::ranges::all_of(row.steps, [&](const Step &step) {
     return operands_live(step.operands) && operands_live(step.destinations) &&
            (!step.operation_reference || live(*step.operation_reference));

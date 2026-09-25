@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 namespace specbolt::refract {
 
@@ -158,13 +159,37 @@ struct Resolved : Access {
   return {static_cast<const Access &>(operand), kind};
 }
 
-// Text with the values it carries taken out of it. A piece is a literal chunk, a vocabulary member to look up, a value
-// read from the encoding, or the displacement an indexed addressing mode carries.
+// One part of an instruction's text, with the values it carries taken out: a literal chunk, a vocabulary member to look
+// up, a value read from the encoding, or the displacement an indexed addressing mode carries. Each kind holds only what
+// it needs, so a piece with no text cannot be asked for its text.
 struct Piece {
-  enum class Kind : std::uint8_t { Literal, Vocabulary, Imm8, Imm16, Displacement, Relative };
-  Kind kind{};
-  std::string_view text{};
-  Reference reference{};
+  // Text rendered as written.
+  struct Literal {
+    std::string_view text;
+    constexpr bool operator==(const Literal &) const = default;
+  };
+  // The member of a vocabulary that the encoding's slice, or the table's view, chooses; it renders its own pieces.
+  struct Vocabulary {
+    Reference reference;
+    constexpr bool operator==(const Vocabulary &) const = default;
+  };
+  // The immediate the encoding fetched, one byte or two.
+  struct Imm8 {
+    constexpr bool operator==(const Imm8 &) const = default;
+  };
+  struct Imm16 {
+    constexpr bool operator==(const Imm16 &) const = default;
+  };
+  // The displacement an indexed mode carries, rendered signed.
+  struct Displacement {
+    constexpr bool operator==(const Displacement &) const = default;
+  };
+  // A relative jump's offset, rendered as the address it lands on.
+  struct Relative {
+    constexpr bool operator==(const Relative &) const = default;
+  };
+
+  std::variant<Literal, Vocabulary, Imm8, Imm16, Displacement, Relative> kind;
   constexpr bool operator==(const Piece &) const = default;
 };
 

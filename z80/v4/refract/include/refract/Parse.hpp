@@ -6,6 +6,7 @@
 
 #include "refract/Lexical.hpp"
 #include "refract/Model.hpp"
+#include "refract/Overloaded.hpp"
 #include "refract/Parser.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/TableError.hpp"
@@ -17,6 +18,7 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <variant>
 #include <vector>
 
 namespace specbolt::refract {
@@ -268,7 +270,9 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
     if (shape_of(member) != shape_of(first))
       throw complaint(
           member.display, "all of its members must have the same shape as '" + std::string(first.display) + "'");
-    if (!std::ranges::equal(member.pieces, first.pieces, {}, &Piece::kind, &Piece::kind))
+    // The same kinds of piece in the same order; the literal text may differ, which is what a view is for.
+    const auto kind_of = [](const Piece &piece) { return piece.kind.index(); };
+    if (!std::ranges::equal(member.pieces, first.pieces, {}, kind_of, kind_of))
       throw complaint(
           member.display, "all of its members must render the same way as '" + std::string(first.display) + "'");
   }
@@ -346,8 +350,8 @@ constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Ro
     add_text(Parser(parser.take_until('{')));
     if (!parser.rest().contains('}'))
       throw std::runtime_error("unterminated vocabulary reference in mnemonic");
-    row.pieces.push_back({.kind = Piece::Kind::Vocabulary,
-        .reference = parse_reference(vocabularies, parser.take_until('}'), row.matched, table)});
+    row.pieces.push_back(
+        {Piece::Vocabulary{parse_reference(vocabularies, parser.take_until('}'), row.matched, table)}});
   }
 }
 
@@ -359,18 +363,19 @@ constexpr void check_immediates(const Row &row) {
   // read one sixteen-bit value.
   std::size_t rendered = 0;
   std::size_t width = 0;
+  const auto immediate_width = [](const Piece &piece) {
+    return std::visit(
+        Overloaded{
+            [](const OneOf<Piece::Imm8, Piece::Relative> auto &) { return 1uz; },
+            [](const Piece::Imm16 &) { return 2uz; },
+            [](const OneOf<Piece::Literal, Piece::Vocabulary, Piece::Displacement> auto &) { return 0uz; },
+        },
+        piece.kind);
+  };
   for (const auto &piece: row.pieces)
-    switch (piece.kind) {
-      case Piece::Kind::Imm8:
-      case Piece::Kind::Relative:
-        ++rendered;
-        width = 1;
-        break;
-      case Piece::Kind::Imm16:
-        ++rendered;
-        width = 2;
-        break;
-      default: break;
+    if (const auto bytes = immediate_width(piece); bytes != 0) {
+      ++rendered;
+      width = bytes;
     }
   if (rendered > 1)
     throw std::runtime_error("a row renders at most one immediate; the encoding only fetches one");

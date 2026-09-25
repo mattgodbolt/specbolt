@@ -202,7 +202,7 @@ TEST_CASE("Table diagnostics") {
                               "table u = t with r.b -> ixh\n00000000 | frob | nop\n");
     const auto &derived = parsed.tables[1];
     const auto &row = parsed.rows[1];
-    const auto reference = row.pieces[1].reference;
+    const auto reference = std::get<Piece::Vocabulary>(row.pieces[1].kind).reference;
 
     // The substitution reaches whatever the row names, and only that member.
     CHECK(member_of({.vocabularies = parsed.vocabularies, .matched = row.matched, .opcode = 0x00}, //

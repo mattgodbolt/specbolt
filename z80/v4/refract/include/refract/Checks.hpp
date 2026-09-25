@@ -7,12 +7,14 @@
 
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
+#include "refract/Overloaded.hpp"
 #include "refract/TableError.hpp"
 
 #include <algorithm>
 #include <ranges>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace specbolt::refract {
@@ -122,16 +124,19 @@ constexpr void check_derived_rows_override(const Description &description, const
 // a displaced operand out in full does, or through a vocabulary member that a view renamed to one.
 [[nodiscard]] constexpr bool renders_displacement(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
-  return std::ranges::any_of(row.pieces, [&](const Piece &piece) {
-    if (piece.kind == Piece::Kind::Displacement)
-      return true;
-    if (piece.kind != Piece::Kind::Vocabulary)
-      return false;
-    const auto member = member_of(
-        {.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode}, piece.reference);
-    return std::ranges::any_of(
-        member.pieces, [](const Piece &inner) { return inner.kind == Piece::Kind::Displacement; });
-  });
+  const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode};
+  const auto renders = [&](this const auto &self, const Piece &piece) -> bool {
+    return std::visit(
+        Overloaded{
+            [](const Piece::Displacement &) { return true; },
+            [&](const Piece::Vocabulary &vocabulary) {
+              return std::ranges::any_of(member_of(at, vocabulary.reference).pieces, self);
+            },
+            [](const OneOf<Piece::Literal, Piece::Imm8, Piece::Imm16, Piece::Relative> auto &) { return false; },
+        },
+        piece.kind);
+  };
+  return std::ranges::any_of(row.pieces, renders);
 }
 
 // Checks that a row's mnemonic renders a displacement exactly when one of its operands is displaced. `check_immediates`
