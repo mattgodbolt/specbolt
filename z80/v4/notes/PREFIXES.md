@@ -333,7 +333,8 @@ v2 and v3 both disassembled and executed `DD EB` as `ex de, ix`, because their p
 carries an index-register choice that every `hl` is read through. Real hardware ignores DD and FD
 here, `EX DE,HL` is `EX DE,HL` under any prefix.
 
-v4 was right without anyone deciding it should be. A view renames *vocabulary members*, `pair.hl`, `spair.hl`, `reg.h`, `reg.l`, `reg.(hl)`, and `ex de, hl` names `hl` as literal text, so
+v4 was right without anyone deciding it should be. A view renames *vocabulary members*, `pair.hl`, `spair.hl`, `reg.h`,
+`reg.l`, `reg.(hl)`, and `ex de, hl` names `hl` as literal text, so
 there is nothing for the rename to reach. Every base row that writes `hl` literally and *does* want
 the index register under a prefix (`add hl, rr`, `ld (nn), hl`, `ld hl, (nn)`, `jp (hl)`,
 `ld sp, hl`, `ex (sp), hl`) carries an explicit override row in `indexed`, which is the same fact

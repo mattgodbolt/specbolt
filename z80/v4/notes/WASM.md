@@ -102,7 +102,8 @@ The notes record a clean native build with the fork in May. A lot has changed si
 it natively with `cmake --preset release-reflection -B build/barry23` and the fork as `CC`/`CXX`. Each of these would
 have been found identically under wasm.
 
-The compiler was Compiler Explorer's nightly, `https://s3.amazonaws.com/compiler-explorer/opt/clang-barry-clang-trunk-YYYYMMDD.tar.xz`
+The compiler was Compiler Explorer's nightly,
+`https://s3.amazonaws.com/compiler-explorer/opt/clang-barry-clang-trunk-YYYYMMDD.tar.xz`
 (20260922, clang 23.0.0git, 3d0f86e4). The copy under `/opt/compiler-explorer` on this machine is from May and is
 clang 21. The fork is based on upstream LLVM, not Bloomberg's clang-p2996: its branch shares history with upstream
 `main` up to 2026-06-01, is 505 commits ahead of that point, and is some 15,800 behind `main` today, so an upstream fix
@@ -176,6 +177,7 @@ The reports, each reduced and each checked against gcc 16.2:
    upstream `main` would bring it in, along with the `__MVS__` guard in `locale_base_api.h`.
 4. Found 2026-09-25 while trying alternatives to passing `Call` by value (FINDINGS.md): a `static constexpr` local
    declared inside `template for` and used as a reference template argument gives every expansion the first
-   expansion's instantiation. Silent wrong code; gcc 16.2 gets it right. [Reduced](https://compiler-explorer.com/z/EqEc1sfjh).
+   expansion's instantiation. Silent wrong code; gcc 16.2 gets it right.
+   [Reduced](https://compiler-explorer.com/z/EqEc1sfjh).
    The same exploration found the fork crashing on a lambda inside `template for` used as a closure-type carrier;
    that one was not reduced.

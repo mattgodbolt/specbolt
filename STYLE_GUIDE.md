@@ -1,6 +1,7 @@
 # specbolt C++ Style Guide
 
-This document outlines the C++ coding standards and best practices for the specbolt project. Following these guidelines ensures code consistency, readability, and maintainability across the codebase.
+This document outlines the C++ coding standards and best practices for the specbolt project. Following these guidelines
+ensures code consistency, readability, and maintainability across the codebase.
 
 ## Table of Contents
 
@@ -243,4 +244,5 @@ constexpr int HEATMAP_WIDTH = 256;
 
 ---
 
-These style guidelines will evolve as the project grows. When in doubt, follow the style of surrounding code for consistency.
+These style guidelines will evolve as the project grows. When in doubt, follow the style of surrounding code for
+consistency.

@@ -29,10 +29,16 @@ Run the emulator with the `--heatmap` flag:
 
 ## How it Works
 
-The heatmap visualizer instruments all memory accesses in the emulator, counting reads and writes to each memory location. These counts are visualized as a transparent overlay on top of the emulator display, with color intensity representing the frequency of access.
+The heatmap visualizer instruments all memory accesses in the emulator, counting reads and writes to each memory
+location. These counts are visualized as a transparent overlay on top of the emulator display, with color intensity
+representing the frequency of access.
 
-This visualization provides insights into how programs utilize memory, revealing patterns of code execution, data access, and memory usage that would otherwise be invisible. It's particularly useful for understanding ROM routines, program behavior, and optimizing code.
+This visualization provides insights into how programs utilize memory, revealing patterns of code execution, data
+access, and memory usage that would otherwise be invisible. It's particularly useful for understanding ROM routines,
+program behavior, and optimizing code.
 
 ## Technical Details
 
-The implementation non-invasively hooks into the Memory class's read/write methods through a callback system, ensuring minimal performance impact while providing rich visualization data. The visualization maps the entire 64K memory space to a 256x256 pixel overlay that is blended with the main display.
+The implementation non-invasively hooks into the Memory class's read/write methods through a callback system, ensuring
+minimal performance impact while providing rich visualization data. The visualization maps the entire 64K memory space
+to a 256x256 pixel overlay that is blended with the main display.

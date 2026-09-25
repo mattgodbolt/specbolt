@@ -119,7 +119,8 @@ table base
 00011000 n   | jr $e                | delay 5 ; relative pc <- pc n
 001jj000 n   | jr {jcond:j}, $e     | if {jcond:j} ; delay 5 ; relative pc <- pc n
 11yyy010 n n | jp {cond:y}, $nnnn   | if {cond:y} ; ld16 pc <- n
-11yyy100 n n | call {cond:y}, $nnnn | if {cond:y} ; delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
+11yyy100 n n | call {cond:y}, $nnnn | if {cond:y} ; delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; \
+                                      ld16 pc <- n
 11yyy000     | ret {cond:y}         | delay 1 ; if {cond:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
 11010011 n   | out ($nn), a         | out_n n a
 11011011 n   | in a, ($nn)          | in_n a <- n a
@@ -170,8 +171,10 @@ table indexed(view:index) = base with pair.hl  -> {index:view}, \
 table indexed_cb(view:index)
 
 00yyy110 | {shift:y} {index_mem:view}              | {shift:y} {index_mem:view}, flags <- {index_mem:view}
-00yyyzzz | {shift:y} {index_mem:view}, {real:z}    | {shift:y} {real:z}, flags <- {index_mem:view} ; delay 1 ; ld8 {index_mem:view} <- {real:z}
-01bbbzzz | bit {bit:b}, {index_mem:view}           | test_bit flags <- value={index_mem:view} bit={bit:b} flags=flags bus=wzh ; delay 1
+00yyyzzz | {shift:y} {index_mem:view}, {real:z}    | {shift:y} {real:z}, flags <- {index_mem:view} ; delay 1 ; \
+                                                     ld8 {index_mem:view} <- {real:z}
+01bbbzzz | bit {bit:b}, {index_mem:view}           | test_bit flags <- value={index_mem:view} bit={bit:b} flags=flags bus=wzh ; \
+                                                     delay 1
 10bbb110 | res {bit:b}, {index_mem:view}           | res {index_mem:view} <- {index_mem:view} {bit:b}
 10bbbzzz | res {bit:b}, {index_mem:view}, {real:z} | res {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
 11bbb110 | set {bit:b}, {index_mem:view}           | set {index_mem:view} <- {index_mem:view} {bit:b}
@@ -206,8 +209,10 @@ table ed
 1010w001     | cp{dir:w}            | block_compare flags <- {dir:w} flags
 1010w010     | in{dir:w}            | block_in flags <- {dir:w} flags
 1010w011     | out{dir:w}           | block_out flags <- {dir:w} flags
-1011w000     | ld{dir:w}r           | block_load flags <- {dir:w} flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
-1011w001     | cp{dir:w}r           | block_compare flags <- {dir:w} flags ; if nonzero16 bc ; if is_clear zero ; delay 5 ; relative pc <- pc 0xfe
+1011w000     | ld{dir:w}r           | block_load flags <- {dir:w} flags ; if nonzero16 bc ; delay 5 ; \
+                                      relative pc <- pc 0xfe
+1011w001     | cp{dir:w}r           | block_compare flags <- {dir:w} flags ; if nonzero16 bc ; if is_clear zero ; \
+                                      delay 5 ; relative pc <- pc 0xfe
 1011w010     | in{dir:w}r           | block_in flags <- {dir:w} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
 1011w011     | ot{dir:w}r           | block_out flags <- {dir:w} flags ; if nonzero b ; delay 5 ; relative pc <- pc 0xfe
 

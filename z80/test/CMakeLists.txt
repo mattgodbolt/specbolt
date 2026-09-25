@@ -44,10 +44,14 @@ foreach (version IN ITEMS 1 2 3 4)
 endforeach ()
 
 if (NOT (CMAKE_BUILD_TYPE STREQUAL "Debug"))
-    add_test(NAME "Z80 Regression Test (v1 implementation)" COMMAND zexdoc_test WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    add_test(NAME "Z80 Regression Test (v2 implementation)" COMMAND zexdoc_test --impl 2 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    add_test(NAME "Z80 Regression Test (v3 implementation)" COMMAND zexdoc_test --impl 3 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    add_test(NAME "Z80 Regression Test (v1 implementation)" COMMAND zexdoc_test
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    add_test(NAME "Z80 Regression Test (v2 implementation)" COMMAND zexdoc_test --impl 2
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    add_test(NAME "Z80 Regression Test (v3 implementation)" COMMAND zexdoc_test --impl 3
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     if (TARGET z80_v4)
-        add_test(NAME "Z80 Regression Test (v4 implementation)" COMMAND zexdoc_test --impl 4 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        add_test(NAME "Z80 Regression Test (v4 implementation)" COMMAND zexdoc_test --impl 4
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endif ()
 endif ()

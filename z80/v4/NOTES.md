@@ -95,7 +95,8 @@ meaning from a C++ type rather than reading it off the row:
   `Alu::iff2_flags_for(u8, Flags, bool iff2)`, whose `bool` is not carry.
 - `is_supplied_by_framework` did the same for `Flags` and the machine.
 
-All three became one operand concept, constant, immediate, name, field reference, or discard, where `a`, `carry` and `flags` are just names the CPU resolves. Vocabulary members may append an
+All three became one operand concept, constant, immediate, name, field reference, or discard, where `a`, `carry` and
+`flags` are just names the CPU resolves. Vocabulary members may append an
 operand (`add:add8+0`, `adc:add8+carry`), so the carry policy is data in the table. Destinations
 are a list, so `{q} a, flags <- a {r:z}` destructures whatever the primitive returns, and the last
 assumption (that a result type has a member called `flags`) went with it.

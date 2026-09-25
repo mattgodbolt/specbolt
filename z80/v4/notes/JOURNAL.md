@@ -27,7 +27,8 @@ The encoding column is now a token sequence rather than a single pattern:
 110qq110 n   | {q} a, $nn    | {q} a, flags <- a n
 ```
 
-`length` is derived from it, where it used to be inferred by counting `$n`s in the *display* text, a human-facing string deciding how many bytes the CPU fetches. The fetch itself is now driven by
+`length` is derived from it, where it used to be inferred by counting `$n`s in the *display* text, a human-facing string
+deciding how many bytes the CPU fetches. The fetch itself is now driven by
 `row.immediate_bytes` too, so the encoding is the single source of truth for what is read.
 
 That collapses a redundancy: an immediate operand has one spelling, `n`, and the encoding says how
@@ -229,7 +230,8 @@ The original argument, which still stands:
   "Doesn't make sense but I am just trying to fix up the bad timings" and "Heinous hack to make this
   flawed approach agree with reality".
 - Cost is conditional (`djnz` 8/13), depends on a vocabulary member (`y == 6` adds 1), and depends on
-  a per-row quirk (the DD/FD displacement prologue costs 5 normally but 2 for load-immediate rows, v3 carries a whole `is_load_immediate` field just for this).
+  a per-row quirk (the DD/FD displacement prologue costs 5 normally but 2 for load-immediate rows, v3 carries a whole
+  `is_load_immediate` field just for this).
 
 So: primitives declare their own cost, the semantic column is an **ordered list of steps** with
 explicit idle delays, and a row-level `t=` is an *assertion* checked at compile time rather than a
@@ -289,7 +291,8 @@ Parameter types decide what is read; the return type decides whether a value is 
 `sub8`/SUB/SBC. So "a `bool` parameter means splice the carry" is wrong half the time, and nothing in
 the signature distinguishes them.
 
-The policy belongs on the **vocabulary member**, which is where the encoding already puts it, `10ooozzz`'s `ooo` field *is* the add/adc/sub/sbc/and/xor/or/cp vocabulary. So a member binds to a
+The policy belongs on the **vocabulary member**, which is where the encoding already puts it, `10ooozzz`'s `ooo` field
+*is* the add/adc/sub/sbc/and/xor/or/cp vocabulary. So a member binds to a
 primitive **and** a calling policy for whatever the signature leaves ambiguous. Verified: `add` and
 `adc` route through the same `add8` and differ only in the member's carry source.
 
@@ -401,7 +404,8 @@ precisely floooh/chips' `hlx[hlx_idx]` trade, which is evidence it generalises.
 
 **(b) Generated switch.** Expand the row body once per member of the parameter vocabulary under a
 runtime compare, using the `template for` the file already leans on. No change to the machine at
-all. But a row that names the parameter duplicates its body, so `indexed_cb`, where every row does, saves nothing, and `indexed` saves only the 169 of 256 opcodes that DD leaves alone. Roughly a
+all. But a row that names the parameter duplicates its body, so `indexed_cb`, where every row does, saves nothing, and
+`indexed` saves only the 169 of 256 opcodes that DD leaves alone. Roughly a
 third of the win for none of the machine changes.
 
 **(a) is what was built.** (b) is the tempting one because it changes less, and it is worth writing
@@ -425,7 +429,8 @@ a change like this, and here it is nearly free.
 
 - A `{v:param}` reference in a table with no parameter, or naming a parameter that is not the
   table's, is an error.
-- A `goto` into a parameterised table must supply a parameter, a literal member or a forwarded one, and a `goto` into an unparameterised table must not.
+- A `goto` into a parameterised table must supply a parameter, a literal member or a forwarded one, and a `goto` into an
+  unparameterised table must not.
 - Parallel vocabularies must have as many members as the parameter vocabulary, exactly as a
   slice-selected vocabulary must match its slice width today. `check_reference` already does this
   arithmetic; it needs a second source for the count.
@@ -467,7 +472,8 @@ Everything below is the same source, one change, measured both ways.
 
 1280 is exactly 5 × 256. Not one handler more than the two removed tables predicted.
 
-Two second-order effects worth having. Each surviving handler is *dearer*, 53ms against 47ms, because it now reads its index register through a selector. And `apply` fell further than the tables
+Two second-order effects worth having. Each surviving handler is *dearer*, 53ms against 47ms, because it now reads its
+index register through a selector. And `apply` fell further than the tables
 alone explain (1191 → 895, −25% against −29% for tables), because merging `ix` and `iy` made `Call`
 values that differed only in which register they named identical, so they share one instantiation.
 
@@ -780,7 +786,8 @@ The two things that stood in the way both went:
    `specbolt::v4` and includes what lives there. What the framework needs is written down as the
    `Machine` concept, so a machine missing a piece is told which piece rather than finding out
    inside a generated instruction. The one thing the concept cannot state is `read`/`write` for
-   locations, the shape of that overload set depends on the machine's own `location_scopes()`, so a bad location name is diagnosed at the splice in `find_location` instead.
+   locations, the shape of that overload set depends on the machine's own `location_scopes()`, so a bad location name is
+   diagnosed at the splice in `find_location` instead.
 2. **`SPECBOLT_CPU_TABLE` is a compile definition**, set by `z80/v4/CMakeLists.txt`, with a neutral
    default in `TableError.hpp`. The framework no longer names the description file.
 
@@ -951,7 +958,8 @@ pass an *index* and look the object up inside. That works, but a structural stri
 the class of problem rather than the instances.
 
 The obvious answer for the vector is `std::inplace_vector`, and it is the wrong one *for now*: gcc 16.2 ships
-`<inplace_vector>` but its constexpr path supports **trivial types only**, `__builtin_unreachable(); // only trivial types are supported at compile time`. `Piece` holds a
+`<inplace_vector>` but its constexpr path supports **trivial types only**,
+`__builtin_unreachable(); // only trivial types are supported at compile time`. `Piece` holds a
 `std::string_view`, which is trivially copyable but not trivially default constructible, so it does
 not qualify. Verified both ways. This is a libstdc++ limitation rather than a language one, so
 revisit and delete our version when it lifts.

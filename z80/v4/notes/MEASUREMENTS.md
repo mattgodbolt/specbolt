@@ -498,7 +498,8 @@ No loop over steps, no function pointer, no `Step` data anywhere in the output. 
 `lea [rax+2]` on the cycle counter.
 
 The one qualification, which the earlier spike measurement missed because everything in it was
-trivial: when a step's primitive is itself out-of-line, `Alu::inc8`, `Z80::read`, `Z80::write`, gcc declines to inline the `apply<…>` specialisation into the handler, so `inc (hl)` pays one extra
+trivial: when a step's primitive is itself out-of-line, `Alu::inc8`, `Z80::read`, `Z80::write`, gcc declines to inline
+the `apply<…>` specialisation into the handler, so `inc (hl)` pays one extra
 call boundary. The body is still fully specialised straight-line code with no branches; it is just
 not merged. Whether to force it with `always_inline` is a tuning question, not a design one, and
 the 94 bytes/opcode v3 already ships is the number to beat.

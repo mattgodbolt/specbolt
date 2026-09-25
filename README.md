@@ -1,6 +1,7 @@
 # specbolt ZX Spectrum Emulator [![specbolt CI](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml/badge.svg)](https://github.com/mattgodbolt/specbolt/actions/workflows/ci.yml)
 
-A modern C++26 ZX Spectrum emulator with a focus on clean architecture and educational value. specbolt demonstrates the power of modern C++ features including modules and std::ranges while emulating the iconic 8-bit computer.
+A modern C++26 ZX Spectrum emulator with a focus on clean architecture and educational value. specbolt demonstrates the
+power of modern C++ features including modules and std::ranges while emulating the iconic 8-bit computer.
 
 ## Project Overview
 
@@ -36,13 +37,17 @@ ctest --preset debug
 ./build/debug/sdl/specbolt_sdl
 ```
 
-Other useful presets: `debug-modules` (needs clang + libc++), `release` (RelWithDebInfo, runs the zexdoc regression tests), and `release-modules`.
+Other useful presets: `debug-modules` (needs clang + libc++), `release` (RelWithDebInfo, runs the zexdoc regression
+tests), and `release-modules`.
 
-To pin a specific compiler, set `CC`/`CXX` or create a local `CMakeUserPresets.json` (gitignored) that inherits a public preset and overrides `CMAKE_CXX_COMPILER`.
+To pin a specific compiler, set `CC`/`CXX` or create a local `CMakeUserPresets.json` (gitignored) that inherits a public
+preset and overrides `CMAKE_CXX_COMPILER`.
 
 ### C++26 reflection
 
-Reflection (P2996) needs **gcc 16+**, or one of the clang forks that implement it: no clang *release* does. Detection is automatic, including whichever extra flags the compiler wants, so any other compiler simply builds without the reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
+Reflection (P2996) needs **gcc 16+**, or one of the clang forks that implement it: no clang *release* does. Detection is
+automatic, including whichever extra flags the compiler wants, so any other compiler simply builds without the
+reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
 
 No distro packages gcc 16, so grab a [Compiler Explorer](https://compiler-explorer.com/) build, the same one CI uses:
 
@@ -84,7 +89,8 @@ npm start
 ```
 
 The web build uses v2, because stock clang has no reflection. v4 builds for the browser too, with a reflection clang and
-`cmake/wasm-reflection.cmake`; [z80/v4/notes/WASM.md](z80/v4/notes/WASM.md) has the recipe. Any wasm build runs its tests
+`cmake/wasm-reflection.cmake`; [z80/v4/notes/WASM.md](z80/v4/notes/WASM.md) has the recipe. Any wasm build runs its
+tests
 under Node through `ctest`, and `node web/tools/boot.mjs build/<dir>/web/spectrum.wasm` boots one without a browser and
 writes the screen out.
 
