@@ -17,6 +17,7 @@ what belongs in it, so that this one stops growing:
 | [notes/MEASUREMENTS.md](notes/MEASUREMENTS.md) | speed, build cost, what accuracy buys | any number, with its method |
 | [notes/PREFIXES.md](notes/PREFIXES.md) | how prefixes, views and latched tables work | that one argument, kept whole |
 | [notes/WASM.md](notes/WASM.md) | getting v4 into the browser, and what that took | anything about the wasm build |
+| [notes/6502.md](notes/6502.md) | the 6502 described in the format, as a test of it | anything about a second CPU |
 | [notes/JOURNAL.md](notes/JOURNAL.md) | what was decided and why, in order | **new "Done:" entries** |
 
 The journal is a record, not a reference: every entry was true when it was written and describes
@@ -123,7 +124,10 @@ The format has described exactly one processor, and an outside reader given only
 looking for the seams and found them. Recorded here because "not Z80-specific" is currently a design
 intent that has been half-tested, and it should either become true or stop being claimed.
 
-Each of these is a concrete 6502 instruction that cannot be written today.
+Each of these is a concrete 6502 instruction that cannot be written today. **Tested 2026-09-27** by describing the
+whole documented 6502 ([notes/6502.md](notes/6502.md)): the first holds and is the one that matters; the second, third
+and fourth turned out not to block, because a step can form an address in a location standing for the chip's address
+latch and a machine operation can charge what the data costs.
 
 ### 1. An addressing mode must be able to fetch its own operand
 
