@@ -79,7 +79,7 @@ constexpr void check_tables_total(const Description &description) {
         },
         operand.kind);
   };
-  return std::ranges::any_of(row.steps, [&](const Step &step) {
+  return std::ranges::any_of(steps_of(row), [&](const Step &step) {
     return std::ranges::any_of(step.operands, matches) || std::ranges::any_of(step.destinations, matches);
   });
 }
@@ -196,9 +196,8 @@ constexpr void check_tables_used(const Description &description) {
     // rather than a reason to stop.
     for (const auto opcode: std::views::iota(0uz, 256uz))
       if (const auto *row = description.row_for(from, static_cast<std::uint8_t>(opcode)))
-        for (const auto &step: row->steps)
-          if (step.kind == Step::Kind::Goto)
-            reach(step.target);
+        if (const auto transfer = transfer_of(*row))
+          reach(transfer->target);
   }
   for (const auto [which, table]: std::views::enumerate(tables))
     if (!reachable[static_cast<std::size_t>(which)])

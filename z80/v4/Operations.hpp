@@ -4,6 +4,7 @@
 // Z80.hpp says which verbs are the chip's own instead; the arithmetic the rows share with the other implementations is
 // in `Alu`, a second palette.
 
+#include "refract/Continue.hpp"
 #include "z80/common/Alu.hpp"
 #include "z80/common/Flags.hpp"
 
@@ -39,12 +40,16 @@ struct Operations {
     return static_cast<std::uint8_t>(value | 1u << bit);
   }
 
-  // Conditions: an `if` step applies one of these and abandons the rest of the row when it answers false. A vocabulary
+  // Conditions: a step that applies one of these goes on to the rest of its row only if it answers yes. A vocabulary
   // member binds one and appends the flag bit it asks about, as `nz:is_clear(zero)` does.
-  [[nodiscard]] static constexpr bool is_set(const bool flag) { return flag; }
-  [[nodiscard]] static constexpr bool is_clear(const bool flag) { return !flag; }
-  [[nodiscard]] static constexpr bool nonzero(const std::uint8_t value) { return value != 0; }
-  [[nodiscard]] static constexpr bool nonzero16(const std::uint16_t value) { return value != 0; }
+  [[nodiscard]] static constexpr refract::Continue is_set(const bool flag) { return refract::continue_if(flag); }
+  [[nodiscard]] static constexpr refract::Continue is_clear(const bool flag) { return refract::continue_if(!flag); }
+  [[nodiscard]] static constexpr refract::Continue nonzero(const std::uint8_t value) {
+    return refract::continue_if(value != 0);
+  }
+  [[nodiscard]] static constexpr refract::Continue nonzero16(const std::uint16_t value) {
+    return refract::continue_if(value != 0);
+  }
 
   // `Alu::dec8` sets the flags; `djnz` counts without touching them.
   [[nodiscard]] static constexpr std::uint8_t dec8_no_flags(const std::uint8_t value) {

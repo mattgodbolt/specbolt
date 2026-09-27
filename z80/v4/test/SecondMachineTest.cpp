@@ -89,7 +89,7 @@ struct ToyOperations {
   [[nodiscard]] static std::uint8_t add8(const std::uint8_t lhs, const std::uint8_t rhs) {
     return static_cast<std::uint8_t>(lhs + rhs);
   }
-  [[nodiscard]] static bool zero(const std::uint8_t value) { return value == 0; }
+  [[nodiscard]] static Continue zero(const std::uint8_t value) { return continue_if(value == 0); }
 };
 
 inline constexpr std::string_view toy_cpu = R"(vocab reg : Reg = a x
@@ -101,7 +101,7 @@ table main
 00000110   | swap a         | swap a <- a
 00000111   | twice a        | twice a <- a
 00001000   | (pre)          | goto other
-00001001   | clear a if 0   | if zero a ; ld8 a <- x
+00001001   | clear a if 0   | zero a ; ld8 a <- x
 xxxxxxxx   | ??             | nop
 
 table other

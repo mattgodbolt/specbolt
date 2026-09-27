@@ -22,7 +22,7 @@ TEST_CASE("Table parsing") {
   }
   SECTION("Reads the instruction rows") {
     STATIC_CHECK(C::rows()[0].mnemonic == "nop");
-    STATIC_CHECK(C::rows()[0].steps[0].operation == "nop");
+    STATIC_CHECK(refract::steps_of(C::rows()[0])[0].operation == "nop");
     STATIC_CHECK(C::rows()[0].matched.opcode_bits == 0x00);
   }
   SECTION("A hole means the row does not cover that opcode") {
@@ -35,14 +35,14 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(C::vocabularies()[1].members[6].display == "(hl)");
     constexpr auto ld = C::rows()[*C::find_row(C::entry_table, 0x46)]; // ld b, (hl)
     STATIC_CHECK(resolve({.vocabularies = C::vocabularies(), .matched = ld.matched, .opcode = 0x46}, //
-        ld.steps[0].operands[0])
+        refract::steps_of(ld)[0].operands[0])
             .indirect);
     STATIC_CHECK(!resolve({.vocabularies = C::vocabularies(), .matched = ld.matched, .opcode = 0x46}, //
-        ld.steps[0].destinations[0])
+        refract::steps_of(ld)[0].destinations[0])
             .indirect);
     // ld (hl), b
     STATIC_CHECK(resolve({.vocabularies = C::vocabularies(), .matched = ld.matched, .opcode = 0x70}, //
-        ld.steps[0].destinations[0])
+        refract::steps_of(ld)[0].destinations[0])
             .indirect);
     STATIC_CHECK(C::find_row(C::entry_table, 0x86)); // add a, (hl)
     STATIC_CHECK(C::find_row(C::entry_table, 0x70)); // ld (hl), b
@@ -65,7 +65,7 @@ TEST_CASE("Table parsing") {
   SECTION("Finds rows by opcode") {
     STATIC_CHECK(C::find_row(C::entry_table, 0x00) == 0u);
     STATIC_CHECK(C::find_row(C::entry_table, 0x76) == 1u);
-    STATIC_CHECK(C::rows()[*C::find_row(C::entry_table, 0x21)].steps[0].operation == "ld16");
+    STATIC_CHECK(refract::steps_of(C::rows()[*C::find_row(C::entry_table, 0x21)])[0].operation == "ld16");
   }
   SECTION("Lowers mnemonics into validated pieces") {
     constexpr auto ld = C::rows()[*C::find_row(C::entry_table, 0x21)];
@@ -282,9 +282,7 @@ TEST_CASE("Two opcodes share a body only when every step agrees") {
       const auto key = I::body_key(row, byte);
       if (key == byte)
         continue;
-      for (const auto &step: row.steps) {
-        if (step.kind == refract::Step::Kind::Goto)
-          continue;
+      for (const auto &step: refract::steps_of(row)) {
         INFO("table " << int{table} << " opcode " << opcode << " line " << row.line);
         CHECK(I::call_for(step, row.matched, byte, row.line, rules) ==
               I::call_for(step, row.matched, key, row.line, rules));

@@ -221,7 +221,7 @@ TEST_CASE("Table diagnostics") {
             reference)
             .display == "c");
     CHECK(resolve({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x00},
-              row.steps[0].destinations[0])
+              steps_of(row)[0].destinations[0])
               .name == Name{"ixh"});
 
     // Opcode 0 is the derived table's own row; 1 it inherits; 0xdd it inherits, which is what makes `dd dd` re-enter.
@@ -253,18 +253,17 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | \n"), Equals("2: row has no action"));
   }
   SECTION("Steps") {
-    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | if\n"), Equals("2: 'if' needs something to test"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | goto t u\n"), Equals("2: goto takes a single table name"));
     CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix\ntable u(view:i)\n"
                             "00000000 | frob | nop\n"),
         Equals("3: unterminated '(' in goto"));
-    // Two halves of one rule, which used to disagree: the first told the author to guard the goto with an earlier `if`,
-    // and the second rejected that.
-    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | if goto t\n"),
-        Equals("2: a goto is the whole of its row, so it cannot be conditional; a row that decides between "
-               "two tables has to be two rows, one per encoding"));
-    CHECK_THROWS_WITH(parse("vocab c = nz z\ntable t\n0000000y | nop | if {c:y} ; goto t\n"),
-        Equals("3: a goto is the whole of its row, so it cannot share one with another step"));
+    // A goto shares its row with nothing, whichever side of it the other step is on.
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop ; goto t\n"),
+        Equals("2: a goto is the whole of its row, so it cannot share one with another step"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | goto t ; nop\n"),
+        Equals("2: a goto is the whole of its row, so it cannot share one with another step"));
+    // A trailing `;` is an empty step, not a second one.
+    CHECK_NOTHROW(parse("table t\n00000000 | (t) | goto t ;\n"));
   }
   SECTION("Mnemonics") {
     CHECK_THROWS_WITH(

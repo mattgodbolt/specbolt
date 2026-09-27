@@ -5,6 +5,7 @@
 // `Name` exists to be. The rest hold `std::string_view`s into the description and so could not be however they were
 // written.
 
+#include "refract/Continue.hpp"
 #include "refract/Overloaded.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/Vector.hpp"
@@ -427,20 +428,26 @@ struct Resolution {
 // How many operands, and how many destinations, one step may name.
 inline constexpr std::size_t max_operands = 4;
 
-// One application of one operation, or a transfer into another decoding table. A row is an ordered list of these, which
-// is where cost lives: an internal delay is a step like any other.
-struct Step {
-  // `If` applies an operation that yields a bool and abandons the rest of the row when it is false. That is the whole
-  // of what a condition can do here: there is no way to guard a step in the middle and resume after it, so a
-  // description whose conditionals are not a tail cannot be written. (Every Z80 conditional is one.)
-  enum class Kind : std::uint8_t { Apply, Goto, If };
-  Kind kind{};
-  // The table a `goto` hands decoding to.
+// A row that hands decoding to another table, written `goto name`: a prefix. It is the whole of its row, and renders
+// and does nothing itself, because what follows it is the instruction.
+struct Transfer {
+  // The table decoding continues in.
   std::uint8_t target{};
-  // A goto may name a member of the target's view vocabulary, as the Z80's `goto indexed(ix)` does, or write `view` to
-  // hand on the view this table was decoded under.
+  // Which member of the target's view vocabulary it is decoded under, when the goto names one, as the Z80's
+  // `goto indexed(ix)` does.
   std::uint8_t target_view{};
+  // Or the view this table was decoded under, handed on, when the goto names this table's own view parameter (as the
+  // Z80's `goto indexed_cb(view)` does).
   bool forwards_view{};
+  constexpr bool operator==(const Transfer &) const = default;
+};
+
+// One step of a row: an operation applied to its operands, with its result written to its destinations. A step whose
+// operation returns `Continue` is a condition, and decides whether the steps after it run. That is the whole of what a
+// condition can do here: there is no way to guard a step in the middle and resume after it, so a description whose
+// conditionals are not a tail cannot be written. (Every Z80 conditional is one.) A row's steps run in order, and that
+// order is where cost lives: an internal delay is a step like any other.
+struct Step {
   std::string_view operation{};
   std::optional<Reference> operation_reference{};
   Vector<Operand, max_operands> destinations{};
@@ -448,7 +455,7 @@ struct Step {
   constexpr bool operator==(const Step &) const = default;
 };
 
-// One line of a table: the encoding it matches, the mnemonic it renders, and the steps it runs, in order.
+// One line of a table: the encoding it matches, the mnemonic it renders, and what it does.
 struct Row {
   static constexpr std::size_t max_pieces = 12;
   static constexpr std::size_t max_steps = 6;
@@ -460,7 +467,9 @@ struct Row {
   // What it is for is an encoding whose opcode byte is not its last, as in the Z80's `dd cb d op`.
   bool reads_displacement{};
   std::uint8_t table{};
-  Vector<Step, max_steps> steps{};
+  // What the row does: its steps, in order, or a transfer to another table.
+  using Steps = Vector<Step, max_steps>;
+  std::variant<Steps, Transfer> action{};
   std::size_t line{};
 };
 
@@ -481,12 +490,22 @@ struct TableDecl {
   [[nodiscard]] constexpr bool takes_view() const { return !view_name.empty(); }
 };
 
-// The table a row hands decoding to, or nothing for a row that is an instruction itself. A row that only transfers
-// elsewhere renders nothing and does nothing: it is a prefix, and what follows it is the instruction.
-[[nodiscard]] constexpr std::optional<std::uint8_t> transfers_to(const Row &row) {
-  if (row.steps.size() == 1 && row.steps[0].kind == Step::Kind::Goto)
-    return row.steps[0].target;
-  return std::nullopt;
+// Where a row hands decoding on to, or nothing for a row that is an instruction itself.
+[[nodiscard]] constexpr std::optional<Transfer> transfer_of(const Row &row) {
+  return visit(Overloaded{
+                   [](const Row::Steps &) -> std::optional<Transfer> { return std::nullopt; },
+                   [](const Transfer &transfer) -> std::optional<Transfer> { return transfer; },
+               },
+      row.action);
+}
+
+// The steps a row runs, in order: none for a transfer, which does nothing but hand decoding on.
+[[nodiscard]] constexpr std::span<const Step> steps_of(const Row &row) {
+  return visit(Overloaded{
+                   [](const Row::Steps &steps) { return std::span<const Step>{steps}; },
+                   [](const Transfer &) { return std::span<const Step>{}; },
+               },
+      row.action);
 }
 
 // Which row, as an index into the description's rows, a table decodes each of its 256 opcodes to, or nothing where no

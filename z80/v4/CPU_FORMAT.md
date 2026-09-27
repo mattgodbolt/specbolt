@@ -124,7 +124,10 @@ An operation's signature is the interface:
   [keyword operands](#keyword-operands)). The parameter's type is what decides
   how wide an access is and whether a constant fits.
 - its **return type decides destinations**, as described under
-  [the action column](#the-action-column).
+  [the action column](#the-action-column), and whether it is a condition: one
+  that returns `refract::Continue` decides whether the rest of its row runs,
+  and must not be a member of the machine, so that the row states everything
+  the branch depends on. `refract::continue_if(bool)` makes one.
 
 Everything the format leaves unsaid is settled there: how wide a location is,
 what endianness a 16-bit memory access uses, what a "cycle" counts in, and how
@@ -182,7 +185,7 @@ view-decl       = "(" , view-name , ":" , vocab-name , ")" ;
 rules           = rule , { "," , rule } ;
 rule            = vocab-name , "." , display-text , "->" , ( member | view-reference ) ;
 
-row             = encoding , "|" , mnemonic , "|" , steps ;
+row             = encoding , "|" , mnemonic , "|" , action ;
 
 encoding        = pattern , { encoding-byte } ;
 pattern         = 8 * pattern-bit ;
@@ -193,11 +196,10 @@ mnemonic        = { literal | reference | "$nn" | "$nnnn" | "$e" | "+d" } ;
 reference       = "{" , vocab-name , ":" , ( slice-char | view-name ) , "}" ;
 view-reference  = "{" , vocab-name , ":" , view-name , "}" ;
 
+action          = transfer | steps ;
+transfer        = "goto" , table-name , [ "(" , ( member-name | view-name ) , ")" ] ;
 steps           = step , { ";" , step } ;
-step            = goto-step | if-step | apply-step ;
-goto-step       = "goto" , table-name , [ "(" , ( member-name | view-name ) , ")" ] ;
-if-step         = "if" , operation , { operand } ;
-apply-step      = operation , [ { operand } , "<-" ] , { operand } ;
+step            = operation , [ { operand } , "<-" ] , { operand } ;
 operation            = identifier | reference ;
 
 operand         = [ identifier , "=" ] , operand-body , [ "/" , attribute ] ;
@@ -340,7 +342,7 @@ table base
 Decoding starts in the **first table declared**; there is no reserved name
 for the entry table.
 
-A table is entered from another by a `goto` step. This is not a jump inside the
+A table is entered from another by a row whose action is a `goto`. This is not a jump inside the
 decoder: it makes the machine *read another byte and decode it as an opcode*,
 paying whatever that machine charges for an opcode fetch. A prefix is therefore
 just an instruction whose entire job is to fetch another opcode, and it costs
@@ -523,8 +525,8 @@ disassembler renders without parsing anything at run time.
 
 ### The action column
 
-An ordered list of steps separated by `;`. Cost lives here: an idle cycle is a
-step like any other.
+Either a transfer to another table (`goto`, below), or an ordered list of steps
+separated by `;`. Cost lives here: an idle cycle is a step like any other.
 
 ```
 operation  destination... <- operand...
@@ -547,8 +549,7 @@ left out and the meaning would not change.
 | apply | `inc8 {reg:y}, flags <- {reg:y} flags` |
 | apply with no destination | `out_c bc {reg:y}` |
 | apply with no operands | `exx` |
-| transfer | `goto cb` |
-| condition | `if {cond:y}` |
+| condition | `{cond:y}`, whose operation returns `Continue` |
 | idle | `delay 2` |
 
 `delay` is an ordinary operation, one the CPU supplies, and takes a whole
@@ -570,22 +571,30 @@ happens to charge the same way, and it takes a single digit.
 from the vocabulary member the opcode selects, so one row is the whole
 `add/adc/sub/sbc` group.
 
-**`if` guards the rest of the row.** It applies an operation that yields a bool
-and abandons the remaining steps when it is false. There is no `else`, and none
-is needed for a conditional whose conditional part comes last, which is every
-conditional on the Z80.
+**A condition guards the rest of the row.** A step whose operation returns
+`refract::Continue` is a condition: it is applied like any other step, and
+`Continue::no` abandons the steps after it. Nothing in the row marks it, because
+the operation's signature does, which is also why a condition names no
+destination. `Continue` is a type of its own rather than `bool` because a `bool`
+is a value, and a value still needs somewhere to go: a step whose operation
+returns one and names no destination is an error, not a condition. An
+operation taken from a vocabulary is a condition for every member or for none:
+a vocabulary whose operations mixed the two would make one row branch at some
+opcodes and not others, so it is refused against its declaration. There is no
+`else`, and none is needed for a conditional whose conditional part comes last,
+which is every conditional on the Z80.
 
 The pay-off is that the extra cycles of a taken branch come from the steps the
 condition guards, so no row states two cycle counts:
 
 ```
-11yyy000 | ret {cond:y} | delay 1 ; if {cond:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11yyy000 | ret {cond:y} | delay 1 ; {cond:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
 ```
 
 Five T-states when not taken, eleven when taken, with neither number written
-down. Two `if` steps in a row are an "and".
+down. Two conditions in a row are an "and".
 
-**`goto` must be the row's only step.** A row that transfers renders nothing, so
+**A `goto` is the whole of its row.** A row that transfers renders nothing, so
 allowing it to do anything else would make the two columns disagree.
 
 Such a row still has to have a mnemonic column, because a row has three columns.
@@ -618,7 +627,7 @@ business. For the Z80 it is T-states, which is why this document says both
 the bytes appear: displacement first, then immediates. A step list can therefore
 never make a fetch cheaper, which is correct, since the machine has to read the
 bytes before it can know it did not need them. This is why `jr nz` costs seven
-T-states even when not taken: the displacement was read before the `if`.
+T-states even when not taken: the displacement was read before the condition.
 
 **A write-back delay is charged only for a read-modify-write.** A `/delay=1` on
 an addressing mode is the idle *between* reading through it and writing back, so
@@ -920,7 +929,7 @@ idle, three to write) with the row mentioning no numbers at all.
 **A conditional, and where its extra cycles come from.**
 
 ```
-001jj000 n | jr {jcond:j}, $e | if {jcond:j} ; delay 5 ; relative pc <- pc n
+001jj000 n | jr {jcond:j}, $e | {jcond:j} ; delay 5 ; relative pc <- pc n
 ```
 
 Seven T-states not taken, twelve taken.
@@ -942,7 +951,7 @@ rewrites.
 
 ```
 vocab dir : BlockDirection = i d
-1011d000 | ld{dir:d}r | block_load flags <- {dir:d} flags ; if nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
+1011d000 | ld{dir:d}r | block_load flags <- {dir:d} flags ; nonzero16 bc ; delay 5 ; relative pc <- pc 0xfe
 ```
 
 One row for `ldir` and `lddr` both. Bit 3 *is* the direction, so the row hands

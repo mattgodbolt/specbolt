@@ -45,7 +45,7 @@ namespace specbolt::refract {
       throw std::runtime_error("an instruction may only be displaced through one base");
     found = resolved;
   };
-  for (const auto &step: row.steps) {
+  for (const auto &step: steps_of(row)) {
     for (const auto &operand: step.operands)
       consider(operand);
     for (const auto &operand: step.destinations)
@@ -86,7 +86,7 @@ namespace specbolt::refract {
             },
         },
         piece.kind);
-  }) && std::ranges::all_of(row.steps, [&](const Step &step) {
+  }) && std::ranges::all_of(steps_of(row), [&](const Step &step) {
     return operands_live(step.operands) && operands_live(step.destinations) &&
            (!step.operation_reference || live(*step.operation_reference));
   });
@@ -186,10 +186,8 @@ struct Instruction {
   // answers rather than both being false.
   std::vector<std::optional<bool>> reached(num_tables);
   for (const auto &row: rows)
-    for (const auto &step: row.steps) {
-      if (step.kind != Step::Kind::Goto)
-        continue;
-      auto &latched = reached[step.target];
+    if (const auto transfer = transfer_of(row)) {
+      auto &latched = reached[transfer->target];
       if (latched && *latched != row.reads_displacement)
         throw table_error(row.line, "this table is reached both with and without a displacement");
       latched = row.reads_displacement;

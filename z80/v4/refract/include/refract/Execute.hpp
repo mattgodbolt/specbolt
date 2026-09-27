@@ -774,10 +774,10 @@ struct Interpreter {
     }
   }
 
-  // Checks a step used as a condition against the operation it applies: it reaches no machine, is supplied every
-  // parameter, names no destination, and answers yes or no. A condition tests only what the row hands it, so that the
-  // row says everything the branch depends on; that rules out a member of the machine, even a `const` one, since a
-  // machine in hand can be asked anything.
+  // Checks a condition, a step whose operation returns `Continue`, against that operation: it reaches no machine, is
+  // supplied every parameter, and names no destination. A condition tests only what the row hands it, so that the row
+  // says everything the branch depends on; that rules out a member of the machine, even a `const` one, since a machine
+  // in hand can be asked anything.
   template<std::meta::info Fn, Call C>
   static consteval void check_condition_fits() {
     const auto name = quoted_name_of(Fn);
@@ -788,10 +788,8 @@ struct Interpreter {
       throw error(C.line, name + " takes " + decimal(arity_of<Fn>) + " operand(s) and this condition supplies " +
                               decimal(C.operands.size()));
     if (!C.destinations.empty())
-      throw error(C.line, name + " is a condition, which decides whether the rest of the row happens and names "
-                                 "no destination");
-    if (std::meta::return_type_of(Fn) != ^^bool)
-      throw error(C.line, name + " is used as a condition, so it must return bool");
+      throw error(C.line, name + " returns Continue, so it decides whether the rest of the row runs and has nowhere "
+                                 "to write");
     check_each_operand_fits<Fn, C>();
   }
 
@@ -835,17 +833,65 @@ struct Interpreter {
     }
   }
 
-  // Runs one `if` step and returns its answer. A condition is applied like any other operation; only what is done with
+  // Whether a function returns `Continue`, which is what makes it a condition. Decided from the signature, because
+  // nothing in a row says so.
+  [[nodiscard]] static consteval bool returns_continue(const std::meta::info fn) {
+    return std::meta::dealias(std::meta::remove_cvref(std::meta::return_type_of(fn))) == ^^Continue;
+  }
+  template<std::meta::info Fn>
+  static constexpr bool is_condition = returns_continue(Fn);
+
+  // Checks that the operations of each vocabulary agree about being conditions. A row that names one by reference is
+  // a condition at every opcode or at none, since nothing in the row can say which; a vocabulary that mixed the two
+  // would make one row branch at some opcodes and run straight on at others.
+  static consteval void check_conditions_agree() {
+    for (const auto &vocabulary: Compiled::vocabularies()) {
+      std::optional<std::pair<std::string_view, bool>> first;
+      for (const auto &member: vocabulary.members)
+        visit(Overloaded{
+                  [&](const Member::Operation &bound) {
+                    const auto condition = returns_continue(find_operation(bound.name, vocabulary.line));
+                    if (!first)
+                      first = std::pair{bound.name, condition};
+                    else if (first->second != condition)
+                      throw error(vocabulary.line, "vocabulary '" + std::string(vocabulary.name) +
+                                                       "' mixes conditions with operations that are "
+                                                       "not ('" +
+                                                       std::string(condition ? bound.name : first->first) +
+                                                       "' returns Continue and '" +
+                                                       std::string(condition ? first->first : bound.name) +
+                                                       "' does not), so a row naming it "
+                                                       "would branch at some opcodes and run straight on at others");
+                  },
+                  [](const OneOf<Operand, Member::Hole> auto &) {},
+              },
+            member.kind);
+    }
+  }
+
+  // Runs one condition and returns its answer. A condition is applied like any other operation; only what is done with
   // the answer differs.
   template<std::meta::info Fn, Call C>
-  [[nodiscard]] static bool evaluate(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  [[nodiscard]] static Continue evaluate(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
     consteval { check_condition_fits<Fn, C>(); }
     // Gated for the same reason `apply` is: a condition that does not fit gets one message rather than that message and
     // the cascade from calling it.
     if constexpr (!machine_member<Fn> && C.operands.size() == arity_of<Fn>)
       return call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
     else
-      return false;
+      return Continue::no;
+  }
+
+  // Runs one step and says whether the row goes on: a condition's answer, or `Continue::yes` from any other step once
+  // it has done its work.
+  template<std::meta::info Fn, Call C>
+  [[nodiscard]] static Continue run_step(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+    if constexpr (is_condition<Fn>)
+      return evaluate<Fn, C>(machine, decoded, indexed);
+    else {
+      apply<Fn, C>(machine, decoded, indexed);
+      return Continue::yes;
+    }
   }
 
   // The operation a step applies at this opcode: the one it wrote by name, or the one its `{...}` reference selects,
@@ -932,8 +978,6 @@ struct Interpreter {
   template<std::uint8_t Table, std::uint8_t BodyKey, std::size_t Index>
   static void execute_one(
       Machine &machine, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
-    // A reference into the compiled arrays, which have static storage, so the expansion statement below can walk
-    // `row.steps` as a range: a range's *address* has to be a constant, and a local copy's would not be.
     static constexpr auto row = Compiled::rows()[Index];
     // A renaming applies to every row this table decodes, inherited or its own. A rule names the vocabulary it
     // rewrites, not just the member, so a row can opt out of a renaming by naming a vocabulary no rule mentions. (That
@@ -947,21 +991,22 @@ struct Interpreter {
     // case it arrived before this opcode did.
     const std::uint8_t displacement =
         row.reads_displacement || (displaced && !entered_latched) ? machine.fetch_immediate() : latch;
-    // A `goto` is the whole of its row: a prefix reads no operands and has no immediate, so nothing below this line
-    // applies to one. It is also why the hand-over happens *here* rather than among the steps: a mandatory tail call
-    // abandons the frame, so it is refused wherever a local has had its address taken, and the lambda that forms
-    // `indexed` takes several.
-    if constexpr (row.steps.size() == 1 && row.steps[0].kind == Step::Kind::Goto) {
-      constexpr auto step = row.steps[0];
-      constexpr std::uint8_t next_table = step.target;
-      const auto next_view = static_cast<std::uint8_t>(step.forwards_view ? view : step.target_view);
+    // A transfer is the whole of its row: a prefix reads no operands and has no immediate, so nothing in the steps'
+    // branch applies to one. It is also why the hand-over happens *here* rather than among the steps: a mandatory tail
+    // call abandons the frame, so it is refused wherever a local has had its address taken, and the lambda that forms
+    // `indexed` takes several. The chain ends in a `static_assert` so that a new kind of action is a compile error here
+    // rather than a row that silently does nothing.
+    if constexpr (std::holds_alternative<Transfer>(row.action)) {
+      constexpr auto transfer = std::get<Transfer>(row.action);
+      constexpr std::uint8_t next_table = transfer.target;
+      const auto next_view = static_cast<std::uint8_t>(transfer.forwards_view ? view : transfer.target_view);
       // The next table's opcode is fetched here, since the hand-over is the loop. A latched table's opcode arrives as
       // an operand read rather than an instruction fetch: the machine has already committed, so it costs less and does
       // not refresh.
       const auto next_opcode = Compiled::latched()[next_table] ? machine.fetch_immediate() : machine.fetch_opcode();
       [[clang::musttail]] return dispatch<next_table>[next_opcode](machine, displacement, next_view, next_opcode);
     }
-    else {
+    else if constexpr (std::holds_alternative<Row::Steps>(row.action)) {
 
       // The encoding column says what is fetched, and it is fetched once, before any step, rather than where it is
       // used: the order arguments are evaluated in is unspecified, so a fetch inside a call could land after a memory
@@ -996,22 +1041,24 @@ struct Interpreter {
       }();
       // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
-      template for (constexpr auto step: row.steps) {
+      // A reference into `row`, which has static storage, so the expansion statement below can walk it as a range: a
+      // range's *address* has to be a constant, and a local copy's would not be.
+      constexpr const auto &steps = std::get<Row::Steps>(row.action);
+      template for (constexpr auto step: steps) {
         {
           constexpr auto verb = verb_for(step, row.matched, BodyKey, row.line, rules);
           constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
-          if constexpr (step.kind == Step::Kind::If) {
-            // The rest of the row is the conditional half, which is where the extra cycles of a taken branch come from
-            // too. `break` rather than `return`, because abandoning the rest of a row is not abandoning the run: the
-            // hand-over below still has to happen, and a `return` here stops the machine at the first untaken branch.
-            if (!evaluate<find_operation(verb, row.line), call>(machine, decoded, indexed))
-              break;
-          }
-          else
-            apply<find_operation(verb, row.line), call>(machine, decoded, indexed);
+          // After a condition that says no, the rest of the row is skipped, which is where the extra cycles of a taken
+          // branch come from. `break` rather than `return`, because abandoning the rest of a row is not abandoning the
+          // run: the hand-over below still has to happen, and a `return` here stops the machine at the first untaken
+          // branch.
+          if (run_step<find_operation(verb, row.line), call>(machine, decoded, indexed) == Continue::no)
+            break;
         }
       }
     }
+    else
+      static_assert(false, "a row's action is something new, and nothing here generates it");
     // The row is done, so hand on to the next instruction rather than returning: this hand-over is the run loop.
     [[clang::musttail]] return continue_running(machine, 0, 0, 0);
   }
@@ -1043,7 +1090,7 @@ struct Interpreter {
             },
           operand.kind);
     };
-    for (const auto &step: row.steps) {
+    for (const auto &step: steps_of(row)) {
       if (step.operation_reference)
         note(*step.operation_reference);
       std::ranges::for_each(step.operands, note_operand);
@@ -1158,7 +1205,10 @@ struct Interpreter {
   // of the machine; this is the one entry point, so it runs once regardless. The description was checked when
   // `Compiled` was instantiated.
   static void run(Machine &machine) {
-    consteval { check_location_names_unique(); }
+    consteval {
+      check_location_names_unique();
+      check_conditions_agree();
+    }
     continue_running(machine, 0, 0, 0);
   }
 };

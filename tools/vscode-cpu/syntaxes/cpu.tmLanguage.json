@@ -187,7 +187,6 @@
       "patterns": [
         { "include": "#continuation" },
         { "include": "#step-goto" },
-        { "include": "#step-if" },
         { "include": "#step-operation" },
         { "include": "#assign" },
         { "include": "#keyword-operand" },
@@ -211,24 +210,14 @@
     },
 
     "step-goto": {
-      "comment": "goto must be the row's only step; the view is chosen by name or forwarded.",
-      "match": "(?:(?<=\\|)|(?<=;))\\s*(goto)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\)))?",
+      "comment": "A goto is the whole of its row; the view is chosen by name or forwarded.",
+      "match": "(?<=\\|)\\s*(goto)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:(\\()\\s*([A-Za-z_][A-Za-z0-9_]*)\\s*(\\)))?",
       "captures": {
         "1": { "name": "keyword.control.goto.cpu" },
         "2": { "name": "entity.name.type.table.cpu" },
         "3": { "name": "punctuation.definition.view.begin.cpu" },
         "4": { "name": "variable.parameter.view.cpu" },
         "5": { "name": "punctuation.definition.view.end.cpu" }
-      }
-    },
-
-    "step-if": {
-      "comment": "`if` guards the rest of the row; what follows it is an operation like any other.",
-      "match": "(?:(?<=\\|)|(?<=;))\\s*(if)\\s+(?:(\\{[^}]*\\})|([A-Za-z_][A-Za-z0-9_]*))",
-      "captures": {
-        "1": { "name": "keyword.control.conditional.cpu" },
-        "2": { "patterns": [{ "include": "#reference" }] },
-        "3": { "name": "support.function.operation.cpu" }
       }
     },
 

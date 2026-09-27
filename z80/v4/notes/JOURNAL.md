@@ -1414,3 +1414,27 @@ shared with three other implementations and compiled by compilers with no
 annotation syntax, so it could not publish if it wanted to. The toy machine in
 `SecondMachineTest` publishes one static and one non-static member to show
 both call forms.
+
+## Done: each kind holds only what it has, and the signature says what a step is
+
+2026-09-25 to 2026-09-27. `Piece`, `Operand` and `Member` were one struct per concept with a `kind` enum and every
+field any kind might want, so a vocabulary piece had a `text` nobody read, every operation member carried an operand
+nobody resolved, and deciding by kind was an `if` on the enum wherever it came up. Each is a `std::variant` now, with the
+alternatives nested (`Piece::Literal`, `Operand::Named`, `Member::Hole`) and holding only their own data; `Access` keeps
+what every operand shares, how it is reached, and `Resolved` stays flat because it is a template argument and a variant
+is not structural.
+
+Every decision by kind is an exhaustive visit through `Overloaded`, with a `OneOf<...>` concept for the lambdas that
+group alternatives, so adding one is a compile error at each place that has to decide what it means rather than a
+silent fall-through. `holds_alternative` is kept for questions that are about exactly one alternative, which in practice
+means tests. Two mistakes that used to pass became diagnostics on the way: an operation member named where an operand
+belongs, and a `/delay` on an operation member.
+
+`Step` lost its kind entirely. `goto` was never a step: the parser required it to be the whole row, so `Row::action` is
+now its steps or a `Transfer`. And `if` is gone from the format. A step whose operation returns `refract::Continue` is a
+condition, decided by the signature, the same way a parameter's type already decides whether a name is read or spliced
+as an enumerator. `Continue` rather than `bool`, because a `bool` is a value (the Z80 reads its flag bits as one) and a
+value still needs a destination, so a forgotten destination stays an error rather than becoming a branch. Every
+generated step now answers whether the row goes on, and a row runs until one says no.
+
+The cost, and the sideline it opened about `std::visit` during constant evaluation, are in FINDINGS.md.

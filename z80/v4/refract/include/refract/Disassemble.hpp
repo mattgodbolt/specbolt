@@ -64,15 +64,15 @@ inline constexpr std::size_t max_instruction_bytes = 8;
     // moves on to the next table before the row that uses it is reached.
     if (row->reads_displacement)
       latch = byte_at(offset++);
-    const auto next = transfers_to(*row);
+    const auto next = transfer_of(*row);
     if (!next)
       break;
     // A run of prefixes may be unbounded, and a disassembler has to answer, so it gives up rather than follow one to
     // the end of memory.
     if (offset >= max_instruction_bytes)
       return {"??", offset};
-    view = row->steps[0].forwards_view ? view : row->steps[0].target_view;
-    table = *next;
+    view = next->forwards_view ? view : next->target_view;
+    table = next->target;
   }
 
   // The table a row was *decoded in* owns the renaming, which is why this asks the table index rather than

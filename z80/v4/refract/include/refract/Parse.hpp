@@ -412,7 +412,7 @@ constexpr void check_immediates(const Row &row) {
                  },
         operand.kind);
   };
-  const auto uses_immediate = std::ranges::any_of(row.steps, [&](const Step &step) {
+  const auto uses_immediate = std::ranges::any_of(steps_of(row), [&](const Step &step) {
     return std::ranges::any_of(step.operands, immediate) || std::ranges::any_of(step.destinations, immediate);
   });
   if (uses_immediate != (row.immediate_bytes != 0))
@@ -440,54 +440,57 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     throw std::runtime_error("an instruction may carry at most two immediate bytes");
 }
 
+// Parses a row that hands decoding to another table: `goto name`, or, for a table that takes a view, `goto
+// name(member)` to pick a member of its view vocabulary, or `goto name(p)`, where `p` is the current table's own view
+// parameter, to hand on the view it was decoded under. `action` starts with the word `goto`, which the caller has
+// already recognised.
+[[nodiscard]] constexpr Transfer parse_transfer(Parser action, const std::span<const Vocabulary> vocabularies,
+    const std::span<const TableDecl> tables, const TableDecl &table) {
+  action.skip_word();
+  Transfer transfer;
+  auto destination = action.next_word();
+  std::string_view supplied;
+  if (const auto open = destination.find('('); open != std::string_view::npos) {
+    if (!destination.ends_with(')'))
+      throw std::runtime_error("unterminated '(' in goto");
+    supplied = destination.substr(open + 1, destination.size() - open - 2);
+    destination = destination.substr(0, open);
+  }
+  transfer.target = find_table(tables, destination);
+  if (!action.next_word().empty())
+    throw std::runtime_error("goto takes a single table name");
+  const auto &target = tables[transfer.target];
+  if (target.takes_view() && supplied.empty())
+    throw std::runtime_error("this table takes a view, so the goto must say which");
+  if (!target.takes_view() && !supplied.empty())
+    throw std::runtime_error("this table takes no view, so the goto may not supply one");
+  if (!supplied.empty()) {
+    if (table.takes_view() && supplied == table.view_name) {
+      if (table.view_vocabulary != target.view_vocabulary)
+        throw std::runtime_error("the view being handed on is drawn from a different vocabulary");
+      transfer.forwards_view = true;
+    }
+    else {
+      const auto &members = vocabularies[target.view_vocabulary].members;
+      const auto found = std::ranges::find(members, supplied, &Member::display);
+      if (found == members.end())
+        throw std::runtime_error("goto names a view that is not a member of that table's view vocabulary");
+      transfer.target_view = static_cast<std::uint8_t>(found - members.begin());
+    }
+  }
+  return transfer;
+}
+
 // Parses one step of the third column: an operation, the destinations written before `<-`, and the operands after it.
-// `if` guards the rest of the row; `goto` hands decoding to another table and does nothing else.
-[[nodiscard]] constexpr Step parse_step(Parser action, const std::span<const Vocabulary> vocabularies,
-    const std::span<const TableDecl> tables, const Row &row, const TableDecl &table) {
+// Whether the step is a condition is not written here: it is one if its operation returns `Continue`, which only the
+// generator can see.
+[[nodiscard]] constexpr Step parse_step(
+    Parser action, const std::span<const Vocabulary> vocabularies, const Row &row, const TableDecl &table) {
   Step step{.operation = action.next_word()};
-  if (step.operation == "if") {
-    step.kind = Step::Kind::If;
-    step.operation = action.next_word();
-    if (step.operation.empty())
-      throw std::runtime_error("'if' needs something to test");
-  }
-  if (step.operation == "goto") {
-    if (step.kind == Step::Kind::If)
-      throw std::runtime_error("a goto is the whole of its row, so it cannot be conditional; a row that decides "
-                               "between two tables has to be two rows, one per encoding");
-    step.kind = Step::Kind::Goto;
-    auto destination = action.next_word();
-    std::string_view supplied;
-    if (const auto open = destination.find('('); open != std::string_view::npos) {
-      if (!destination.ends_with(')'))
-        throw std::runtime_error("unterminated '(' in goto");
-      supplied = destination.substr(open + 1, destination.size() - open - 2);
-      destination = destination.substr(0, open);
-    }
-    step.target = find_table(tables, destination);
-    if (!action.next_word().empty())
-      throw std::runtime_error("goto takes a single table name");
-    const auto &target = tables[step.target];
-    if (target.takes_view() && supplied.empty())
-      throw std::runtime_error("this table takes a view, so the goto must say which");
-    if (!target.takes_view() && !supplied.empty())
-      throw std::runtime_error("this table takes no view, so the goto may not supply one");
-    if (!supplied.empty()) {
-      if (table.takes_view() && supplied == table.view_name) {
-        if (table.view_vocabulary != target.view_vocabulary)
-          throw std::runtime_error("the view being handed on is drawn from a different vocabulary");
-        step.forwards_view = true;
-      }
-      else {
-        const auto &members = vocabularies[target.view_vocabulary].members;
-        const auto found = std::ranges::find(members, supplied, &Member::display);
-        if (found == members.end())
-          throw std::runtime_error("goto names a view that is not a member of that table's view vocabulary");
-        step.target_view = static_cast<std::uint8_t>(found - members.begin());
-      }
-    }
-    return step;
-  }
+  // The disassembler renders nothing for a goto row and stops, so a goto has to be the whole row or the two would
+  // disagree about what an opcode means.
+  if (step.operation == "goto")
+    throw std::runtime_error("a goto is the whole of its row, so it cannot share one with another step");
   if (step.operation.starts_with('{'))
     step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, table);
   // `operation dest <- args...`; the destination is optional
@@ -561,21 +564,30 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
       row.mnemonic = parser.next_field('|');
       if (parser.rest().contains('|'))
         throw std::runtime_error("a row has three columns; a fourth '|' is one too many");
-      // Steps run in order, separated by `;`.
-      Parser sequence(Parser::trim(parser.rest()));
-      while (!sequence.eof()) {
-        Parser action(sequence.next_field(';'));
-        if (action.eof())
-          continue;
-        row.steps.push_back(parse_step(action, vocabularies, tables, row, tables[*current]));
+      // The action is a transfer, or steps that run in order, separated by `;`.
+      const auto action = Parser::trim(parser.rest());
+      if (Parser(action).next_word() == "goto") {
+        // A trailing `;` is an empty step, skipped here as it is between steps.
+        auto transfer = action;
+        while (transfer.ends_with(';'))
+          transfer = Parser::trim(transfer.substr(0, transfer.size() - 1));
+        if (transfer.contains(';'))
+          throw std::runtime_error("a goto is the whole of its row, so it cannot share one with another step");
+        row.action = parse_transfer(Parser(transfer), vocabularies, tables, tables[*current]);
       }
-      if (row.steps.empty())
-        throw std::runtime_error("row has no action");
-      // The disassembler renders nothing for a goto row and stops, so a goto has to be the whole row or the two would
-      // disagree about what an opcode means.
-      if (std::ranges::any_of(row.steps, [](const Step &step) { return step.kind == Step::Kind::Goto; }) &&
-          row.steps.size() != 1) // NOLINT
-        throw std::runtime_error("a goto is the whole of its row, so it cannot share one with another step");
+      else {
+        Row::Steps steps;
+        Parser sequence(action);
+        while (!sequence.eof()) {
+          Parser step(sequence.next_field(';'));
+          if (step.eof())
+            continue;
+          steps.push_back(parse_step(step, vocabularies, row, tables[*current]));
+        }
+        if (steps.empty())
+          throw std::runtime_error("row has no action");
+        row.action = steps;
+      }
       lower_mnemonic(vocabularies, row, tables[*current]);
       check_immediates(row);
       result.push_back(row);

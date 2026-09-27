@@ -50,7 +50,7 @@ languages sharing a line.
 | mnemonic literal text | `string.unquoted.mnemonic` |
 | `$nn`, `$nnnn`, `$e`, `+d` in a mnemonic | `constant.character.format.placeholder` |
 | the first word of a step, the operation | `support.function.operation` |
-| `goto`, `if`, `vocab`, `table`, `with` | `keyword.control` |
+| `goto`, `vocab`, `table`, `with` | `keyword.control` |
 | `<-` | `keyword.operator.assignment` |
 | a location the CPU supplies | `variable.other.location` |
 | `{vocab:selector}` | vocabulary as a type, selector as a parameter |
