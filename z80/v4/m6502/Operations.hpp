@@ -68,6 +68,10 @@ struct Operations {
   [[nodiscard]] static constexpr Loaded lda8(const std::uint8_t, const std::uint8_t value, const std::uint8_t p) {
     return load8(value, p);
   }
+  // `sta`, in the same shape as the rest of its group: the accumulator goes out, and neither it nor the status changes.
+  [[nodiscard]] static constexpr Loaded sta8(const std::uint8_t a, const std::uint8_t, const std::uint8_t p) {
+    return {a, p};
+  }
   // Also `cpx` and `cpy`: the register is handed back as it was.
   [[nodiscard]] static constexpr Loaded cmp8(const std::uint8_t reg, const std::uint8_t value, const std::uint8_t p) {
     const auto difference = static_cast<std::uint8_t>(reg - value);

@@ -7,8 +7,15 @@
 # than an operand, so each mode is a row of its own, and forms its address in explicit steps through `ea`, the chip's
 # internal effective-address latch.
 
-# The accumulator group, `cc = 01`. `sta` is a hole: it writes where the others read, so it has rows of its own.
-vocab alu = ora:ora8 and:and8 eor:eor8 adc:adc8 - lda:lda8 cmp:cmp8 sbc:sbc8
+# The accumulator group, `cc = 01`, chosen by `aaa`. Every one reads its operand and writes the accumulator except
+# `sta`, which reads the accumulator and writes memory, and whose indexed modes always pay for the page they might
+# cross. So where each writes, where it reads and how it indexes are vocabularies over the same bits, as they are
+# decoded on the chip. There is no `sta #`, which is the hole in `alu_imm`.
+vocab alu     = ora:ora8 and:and8 eor:eor8 adc:adc8 sta:sta8 lda:lda8 cmp:cmp8 sbc:sbc8
+vocab alu_imm = ora:ora8 and:and8 eor:eor8 adc:adc8 -        lda:lda8 cmp:cmp8 sbc:sbc8
+vocab into    = a    a    a    a    (ea) a    a    a
+vocab from    = (ea) (ea) (ea) (ea) a    (ea) (ea) (ea)
+vocab indexed = r:index r:index r:index r:index w:index_store r:index r:index r:index
 
 # The read-modify-write group, `cc = 10`. `stx` and `ldx` sit in the same column with the other index register's
 # addressing modes, so they are holes here and rows of their own below.
@@ -34,24 +41,16 @@ vocab pushed = p a
 
 table main
 
-# The accumulator group, one row per addressing mode.
-aaa00001 n   | {alu:a} ($nn,x)          | zp_index ea <- n x ; zp_pointer ea <- ea ; {alu:a} a, p <- a (ea) p
-aaa00101 n   | {alu:a} $nn              | {alu:a} a, p <- a (n) p
-aaa01001 n   | {alu:a} #$nn             | {alu:a} a, p <- a n p
-aaa01101 n n | {alu:a} $nnnn            | {alu:a} a, p <- a (n) p
-aaa10001 n   | {alu:a} ($nn),y          | zp_pointer ea <- n ; index ea <- ea y ; {alu:a} a, p <- a (ea) p
-aaa10101 n   | {alu:a} $nn,x            | zp_index ea <- n x ; {alu:a} a, p <- a (ea) p
-aaa11001 n n | {alu:a} $nnnn,y          | index ea <- n y ; {alu:a} a, p <- a (ea) p
-aaa11101 n n | {alu:a} $nnnn,x          | index ea <- n x ; {alu:a} a, p <- a (ea) p
-
-# `sta`, the same modes but writing, so an indexed one always pays the extra cycle. There is no `sta #`.
-10000001 n   | sta ($nn,x)              | zp_index ea <- n x ; zp_pointer ea <- ea ; ld8 (ea) <- a
-10000101 n   | sta $nn                  | ld8 (n) <- a
-10001101 n n | sta $nnnn                | ld8 (n) <- a
-10010001 n   | sta ($nn),y              | zp_pointer ea <- n ; index_store ea <- ea y ; ld8 (ea) <- a
-10010101 n   | sta $nn,x                | zp_index ea <- n x ; ld8 (ea) <- a
-10011001 n n | sta $nnnn,y              | index_store ea <- n y ; ld8 (ea) <- a
-10011101 n n | sta $nnnn,x              | index_store ea <- n x ; ld8 (ea) <- a
+# The accumulator group, one row per addressing mode, `sta` included. Every mode but immediate forms its address in
+# `ea` first, even where that is only the operand byte, so that `into` and `from` can name it.
+aaa00001 n   | {alu:a} ($nn,x)          | zp_index ea <- n x ; zp_pointer ea <- ea ; {alu:a} {into:a}, p <- a {from:a} p
+aaa00101 n   | {alu:a} $nn              | ld16 ea <- n ; {alu:a} {into:a}, p <- a {from:a} p
+aaa01001 n   | {alu_imm:a} #$nn         | {alu_imm:a} a, p <- a n p
+aaa01101 n n | {alu:a} $nnnn            | ld16 ea <- n ; {alu:a} {into:a}, p <- a {from:a} p
+aaa10001 n   | {alu:a} ($nn),y          | zp_pointer ea <- n ; {indexed:a} ea <- ea y ; {alu:a} {into:a}, p <- a {from:a} p
+aaa10101 n   | {alu:a} $nn,x            | zp_index ea <- n x ; {alu:a} {into:a}, p <- a {from:a} p
+aaa11001 n n | {alu:a} $nnnn,y          | {indexed:a} ea <- n y ; {alu:a} {into:a}, p <- a {from:a} p
+aaa11101 n n | {alu:a} $nnnn,x          | {indexed:a} ea <- n x ; {alu:a} {into:a}, p <- a {from:a} p
 
 # The read-modify-write group. The chip writes the old value back before the new one, which is the idle cycle the
 # `/delay=1` charges.
