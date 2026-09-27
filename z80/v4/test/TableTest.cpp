@@ -27,8 +27,8 @@ TEST_CASE("Table parsing") {
   }
   SECTION("A hole means the row does not cover that opcode") {
     STATIC_CHECK(C::vocabularies()[3].name == "logic");
-    STATIC_CHECK(C::vocabularies()[3].members[3].hole); // cp has its own rows
-    STATIC_CHECK(!C::vocabularies()[3].members[2].hole);
+    STATIC_CHECK(std::holds_alternative<Member::Hole>(C::vocabularies()[3].members[3].kind)); // cp has its own rows
+    STATIC_CHECK(!std::holds_alternative<Member::Hole>(C::vocabularies()[3].members[2].kind));
   }
   SECTION("Parentheses make an operand an address") {
     STATIC_CHECK(C::vocabularies()[1].name == "reg");
@@ -51,13 +51,15 @@ TEST_CASE("Table parsing") {
     constexpr auto alu = C::vocabularies()[2];
     STATIC_CHECK(alu.name == "arith");
     STATIC_CHECK(alu.members[0].display == "add");
-    STATIC_CHECK(alu.members[0].operation == "add8");
-    STATIC_CHECK(alu.members[0].arguments[0].kind == Operand::Kind::Constant);
+    constexpr auto add = std::get<Member::Operation>(alu.members[0].kind);
+    STATIC_CHECK(add.name == "add8");
+    STATIC_CHECK(add.arguments[0].kind == Operand::Kind{Operand::Constant{0}});
     STATIC_CHECK(alu.members[1].display == "adc");
-    STATIC_CHECK(alu.members[1].operation == "add8");
-    STATIC_CHECK(alu.members[1].arguments[0].name == Name{"carry"});
-    STATIC_CHECK(C::vocabularies()[3].members[3].hole);
-    STATIC_CHECK(C::vocabularies()[0].members[0].operation.empty());
+    constexpr auto adc = std::get<Member::Operation>(alu.members[1].kind);
+    STATIC_CHECK(adc.name == "add8");
+    STATIC_CHECK(adc.arguments[0].kind == Operand::Kind{Operand::Named{"carry"}});
+    STATIC_CHECK(std::holds_alternative<Member::Hole>(C::vocabularies()[3].members[3].kind));
+    STATIC_CHECK(std::holds_alternative<Operand>(C::vocabularies()[0].members[0].kind));
   }
   SECTION("Decoding starts in the first table declared") { STATIC_CHECK(C::tables()[C::entry_table].name == "base"); }
   SECTION("Finds rows by opcode") {

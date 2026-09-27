@@ -5,6 +5,7 @@
 // `Name` exists to be. The rest hold `std::string_view`s into the description and so could not be however they were
 // written.
 
+#include "refract/Overloaded.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/Vector.hpp"
 
@@ -73,14 +74,10 @@ struct Reference {
   constexpr bool operator==(const Reference &) const = default;
 };
 
-// What an operand is on the machine, however it was written: the same whether a row wrote it or a vocabulary member
-// did, and carried unchanged from `Operand` to `Resolved`, which both derive from it. A name is only a name here,
-// whatever it is on the machine (the Z80's `a`, `hl` and `carry` are a register, a pair and a flag bit). Parentheses
-// say to use it as an address, whichever kind it is.
+// How an operand is reached, whatever kind it is: the same whether a row wrote it or a vocabulary member did, and
+// carried unchanged from `Operand` to `Resolved`, which both derive from it. Parentheses say to use the operand as an
+// address, whichever kind it is.
 struct Access {
-  Name name{};
-  std::uint16_t constant{};
-  std::uint8_t width{};
   bool indirect{};
   // The address is this operand offset by a displacement byte the instruction carries, as in the Z80's `(ix+d)`.
   // Forming it is the machine's job because paying for it is.
@@ -93,27 +90,45 @@ struct Access {
   constexpr bool operator==(const Access &) const = default;
 };
 
-// What a row wrote in an operand position: a constant, a name the machine can resolve, the immediate the encoding
-// fetched, a vocabulary reference, or `-` to discard a result.
+// What a row wrote in an operand position, and how it is reached. Each kind holds only what it needs.
 struct Operand : Access {
-  enum class Kind : std::uint8_t { Constant, Named, Immediate, Vocabulary, Discard };
-  Kind kind{};
-  Reference reference{};
+  // A number written out.
+  struct Constant {
+    std::uint16_t value;
+    constexpr bool operator==(const Constant &) const = default;
+  };
+  // A name the machine resolves. A name is only a name here, whatever it is on the machine (the Z80's `a`, `hl` and
+  // `carry` are a register, a pair and a flag bit).
+  struct Named {
+    Name name;
+    constexpr bool operator==(const Named &) const = default;
+  };
+  // The immediate the encoding fetched, of this many bytes.
+  struct Immediate {
+    std::uint8_t width;
+    constexpr bool operator==(const Immediate &) const = default;
+  };
+  // Whichever member of a vocabulary the opcode's slice, or the view, selects.
+  struct Vocabulary {
+    Reference reference;
+    constexpr bool operator==(const Vocabulary &) const = default;
+  };
+  // `-`: the result is dropped.
+  struct Discard {
+    constexpr bool operator==(const Discard &) const = default;
+  };
+
+  using Kind = std::variant<Constant, Named, Immediate, Vocabulary, Discard>;
+  Kind kind;
   constexpr bool operator==(const Operand &) const = default;
 
   // One of each kind. A designated initialiser cannot name a base's member, so the aggregate-with-a-base spelling
-  // lives here, once, rather than at every place the lexer makes one. (`literal`, since `constant` is the field.)
-  [[nodiscard]] static constexpr Operand discard() { return {{}, Kind::Discard}; }
-  [[nodiscard]] static constexpr Operand immediate(const std::uint8_t width) {
-    return {{.width = width}, Kind::Immediate};
-  }
-  [[nodiscard]] static constexpr Operand literal(const std::uint16_t value) {
-    return {{.constant = value}, Kind::Constant};
-  }
-  [[nodiscard]] static constexpr Operand named(const Name name) { return {{.name = name}, Kind::Named}; }
-  [[nodiscard]] static constexpr Operand vocabulary(const Reference reference) {
-    return {{}, Kind::Vocabulary, reference};
-  }
+  // lives here, once, rather than at every place the lexer makes one.
+  [[nodiscard]] static constexpr Operand discard() { return {{}, Discard{}}; }
+  [[nodiscard]] static constexpr Operand immediate(const std::uint8_t width) { return {{}, Immediate{width}}; }
+  [[nodiscard]] static constexpr Operand literal(const std::uint16_t value) { return {{}, Constant{value}}; }
+  [[nodiscard]] static constexpr Operand named(const Name name) { return {{}, Named{name}}; }
+  [[nodiscard]] static constexpr Operand vocabulary(const Reference reference) { return {{}, Vocabulary{reference}}; }
 };
 
 // An operand once an opcode has settled which vocabulary member it meant. `Operand` is what a description wrote; this
@@ -123,9 +138,13 @@ struct Operand : Access {
 // A handler is a template on one of these, so every field is part of its identity: two operands that differ anywhere
 // are two handlers.
 struct Resolved : Access {
-  // No `Vocabulary`: resolving one is the lookup, so what is left names whatever the member named.
+  // No `Vocabulary`: resolving one is the lookup, so what is left names whatever the member named. Flat rather than a
+  // variant, which is not structural: the fields a kind does not use stay at their defaults.
   enum class Kind : std::uint8_t { Constant, Named, Immediate, Discard };
   Kind kind{};
+  Name name{};
+  std::uint16_t constant{};
+  std::uint8_t width{};
   // The scope of the vocabulary this came from, because by the time a name is looked up the vocabulary is long gone.
   // Empty for an operand no vocabulary owns, such as one a member appends, where the parameter decides.
   Name scope{};
@@ -145,18 +164,28 @@ struct Resolved : Access {
 // lexical parse cannot produce one, since it is the reference syntax that makes an operand a vocabulary reference and
 // only a row can write it.
 [[nodiscard]] constexpr Resolved as_resolved(const Operand &operand) {
-  const auto kind = [&] {
-    switch (operand.kind) {
-      case Operand::Kind::Constant: return Resolved::Kind::Constant;
-      case Operand::Kind::Named: return Resolved::Kind::Named;
-      case Operand::Kind::Immediate: return Resolved::Kind::Immediate;
-      case Operand::Kind::Discard: return Resolved::Kind::Discard;
-      case Operand::Kind::Vocabulary: break;
-    }
-    throw std::logic_error("a vocabulary reference resolves to a member, never to itself");
-  }();
-  // The `Access` part is copied whole; only the kind is mapped.
-  return {static_cast<const Access &>(operand), kind};
+  // The `Access` part is copied whole; the kind is mapped along with whatever it carries.
+  Resolved result{static_cast<const Access &>(operand)};
+  visit(Overloaded{
+            [&](const Operand::Constant &constant) {
+              result.kind = Resolved::Kind::Constant;
+              result.constant = constant.value;
+            },
+            [&](const Operand::Named &named) {
+              result.kind = Resolved::Kind::Named;
+              result.name = named.name;
+            },
+            [&](const Operand::Immediate &immediate) {
+              result.kind = Resolved::Kind::Immediate;
+              result.width = immediate.width;
+            },
+            [&](const Operand::Discard &) { result.kind = Resolved::Kind::Discard; },
+            [](const Operand::Vocabulary &) {
+              throw std::logic_error("a vocabulary reference resolves to a member, never to itself");
+            },
+        },
+      operand.kind);
+  return result;
 }
 
 // One part of an instruction's text, with the values it carries taken out: a literal chunk, a vocabulary member to look
@@ -193,22 +222,29 @@ struct Piece {
   constexpr bool operator==(const Piece &) const = default;
 };
 
-// One member of a vocabulary: the text a row's reference to it displays, the operation it may bind, and the operand it
-// stands for in a step.
+// One member of a vocabulary: the text a row's reference to it displays, and what it stands for, which is an operand,
+// an operation for a step to apply, or nothing.
 struct Member {
+  // An operation, such as the Z80's `add:add8(0)`, and what this member decides about the call: the row fills the
+  // arguments the encoding varies, and these are the rest.
+  struct Operation {
+    static constexpr std::size_t max_arguments = 3;
+    std::string_view name;
+    Vector<Operand, max_arguments> arguments{};
+    constexpr bool operator==(const Operation &) const = default;
+  };
+  // `-`: no member here, so a row naming this one does not cover the opcode.
+  struct Hole {
+    constexpr bool operator==(const Hole &) const = default;
+  };
+
   static constexpr std::size_t max_pieces = 3;
   std::string_view display{};
   // The display, split around whatever it renders from the instruction: an indexed mode writes its displacement inline,
   // so the disassembler renders rather than parses.
   Vector<Piece, max_pieces> pieces{};
-  std::string_view operation{};
-  static constexpr std::size_t max_arguments = 3;
-  // What this member decides about the operation it names, as a call: the row fills the arguments the encoding varies,
-  // and these are the rest.
-  Vector<Operand, max_arguments> arguments{};
-  // The text is an operand, parsed once here.
-  Operand operand{};
-  bool hole{};
+  // An operand's text is the display itself, parsed once here.
+  std::variant<Operand, Operation, Hole> kind{};
   constexpr bool operator==(const Member &) const = default;
 };
 
@@ -221,6 +257,9 @@ struct Vocabulary {
   // member, because it names a C++ type rather than something written the way assembly is written.
   std::string_view scope{};
   Vector<Member, max_members> members{};
+  // Whether member n is the number n, worked out once when the vocabulary is parsed (see `is_numeric`), because every
+  // reference to it at every opcode asks.
+  bool numeric{};
   // Where it was declared, so a check that fires elsewhere can point at the line that has to change. A continuation
   // folds to the line the declaration starts on.
   std::size_t line{};
@@ -252,13 +291,24 @@ using Rules = Vector<Rule, 6>;
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
-    if (member.hole)
-      continue;
-    if (member.operand.kind != Operand::Kind::Constant || !member.operation.empty() || !member.arguments.empty())
+    // Whether this member is the number `at`; a hole says nothing either way.
+    const auto fits =
+        visit(Overloaded{
+                  [&](const Operand &operand) {
+                    any = true;
+                    return visit(Overloaded{
+                                     [&](const Operand::Constant &constant) { return constant.value == at; },
+                                     [](const OneOf<Operand::Named, Operand::Immediate, Operand::Vocabulary,
+                                         Operand::Discard> auto &) { return false; },
+                                 },
+                        operand.kind);
+                  },
+                  [](const Member::Operation &) { return false; },
+                  [](const Member::Hole &) { return true; },
+              },
+            member.kind);
+    if (!fits)
       return false;
-    if (member.operand.constant != at)
-      return false;
-    any = true;
   }
   return any;
 }
@@ -318,36 +368,60 @@ struct Resolution {
   return {reference.vocabulary_index, reference.from_view};
 }
 
-// Resolves an operand against this opcode: a vocabulary reference becomes the member its slice, or the view, selects,
-// and anything else resolves to itself. This is the one way from what a row wrote to what the generated code is built
-// from. A reference names whichever vocabulary member its slice selects, and that member is written the same way an
-// operand is written in a row, so most of this is deciding what the member could not know: which parameter it feeds,
-// which scope its name belongs to, and whether the encoding or the view will answer at run time.
-[[nodiscard]] constexpr Resolved resolve(const Resolution &at, const Operand &operand) {
-  if (operand.kind != Operand::Kind::Vocabulary)
-    return as_resolved(operand);
-  auto result = as_resolved(member_of(at, operand.reference).operand);
+// The member a row's vocabulary reference selects, resolved as the operand the row wrote there: `resolve` for the
+// one kind of operand that needs a lookup.
+[[nodiscard]] constexpr Resolved resolve_reference(
+    const Resolution &at, const Operand &operand, const Reference reference) {
+  const auto member = member_of(at, reference);
+  auto result = visit(Overloaded{
+                          [](const Operand &stands_for) { return as_resolved(stands_for); },
+                          [&](const Member::Operation &) -> Resolved {
+                            throw std::runtime_error("'" + std::string(member.display) +
+                                                     "' is an operation, and this row names it where an operand "
+                                                     "belongs");
+                          },
+                          [](const Member::Hole &) -> Resolved {
+                            throw std::logic_error("a hole never decodes, so it is never resolved");
+                          },
+                      },
+      member.kind);
   // The member supplies everything about the operand except which parameter it was written against, which is the row's
   // business and not the vocabulary's.
   result.parameter = operand.parameter;
-  result.scope = Name{at.vocabularies[operand.reference.vocabulary_index].scope};
+  result.scope = Name{at.vocabularies[reference.vocabulary_index].scope};
   // A number the opcode already carries: say where, rather than which. Every member of the vocabulary then resolves to
   // the same operand, so the functions that differed only in a constant become one. `constant` is cleared for sharing,
   // not correctness: it is part of the handler's identity, and the member's own value would split them again.
-  if (!operand.reference.from_view && is_numeric(at.vocabularies[operand.reference.vocabulary_index])) {
+  if (!reference.from_view && at.vocabularies[reference.vocabulary_index].numeric) {
     result.from_opcode = true;
-    result.slice = at.matched.slices[operand.reference.slice_index];
+    result.slice = at.matched.slices[reference.slice_index];
     result.constant = 0;
     return result;
   }
   // The member supplies the shape (indirect, displaced, what a write-back idles for) but *which* member is not known
   // until the table's view has been chosen, so the vocabulary is carried instead of a name. The generated code turns it
   // into the list of locations the view selects between.
-  if (const auto [vocabulary, from_view] = source_of(at, operand.reference); from_view) {
+  if (const auto [vocabulary, from_view] = source_of(at, reference); from_view) {
     result.from_view = true;
     result.view_vocabulary = vocabulary;
   }
   return result;
+}
+
+// Resolves an operand against this opcode: a vocabulary reference becomes the member its slice, or the view, selects,
+// and anything else resolves to itself. This is the one way from what a row wrote to what the generated code is built
+// from. A reference names whichever vocabulary member its slice selects, and that member is written the same way an
+// operand is written in a row, so most of this is deciding what the member could not know: which parameter it feeds,
+// which scope its name belongs to, and whether the encoding or the view will answer at run time.
+[[nodiscard]] constexpr Resolved resolve(const Resolution &at, const Operand &operand) {
+  return visit(
+      Overloaded{
+          [&](const Operand::Vocabulary &written) { return resolve_reference(at, operand, written.reference); },
+          [&](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Discard> auto &) {
+            return as_resolved(operand);
+          },
+      },
+      operand.kind);
 }
 
 // How many operands, and how many destinations, one step may name.

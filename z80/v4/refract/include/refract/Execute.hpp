@@ -22,6 +22,7 @@
 #include "refract/Decode.hpp"
 #include "refract/Machine.hpp"
 #include "refract/Model.hpp"
+#include "refract/Overloaded.hpp"
 #include "refract/TableError.hpp"
 #include "refract/ToArray.hpp"
 #include "refract/Workarounds.hpp"
@@ -302,6 +303,28 @@ struct Interpreter {
     return candidates.front();
   }
 
+  // The name of the location a member of a view's vocabulary stands for; an error against `line` for a member that is
+  // not a named location.
+  [[nodiscard]] static consteval std::string_view location_named(const Member &member, const std::size_t line) {
+    const auto not_a_location = [&] {
+      return error(line, "'" + std::string(member.display) +
+                             "' is selected by a view, so it must name a location the machine can read");
+    };
+    return visit(
+        Overloaded{
+            [&](const Operand &operand) {
+              return visit(Overloaded{
+                               [](const Operand::Named &named) { return named.name.view(); },
+                               [&](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary,
+                                   Operand::Discard> auto &) -> std::string_view { throw not_a_location(); },
+                           },
+                  operand.kind);
+            },
+            [&](const OneOf<Member::Operation, Member::Hole> auto &) -> std::string_view { throw not_a_location(); },
+        },
+        member.kind);
+  }
+
   // The locations a view selects between, in the order its vocabulary lists them, so that the view *is* the index.
   // Every member resolves to a location of the same type, which `check_view_vocabulary` guarantees, so the machine is
   // handed a location it already knows how to read and needs no notion of a view.
@@ -315,17 +338,17 @@ struct Interpreter {
     // The scope comes from the vocabulary rather than from a member, because a member is parsed before anything knows
     // which vocabulary it will end up in.
     constexpr auto scope = vocabulary.scope;
-    constexpr auto first = find_location(members[0].operand.name.view(), Line, scope);
+    constexpr auto first = find_location(location_named(members[0], Line), Line, scope);
     template for (constexpr auto at: std::views::iota(1uz, members.size())) {
-      if (std::meta::type_of(find_location(members[at].operand.name.view(), Line, scope)) != std::meta::type_of(first))
-        throw error(Line, "'" + std::string(members[at].operand.name.view()) + "' and '" +
-                              std::string(members[0].operand.name.view()) +
+      if (std::meta::type_of(find_location(location_named(members[at], Line), Line, scope)) !=
+          std::meta::type_of(first))
+        throw error(Line, "'" + std::string(members[at].display) + "' and '" + std::string(members[0].display) +
                               "' are different kinds of location, and a view selects among one kind");
     }
     using Location = [:std::meta::type_of(first):];
     std::array<Location, members.size()> locations{};
     template for (constexpr auto at: std::views::iota(0uz, members.size())) {
-      locations[at] = [:find_location(members[at].operand.name.view(), Line, scope):];
+      locations[at] = [:find_location(location_named(members[at], Line), Line, scope):];
     }
     return locations;
   }
@@ -825,15 +848,36 @@ struct Interpreter {
       return false;
   }
 
-  // The vocabulary member a step's `{...}` operation reference names at this opcode, or an empty member for a step that
-  // wrote its operation by name. A member may bind the operation late, and may append an operand the encoding does not
-  // carry.
-  [[nodiscard]] static constexpr Member member_for(
+  // The operation a step applies at this opcode: the one it wrote by name, or the one its `{...}` reference selects,
+  // which may bind some arguments the encoding does not carry. A reference that selects something else is an error,
+  // which the caller puts a line in front of.
+  [[nodiscard]] static constexpr Member::Operation operation_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const Rules &rules) {
     if (!step.operation_reference)
-      return {};
-    return member_of({.vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode},
-        *step.operation_reference);
+      return {.name = step.operation};
+    const auto member =
+        member_of({.vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode},
+            *step.operation_reference);
+    return visit(Overloaded{
+                     [](const Member::Operation &bound) { return bound; },
+                     [&](const Operand &) -> Member::Operation {
+                       throw std::runtime_error("'" + std::string(member.display) +
+                                                "' is an operand, and this step names it where an operation "
+                                                "belongs");
+                     },
+                     [](const Member::Hole &) -> Member::Operation {
+                       throw std::logic_error("a hole never decodes, so no step applies one");
+                     },
+                 },
+        member.kind);
+  }
+
+  // The name of the operation a step applies at this opcode, as `operation_for` finds it, reported against the row's
+  // file and line if it cannot be found.
+  [[nodiscard]] static constexpr std::string_view verb_for(
+      const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
+    return naming(Compiled::file,
+        [&] { return at_line(line, [&] { return operation_for(step, matched, opcode, rules).name; }); });
   }
 
   // The `Call` a step becomes: its operands and destinations resolved against this opcode, then whatever the vocabulary
@@ -842,7 +886,7 @@ struct Interpreter {
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
     return naming(Compiled::file, [&] {
       return at_line(line, [&] {
-        const auto member = member_for(step, matched, opcode, rules);
+        const auto applied = operation_for(step, matched, opcode, rules);
         const Resolution at{
             .vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode};
         Call result{.line = line};
@@ -860,7 +904,7 @@ struct Interpreter {
         }
         // A vocabulary member may append an operand the encoding does not carry. It named no vocabulary, so it is
         // already resolved and has no scope: which enum a name means here is the parameter's business.
-        for (const auto &argument: member.arguments)
+        for (const auto &argument: applied.arguments)
           result.operands.push_back(as_resolved(argument));
         return result;
       });
@@ -954,8 +998,7 @@ struct Interpreter {
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
       template for (constexpr auto step: row.steps) {
         {
-          constexpr auto member = member_for(step, row.matched, BodyKey, rules);
-          constexpr auto verb = step.operation_reference ? member.operation : step.operation;
+          constexpr auto verb = verb_for(step, row.matched, BodyKey, row.line, rules);
           constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
           if constexpr (step.kind == Step::Kind::If) {
             // The rest of the row is the conditional half, which is where the extra cycles of a taken branch come from
@@ -987,21 +1030,24 @@ struct Interpreter {
   [[nodiscard]] static constexpr Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
     Vector<std::uint8_t, Pattern::max_slices> used;
     const auto note = [&used](const Reference reference) {
-      if (reference.from_view || is_numeric(Compiled::vocabularies()[reference.vocabulary_index]))
+      if (reference.from_view || Compiled::vocabularies()[reference.vocabulary_index].numeric)
         return;
       if (std::ranges::contains(used, reference.slice_index))
         return;
       used.push_back(reference.slice_index);
     };
+    const auto note_operand = [&](const Operand &operand) {
+      visit(Overloaded{
+                [&](const Operand::Vocabulary &vocabulary) { note(vocabulary.reference); },
+                [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Discard> auto &) {},
+            },
+          operand.kind);
+    };
     for (const auto &step: row.steps) {
       if (step.operation_reference)
         note(*step.operation_reference);
-      for (const auto &operand: step.operands)
-        if (operand.kind == Operand::Kind::Vocabulary)
-          note(operand.reference);
-      for (const auto &destination: step.destinations)
-        if (destination.kind == Operand::Kind::Vocabulary)
-          note(destination.reference);
+      std::ranges::for_each(step.operands, note_operand);
+      std::ranges::for_each(step.destinations, note_operand);
     }
     return used;
   }

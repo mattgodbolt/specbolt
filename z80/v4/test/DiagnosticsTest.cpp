@@ -127,6 +127,10 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("vocab r = a:add8(0 b\ntable t\n"), Equals("1: a member's argument list is not closed"));
     CHECK_THROWS_WITH(parse("vocab r = a:add8() b\ntable t\n"),
         Equals("1: a member's argument list is empty; leave it off rather than writing '()'"));
+    CHECK_THROWS_WITH(parse("vocab r = a:add8/delay=1 b\ntable t\n"),
+        Equals("1: a delay is what a write back through an operand costs, and this member names an operation"));
+    CHECK_THROWS_WITH(parse("vocab o = x:add8 y:add8\ntable t\n0000000o | {o:o} | ld8 a <- {o:o}\n"),
+        Equals("3: 'x' is an operation, and this row names it where an operand belongs"));
   }
   SECTION("References") {
     CHECK_THROWS_WITH(

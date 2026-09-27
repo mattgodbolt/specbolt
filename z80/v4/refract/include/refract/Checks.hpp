@@ -70,7 +70,14 @@ constexpr void check_tables_total(const Description &description) {
     what = what.substr(1, what.size() - 2);
   }
   const auto matches = [what, indirect](const Operand &operand) {
-    return operand.kind == Operand::Kind::Named && operand.indirect == indirect && operand.name.view() == what;
+    return visit(
+        Overloaded{
+            [&](const Operand::Named &named) { return operand.indirect == indirect && named.name.view() == what; },
+            [](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary, Operand::Discard> auto &) {
+              return false;
+            },
+        },
+        operand.kind);
   };
   return std::ranges::any_of(row.steps, [&](const Step &step) {
     return std::ranges::any_of(step.operands, matches) || std::ranges::any_of(step.destinations, matches);
@@ -126,7 +133,7 @@ constexpr void check_derived_rows_override(const Description &description, const
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode};
   const auto renders = [&](this const auto &self, const Piece &piece) -> bool {
-    return std::visit(
+    return visit(
         Overloaded{
             [](const Piece::Displacement &) { return true; },
             [&](const Piece::Vocabulary &vocabulary) {
@@ -150,7 +157,9 @@ constexpr void check_derived_rows_override(const Description &description, const
 constexpr void check_displacement_rendered(const Description &description) {
   const auto vocabularies = description.vocabularies;
   for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
-    const auto displaced = displaced_through(vocabularies, *row, opcode, *rules).has_value();
+    // Resolving every operand is also where a row that names an operation as an operand is found, against its line.
+    const auto displaced =
+        at_line(row->line, [&] { return displaced_through(vocabularies, *row, opcode, *rules).has_value(); });
     if (displaced != renders_displacement(vocabularies, *row, opcode, *rules))
       throw table_error(row->line, displaced
                                        ? "this row is displaced but its mnemonic does not say so; write `+d` where the "

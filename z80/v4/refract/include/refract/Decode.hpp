@@ -42,7 +42,7 @@ namespace specbolt::refract {
     if (!resolved.displaced)
       return;
     if (found && found->name != resolved.name)
-      throw table_error(row.line, "an instruction may only be displaced through one base");
+      throw std::runtime_error("an instruction may only be displaced through one base");
     found = resolved;
   };
   for (const auto &step: row.steps) {
@@ -59,13 +59,26 @@ namespace specbolt::refract {
 [[nodiscard]] constexpr bool members_live(
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode) {
   const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .opcode = opcode};
-  const auto live = [&](const Reference reference) { return !member_of(at, reference).hole; };
+  const auto live = [&](const Reference reference) {
+    return visit(Overloaded{
+                     [](const Member::Hole &) { return false; },
+                     [](const OneOf<Operand, Member::Operation> auto &) { return true; },
+                 },
+        member_of(at, reference).kind);
+  };
   const auto operands_live = [&](const auto &operands) {
-    return std::ranges::all_of(operands,
-        [&](const Operand &operand) { return operand.kind != Operand::Kind::Vocabulary || live(operand.reference); });
+    return std::ranges::all_of(operands, [&](const Operand &operand) {
+      return visit(Overloaded{
+                       [&](const Operand::Vocabulary &vocabulary) { return live(vocabulary.reference); },
+                       [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Discard> auto &) {
+                         return true;
+                       },
+                   },
+          operand.kind);
+    });
   };
   return std::ranges::all_of(row.pieces, [&](const Piece &piece) {
-    return std::visit(
+    return visit(
         Overloaded{
             [&](const Piece::Vocabulary &vocabulary) { return live(vocabulary.reference); },
             [](const OneOf<Piece::Literal, Piece::Imm8, Piece::Imm16, Piece::Displacement, Piece::Relative> auto &) {

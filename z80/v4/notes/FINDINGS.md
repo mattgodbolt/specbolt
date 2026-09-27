@@ -178,6 +178,37 @@ throws `std::bad_alloc` with no message, so a malformed pattern would lose its d
 the language. `Call`'s uses stay on `Vector` regardless, for requirement 1, which is why "eventually
 `inplace_vector`" is true of most of the parser and false of the generator.
 
+### `std::visit` is dear during constant evaluation
+
+Found 2026-09-27, turning `Operand` and `Member` into variants decided by exhaustive visits. refract visits in its
+hottest compile-time loops: resolving every operand of every row at every opcode, and asking whether every member a row
+names is live. Two things followed.
+
+- **gcc's budget ran out.** The checks `Compiled` runs in its `consteval {}` block went past gcc's default of 33,554,432
+  operations ("'constexpr' evaluation operation count exceeds limit"), once from asking whether a vocabulary is numeric
+  per reference, and again from one extra `at_line` wrapper. The first was a real waste and is fixed: whether a
+  vocabulary is its own slice is now worked out once, when it is parsed (`Vocabulary::numeric`). The second showed
+  how little headroom the checks have.
+- **libstdc++'s `std::visit` costs more than the work it dispatches to.** It builds a table of function pointers per
+  visitor and variant; evaluating that is cheap at run time and not during constant evaluation. `refract::visit`, in
+  Overloaded.hpp, asks `index()` of each alternative in turn instead. It is still exhaustive, because every
+  alternative's overload is instantiated, so a missing case is a compile error.
+
+One compile of `Z80.cpp` with gcc 16.2 at `RelWithDebInfo`, two adjacent runs each, same machine:
+
+| | compile | peak memory |
+|---|---:|---:|
+| before the variants | 80.0 s | 2.04 GB |
+| variants, `std::visit` | 87.4 s | 2.36 GB |
+| variants, `refract::visit` | 84.5 s | 2.18 GB |
+
+So `refract::visit` saves about 3 s and 180 MB a unit over `std::visit`, and the variants cost about 4.5 s over the
+flat structs either way; what is left is probably the larger `Member` copied by value in `member_of` and `resolve`,
+which has not been profiled. **Under review:** a hand-rolled `visit` is a surprise for the reader in exchange for about
+3 s, and the standard one may come back. For the talk this belongs with the other places constant evaluation is not yet
+as good as run time: an implementation's library can be written for run-time speed in ways that make it slow to
+evaluate, and the budget that catches runaway evaluation also catches honest work.
+
 ### Compile time, and where it went when it moved
 
 Every figure here is one compile of `z80/v4/Z80.cpp` at `RelWithDebInfo` with gcc 16.2, taken

@@ -5,13 +5,16 @@
 // a time; none knows which line it is reading, since `at_line` names that when one of them throws.
 
 #include "refract/Model.hpp"
+#include "refract/Overloaded.hpp"
 #include "refract/Parser.hpp"
 
 #include <charconv>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <variant>
 #include <vector>
 
 namespace specbolt::refract {
@@ -169,8 +172,9 @@ namespace specbolt::refract {
 [[nodiscard]] constexpr Member parse_member(const std::string_view text) {
   Parser whole(text);
   Parser parser(whole.take_until('/'));
-  Member member{.display = parser.take_until(':'), .operation = parser.rest()};
-  std::uint8_t delay_attribute = 0;
+  Member member{.display = parser.take_until(':')};
+  const auto bound_text = parser.rest();
+  std::optional<std::uint8_t> delay_attribute;
   if (const auto attributes = whole.rest(); !attributes.empty()) {
     Parser attribute(attributes);
     const auto key = attribute.take_until('=');
@@ -184,19 +188,32 @@ namespace specbolt::refract {
   if (member.display.contains('$'))
     throw std::runtime_error("a vocabulary member cannot render an immediate; only the encoding fetches those");
   if (member.display == "-") {
-    member.hole = true;
+    member.kind = Member::Hole{};
     return member;
   }
   for (const auto &piece: pieces_of(Parser(member.display)))
     member.pieces.push_back(piece);
-  member.operand = parse_simple_operand(member.display, 0);
-  member.operand.write_back_delay = delay_attribute;
-  if (member.operand.kind == Operand::Kind::Immediate || member.operand.kind == Operand::Kind::Discard)
-    throw std::runtime_error("a vocabulary member must name something the CPU can resolve");
-  Parser bound(member.operation);
-  member.operation = bound.take_until('(');
+  if (bound_text.empty()) {
+    // An operand: the display is its text.
+    auto operand = parse_simple_operand(member.display, 0);
+    operand.write_back_delay = delay_attribute.value_or(0);
+    visit(Overloaded{
+              [](const OneOf<Operand::Immediate, Operand::Discard> auto &) {
+                throw std::runtime_error("a vocabulary member must name something the CPU can resolve");
+              },
+              [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
+          },
+        operand.kind);
+    member.kind = operand;
+    return member;
+  }
+  if (delay_attribute)
+    throw std::runtime_error(
+        "a delay is what a write back through an operand costs, and this member names an operation");
+  Parser bound(bound_text);
+  Member::Operation bound_operation{.name = bound.take_until('(')};
   if (auto arguments = bound.rest(); !arguments.empty()) {
-    if (member.operation.empty())
+    if (bound_operation.name.empty())
       throw std::runtime_error("a member's argument list needs an operation to hand them to");
     if (!arguments.ends_with(')'))
       throw std::runtime_error("a member's argument list is not closed");
@@ -209,15 +226,23 @@ namespace specbolt::refract {
       const auto [parameter, rest] = split_keyword(word);
       auto argument = parse_simple_operand(rest, 0);
       argument.parameter = parameter;
-      if (argument.kind == Operand::Kind::Immediate)
-        throw std::runtime_error("a member cannot pass an immediate; only the encoding fetches those");
-      if (argument.kind == Operand::Kind::Discard)
-        throw std::runtime_error("'-' discards a result, and a member's argument is something the operation is given");
-      member.arguments.push_back(argument);
+      visit(Overloaded{
+                [](const Operand::Immediate &) {
+                  throw std::runtime_error("a member cannot pass an immediate; only the encoding fetches those");
+                },
+                [](const Operand::Discard &) {
+                  throw std::runtime_error(
+                      "'-' discards a result, and a member's argument is something the operation is given");
+                },
+                [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
+            },
+          argument.kind);
+      bound_operation.arguments.push_back(argument);
     }
-    if (member.arguments.empty())
+    if (bound_operation.arguments.empty())
       throw std::runtime_error("a member's argument list is empty; leave it off rather than writing '()'");
   }
+  member.kind = bound_operation;
   return member;
 }
 
