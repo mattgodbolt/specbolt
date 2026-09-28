@@ -187,6 +187,73 @@ needed, conditions, relative jumps, the stack, and page-zero addressing all work
 6502's flag model is no harder than the Z80's. The gaps are addressing modes and their cost, not the
 shape of the thing.
 
+### What the 6502 spike found, and the design it points to
+
+Tried 2026-09-27 and 2026-09-28 on the branch `mg/v4_spike_6502`, which describes the documented NMOS instruction
+set in `z80/v4/m6502/6502.cpu`, runs it beside the Z80, and keeps the detail in its own `notes/6502.md`. Exploratory:
+smoke tests only. Against the predictions above:
+
+- **§1 was the one that bit.** With refract unchanged, the description was 46 rows plus a catch-all for 151 opcodes,
+  because each group needed a row per addressing mode.
+- **§2 and §3 did not block.** Addresses are formed in steps through `ea`, a location standing for the chip's internal
+  address latch: `(zp),Y` is `zp_pointer ea <- n ; index ea <- ea y`, then `(ea)`. Nesting and register indexing are
+  just more steps, and `displaced_address` is not used at all.
+- **§4 moved into the machine.** `index` records that a fix-up is owed; a read pays the extra cycle only if the index
+  crossed a page, and a write always pays, which is what the chip's dummy read does. One addressing mode then serves
+  loads, stores and read-modify-writes. No framework change.
+- **§5** was not tested.
+
+**The design: a mode is a block of row fragments.** A `mode` declaration opens a block, as `table` does, and each
+line after it is one member, written like a row with four columns: the slice's value with the bytes the member adds
+to the encoding, the text it renders, the operand it stands for, and the steps it runs first.
+
+```
+mode am
+000 n   | ($nn,x) | (ea) | zp_index ea <- n x ; zp_pointer ea <- ea
+001 n   | $nn     | (n)  |
+010 n   | #$nn    | n    |
+011 n n | $nnnn   | (n)  |
+...
+mode store = am with 010 -> -
+
+aaabbb01 | {alu:a} {am:b} | {alu:a} a, p <- a {am:b} p
+100bbb01 | sta {store:b}  | ld8 {store:b} <- a
+```
+
+A row names a mode with the ordinary reference syntax: in the mnemonic it renders the member's text, in a step it
+stands for the member's operand, and the member's steps run once, before the row's own, however often the row names
+it. The value is written out rather than implied by line order, so reordering cannot change the meaning and a missing
+value is a hole; the block a line sits in says how many columns to expect, so a wrong count is an error at once
+rather than a line that parses as the other kind. Prototyped there, the description came to 28 rows plus the
+catch-all, every regular group one row, and the Z80 unchanged.
+
+**What made it cheap.** The disassembler needed nothing, since a member's pieces could already render and consume
+bytes. `body_key` already gives each value of a slice a reference reads its own body, so the number of immediate
+bytes became a property of the body rather than of the row, and a member's steps go in front of the row's. The
+exhaustive visits over a member's kind flagged every place the new kind needed a decision.
+
+**Open questions, for when this is taken up for real:**
+
+1. **Derived modes can only borrow.** `mode store = am with 010 -> -` removes a member, and `101 -> other.101` borrows
+   one; a member no other mode has means writing the mode out in full (the 6502's `ldx`, whose zero-page `$nn,y` is
+   unique to it). The spike recommends keeping `-` and `mode.value` as the only right-hand sides, since a member
+   written inline would put `|` and `;` inside a comma-separated list.
+2. **A mode must appear in both the mnemonic and the steps, or neither.** The disassembler finds its bytes through the
+   text and the interpreter through the steps, so they must agree about the instruction's length; the prototype
+   checks this.
+3. **One immediate per instruction** still holds: a row naming a mode that fetches may not fetch its own. Relaxing it
+   needs a stated byte order; a member's bytes before the row's is the `(ix+d)` precedent.
+4. **Precedence reads backwards in places.** The read-modify-write row claims the slots where single-opcode
+   instructions sit, so those rows have to come first. Correct, but worth a sentence in CPU_FORMAT.md.
+5. **There are now two kinds of vocabulary.** A mode member cannot stand where an operation belongs, and a view cannot
+   select from a mode; both are refused, but the distinction needs saying.
+6. **A member's steps cannot use `{v:s}` references,** since a member has no slices of its own.
+7. **The Z80's `(ix+d)` stays as it is.** A displacement that arrives before the opcode (`dd cb d op`) is the part a
+   mode does not model, so latched tables remain.
+
+**Smaller, separate:** a number format the target supplies (`$42` rather than `0x42`), an encoding letter for a byte
+that is fetched and ignored (the 6502's `brk`), and keeping a palette's `private:` helpers out of what a row may name.
+
 ---
 
 ## What is still open
