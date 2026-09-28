@@ -310,18 +310,19 @@ struct Interpreter {
       return error(line, "'" + std::string(member.display) +
                              "' is selected by a view, so it must name a location the machine can read");
     };
-    return visit(
-        Overloaded{
-            [&](const Operand &operand) {
-              return visit(Overloaded{
-                               [](const Operand::Named &named) { return named.name.view(); },
-                               [&](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary,
-                                   Operand::Discard> auto &) -> std::string_view { throw not_a_location(); },
-                           },
-                  operand.kind);
-            },
-            [&](const OneOf<Member::Operation, Member::Hole> auto &) -> std::string_view { throw not_a_location(); },
-        },
+    return visit(Overloaded{
+                     [&](const Operand &operand) {
+                       return visit(Overloaded{
+                                        [](const Operand::Named &named) { return named.name.view(); },
+                                        [&](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary,
+                                            Operand::Discard> auto &) -> std::string_view { throw not_a_location(); },
+                                    },
+                           operand.kind);
+                     },
+                     [&](const OneOf<Member::Operation, Member::Hole, Member::Fragment> auto &) -> std::string_view {
+                       throw not_a_location();
+                     },
+                 },
         member.kind);
   }
 
@@ -863,7 +864,7 @@ struct Interpreter {
                                                        "' does not), so a row naming it "
                                                        "would branch at some opcodes and run straight on at others");
                   },
-                  [](const OneOf<Operand, Member::Hole> auto &) {},
+                  [](const OneOf<Operand, Member::Hole, Member::Fragment> auto &) {},
               },
             member.kind);
     }
@@ -911,11 +912,61 @@ struct Interpreter {
                                                 "' is an operand, and this step names it where an operation "
                                                 "belongs");
                      },
+                     [&](const Member::Fragment &) -> Member::Operation {
+                       throw std::runtime_error("'" + std::string(member.display) +
+                                                "' is a member of a mode, and this step names it where an operation "
+                                                "belongs");
+                     },
                      [](const Member::Hole &) -> Member::Operation {
                        throw std::logic_error("a hole never decodes, so no step applies one");
                      },
                  },
         member.kind);
+  }
+
+  // The members the modes a row names select at this opcode, each once, in the order the row's steps first name them:
+  // what they add to the instruction and run before its own steps.
+  [[nodiscard]] static constexpr std::vector<Member::Fragment> fragments_of(
+      const Row &row, const std::uint8_t opcode, const Rules &rules) {
+    const Resolution at{
+        .vocabularies = Compiled::vocabularies(), .matched = row.matched, .rules = rules, .opcode = opcode};
+    std::vector<Member::Fragment> fragments;
+    for (const auto reference: modes_among(Compiled::vocabularies(), references_in_steps(steps_of(row))))
+      visit(Overloaded{
+                [&](const Member::Fragment &fragment) { fragments.push_back(fragment); },
+                [](const Member::Hole &) { throw std::logic_error("a hole never decodes, so it adds nothing"); },
+                [](const OneOf<Operand, Member::Operation> auto &) {
+                  throw std::logic_error("every member of a mode is a fragment or a hole");
+                },
+            },
+          member_of(at, reference).kind);
+    return fragments;
+  }
+
+  // How many immediate bytes the instruction at this opcode fetches: the row's own, or those of a mode it names.
+  [[nodiscard]] static constexpr std::uint8_t immediate_bytes_of(
+      const Row &row, const std::uint8_t opcode, const Rules &rules) {
+    auto bytes = row.immediate_bytes;
+    for (const auto &fragment: fragments_of(row, opcode, rules))
+      bytes = static_cast<std::uint8_t>(bytes + fragment.immediate_bytes);
+    return bytes;
+  }
+
+  // How many modes one row may name, and so how many steps one body may run.
+  static constexpr std::size_t max_modes_named = 2;
+  static constexpr std::size_t max_body_steps = Row::max_steps + max_modes_named * Member::Fragment::max_steps;
+
+  // The steps the body for this opcode runs: those of the modes the row names, which form what the row's own steps
+  // then use, followed by the row's.
+  [[nodiscard]] static constexpr Vector<Step, max_body_steps> steps_of_body(
+      const Row &row, const std::uint8_t opcode, const Rules &rules) {
+    Vector<Step, max_body_steps> steps;
+    for (const auto &fragment: fragments_of(row, opcode, rules))
+      for (const auto &step: fragment.steps)
+        steps.push_back(step);
+    for (const auto &step: steps_of(row))
+      steps.push_back(step);
+    return steps;
   }
 
   // The name of the operation a step applies at this opcode, as `operation_for` finds it, reported against the row's
@@ -1007,17 +1058,20 @@ struct Interpreter {
       [[clang::musttail]] return dispatch<next_table>[next_opcode](machine, displacement, next_view, next_opcode);
     }
     else if constexpr (std::holds_alternative<Row::Steps>(row.action)) {
+      // What this body fetches and runs: the row's own, with whatever the modes it names add at this opcode.
+      constexpr std::uint8_t immediate_bytes = immediate_bytes_of(row, BodyKey, rules);
+      static constexpr auto body_steps = steps_of_body(row, BodyKey, rules);
 
       // The encoding column says what is fetched, and it is fetched once, before any step, rather than where it is
       // used: the order arguments are evaluated in is unspecified, so a fetch inside a call could land after a memory
       // access the row puts before it.
       const std::uint16_t immediate = [&] -> std::uint16_t {
-        if constexpr (row.immediate_bytes == 2)
+        if constexpr (immediate_bytes == 2)
           return machine.fetch_immediate16();
-        else if constexpr (row.immediate_bytes == 1)
+        else if constexpr (immediate_bytes == 1)
           return machine.fetch_immediate();
         else {
-          static_assert(row.immediate_bytes == 0, "the parser allows at most two immediate bytes");
+          static_assert(immediate_bytes == 0, "the parser allows at most two immediate bytes");
           return 0;
         }
       }();
@@ -1031,7 +1085,7 @@ struct Interpreter {
           //
           // The count is a template argument so that the machine, which knows how long its window is, can refuse a
           // count it cannot hold at compile time.
-          constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
+          constexpr std::uint8_t read_inside = immediate_bytes + (entered_latched ? 1 : 0);
           consteval { check_window_holds<read_inside>(row.line); }
           return machine.template displaced_address<read_inside>(
               direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement);
@@ -1041,9 +1095,9 @@ struct Interpreter {
       }();
       // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
-      // A reference into `row`, which has static storage, so the expansion statement below can walk it as a range: a
-      // range's *address* has to be a constant, and a local copy's would not be.
-      constexpr const auto &steps = std::get<Row::Steps>(row.action);
+      // A reference to `body_steps`, which has static storage, so the expansion statement below can walk it as a range:
+      // a range's *address* has to be a constant, and a local copy's would not be.
+      constexpr const auto &steps = body_steps;
       template for (constexpr auto step: steps) {
         {
           constexpr auto verb = verb_for(step, row.matched, BodyKey, row.line, rules);

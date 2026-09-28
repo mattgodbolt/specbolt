@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstdint>
 #include <initializer_list>
 
@@ -80,6 +81,23 @@ TEST_CASE("The 6502 description runs") {
     refract::Interpreter<Target>::run(machine);
     CHECK(machine.a == 0x99);
     CHECK(machine.memory[0x0400] == 0x99);
+  }
+  SECTION("One addressing mode charges a load, a store and a read-modify-write what each costs") {
+    // lda $12ff,x ; sta $1200,x ; inc $1200,x, first without crossing a page, then with.
+    const auto cycles_with = [](const std::uint8_t x) {
+      Machine machine{.x = x, .pc = 0x0600, .instructions_left = 1};
+      load(machine, 0x0600, {0xbd, 0xff, 0x12});
+      refract::Interpreter<Target>::run(machine);
+      Machine store{.x = x, .pc = 0x0600, .instructions_left = 1};
+      load(store, 0x0600, {0x9d, 0x00, 0x12});
+      refract::Interpreter<Target>::run(store);
+      Machine modify{.x = x, .pc = 0x0600, .instructions_left = 1};
+      load(modify, 0x0600, {0xfe, 0x00, 0x12});
+      refract::Interpreter<Target>::run(modify);
+      return std::array{machine.cycles, store.cycles, modify.cycles};
+    };
+    CHECK(cycles_with(0) == std::array<std::size_t, 3>{4, 5, 7});
+    CHECK(cycles_with(1) == std::array<std::size_t, 3>{5, 5, 7});
   }
 }
 

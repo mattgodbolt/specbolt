@@ -223,6 +223,22 @@ struct Piece {
   constexpr bool operator==(const Piece &) const = default;
 };
 
+// How many operands, and how many destinations, one step may name.
+inline constexpr std::size_t max_operands = 4;
+
+// One step of a row: an operation applied to its operands, with its result written to its destinations. A step whose
+// operation returns `Continue` is a condition, and decides whether the steps after it run. That is the whole of what a
+// condition can do here: there is no way to guard a step in the middle and resume after it, so a description whose
+// conditionals are not a tail cannot be written. (Every Z80 conditional is one.) A row's steps run in order, and that
+// order is where cost lives: an internal delay is a step like any other.
+struct Step {
+  std::string_view operation{};
+  std::optional<Reference> operation_reference{};
+  Vector<Operand, max_operands> destinations{};
+  Vector<Operand, max_operands> operands{};
+  constexpr bool operator==(const Step &) const = default;
+};
+
 // One member of a vocabulary: the text a row's reference to it displays, and what it stands for, which is an operand,
 // an operation for a step to apply, or nothing.
 struct Member {
@@ -238,6 +254,16 @@ struct Member {
   struct Hole {
     constexpr bool operator==(const Hole &) const = default;
   };
+  // A member of a `mode`: a piece of a row, as an addressing mode is. It brings bytes to the instruction's encoding,
+  // text to its mnemonic (the member's display, which may render them) and steps that run before the row's own, and it
+  // stands for `operand` wherever a row's step names it.
+  struct Fragment {
+    static constexpr std::size_t max_steps = 3;
+    std::uint8_t immediate_bytes{};
+    Operand operand{};
+    Vector<Step, max_steps> steps{};
+    constexpr bool operator==(const Fragment &) const = default;
+  };
 
   static constexpr std::size_t max_pieces = 3;
   std::string_view display{};
@@ -245,7 +271,7 @@ struct Member {
   // so the disassembler renders rather than parses.
   Vector<Piece, max_pieces> pieces{};
   // An operand's text is the display itself, parsed once here.
-  std::variant<Operand, Operation, Hole> kind{};
+  std::variant<Operand, Operation, Hole, Fragment> kind{};
   constexpr bool operator==(const Member &) const = default;
 };
 
@@ -261,6 +287,8 @@ struct Vocabulary {
   // Whether member n is the number n, worked out once when the vocabulary is parsed (see `is_numeric`), because every
   // reference to it at every opcode asks.
   bool numeric{};
+  // Declared with `mode`: its members are fragments of a row, one per value of the slice that selects them.
+  bool mode{};
   // Where it was declared, so a check that fires elsewhere can point at the line that has to change. A continuation
   // folds to the line the declaration starts on.
   std::size_t line{};
@@ -304,7 +332,7 @@ using Rules = Vector<Rule, 6>;
                                  },
                         operand.kind);
                   },
-                  [](const Member::Operation &) { return false; },
+                  [](const OneOf<Member::Operation, Member::Fragment> auto &) { return false; },
                   [](const Member::Hole &) { return true; },
               },
             member.kind);
@@ -376,6 +404,7 @@ struct Resolution {
   const auto member = member_of(at, reference);
   auto result = visit(Overloaded{
                           [](const Operand &stands_for) { return as_resolved(stands_for); },
+                          [](const Member::Fragment &fragment) { return as_resolved(fragment.operand); },
                           [&](const Member::Operation &) -> Resolved {
                             throw std::runtime_error("'" + std::string(member.display) +
                                                      "' is an operation, and this row names it where an operand "
@@ -425,8 +454,6 @@ struct Resolution {
       operand.kind);
 }
 
-// How many operands, and how many destinations, one step may name.
-inline constexpr std::size_t max_operands = 4;
 
 // A row that hands decoding to another table, written `goto name`: a prefix. It is the whole of its row, and renders
 // and does nothing itself, because what follows it is the instruction.
@@ -442,18 +469,6 @@ struct Transfer {
   constexpr bool operator==(const Transfer &) const = default;
 };
 
-// One step of a row: an operation applied to its operands, with its result written to its destinations. A step whose
-// operation returns `Continue` is a condition, and decides whether the steps after it run. That is the whole of what a
-// condition can do here: there is no way to guard a step in the middle and resume after it, so a description whose
-// conditionals are not a tail cannot be written. (Every Z80 conditional is one.) A row's steps run in order, and that
-// order is where cost lives: an internal delay is a step like any other.
-struct Step {
-  std::string_view operation{};
-  std::optional<Reference> operation_reference{};
-  Vector<Operand, max_operands> destinations{};
-  Vector<Operand, max_operands> operands{};
-  constexpr bool operator==(const Step &) const = default;
-};
 
 // One line of a table: the encoding it matches, the mnemonic it renders, and what it does.
 struct Row {

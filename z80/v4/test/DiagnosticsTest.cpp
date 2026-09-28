@@ -96,7 +96,7 @@ TEST_CASE("Table diagnostics") {
   }
   SECTION("The three columns must agree about immediates") {
     CHECK_THROWS_WITH(parse("table t\n00000000 n | ld a, $nnnn | ld8 a <- n\n"),
-        Equals("2: the mnemonic renders a different number of immediate bytes than the encoding fetches"));
+        Equals("2: the text renders a different number of immediate bytes than the encoding fetches"));
     CHECK_THROWS_WITH(parse("table t\n00000000 n | ld a, $nn | ld8 a <- a\n"),
         Equals("2: the action and the encoding disagree about whether there is an immediate"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- nn\n"),
@@ -131,6 +131,24 @@ TEST_CASE("Table diagnostics") {
         Equals("1: a delay is what a write back through an operand costs, and this member names an operation"));
     CHECK_THROWS_WITH(parse("vocab o = x:add8 y:add8\ntable t\n0000000o | {o:o} | ld8 a <- {o:o}\n"),
         Equals("3: 'x' is an operation, and this row names it where an operand belongs"));
+  }
+  SECTION("Modes") {
+    constexpr std::string_view two = "mode m\n0 n | $nn | (n) |\n1 n n | $nnnn | (n) |\n";
+    CHECK_THROWS_WITH(parse("mode m\n0 n | $nn | (n)\ntable t\n"),
+        Equals("2: a mode member has four columns: its value and bytes, its text, the operand it stands for, and its "
+               "steps"));
+    CHECK_THROWS_WITH(parse("mode m\n0 n | $nn | (n) |\n0 n | $nn | (n) |\ntable t\n"),
+        Equals("3: this mode already has a member for 0"));
+    CHECK_THROWS_WITH(parse("mode m\n0 n | $nnnn | (n) |\ntable t\n"),
+        Equals("2: the text renders a different number of immediate bytes than the encoding fetches"));
+    // A derived mode renames by value, to a hole or to another mode's member.
+    CHECK_NOTHROW(parse(std::string(two) + "mode h = m with 1 -> -\nmode r = h with 1 -> m.1\ntable t\n"
+                                           "0000000x | ld {r:x} | ld8 a <- {r:x}\n"));
+    CHECK_THROWS_WITH(parse(std::string(two) + "table t\n0000000x | ld | ld8 a <- {m:x}\n"),
+        Equals("5: a row names a mode in its mnemonic exactly where it names it in its steps, since the one renders "
+               "the bytes the other fetches"));
+    CHECK_THROWS_WITH(parse(std::string(two) + "table t\n0000000x n | ld {m:x}, $nn | ld8 {m:x} <- n\n"),
+        Equals("5: this row names a mode that fetches the instruction's immediate, so it cannot fetch one of its own"));
   }
   SECTION("References") {
     CHECK_THROWS_WITH(
@@ -269,7 +287,7 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(
         parse("table t\n00000000 n | ld a, $x | ld8 a <- n\n"), Equals("2: expected $nn, $nnnn or $e in mnemonic"));
     CHECK_THROWS_WITH(parse("table t\n00000000 n n | ld ($nnnn), $nnnn | ld8 (n) <- n\n"),
-        Equals("2: a row renders at most one immediate; the encoding only fetches one"));
+        Equals("2: an instruction renders at most one immediate; the encoding only fetches one"));
   }
   SECTION("Vocabulary members and their scopes") {
     CHECK_THROWS_WITH(parse("vocab r = b :add8\ntable t\n"), Equals("1: a vocabulary member has no name"));

@@ -34,9 +34,12 @@ namespace specbolt::refract {
 }
 [[nodiscard]] constexpr bool is_vocabulary(const std::string_view line) { return is_directive(line, "vocab"); }
 [[nodiscard]] constexpr bool is_table(const std::string_view line) { return is_directive(line, "table"); }
-// Whether the line is a row: not blank, a comment or a declaration, and with a `|` in it.
+[[nodiscard]] constexpr bool is_mode(const std::string_view line) { return is_directive(line, "mode"); }
+// Whether the line is a row, or a member of a `mode`, which the block it is in decides: not blank, a comment or a
+// declaration, and with a `|` in it.
 [[nodiscard]] constexpr bool is_row(const std::string_view line) {
-  return !line.empty() && line.front() != '#' && !is_vocabulary(line) && !is_table(line) && line.contains('|');
+  return !line.empty() && line.front() != '#' && !is_vocabulary(line) && !is_table(line) && !is_mode(line) &&
+         line.contains('|');
 }
 
 // The count of idle cycles a `delay=` attribute gives, which is one digit.

@@ -28,9 +28,15 @@ struct Machine {
   std::uint16_t ea{};
   std::size_t cycles{};
   std::size_t instructions_left{};
+  // Whether the address an indexed mode just formed still owes its fix-up cycle, and whether it crossed a page. The
+  // chip reads at the unfixed address first: a read pays the cycle only if that was the wrong page, and a write, which
+  // cannot risk writing the wrong place, always pays it. See `index`.
+  bool fixup_pending{};
+  bool crossed_page{};
 
   // What the framework calls. Every bus access costs a cycle.
   bool start_instruction() {
+    fixup_pending = false;
     if (instructions_left == 0)
       return false;
     --instructions_left;
@@ -44,6 +50,10 @@ struct Machine {
   }
   [[nodiscard]] std::uint8_t read_memory(const std::uint16_t address) {
     ++cycles;
+    if (fixup_pending && crossed_page) {
+      ++cycles;
+      fixup_pending = false;
+    }
     return memory[address];
   }
   [[nodiscard]] std::uint16_t read_memory16(const std::uint16_t address) {
@@ -52,6 +62,10 @@ struct Machine {
   }
   void write_memory(const std::uint16_t address, const std::uint8_t value) {
     ++cycles;
+    if (fixup_pending) {
+      ++cycles;
+      fixup_pending = false;
+    }
     memory[address] = value;
   }
   void write_memory16(const std::uint16_t address, const std::uint16_t value) {
@@ -98,17 +112,13 @@ struct Machine {
     ++cycles;
     return static_cast<std::uint8_t>(base + index);
   }
-  // `abs,X`, `abs,Y` and `(zp),Y` for a read: the base plus the index, and one more cycle only if that crosses a page.
+  // `abs,X`, `abs,Y` and `(zp),Y`: the base plus the index. What the fix-up costs depends on the access that follows,
+  // so it is owed rather than paid here: one mode serves loads, stores and read-modify-writes alike.
   [[nodiscard]][[= refract::operation]] std::uint16_t index(const std::uint16_t base, const std::uint8_t offset) {
     const auto address = static_cast<std::uint16_t>(base + offset);
-    if ((address & 0xff00) != (base & 0xff00))
-      ++cycles;
+    fixup_pending = true;
+    crossed_page = (address & 0xff00) != (base & 0xff00);
     return address;
-  }
-  // The same for a write or a read-modify-write, which always takes the extra cycle.
-  [[nodiscard]][[= refract::operation]] std::uint16_t index_store(const std::uint16_t base, const std::uint8_t offset) {
-    ++cycles;
-    return static_cast<std::uint16_t>(base + offset);
   }
   // A pointer in page zero: its high byte wraps to the start of the page rather than leaving it.
   [[nodiscard]][[= refract::operation]] std::uint16_t zp_pointer(const std::uint16_t at) {

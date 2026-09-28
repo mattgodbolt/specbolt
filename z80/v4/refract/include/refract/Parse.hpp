@@ -12,6 +12,7 @@
 #include "refract/TableError.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <optional>
 #include <span>
 #include <stdexcept>
@@ -28,10 +29,221 @@ namespace specbolt::refract {
 inline constexpr std::size_t max_vocabularies = 256;
 inline constexpr std::size_t max_tables = 256;
 
-// Parses every `vocab name [: scope] = member member...` line of the text, in the order they appear.
+// The number a string of bits written most significant first stands for, as a mode member's value is written.
+[[nodiscard]] constexpr std::size_t bits_value(const std::string_view bits) {
+  std::size_t value = 0;
+  for (const auto bit: bits)
+    value = value << 1 | (bit == '1' ? 1u : 0u);
+  return value;
+}
+
+// How many immediate bytes a piece renders: what the disassembler reads for it.
+[[nodiscard]] constexpr std::size_t immediate_width_of(const Piece &piece) {
+  return visit(Overloaded{
+                   [](const OneOf<Piece::Imm8, Piece::Relative> auto &) { return 1uz; },
+                   [](const Piece::Imm16 &) { return 2uz; },
+                   [](const OneOf<Piece::Literal, Piece::Vocabulary, Piece::Displacement> auto &) { return 0uz; },
+               },
+      piece.kind);
+}
+
+// Checks that some text renders exactly the one immediate the encoding fetches, of `bytes` bytes, or none if it fetches
+// none. Summing widths would let `$nn $nn` pass against `n n` and then disassemble as two bytes where the machine read
+// one sixteen-bit value.
+constexpr void check_renders_immediate(const std::span<const Piece> pieces, const std::size_t bytes) {
+  std::size_t rendered = 0;
+  std::size_t width = 0;
+  for (const auto &piece: pieces)
+    if (const auto piece_bytes = immediate_width_of(piece); piece_bytes != 0) {
+      ++rendered;
+      width = piece_bytes;
+    }
+  if (rendered > 1)
+    throw std::runtime_error("an instruction renders at most one immediate; the encoding only fetches one");
+  if (width != bytes)
+    throw std::runtime_error("the text renders a different number of immediate bytes than the encoding fetches");
+}
+
+// Whether an operand is the immediate the encoding fetched, read directly or as an address.
+[[nodiscard]] constexpr bool is_immediate(const Operand &operand) {
+  return visit(Overloaded{
+                   [](const Operand::Immediate &) { return true; },
+                   [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary, Operand::Discard> auto &) {
+                     return false;
+                   },
+               },
+      operand.kind);
+}
+
+// Whether any of these steps reads or writes the immediate.
+[[nodiscard]] constexpr bool uses_immediate(const std::span<const Step> steps) {
+  return std::ranges::any_of(steps, [](const Step &step) {
+    return std::ranges::any_of(step.operands, is_immediate) || std::ranges::any_of(step.destinations, is_immediate);
+  });
+}
+
+constexpr Step parse_step(
+    Parser action, std::span<const Vocabulary> vocabularies, const Row &row, const TableDecl &table);
+
+// Parses one member of a `mode`, a line of four columns: the value of the slice that selects it, then an `n` for each
+// byte it adds to the encoding; the text it renders; the operand it stands for; and the steps it runs before the row's
+// own, which may be none. Returns the value, as the bits it was written in, with the member.
+[[nodiscard]] constexpr std::pair<std::string_view, Member> parse_fragment(
+    const std::string_view text, const std::span<const Vocabulary> vocabularies) {
+  if (std::ranges::count(text, '|') != 3)
+    throw std::runtime_error("a mode member has four columns: its value and bytes, its text, the operand it stands "
+                             "for, and its steps");
+  Parser parser(text);
+  Parser encoding(parser.next_field('|'));
+  const auto value = encoding.next_word();
+  if (value.empty() || !std::ranges::all_of(value, [](const char c) { return c == '0' || c == '1'; }))
+    throw std::runtime_error("a mode member starts with the value that selects it, written in bits");
+  Member::Fragment fragment;
+  while (!encoding.eof()) {
+    const auto byte = encoding.next_word();
+    if (byte.empty())
+      continue;
+    if (byte != "n")
+      throw std::runtime_error("after its value, a mode member's encoding is an 'n' for each byte it adds");
+    ++fragment.immediate_bytes;
+  }
+  if (fragment.immediate_bytes > 2)
+    throw std::runtime_error("a mode member adds at most two bytes, which are the instruction's immediate");
+  Member member{.display = parser.next_field('|')};
+  if (member.display.empty())
+    throw std::runtime_error("a mode member has no text");
+  for (const auto &piece: pieces_of(Parser(member.display)))
+    member.pieces.push_back(piece);
+  check_renders_immediate(member.pieces, fragment.immediate_bytes);
+  fragment.operand = parse_simple_operand(parser.next_field('|'), fragment.immediate_bytes);
+  // A member's steps are written as a row's are, against the bytes the member adds and no opcode of its own.
+  const Row carrier{.immediate_bytes = fragment.immediate_bytes};
+  Parser sequence(Parser::trim(parser.rest()));
+  while (!sequence.eof()) {
+    Parser step(sequence.next_field(';'));
+    if (step.eof())
+      continue;
+    fragment.steps.push_back(parse_step(step, vocabularies, carrier, TableDecl{}));
+  }
+  if ((is_immediate(fragment.operand) || uses_immediate(fragment.steps)) != (fragment.immediate_bytes != 0))
+    throw std::runtime_error("a mode member's steps and operand disagree with its encoding about whether it has an "
+                             "immediate");
+  member.kind = fragment;
+  return {value, member};
+}
+
+// Applies a derived mode's renamings, `value -> -` for a hole or `value -> mode.value` for another mode's member, to
+// the members it copied from its parent.
+constexpr void rename_members(Vocabulary &mode, Parser rules, const std::span<const Vocabulary> modes) {
+  const auto width = std::countr_zero(mode.members.size());
+  while (!rules.eof()) {
+    const auto rule = trim_comma(rules.take_until(','));
+    if (rule.empty())
+      continue;
+    Parser parts(rule);
+    const auto from = parts.next_word();
+    if (parts.next_word() != "->")
+      throw std::runtime_error("a mode's renaming is 'value -> -' or 'value -> mode.value'");
+    const auto to = parts.next_word();
+    if (from.size() != static_cast<std::size_t>(width) ||
+        !std::ranges::all_of(from, [](const char c) { return c == '0' || c == '1'; }))
+      throw std::runtime_error("'" + std::string(from) + "' is not one of this mode's values");
+    auto &target = mode.members[bits_value(from)];
+    if (to == "-") {
+      target = Member{.display = "-", .kind = Member::Hole{}};
+      continue;
+    }
+    const auto dot = to.find('.');
+    if (dot == std::string_view::npos)
+      throw std::runtime_error("a mode's renaming names a member of another mode, as 'mode.value'");
+    const auto donor = std::ranges::find(modes, to.substr(0, dot), &Vocabulary::name);
+    if (donor == modes.end() || !donor->mode)
+      throw std::runtime_error("'" + std::string(to.substr(0, dot)) + "' is not a mode declared above");
+    const auto value = to.substr(dot + 1);
+    if (value.size() != static_cast<std::size_t>(std::countr_zero(donor->members.size())) ||
+        !std::ranges::all_of(value, [](const char c) { return c == '0' || c == '1'; }))
+      throw std::runtime_error("'" + std::string(value) + "' is not one of that mode's values");
+    target = donor->members[bits_value(value)];
+  }
+}
+
+// Parses every vocabulary the text declares, in the order they appear: each `vocab name [: scope] = member...` line,
+// and each `mode` block, whose members are the lines after it up to the next declaration.
 [[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
   std::vector<Vocabulary> result;
+  const auto add = [&](const Vocabulary &vocabulary) {
+    if (std::ranges::contains(result, vocabulary.name, &Vocabulary::name))
+      throw std::runtime_error("duplicate vocabulary name");
+    // A reference holds its vocabulary as a byte, so this is a real capacity like the rest, and says so rather than
+    // wrapping.
+    if (result.size() == max_vocabularies)
+      throw std::runtime_error("too many vocabularies");
+    result.push_back(vocabulary);
+  };
+
+  // The `mode` block being read: the vocabulary it declares, and whether its members come from lines or, for a derived
+  // mode, from its parent.
+  std::optional<Vocabulary> open;
+  bool open_derived = false;
+  const auto close = [&] {
+    if (!open)
+      return;
+    at_line(open->line, [&] {
+      if (open->members.empty())
+        throw std::runtime_error("this mode declares no members");
+      add(*open);
+    });
+    open.reset();
+  };
+
   for (const auto [at, text]: lines_of(description)) {
+    if (is_vocabulary(text) || is_table(text) || is_mode(text))
+      close();
+    if (is_mode(text)) {
+      at_line(at, [&] {
+        Parser parser(text);
+        parser.skip_word();
+        open = Vocabulary{.name = parser.next_word(), .mode = true, .line = at};
+        open_derived = false;
+        if (open->name.empty())
+          throw std::runtime_error("mode declaration has no name");
+        if (parser.eof())
+          return;
+        if (parser.next_word() != "=")
+          throw std::runtime_error("a mode is declared as 'mode name', or 'mode name = parent with renamings'");
+        const auto parent_name = parser.next_word();
+        const auto parent = std::ranges::find(result, parent_name, &Vocabulary::name);
+        if (parent == result.end() || !parent->mode)
+          throw std::runtime_error("'" + std::string(parent_name) + "' is not a mode declared above");
+        if (parser.next_word() != "with")
+          throw std::runtime_error("a derived mode says what it renames: 'mode name = parent with renamings'");
+        open->members = parent->members;
+        open_derived = true;
+        rename_members(*open, Parser(parser.rest()), result);
+      });
+      continue;
+    }
+    if (open && is_row(text)) {
+      at_line(at, [&] {
+        if (open_derived)
+          throw std::runtime_error("a derived mode takes its members from its parent, so it has no lines of its own");
+        const auto [value, member] = parse_fragment(text, result);
+        const auto size = std::size_t{1} << value.size();
+        if (size > Vocabulary::max_members)
+          throw std::runtime_error(
+              "a mode's value is at most " + decimal(std::countr_zero(Vocabulary::max_members)) + " bits");
+        if (open->members.empty())
+          for (std::size_t hole = 0; hole < size; ++hole)
+            open->members.push_back(Member{.display = "-", .kind = Member::Hole{}});
+        if (open->members.size() != size)
+          throw std::runtime_error("every member of a mode is selected by a value of the same width");
+        auto &slot = open->members[bits_value(value)];
+        if (!std::holds_alternative<Member::Hole>(slot.kind))
+          throw std::runtime_error("this mode already has a member for " + std::string(value));
+        slot = member;
+      });
+      continue;
+    }
     if (!is_vocabulary(text))
       continue;
     at_line(at, [&] {
@@ -66,15 +278,10 @@ inline constexpr std::size_t max_tables = 256;
       if (vocabulary.members.empty())
         throw std::runtime_error("vocabulary declares no members");
       vocabulary.numeric = is_numeric(vocabulary);
-      if (std::ranges::contains(result, vocabulary.name, &Vocabulary::name))
-        throw std::runtime_error("duplicate vocabulary name");
-      // A reference holds its vocabulary as a byte, so this is a real capacity like the rest, and says so rather than
-      // wrapping.
-      if (result.size() == max_vocabularies)
-        throw std::runtime_error("too many vocabularies");
-      result.push_back(vocabulary);
+      add(vocabulary);
     });
   }
+  close();
   return result;
 }
 
@@ -83,7 +290,7 @@ inline constexpr std::size_t max_tables = 256;
 // surfacing much later as an opcode nothing decodes.
 constexpr void check_every_line_means_something(const std::string_view description) {
   for (const auto [at, text]: lines_of(description)) {
-    if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
+    if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_mode(text) || is_row(text))
       continue;
     throw table_error(at, "this is not a comment, a declaration, or a row; a row needs its '|' separators");
   }
@@ -166,7 +373,7 @@ constexpr void parse_substitutions(
                   throw std::runtime_error(
                       "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
                 },
-                [](const OneOf<Operand, Member::Operation> auto &) {},
+                [](const OneOf<Operand, Member::Operation, Member::Fragment> auto &) {},
             },
           substitution.to.kind);
     }
@@ -266,7 +473,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
                        return std::tuple{member.kind.index(), operand.indirect, operand.displaced,
                            operand.write_back_delay, operand.kind.index(), member.pieces.size()};
                      },
-                     [&](const OneOf<Member::Operation, Member::Hole> auto &) {
+                     [&](const OneOf<Member::Operation, Member::Hole, Member::Fragment> auto &) {
                        return std::tuple{
                            member.kind.index(), false, false, std::uint8_t{}, std::size_t{}, member.pieces.size()};
                      },
@@ -282,7 +489,7 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
     // The operation is spliced from member 0, so a member that brought its own would be ignored for every view but the
     // first: a member a view selects names a location and nothing else.
     visit(Overloaded{
-              [&](const Member::Operation &) {
+              [&](const OneOf<Member::Operation, Member::Fragment> auto &) {
                 throw complaint(member.display, "each of its members may only name a location, since a view is "
                                                 "chosen long after the operation has been spliced");
               },
@@ -380,43 +587,73 @@ constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Ro
 // Checks that a row's three columns agree about its immediate: the encoding says what is fetched, the mnemonic must
 // render exactly that, and the action must use it, or one of the three is lying.
 constexpr void check_immediates(const Row &row) {
-  // A row fetches one immediate, of `immediate_bytes` bytes, so the mnemonic must render exactly one, of exactly that
-  // width. Summing widths would let `$nn $nn` pass against `n n` and then disassemble as two bytes where the machine
-  // read one sixteen-bit value.
-  std::size_t rendered = 0;
-  std::size_t width = 0;
-  const auto immediate_width = [](const Piece &piece) {
-    return visit(Overloaded{
-                     [](const OneOf<Piece::Imm8, Piece::Relative> auto &) { return 1uz; },
-                     [](const Piece::Imm16 &) { return 2uz; },
-                     [](const OneOf<Piece::Literal, Piece::Vocabulary, Piece::Displacement> auto &) { return 0uz; },
-                 },
-        piece.kind);
-  };
-  for (const auto &piece: row.pieces)
-    if (const auto bytes = immediate_width(piece); bytes != 0) {
-      ++rendered;
-      width = bytes;
-    }
-  if (rendered > 1)
-    throw std::runtime_error("a row renders at most one immediate; the encoding only fetches one");
-  if (width != row.immediate_bytes)
-    throw std::runtime_error("the mnemonic renders a different number of immediate bytes than the encoding fetches");
+  check_renders_immediate(row.pieces, row.immediate_bytes);
+  if (uses_immediate(steps_of(row)) != (row.immediate_bytes != 0))
+    throw std::runtime_error("the action and the encoding disagree about whether there is an immediate");
+}
 
-  const auto immediate = [](const Operand &operand) {
-    return visit(Overloaded{
-                     [](const Operand::Immediate &) { return true; },
-                     [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary, Operand::Discard> auto &) {
-                       return false;
-                     },
-                 },
+// The modes a list of references names, as the references themselves, each once, in the order first named.
+[[nodiscard]] constexpr std::vector<Reference> modes_among(
+    const std::span<const Vocabulary> vocabularies, const std::span<const Reference> references) {
+  std::vector<Reference> modes;
+  for (const auto reference: references)
+    if (vocabularies[reference.vocabulary_index].mode && !std::ranges::contains(modes, reference))
+      modes.push_back(reference);
+  return modes;
+}
+
+// The references a row's steps make, in operands and destinations, in the order they are written.
+[[nodiscard]] constexpr std::vector<Reference> references_in_steps(const std::span<const Step> steps) {
+  std::vector<Reference> references;
+  const auto note = [&](const Operand &operand) {
+    visit(Overloaded{
+              [&](const Operand::Vocabulary &vocabulary) { references.push_back(vocabulary.reference); },
+              [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Discard> auto &) {},
+          },
         operand.kind);
   };
-  const auto uses_immediate = std::ranges::any_of(steps_of(row), [&](const Step &step) {
-    return std::ranges::any_of(step.operands, immediate) || std::ranges::any_of(step.destinations, immediate);
-  });
-  if (uses_immediate != (row.immediate_bytes != 0))
-    throw std::runtime_error("the action and the encoding disagree about whether there is an immediate");
+  for (const auto &step: steps) {
+    std::ranges::for_each(step.operands, note);
+    std::ranges::for_each(step.destinations, note);
+  }
+  return references;
+}
+
+// The references a row's mnemonic makes, in the order they are written.
+[[nodiscard]] constexpr std::vector<Reference> references_in_pieces(const std::span<const Piece> pieces) {
+  std::vector<Reference> references;
+  for (const auto &piece: pieces)
+    visit(
+        Overloaded{
+            [&](const Piece::Vocabulary &vocabulary) { references.push_back(vocabulary.reference); },
+            [](const OneOf<Piece::Literal, Piece::Imm8, Piece::Imm16, Piece::Displacement, Piece::Relative> auto &) {},
+        },
+        piece.kind);
+  return references;
+}
+
+// Checks what a row does with the modes it names. The mnemonic and the steps must name the same ones, since the
+// disassembler reads a mode's bytes where its text is and the interpreter where its steps run, and the two must agree
+// about how long the instruction is. And a row that names a mode which fetches may not fetch its own immediate, since
+// an instruction has one.
+constexpr void check_modes_named(const std::span<const Vocabulary> vocabularies, const Row &row) {
+  const auto in_steps = modes_among(vocabularies, references_in_steps(steps_of(row)));
+  const auto in_text = modes_among(vocabularies, references_in_pieces(row.pieces));
+  if (!std::ranges::is_permutation(in_steps, in_text))
+    throw std::runtime_error("a row names a mode in its mnemonic exactly where it names it in its steps, since the "
+                             "one renders the bytes the other fetches");
+  const auto fetches = [&](const Reference reference) {
+    return std::ranges::any_of(vocabularies[reference.vocabulary_index].members, [](const Member &member) {
+      return visit(Overloaded{
+                       [](const Member::Fragment &fragment) { return fragment.immediate_bytes != 0; },
+                       [](const OneOf<Operand, Member::Operation, Member::Hole> auto &) { return false; },
+                   },
+          member.kind);
+    });
+  };
+  if (row.immediate_bytes != 0 && std::ranges::any_of(in_steps, fetches))
+    throw std::runtime_error("this row names a mode that fetches the instruction's immediate, so it cannot fetch "
+                             "one of its own");
 }
 
 // Parses the first column into `row`: the opcode pattern, then whichever bytes the instruction carries after it.
@@ -545,9 +782,19 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     const std::span<const Vocabulary> vocabularies, const std::span<const TableDecl> tables) {
   std::vector<Row> result;
   std::optional<std::uint8_t> current;
+  // Inside a `mode` block the lines are its members, which `parse_vocabularies` has read.
+  bool in_mode = false;
   for (const auto [at, text]: lines_of(description)) {
-    if (!is_table(text) && !is_row(text))
+    if (is_mode(text)) {
+      in_mode = true;
+      current.reset();
+    }
+    if (is_vocabulary(text))
+      in_mode = false;
+    if ((!is_table(text) && !is_row(text)) || (in_mode && is_row(text)))
       continue;
+    if (is_table(text))
+      in_mode = false;
     at_line(at, [&] {
       if (is_table(text)) {
         Parser declaration(text);
@@ -590,6 +837,7 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
       }
       lower_mnemonic(vocabularies, row, tables[*current]);
       check_immediates(row);
+      check_modes_named(vocabularies, row);
       result.push_back(row);
     });
   }

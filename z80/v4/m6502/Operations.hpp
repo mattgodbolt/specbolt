@@ -43,9 +43,9 @@ struct Operations {
     return {value, nz(p, value)};
   }
 
-  // The accumulator group. Every one takes the accumulator, the operand and the status, and returns the accumulator
-  // and the status, so that one row can name any of them; `lda` ignores the accumulator it is given and `cmp` hands it
-  // back unchanged. Decimal mode is not modelled.
+  // The accumulator group but `sta`. Every one takes the accumulator, the operand and the status, and returns the
+  // accumulator and the status, so that one row can name any of them; `lda` ignores the accumulator it is given and
+  // `cmp` hands it back unchanged. Decimal mode is not modelled.
   [[nodiscard]] static constexpr Loaded ora8(const std::uint8_t a, const std::uint8_t value, const std::uint8_t p) {
     return load8(a | value, p);
   }
@@ -67,10 +67,6 @@ struct Operations {
   }
   [[nodiscard]] static constexpr Loaded lda8(const std::uint8_t, const std::uint8_t value, const std::uint8_t p) {
     return load8(value, p);
-  }
-  // `sta`, in the same shape as the rest of its group: the accumulator goes out, and neither it nor the status changes.
-  [[nodiscard]] static constexpr Loaded sta8(const std::uint8_t a, const std::uint8_t, const std::uint8_t p) {
-    return {a, p};
   }
   // Also `cpx` and `cpy`: the register is handed back as it was.
   [[nodiscard]] static constexpr Loaded cmp8(const std::uint8_t reg, const std::uint8_t value, const std::uint8_t p) {

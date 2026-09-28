@@ -25,13 +25,15 @@ def is_row(line: str) -> bool:
         and not stripped.startswith("#")
         and not stripped.startswith("vocab ")
         and not stripped.startswith("table ")
+        and not stripped.startswith("mode ")
         and "|" in stripped
     )
 
 
 def starts_table(line: str) -> bool:
+    """A `table` or a `mode` starts a run of lines whose columns are aligned together."""
     stripped = line.strip()
-    return stripped == "table" or stripped.startswith("table ")
+    return any(stripped == keyword or stripped.startswith(keyword + " ") for keyword in ("table", "mode"))
 
 
 def split_row(line: str) -> list[str]:

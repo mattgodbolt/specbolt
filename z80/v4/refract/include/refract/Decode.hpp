@@ -62,7 +62,7 @@ namespace specbolt::refract {
   const auto live = [&](const Reference reference) {
     return visit(Overloaded{
                      [](const Member::Hole &) { return false; },
-                     [](const OneOf<Operand, Member::Operation> auto &) { return true; },
+                     [](const OneOf<Operand, Member::Operation, Member::Fragment> auto &) { return true; },
                  },
         member_of(at, reference).kind);
   };
