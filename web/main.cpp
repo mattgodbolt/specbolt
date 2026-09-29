@@ -13,9 +13,10 @@
 
 #include "spectrum/Snapshot.hpp"
 
-// Stand-ins for the runtime a build without exceptions lacks. A build with them (v4's, see z80/v4/notes/WASM.md) links
-// the real ones.
-#if !defined(__cpp_exceptions)
+// Stand-ins for the runtime a build without wasm exception handling lacks. A build with it (v4's, see
+// z80/v4/notes/WASM.md) links the real ones. The test is `__wasm_exception_handling__`, set by `-fwasm-exceptions`, not
+// `__cpp_exceptions`: clang defines that for wasm whether or not anything can catch what is thrown.
+#if !defined(__wasm_exception_handling__)
 extern "C" void __cxa_allocate_exception() {}
 extern "C" void __cxa_throw(const void *p, const std::type_info *tinfo, void (*)(void *)) {
   fprintf(stderr, "*** C++ exception (%s) thrown ***\n", tinfo->name());

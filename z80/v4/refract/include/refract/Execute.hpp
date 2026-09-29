@@ -993,9 +993,9 @@ struct Interpreter {
         row.reads_displacement || (displaced && !entered_latched) ? machine.fetch_immediate() : latch;
     // A transfer is the whole of its row: a prefix reads no operands and has no immediate, so nothing in the steps'
     // branch applies to one. It is also why the hand-over happens *here* rather than among the steps: a mandatory tail
-    // call abandons the frame, so it is refused wherever a local has had its address taken, and the lambda that forms
-    // `indexed` takes several. The chain ends in a `static_assert` so that a new kind of action is a compile error here
-    // rather than a row that silently does nothing.
+    // call abandons the frame, so it is refused wherever a local has had its address taken, and the steps' branch has
+    // more locals to take one of. The chain ends in a `static_assert` so that a new kind of action is a compile error
+    // here rather than a row that silently does nothing.
     if constexpr (std::holds_alternative<Transfer>(row.action)) {
       constexpr auto transfer = std::get<Transfer>(row.action);
       constexpr std::uint8_t next_table = transfer.target;
@@ -1024,21 +1024,20 @@ struct Interpreter {
       // Formed once, after both, and handed to every operand that shares it. The machine is told what else was read
       // first, because a machine may fold those reads into the window that forms the address, as the Z80 does.
       const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
-      const std::uint16_t indexed = [&] -> std::uint16_t {
-        if constexpr (displaced) {
-          // A latched table read its opcode inside the same window, so that byte counts too, and the machine is charged
-          // for the window once rather than for each read inside it.
-          //
-          // The count is a template argument so that the machine, which knows how long its window is, can refuse a
-          // count it cannot hold at compile time.
-          constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
-          consteval { check_window_holds<read_inside>(row.line); }
-          return machine.template displaced_address<read_inside>(
-              direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement);
-        }
-        else
-          return 0;
-      }();
+      // Assigned rather than formed by a lambda, which would capture `decoded` and `displacement` by reference and so
+      // take their addresses, refusing the tail call below in any build that does not inline it.
+      std::uint16_t indexed = 0;
+      if constexpr (displaced) {
+        // A latched table read its opcode inside the same window, so that byte counts too, and the machine is charged
+        // for the window once rather than for each read inside it.
+        //
+        // The count is a template argument so that the machine, which knows how long its window is, can refuse a count
+        // it cannot hold at compile time.
+        constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
+        consteval { check_window_holds<read_inside>(row.line); }
+        indexed = machine.template displaced_address<read_inside>(
+            direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement);
+      }
       // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
       // A reference into `row`, which has static storage, so the expansion statement below can walk it as a range: a
