@@ -167,24 +167,24 @@ struct Resolved : Access {
 [[nodiscard]] constexpr Resolved as_resolved(const Operand &operand) {
   // The `Access` part is copied whole; the kind is mapped along with whatever it carries.
   Resolved result{static_cast<const Access &>(operand)};
-  visit(Overloaded{
-            [&](const Operand::Constant &constant) {
-              result.kind = Resolved::Kind::Constant;
-              result.constant = constant.value;
-            },
-            [&](const Operand::Named &named) {
-              result.kind = Resolved::Kind::Named;
-              result.name = named.name;
-            },
-            [&](const Operand::Immediate &immediate) {
-              result.kind = Resolved::Kind::Immediate;
-              result.width = immediate.width;
-            },
-            [&](const Operand::Discard &) { result.kind = Resolved::Kind::Discard; },
-            [](const Operand::Vocabulary &) {
-              throw std::logic_error("a vocabulary reference resolves to a member, never to itself");
-            },
-        },
+  refract::visit(Overloaded{
+                     [&](const Operand::Constant &constant) {
+                       result.kind = Resolved::Kind::Constant;
+                       result.constant = constant.value;
+                     },
+                     [&](const Operand::Named &named) {
+                       result.kind = Resolved::Kind::Named;
+                       result.name = named.name;
+                     },
+                     [&](const Operand::Immediate &immediate) {
+                       result.kind = Resolved::Kind::Immediate;
+                       result.width = immediate.width;
+                     },
+                     [&](const Operand::Discard &) { result.kind = Resolved::Kind::Discard; },
+                     [](const Operand::Vocabulary &) {
+                       throw std::logic_error("a vocabulary reference resolves to a member, never to itself");
+                     },
+                 },
       operand.kind);
   return result;
 }
@@ -293,21 +293,21 @@ using Rules = Vector<Rule, 6>;
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
     // Whether this member is the number `at`; a hole says nothing either way.
-    const auto fits =
-        visit(Overloaded{
-                  [&](const Operand &operand) {
-                    any = true;
-                    return visit(Overloaded{
-                                     [&](const Operand::Constant &constant) { return constant.value == at; },
-                                     [](const OneOf<Operand::Named, Operand::Immediate, Operand::Vocabulary,
-                                         Operand::Discard> auto &) { return false; },
-                                 },
-                        operand.kind);
-                  },
-                  [](const Member::Operation &) { return false; },
-                  [](const Member::Hole &) { return true; },
-              },
-            member.kind);
+    const auto fits = refract::visit(
+        Overloaded{
+            [&](const Operand &operand) {
+              any = true;
+              return refract::visit(Overloaded{
+                                        [&](const Operand::Constant &constant) { return constant.value == at; },
+                                        [](const OneOf<Operand::Named, Operand::Immediate, Operand::Vocabulary,
+                                            Operand::Discard> auto &) { return false; },
+                                    },
+                  operand.kind);
+            },
+            [](const Member::Operation &) { return false; },
+            [](const Member::Hole &) { return true; },
+        },
+        member.kind);
     if (!fits)
       return false;
   }
@@ -374,18 +374,19 @@ struct Resolution {
 [[nodiscard]] constexpr Resolved resolve_reference(
     const Resolution &at, const Operand &operand, const Reference reference) {
   const auto member = member_of(at, reference);
-  auto result = visit(Overloaded{
-                          [](const Operand &stands_for) { return as_resolved(stands_for); },
-                          [&](const Member::Operation &) -> Resolved {
-                            throw std::runtime_error("'" + std::string(member.display) +
-                                                     "' is an operation, and this row names it where an operand "
-                                                     "belongs");
-                          },
-                          [](const Member::Hole &) -> Resolved {
-                            throw std::logic_error("a hole never decodes, so it is never resolved");
-                          },
-                      },
-      member.kind);
+  auto result =
+      refract::visit(Overloaded{
+                         [](const Operand &stands_for) { return as_resolved(stands_for); },
+                         [&](const Member::Operation &) -> Resolved {
+                           throw std::runtime_error("'" + std::string(member.display) +
+                                                    "' is an operation, and this row names it where an operand "
+                                                    "belongs");
+                         },
+                         [](const Member::Hole &) -> Resolved {
+                           throw std::logic_error("a hole never decodes, so it is never resolved");
+                         },
+                     },
+          member.kind);
   // The member supplies everything about the operand except which parameter it was written against, which is the row's
   // business and not the vocabulary's.
   result.parameter = operand.parameter;
@@ -415,7 +416,7 @@ struct Resolution {
 // operand is written in a row, so most of this is deciding what the member could not know: which parameter it feeds,
 // which scope its name belongs to, and whether the encoding or the view will answer at run time.
 [[nodiscard]] constexpr Resolved resolve(const Resolution &at, const Operand &operand) {
-  return visit(
+  return refract::visit(
       Overloaded{
           [&](const Operand::Vocabulary &written) { return resolve_reference(at, operand, written.reference); },
           [&](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Discard> auto &) {
@@ -492,19 +493,19 @@ struct TableDecl {
 
 // Where a row hands decoding on to, or nothing for a row that is an instruction itself.
 [[nodiscard]] constexpr std::optional<Transfer> transfer_of(const Row &row) {
-  return visit(Overloaded{
-                   [](const Row::Steps &) -> std::optional<Transfer> { return std::nullopt; },
-                   [](const Transfer &transfer) -> std::optional<Transfer> { return transfer; },
-               },
+  return refract::visit(Overloaded{
+                            [](const Row::Steps &) -> std::optional<Transfer> { return std::nullopt; },
+                            [](const Transfer &transfer) -> std::optional<Transfer> { return transfer; },
+                        },
       row.action);
 }
 
 // The steps a row runs, in order: none for a transfer, which does nothing but hand decoding on.
 [[nodiscard]] constexpr std::span<const Step> steps_of(const Row &row) {
-  return visit(Overloaded{
-                   [](const Row::Steps &steps) { return std::span<const Step>{steps}; },
-                   [](const Transfer &) { return std::span<const Step>{}; },
-               },
+  return refract::visit(Overloaded{
+                            [](const Row::Steps &steps) { return std::span<const Step>{steps}; },
+                            [](const Transfer &) { return std::span<const Step>{}; },
+                        },
       row.action);
 }
 

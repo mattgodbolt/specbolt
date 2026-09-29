@@ -197,12 +197,12 @@ namespace specbolt::refract {
     // An operand: the display is its text.
     auto operand = parse_simple_operand(member.display, 0);
     operand.write_back_delay = delay_attribute.value_or(0);
-    visit(Overloaded{
-              [](const OneOf<Operand::Immediate, Operand::Discard> auto &) {
-                throw std::runtime_error("a vocabulary member must name something the CPU can resolve");
-              },
-              [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
-          },
+    refract::visit(Overloaded{
+                       [](const OneOf<Operand::Immediate, Operand::Discard> auto &) {
+                         throw std::runtime_error("a vocabulary member must name something the CPU can resolve");
+                       },
+                       [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
+                   },
         operand.kind);
     member.kind = operand;
     return member;
@@ -226,16 +226,17 @@ namespace specbolt::refract {
       const auto [parameter, rest] = split_keyword(word);
       auto argument = parse_simple_operand(rest, 0);
       argument.parameter = parameter;
-      visit(Overloaded{
-                [](const Operand::Immediate &) {
-                  throw std::runtime_error("a member cannot pass an immediate; only the encoding fetches those");
-                },
-                [](const Operand::Discard &) {
-                  throw std::runtime_error(
-                      "'-' discards a result, and a member's argument is something the operation is given");
-                },
-                [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
-            },
+      refract::visit(Overloaded{
+                         [](const Operand::Immediate &) {
+                           throw std::runtime_error(
+                               "a member cannot pass an immediate; only the encoding fetches those");
+                         },
+                         [](const Operand::Discard &) {
+                           throw std::runtime_error(
+                               "'-' discards a result, and a member's argument is something the operation is given");
+                         },
+                         [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
+                     },
           argument.kind);
       bound_operation.arguments.push_back(argument);
     }

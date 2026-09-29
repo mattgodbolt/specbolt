@@ -161,13 +161,13 @@ constexpr void parse_substitutions(
       // What a row claims is worked out before any rule is applied, so a row renamed to nothing would still claim its
       // opcodes and then resolve to a default zero.
       substitution.to = parse_member(to);
-      visit(Overloaded{
-                [](const Member::Hole &) {
-                  throw std::runtime_error(
-                      "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
-                },
-                [](const OneOf<Operand, Member::Operation> auto &) {},
-            },
+      refract::visit(Overloaded{
+                         [](const Member::Hole &) {
+                           throw std::runtime_error(
+                               "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
+                         },
+                         [](const OneOf<Operand, Member::Operation> auto &) {},
+                     },
           substitution.to.kind);
     }
     table.rules.push_back(substitution);
@@ -261,16 +261,16 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
   const auto &first = vocabulary.members[0];
   // What kind of member, and for an operand, how it is reached and which kind it is.
   const auto shape_of = [](const Member &member) {
-    return visit(Overloaded{
-                     [&](const Operand &operand) {
-                       return std::tuple{member.kind.index(), operand.indirect, operand.displaced,
-                           operand.write_back_delay, operand.kind.index(), member.pieces.size()};
-                     },
-                     [&](const OneOf<Member::Operation, Member::Hole> auto &) {
-                       return std::tuple{
-                           member.kind.index(), false, false, std::uint8_t{}, std::size_t{}, member.pieces.size()};
-                     },
-                 },
+    return refract::visit(
+        Overloaded{
+            [&](const Operand &operand) {
+              return std::tuple{member.kind.index(), operand.indirect, operand.displaced, operand.write_back_delay,
+                  operand.kind.index(), member.pieces.size()};
+            },
+            [&](const OneOf<Member::Operation, Member::Hole> auto &) {
+              return std::tuple{member.kind.index(), false, false, std::uint8_t{}, std::size_t{}, member.pieces.size()};
+            },
+        },
         member.kind);
   };
   const auto complaint = [&](const std::string_view what, const std::string_view because) {
@@ -281,13 +281,14 @@ constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
   for (const auto &member: vocabulary.members) {
     // The operation is spliced from member 0, so a member that brought its own would be ignored for every view but the
     // first: a member a view selects names a location and nothing else.
-    visit(Overloaded{
-              [&](const Member::Operation &) {
-                throw complaint(member.display, "each of its members may only name a location, since a view is "
-                                                "chosen long after the operation has been spliced");
-              },
-              [](const OneOf<Operand, Member::Hole> auto &) {},
-          },
+    refract::visit(Overloaded{
+                       [&](const Member::Operation &) {
+                         throw complaint(member.display,
+                             "each of its members may only name a location, since a view is "
+                             "chosen long after the operation has been spliced");
+                       },
+                       [](const OneOf<Operand, Member::Hole> auto &) {},
+                   },
         member.kind);
     if (shape_of(member) != shape_of(first))
       throw complaint(
@@ -386,11 +387,12 @@ constexpr void check_immediates(const Row &row) {
   std::size_t rendered = 0;
   std::size_t width = 0;
   const auto immediate_width = [](const Piece &piece) {
-    return visit(Overloaded{
-                     [](const OneOf<Piece::Imm8, Piece::Relative> auto &) { return 1uz; },
-                     [](const Piece::Imm16 &) { return 2uz; },
-                     [](const OneOf<Piece::Literal, Piece::Vocabulary, Piece::Displacement> auto &) { return 0uz; },
-                 },
+    return refract::visit(
+        Overloaded{
+            [](const OneOf<Piece::Imm8, Piece::Relative> auto &) { return 1uz; },
+            [](const Piece::Imm16 &) { return 2uz; },
+            [](const OneOf<Piece::Literal, Piece::Vocabulary, Piece::Displacement> auto &) { return 0uz; },
+        },
         piece.kind);
   };
   for (const auto &piece: row.pieces)
@@ -404,12 +406,13 @@ constexpr void check_immediates(const Row &row) {
     throw std::runtime_error("the mnemonic renders a different number of immediate bytes than the encoding fetches");
 
   const auto immediate = [](const Operand &operand) {
-    return visit(Overloaded{
-                     [](const Operand::Immediate &) { return true; },
-                     [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary, Operand::Discard> auto &) {
-                       return false;
-                     },
-                 },
+    return refract::visit(
+        Overloaded{
+            [](const Operand::Immediate &) { return true; },
+            [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary, Operand::Discard> auto &) {
+              return false;
+            },
+        },
         operand.kind);
   };
   const auto uses_immediate = std::ranges::any_of(steps_of(row), [&](const Step &step) {
@@ -507,12 +510,12 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     }
     const auto operand = parse_operand(vocabularies, word, row.matched, row.immediate_bytes, table);
     // A value can be handed to an operation but cannot be written to, unless it is an address.
-    const auto is_value =
-        visit(Overloaded{
-                  [](const OneOf<Operand::Constant, Operand::Immediate> auto &) { return true; },
-                  [](const OneOf<Operand::Named, Operand::Vocabulary, Operand::Discard> auto &) { return false; },
-              },
-            operand.kind);
+    const auto is_value = refract::visit(
+        Overloaded{
+            [](const OneOf<Operand::Constant, Operand::Immediate> auto &) { return true; },
+            [](const OneOf<Operand::Named, Operand::Vocabulary, Operand::Discard> auto &) { return false; },
+        },
+        operand.kind);
     if (writing_destination) {
       if (!operand.indirect && is_value)
         throw std::runtime_error("'" + std::string(word) +
@@ -525,12 +528,13 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
       step.destinations.push_back(operand);
     }
     else {
-      visit(Overloaded{
-                [](const Operand::Discard &) {
-                  throw std::runtime_error("'-' discards a result, so it can only be a destination");
-                },
-                [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Vocabulary> auto &) {},
-            },
+      refract::visit(
+          Overloaded{
+              [](const Operand::Discard &) {
+                throw std::runtime_error("'-' discards a result, so it can only be a destination");
+              },
+              [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Vocabulary> auto &) {},
+          },
           operand.kind);
       step.operands.push_back(operand);
     }

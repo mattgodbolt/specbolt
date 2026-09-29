@@ -310,14 +310,14 @@ struct Interpreter {
       return error(line, "'" + std::string(member.display) +
                              "' is selected by a view, so it must name a location the machine can read");
     };
-    return visit(
+    return refract::visit(
         Overloaded{
             [&](const Operand &operand) {
-              return visit(Overloaded{
-                               [](const Operand::Named &named) { return named.name.view(); },
-                               [&](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary,
-                                   Operand::Discard> auto &) -> std::string_view { throw not_a_location(); },
-                           },
+              return refract::visit(Overloaded{
+                                        [](const Operand::Named &named) { return named.name.view(); },
+                                        [&](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary,
+                                            Operand::Discard> auto &) -> std::string_view { throw not_a_location(); },
+                                    },
                   operand.kind);
             },
             [&](const OneOf<Member::Operation, Member::Hole> auto &) -> std::string_view { throw not_a_location(); },
@@ -848,23 +848,23 @@ struct Interpreter {
     for (const auto &vocabulary: Compiled::vocabularies()) {
       std::optional<std::pair<std::string_view, bool>> first;
       for (const auto &member: vocabulary.members)
-        visit(Overloaded{
-                  [&](const Member::Operation &bound) {
-                    const auto condition = returns_continue(find_operation(bound.name, vocabulary.line));
-                    if (!first)
-                      first = std::pair{bound.name, condition};
-                    else if (first->second != condition)
-                      throw error(vocabulary.line, "vocabulary '" + std::string(vocabulary.name) +
-                                                       "' mixes conditions with operations that are "
-                                                       "not ('" +
-                                                       std::string(condition ? bound.name : first->first) +
-                                                       "' returns Continue and '" +
-                                                       std::string(condition ? first->first : bound.name) +
-                                                       "' does not), so a row naming it "
-                                                       "would branch at some opcodes and run straight on at others");
-                  },
-                  [](const OneOf<Operand, Member::Hole> auto &) {},
-              },
+        refract::visit(Overloaded{
+                           [&](const Member::Operation &bound) {
+                             const auto condition = returns_continue(find_operation(bound.name, vocabulary.line));
+                             if (!first)
+                               first = std::pair{bound.name, condition};
+                             else if (first->second != condition)
+                               throw error(vocabulary.line,
+                                   "vocabulary '" + std::string(vocabulary.name) +
+                                       "' mixes conditions with operations that are "
+                                       "not ('" +
+                                       std::string(condition ? bound.name : first->first) + "' returns Continue and '" +
+                                       std::string(condition ? first->first : bound.name) +
+                                       "' does not), so a row naming it "
+                                       "would branch at some opcodes and run straight on at others");
+                           },
+                           [](const OneOf<Operand, Member::Hole> auto &) {},
+                       },
             member.kind);
     }
   }
@@ -904,17 +904,17 @@ struct Interpreter {
     const auto member =
         member_of({.vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode},
             *step.operation_reference);
-    return visit(Overloaded{
-                     [](const Member::Operation &bound) { return bound; },
-                     [&](const Operand &) -> Member::Operation {
-                       throw std::runtime_error("'" + std::string(member.display) +
-                                                "' is an operand, and this step names it where an operation "
-                                                "belongs");
-                     },
-                     [](const Member::Hole &) -> Member::Operation {
-                       throw std::logic_error("a hole never decodes, so no step applies one");
-                     },
-                 },
+    return refract::visit(Overloaded{
+                              [](const Member::Operation &bound) { return bound; },
+                              [&](const Operand &) -> Member::Operation {
+                                throw std::runtime_error("'" + std::string(member.display) +
+                                                         "' is an operand, and this step names it where an operation "
+                                                         "belongs");
+                              },
+                              [](const Member::Hole &) -> Member::Operation {
+                                throw std::logic_error("a hole never decodes, so no step applies one");
+                              },
+                          },
         member.kind);
   }
 
@@ -1084,10 +1084,11 @@ struct Interpreter {
       used.push_back(reference.slice_index);
     };
     const auto note_operand = [&](const Operand &operand) {
-      visit(Overloaded{
-                [&](const Operand::Vocabulary &vocabulary) { note(vocabulary.reference); },
-                [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Discard> auto &) {},
-            },
+      refract::visit(
+          Overloaded{
+              [&](const Operand::Vocabulary &vocabulary) { note(vocabulary.reference); },
+              [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Discard> auto &) {},
+          },
           operand.kind);
     };
     for (const auto &step: steps_of(row)) {

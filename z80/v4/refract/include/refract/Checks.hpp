@@ -70,7 +70,7 @@ constexpr void check_tables_total(const Description &description) {
     what = what.substr(1, what.size() - 2);
   }
   const auto matches = [what, indirect](const Operand &operand) {
-    return visit(
+    return refract::visit(
         Overloaded{
             [&](const Operand::Named &named) { return operand.indirect == indirect && named.name.view() == what; },
             [](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary, Operand::Discard> auto &) {
@@ -133,7 +133,7 @@ constexpr void check_derived_rows_override(const Description &description, const
     const std::span<const Vocabulary> vocabularies, const Row &row, const std::uint8_t opcode, const Rules &rules) {
   const Resolution at{.vocabularies = vocabularies, .matched = row.matched, .rules = rules, .opcode = opcode};
   const auto renders = [&](this const auto &self, const Piece &piece) -> bool {
-    return visit(
+    return refract::visit(
         Overloaded{
             [](const Piece::Displacement &) { return true; },
             [&](const Piece::Vocabulary &vocabulary) {
