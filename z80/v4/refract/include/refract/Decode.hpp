@@ -6,9 +6,9 @@
 // answers here, and the whole-description rules that need them are in Checks.hpp.
 
 #include "refract/Model.hpp"
-#include "refract/Overloaded.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/TableError.hpp"
+#include "refract/Visit.hpp"
 
 #include <algorithm>
 #include <array>

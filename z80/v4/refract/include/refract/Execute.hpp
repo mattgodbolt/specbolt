@@ -22,9 +22,9 @@
 #include "refract/Decode.hpp"
 #include "refract/Machine.hpp"
 #include "refract/Model.hpp"
-#include "refract/Overloaded.hpp"
 #include "refract/TableError.hpp"
 #include "refract/ToArray.hpp"
+#include "refract/Visit.hpp"
 #include "refract/Workarounds.hpp"
 
 #include <algorithm>

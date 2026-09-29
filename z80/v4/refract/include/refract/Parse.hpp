@@ -6,10 +6,10 @@
 
 #include "refract/Lexical.hpp"
 #include "refract/Model.hpp"
-#include "refract/Overloaded.hpp"
 #include "refract/Parser.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/TableError.hpp"
+#include "refract/Visit.hpp"
 
 #include <algorithm>
 #include <optional>

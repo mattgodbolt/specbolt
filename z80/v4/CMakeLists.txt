@@ -30,12 +30,12 @@ target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
         refract/include/refract/Lexical.hpp
         refract/include/refract/Machine.hpp
         refract/include/refract/Model.hpp
-        refract/include/refract/Overloaded.hpp
         refract/include/refract/Parse.hpp
         refract/include/refract/Parser.hpp
         refract/include/refract/Pattern.hpp
         refract/include/refract/TableError.hpp
         refract/include/refract/ToArray.hpp
         refract/include/refract/Vector.hpp
+        refract/include/refract/Visit.hpp
         refract/include/refract/Workarounds.hpp
 )

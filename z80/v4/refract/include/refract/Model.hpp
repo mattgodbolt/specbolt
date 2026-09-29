@@ -6,9 +6,9 @@
 // written.
 
 #include "refract/Continue.hpp"
-#include "refract/Overloaded.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/Vector.hpp"
+#include "refract/Visit.hpp"
 
 #include <algorithm>
 #include <array>

@@ -191,7 +191,7 @@ names is live. Two things followed.
   how little headroom the checks have.
 - **libstdc++'s `std::visit` costs more than the work it dispatches to.** It builds a table of function pointers per
   visitor and variant; evaluating that is cheap at run time and not during constant evaluation. `refract::visit`, in
-  Overloaded.hpp, asks `index()` of each alternative in turn instead. It is still exhaustive, because every
+  Visit.hpp, asks `index()` of each alternative in turn instead. It is still exhaustive, because every
   alternative's overload is instantiated, so a missing case is a compile error.
 
 One compile of `Z80.cpp` with gcc 16.2 at `RelWithDebInfo`, two adjacent runs each, same machine:
@@ -201,6 +201,12 @@ One compile of `Z80.cpp` with gcc 16.2 at `RelWithDebInfo`, two adjacent runs ea
 | before the variants | 80.0 s | 2.04 GB |
 | variants, `std::visit` | 87.4 s | 2.36 GB |
 | variants, `refract::visit` | 84.5 s | 2.18 GB |
+
+2026-09-29: `refract::visit` was a recursion, one instantiation per alternative, with an `if constexpr` base case at the
+last. It is now one `template for` over the alternatives' indices, which reads as what it does. Measured the same way,
+at the commit before and after, two runs each: 85.9 and 87.9 s at 2.22 GB before, 85.7 and 85.7 s at 2.24 GB after, so
+the two spellings cost the same. (The before figures are about 2 s above the table's; the tree has moved on since,
+through the `Continue` change.)
 
 So `refract::visit` saves about 3 s and 180 MB a unit over `std::visit`, and the variants cost about 4.5 s over the
 flat structs either way; what is left is probably the larger `Member` copied by value in `member_of` and `resolve`,

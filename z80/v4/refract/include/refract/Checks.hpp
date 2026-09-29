@@ -7,8 +7,8 @@
 
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
-#include "refract/Overloaded.hpp"
 #include "refract/TableError.hpp"
+#include "refract/Visit.hpp"
 
 #include <algorithm>
 #include <ranges>
