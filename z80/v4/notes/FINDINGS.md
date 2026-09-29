@@ -87,7 +87,12 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 - `std::function_ref` and `std::copyable_function` are there; `disassemble` takes the former.
 - `std::optional<T&>` is there, which an earlier note here had said it was not. `Description::row_for`
   and `rule_for` still return pointers and could return one.
-- `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`.
+- `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`, and refract builds its
+  diagnostics by concatenation: `"has no member '" + std::string(name) + "'"`, with a `std::string` around every
+  `string_view` and a `decimal` around every number. Checked 2026-09-29: gcc trunk's libstdc++ does evaluate
+  `std::format` in a constant expression (https://compiler-explorer.com/z/avo378TcT, against gcc 16.2 failing at
+  https://compiler-explorer.com/z/YbYen74Kn), so it should arrive with gcc 17. The libc++ that Barry's fork builds
+  against for WASM does not have it yet.
 ### Why refract has its own `Vector`, and what it would take to use `std::inplace_vector`
 
 `Vector<T, N>` in Vector.hpp is a `std::array<T, N>` and a count, with a `push_back` that throws when full. It exists

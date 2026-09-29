@@ -288,6 +288,11 @@ journal now, most of their items struck through. This is what survived them.
   rejects the handler: "address of automatic variable 'displacement' can escape to 'musttail' call".
   Ordinary builds pass only because the lambda is inlined away. Passing those as the lambda's
   arguments rather than capturing them keeps them by value and satisfies both compilers.
+- **Diagnostics are built by concatenation, waiting on a `constexpr` `std::format`.** Every message refract throws
+  during constant evaluation is a chain of `+` with `std::string(...)` and `decimal(...)` around its parts, because
+  libstdc++ 16's `std::format` cannot run there. gcc trunk's can, so the plan is to move to `std::format` once gcc 17
+  is released, staying on released compilers for the main build rather than moving to trunk for this. The WASM build's
+  libc++ would still need a stand-in then. The run-time tests could use `std::format` today. Details in FINDINGS.md.
 - **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a
   unit, because gcc collects only between top-level declarations. The six-line consumer-side
   workaround is in MEASUREMENTS.md; a library-side one has not been found.
