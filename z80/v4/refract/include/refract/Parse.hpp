@@ -49,10 +49,6 @@ inline constexpr std::size_t max_tables = 256;
         vocabulary.scope = parser.next_word();
         if (vocabulary.scope.empty())
           throw std::runtime_error("':' introduces the scope a vocabulary's members come from, and none was given");
-        // Checked here rather than where it becomes a `Name`, which is inside `resolve`, long after anyone could act
-        // on it.
-        if (vocabulary.scope.size() > Name::capacity)
-          throw std::runtime_error("scope name '" + std::string(vocabulary.scope) + "' is too long");
         next = parser.next_word();
       }
       if (next != "=")

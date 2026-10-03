@@ -222,7 +222,7 @@ TEST_CASE("Table diagnostics") {
             .display == "c");
     CHECK(resolve({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x00},
               steps_of(row)[0].destinations[0])
-              .name == Name{"ixh"});
+              .name.view() == "ixh");
 
     // Opcode 0 is the derived table's own row; 1 it inherits; 0xdd it inherits, which is what makes `dd dd` re-enter.
     CHECK(parsed.decoded[1][0x00].value() == 2);
@@ -236,8 +236,6 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- 0xzz\n"), Equals("2: malformed constant '0xzz'"));
     CHECK_THROWS_WITH(
         parse("table t\n00000000 | nop | ld8 a <- 70000\n"), Equals("2: constant '70000' does not fit in 16 bits"));
-    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- averyverylongname\n"),
-        Equals("2: operand name 'averyverylongname' is too long"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- -\n"),
         Equals("2: '-' discards a result, so it can only be a destination"));
     CHECK_THROWS_WITH(
@@ -278,10 +276,6 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("vocab r :\ntable t\n"),
         Equals("1: ':' introduces the scope a vocabulary's members come from, and none was given"));
     CHECK_THROWS_WITH(parse("vocab r : = b c\ntable t\n"), Equals("1: expected '=' in vocabulary declaration"));
-    // A scope was the one name that reached `Name` unchecked, and `Name` has no line to complain with. The Z80's own
-    // longest scope is 14 of the 15.
-    CHECK_THROWS_WITH(parse("vocab r : AVeryLongScopeName = b c\ntable t\n"),
-        Equals("1: scope name 'AVeryLongScopeName' is too long"));
     CHECK_THROWS_WITH(parse("vocab r = b:add8(0,1,2,3)\ntable t\n"), Equals("1: more than 3 Operand"));
     CHECK_THROWS_WITH(parse("vocab r = b:add8(n)\ntable t\n"),
         Equals("1: a member cannot pass an immediate; only the encoding fetches those"));

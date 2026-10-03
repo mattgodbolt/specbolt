@@ -10,18 +10,16 @@
 
 namespace specbolt::refract {
 
-// A fixed-capacity vector that works during constant evaluation and is structural, so it, and anything holding one, can
-// be a template argument. Nothing requires `std::inplace_vector` to be structural, and the implementations tried are
-// not; notes/FINDINGS.md has the rest of why it is not used here.
+// A fixed-capacity vector that works during constant evaluation, for the parsed description, which outlives the
+// evaluation that built it and so cannot hold a `std::vector`. It is what `std::inplace_vector` is for, and stands in
+// for it until both standard libraries this builds with can use theirs here; notes/FINDINGS.md has why neither can yet.
 //
-// Everything here is public because a structural type's members must be. `push_back` throws when the container is
-// full, naming the capacity and the element type; during constant evaluation that throw is the compile error. Which
-// line of a description was being read is not this container's business: `at_line` puts it in front.
+// `push_back` throws when the container is full, naming the capacity and the element type; during constant evaluation
+// that throw is the compile error. Which line of a description was being read is not this container's business:
+// `at_line` puts it in front.
 template<typename T, std::size_t N>
-struct Vector {
-  std::array<T, N> storage{};
-  std::size_t count{};
-
+class Vector {
+public:
   static constexpr std::size_t capacity = N;
   // The element's name for the diagnostic, reflected once here rather than in `push_back`: a reflection call in a
   // function body would make the function consteval, and the parser also runs at run time under test.
@@ -29,36 +27,39 @@ struct Vector {
       std::meta::has_identifier(^^T) ? std::meta::identifier_of(^^T) : std::meta::display_string_of(^^T);
 
   constexpr void push_back(const T &value) {
-    if (count == N)
+    if (count_ == N)
       throw std::length_error("more than " + decimal(N) + " " + std::string(element_name));
-    storage[count++] = value;
+    storage_[count_++] = value;
   }
 
-  [[nodiscard]] constexpr std::size_t size() const { return count; }
-  [[nodiscard]] constexpr bool empty() const { return count == 0; }
-  [[nodiscard]] constexpr auto begin() const { return storage.begin(); }
-  [[nodiscard]] constexpr auto end() const { return storage.begin() + static_cast<std::ptrdiff_t>(count); }
-  [[nodiscard]] constexpr auto begin() { return storage.begin(); }
-  [[nodiscard]] constexpr auto end() { return storage.begin() + static_cast<std::ptrdiff_t>(count); }
+  [[nodiscard]] constexpr std::size_t size() const { return count_; }
+  [[nodiscard]] constexpr bool empty() const { return count_ == 0; }
+  [[nodiscard]] constexpr auto begin() const { return storage_.begin(); }
+  [[nodiscard]] constexpr auto end() const { return storage_.begin() + static_cast<std::ptrdiff_t>(count_); }
+  [[nodiscard]] constexpr auto begin() { return storage_.begin(); }
+  [[nodiscard]] constexpr auto end() { return storage_.begin() + static_cast<std::ptrdiff_t>(count_); }
   // Indexing past the count is a mistake in this library rather than in a description, so it throws rather than reading
   // a default-constructed slot.
   [[nodiscard]] constexpr const T &operator[](const std::size_t at) const {
-    if (at >= count)
+    if (at >= count_)
       throw std::out_of_range("index past the end of a Vector");
-    return storage[at];
+    return storage_[at];
   }
   [[nodiscard]] constexpr T &operator[](const std::size_t at) {
-    if (at >= count)
+    if (at >= count_)
       throw std::out_of_range("index past the end of a Vector");
-    return storage[at];
+    return storage_[at];
   }
-  [[nodiscard]] constexpr const T *data() const { return storage.data(); }
-  // Compares the unused tail as well as the used part, as a defaulted one would. That is sound because nothing here
-  // ever shrinks: two vectors holding the same sequence reached it by the same appends, and their spare slots are
-  // equally untouched. Template-argument equivalence compares members the same way and never consults this operator; it
-  // is here for ordinary code, and agrees. Written out rather than defaulted so that it is instantiated only where two
-  // vectors are compared, and an element type needs an `==` only if they are (FINDINGS.md).
-  constexpr bool operator==(const Vector &other) const { return count == other.count && storage == other.storage; }
+  [[nodiscard]] constexpr const T *data() const { return storage_.data(); }
+  // Compares the unused tail as well as the used part. That is sound because nothing here ever shrinks: two vectors
+  // holding the same sequence reached it by the same appends, and their spare slots are equally untouched. Written out
+  // rather than defaulted so that it is instantiated only where two vectors are compared, and an element type needs an
+  // `==` only if they are (FINDINGS.md).
+  constexpr bool operator==(const Vector &other) const { return count_ == other.count_ && storage_ == other.storage_; }
+
+private:
+  std::array<T, N> storage_{};
+  std::size_t count_{};
 };
 
 } // namespace specbolt::refract

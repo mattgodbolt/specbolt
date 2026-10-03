@@ -72,7 +72,7 @@ constexpr void check_tables_total(const Description &description) {
   const auto matches = [what, indirect](const Operand &operand) {
     return refract::visit(
         Overloaded{
-            [&](const Operand::Named &named) { return operand.indirect == indirect && named.name.view() == what; },
+            [&](const Operand::Named &named) { return operand.indirect == indirect && named.name == what; },
             [](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary, Operand::Discard> auto &) {
               return false;
             },

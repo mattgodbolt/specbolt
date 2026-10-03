@@ -96,9 +96,7 @@ namespace specbolt::refract {
       throw std::runtime_error("malformed constant '" + std::string(word) + "'");
     return Operand::literal(static_cast<std::uint16_t>(value));
   }
-  if (word.size() > Name::capacity)
-    throw std::runtime_error("operand name '" + std::string(word) + "' is too long");
-  return Operand::named(Name{word});
+  return Operand::named(word);
 }
 
 // Splits display text around the values it renders rather than spells: `$nn` and `$nnnn` come from the encoding, `+d`
@@ -149,7 +147,7 @@ namespace specbolt::refract {
 // Splits `name=rest` into the parameter an operand names and the operand, or returns the word whole with an empty name.
 // A keyword is an identifier followed by `=`, which is what keeps `(hl)/delay=1` from looking like one: what precedes
 // its `=` is not an identifier.
-[[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(const std::string_view word) {
+[[nodiscard]] constexpr std::pair<std::string_view, std::string_view> split_keyword(const std::string_view word) {
   const auto at = word.find('=');
   if (at == std::string_view::npos || at == 0)
     return {{}, word};
@@ -159,11 +157,9 @@ namespace specbolt::refract {
   };
   if (!std::ranges::all_of(keyword, in_identifier))
     return {{}, word};
-  if (keyword.size() > Name::capacity)
-    throw std::runtime_error("'" + std::string(keyword) + "' is too long to be a parameter name");
   if (at + 1 == word.size())
     throw std::runtime_error("'" + std::string(keyword) + "=' names a parameter but gives it no operand");
-  return {Name{keyword}, word.substr(at + 1)};
+  return {keyword, word.substr(at + 1)};
 }
 
 // Parses one vocabulary member, written `display[:operation[(argument, ...)]][/delay=n]`, or `-` for a hole. The

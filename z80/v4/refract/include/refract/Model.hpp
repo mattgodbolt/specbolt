@@ -1,11 +1,12 @@
 #pragma once
 
-// The shapes a parsed instruction table is made of, all of them plain value types. `Name` and `Resolved` are non-type
-// template parameters later, so they are *structural*: literal, with every member public, recursively, which is what
-// `Name` exists to be. The rest hold `std::string_view`s into the description and so could not be however they were
-// written.
+// The shapes a parsed instruction table is made of, all of them plain value types. `Resolved` is a non-type template
+// parameter later, so it is *structural*: literal, with every member public, recursively, which is why its names are
+// `Interned` rather than `std::string_view`. The rest hold `std::string_view`s into the description and so could not be
+// however they were written.
 
 #include "refract/Continue.hpp"
+#include "refract/Interned.hpp"
 #include "refract/Pattern.hpp"
 #include "refract/Vector.hpp"
 #include "refract/Visit.hpp"
@@ -23,27 +24,6 @@
 
 namespace specbolt::refract {
 
-// A short fixed-capacity string. Structural, so it can be a template argument, where a `std::string_view` cannot.
-struct Name {
-  std::array<char, 15> storage{};
-  // A byte, not a `std::size_t`: `Resolved` is a template argument, part of every handler's identity, so a byte here is
-  // worth the seven it saves.
-  std::uint8_t length{};
-  constexpr Name() = default;
-  template<std::size_t N>
-  constexpr Name(const char (&text)[N]) : Name(std::string_view{text, N - 1}) {} // NOLINT(*-explicit-constructor)
-  constexpr Name(const std::string_view text) { // NOLINT(*-explicit-constructor)
-    if (text.size() > storage.size())
-      throw std::length_error("name does not fit");
-    std::ranges::copy(text, storage.begin());
-    length = static_cast<std::uint8_t>(text.size());
-  }
-  static constexpr std::size_t capacity = std::tuple_size_v<decltype(storage)>;
-  [[nodiscard]] constexpr std::string_view view() const { return {storage.data(), length}; }
-  [[nodiscard]] constexpr bool empty() const { return length == 0; }
-  constexpr bool operator==(const Name &) const = default;
-};
-
 // Marks a member function of a machine as one a description may name. A machine has an interface a description must not
 // reach, so its operations are the members it marks, one by one, static or not:
 //
@@ -60,9 +40,9 @@ inline constexpr Operation operation{};
 //   enum class Direction { Up [[=Spelling{"i"}]], Down [[=Spelling{"d"}]] };
 //
 // The spelling is a fact about the machine's assembly syntax, so it lives on the declaration. An annotation's type must
-// be structural, which `Name` is and `std::string_view` is not.
+// be structural, which `Interned` is and `std::string_view` is not.
 struct Spelling {
-  Name text{};
+  Interned<char> text{};
 };
 
 // Which vocabulary to look a value up in, and what says which of its members to take: a slice of the opcode, or (when
@@ -87,7 +67,7 @@ struct Access {
   // The operand says which parameter it feeds rather than relying on where it sits, as `value=(hl)` does in the Z80's
   // description. Empty when the row wrote it positionally, which is almost always. See `operand_for_parameter` in
   // Execute.hpp.
-  Name parameter{};
+  Interned<char> parameter{};
   constexpr bool operator==(const Access &) const = default;
 };
 
@@ -101,7 +81,7 @@ struct Operand : Access {
   // A name the machine resolves. A name is only a name here, whatever it is on the machine (the Z80's `a`, `hl` and
   // `carry` are a register, a pair and a flag bit).
   struct Named {
-    Name name;
+    std::string_view name;
     constexpr bool operator==(const Named &) const = default;
   };
   // The immediate the encoding fetched, of this many bytes.
@@ -127,7 +107,7 @@ struct Operand : Access {
   [[nodiscard]] static constexpr Operand discard() { return {{}, Discard{}}; }
   [[nodiscard]] static constexpr Operand immediate(const std::uint8_t width) { return {{}, Immediate{width}}; }
   [[nodiscard]] static constexpr Operand literal(const std::uint16_t value) { return {{}, Constant{value}}; }
-  [[nodiscard]] static constexpr Operand named(const Name name) { return {{}, Named{name}}; }
+  [[nodiscard]] static constexpr Operand named(const std::string_view name) { return {{}, Named{name}}; }
   [[nodiscard]] static constexpr Operand vocabulary(const Reference reference) { return {{}, Vocabulary{reference}}; }
 };
 
@@ -142,12 +122,12 @@ struct Resolved : Access {
   // variant, which is not structural: the fields a kind does not use stay at their defaults.
   enum class Kind : std::uint8_t { Constant, Named, Immediate, Discard };
   Kind kind{};
-  Name name{};
+  Interned<char> name{};
   std::uint16_t constant{};
   std::uint8_t width{};
   // The scope of the vocabulary this came from, because by the time a name is looked up the vocabulary is long gone.
   // Empty for an operand no vocabulary owns, such as one a member appends, where the parameter decides.
-  Name scope{};
+  Interned<char> scope{};
   // The value is in the instruction: these bits of the opcode. A vocabulary of plain numbers needs no code of its own,
   // so choosing between its members is a run-time read rather than one function per member.
   bool from_opcode{};
@@ -173,7 +153,7 @@ struct Resolved : Access {
                      },
                      [&](const Operand::Named &named) {
                        result.kind = Resolved::Kind::Named;
-                       result.name = named.name;
+                       result.name = Interned<char>{named.name};
                      },
                      [&](const Operand::Immediate &immediate) {
                        result.kind = Resolved::Kind::Immediate;
@@ -384,7 +364,7 @@ struct Resolution {
   // The member supplies everything about the operand except which parameter it was written against, which is the row's
   // business and not the vocabulary's.
   result.parameter = operand.parameter;
-  result.scope = Name{at.vocabularies[reference.vocabulary_index].scope};
+  result.scope = Interned<char>{at.vocabularies[reference.vocabulary_index].scope};
   // A number the opcode already carries: say where, rather than which. Every member of the vocabulary then resolves to
   // the same operand, so the functions that differed only in a constant become one. `constant` is cleared for sharing,
   // not correctness: it is part of the handler's identity, and the member's own value would split them again.

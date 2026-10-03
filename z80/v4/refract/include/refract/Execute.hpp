@@ -20,6 +20,7 @@
 // `Interpreter<Target>::run` then runs the machine until it says stop.
 
 #include "refract/Decode.hpp"
+#include "refract/Interned.hpp"
 #include "refract/Machine.hpp"
 #include "refract/Model.hpp"
 #include "refract/TableError.hpp"
@@ -105,9 +106,9 @@ namespace specbolt::refract {
 // ---------------------------------------------------------------------------
 //
 // `Call` and `Resolved` are non-type template parameters, so they must be *structural*: literal types whose members and
-// bases are all public, recursively. That single requirement explains a lot of the model: why `Vector` exposes its
-// `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>` rather than a `std::string_view` (which has
-// private members and is not structural).
+// bases are all public, recursively. That single requirement is why their names and lists are `Interned` rather than
+// `std::string_view` and `std::vector`: the standard library stores the contents once, during constant evaluation,
+// and `Interned` is the pointer and count to it with both public.
 //
 // It is also why the parse cannot simply hand its `std::vector`s over: `std::define_static_array` would promote them,
 // but only for a structural element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what stands in its
@@ -314,7 +315,7 @@ struct Interpreter {
         Overloaded{
             [&](const Operand &operand) {
               return refract::visit(Overloaded{
-                                        [](const Operand::Named &named) { return named.name.view(); },
+                                        [](const Operand::Named &named) { return named.name; },
                                         [&](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary,
                                             Operand::Discard> auto &) -> std::string_view { throw not_a_location(); },
                                     },
@@ -430,22 +431,31 @@ struct Interpreter {
     std::uint8_t opcode{};
   };
 
-  // Everything one step needs, with its vocabulary references already resolved. This is a non-type template parameter,
-  // so every member of it, and of everything it contains, has to be public. See the note on structural types above.
-  struct Call {
-    Vector<Resolved, max_operands> operands{};
-    Vector<Resolved, max_operands> destinations{};
+  // One step resolved against one opcode, which is what `call_for` builds. In vectors, so that it can be built at run
+  // time as well, where a test compares two of them; `Call` below is the same thing made a template argument.
+  struct ResolvedStep {
+    std::vector<Resolved> operands{};
+    std::vector<Resolved> destinations{};
     // The description line, for diagnostics. Threaded through `value_of` and `store` as its own template parameter and
     // kept out of `Resolved`: `Resolved` is a template argument, and equal operands on different lines would become
     // different arguments, splitting every instantiation below for a field only an error message reads.
     std::size_t line{};
-    constexpr bool operator==(const Call &) const = default;
+    constexpr bool operator==(const ResolvedStep &) const = default;
+  };
+
+  // Everything one step needs, with its vocabulary references already resolved. This is a non-type template parameter,
+  // so every member of it, and of everything it contains, has to be public. See the note on structural types above.
+  // Equal lists are stored once, so two steps that resolve alike are the same argument and share their code.
+  struct Call {
+    Interned<Resolved> operands{};
+    Interned<Resolved> destinations{};
+    std::size_t line{};
+    consteval explicit Call(const ResolvedStep &step) :
+        operands(step.operands), destinations(step.destinations), line(step.line) {}
   };
 
   // The rule the paragraph above states, said in a way the compiler checks, in one place rather than at whichever
   // template first takes the type.
-  static_assert(std::meta::is_structural_type(^^Name),
-      "Name is a template argument, so every member must be public and itself structural");
   static_assert(std::meta::is_structural_type(^^Resolved),
       "Resolved is a template argument, so every member and base must be public and itself structural");
 #if REFRACT_CLANG_WORKAROUNDS
@@ -926,16 +936,16 @@ struct Interpreter {
         [&] { return at_line(line, [&] { return operation_for(step, matched, opcode, rules).name; }); });
   }
 
-  // The `Call` a step becomes: its operands and destinations resolved against this opcode, then whatever the vocabulary
+  // What a step becomes: its operands and destinations resolved against this opcode, then whatever the vocabulary
   // member appends. Anything that goes wrong is reported against the row's file and line.
-  [[nodiscard]] static constexpr Call call_for(
+  [[nodiscard]] static constexpr ResolvedStep call_for(
       const Step &step, const Pattern &matched, const std::uint8_t opcode, const std::size_t line, const Rules &rules) {
     return naming(Compiled::file, [&] {
       return at_line(line, [&] {
         const auto applied = operation_for(step, matched, opcode, rules);
         const Resolution at{
             .vocabularies = Compiled::vocabularies(), .matched = matched, .rules = rules, .opcode = opcode};
-        Call result{.line = line};
+        ResolvedStep result{.line = line};
         for (const auto &operand: step.operands)
           result.operands.push_back(resolve(at, operand));
         for (const auto &written: step.destinations) {
@@ -1046,7 +1056,7 @@ struct Interpreter {
       template for (constexpr auto step: steps) {
         {
           constexpr auto verb = verb_for(step, row.matched, BodyKey, row.line, rules);
-          constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
+          constexpr Call call{call_for(step, row.matched, BodyKey, row.line, rules)};
           // After a condition that says no, the rest of the row is skipped, which is where the extra cycles of a taken
           // branch come from. `break` rather than `return`, because abandoning the rest of a row is not abandoning the
           // run: the hand-over below still has to happen, and a `return` here stops the machine at the first untaken
