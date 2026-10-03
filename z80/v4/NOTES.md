@@ -287,6 +287,9 @@ journal now, most of their items struck through. This is what survived them.
   libstdc++ 16's `std::format` cannot run there. gcc trunk's can, so the plan is to move to `std::format` once gcc 17
   is released, staying on released compilers for the main build rather than moving to trunk for this. The WASM build's
   libc++ would still need a stand-in then. The run-time tests could use `std::format` today. Details in FINDINGS.md.
+- **`Name` could be replaced by interning, for a tenth of the interpreter's compile time.** Spiked on
+  `mg/v4_static_spike`: `std::define_static_string` and `std::define_static_array` remove `Name` and `Vector`'s
+  structural duty with the same generated code. Undecided; FINDINGS.md, "Interning in place of a structural string".
 - **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a
   unit, because gcc collects only between top-level declarations. The six-line consumer-side
   workaround is in MEASUREMENTS.md; a library-side one has not been found.

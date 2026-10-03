@@ -1153,6 +1153,17 @@ change is the reverse. `Transfer`, the `std::optional` it was returned in, and
 the entire dispatch loop are gone: the loop is now the chain of tail calls
 itself, and `execute_instruction` is one line.
 
+2026-10-03, a correction to the third consequence. "At all" was too strong. A
+tail call from inside a `template for` body compiles on gcc 16.2, at `-O0` too,
+when the induction variable is a plain value whose address nothing takes, such
+as an `int` from `std::views::iota` compared with `==`. It is refused once the
+induction variable's address may escape: passing it to a function that takes
+`const Step &` is enough. So the rule is the frame rule above, applied to one
+more automatic object, rather than something peculiar to expansion statements.
+`execute_one` passes each step by reference, though only to `consteval`
+functions; whether that still blocks a tail call there has not been retested,
+and handing on after the expansion is the clearer shape either way.
+
 ## Done: a location is a thing the machine can read
 
 Which names a description may write was decided, for most of this project, by a

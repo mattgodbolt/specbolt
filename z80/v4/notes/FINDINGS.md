@@ -183,6 +183,43 @@ throws `std::bad_alloc` with no message, so a malformed pattern would lose its d
 the language. `Call`'s uses stay on `Vector` regardless, for requirement 1, which is why "eventually
 `inplace_vector`" is true of most of the parser and false of the generator.
 
+### Interning in place of a structural string and a structural `Vector`, spiked 2026-10-03
+
+`Name` (a `std::array<char, 15>` and a length) and the structural half of `Vector` exist for one reason: a handler's
+template argument carries names and lists, and `std::string_view` and `std::span` are not structural. C++26 has
+another answer. `std::define_static_string` and `std::define_static_array` copy their contents into static storage
+during constant evaluation and hand back the same object for the same contents, and a pointer to that object may be
+part of a template argument. Anything holding only that pointer and a count, both public, is structural.
+
+The spike is commit 38af817 on the branch `mg/v4_static_spike`, pushed and not for merging. It adds `Interned<T>`, that
+pointer and count, and with it:
+
+- `Name` is gone. The parser's names are `std::string_view`; the ones a template argument carries (`Resolved::name`
+  and `scope`, `Access::parameter`, `Spelling::text`) are `Interned<char>`, which interns during constant evaluation
+  and, at run time, where the parser tests build them, points into the description. Empty is always a null pointer, so
+  an empty name made at compile time and a default one are the same argument. There is no length limit, so the three
+  "too long" diagnostics go.
+- `Call` holds `Interned<Resolved>` lists. `call_for` returns the same step in `std::vector`s, because TableTest builds
+  and compares them at run time, where there is nowhere for an interned copy to live; `Call`'s `consteval`
+  constructor interns them.
+- `Vector` loses its structural duty and becomes an ordinary container with private members, standing in for
+  `std::inplace_vector` in the parse only.
+
+Sharing survives, which was the open question: the reference forms tried above lost it, because they identify a step
+by its object's address, and interning makes equal contents one object. `Z80.cpp` without LTO has the same 105 KB of
+text and the same 747 handlers either way, and with `-fno-inline` the same counts of `value_of` and `store`.
+
+The cost, gcc 16.2 Release, CPU time per file, alternating baseline and spike on a loaded machine: `Z80.cpp` went from
+84.8-87.7 s (four runs) to 92.4-96.6 s (four runs), about 8 s or a tenth. `Disassembler.cpp` and `TableTest.cpp` went
+up by about a second, within their spread; every other file and peak memory were unchanged. Not profiled: the likely
+cost is a `define_static_array` for each step's lists and a `define_static_string` for each name, during a parse that
+runs twice. Not tried on the fork.
+
+What interning cannot reach is the parsed table. It outlives the evaluation that built it, so it cannot hold a
+`std::vector`; its elements hold `std::string_view`s and variants, so `define_static_array` refuses them; and
+`std::inplace_vector` is blocked for the reasons above. So the end state is no string type of refract's own, and one
+container standing in for a standard one, for a tenth more compile time in the interpreter.
+
 ### `std::visit` is dear during constant evaluation
 
 Found 2026-09-27, turning `Operand` and `Member` into variants decided by exhaustive visits. refract visits in its
@@ -373,12 +410,23 @@ of a template that is instantiated only where it is called.
   function; add `static`". `static constexpr` fixes it, and a namespace-scope `inline constexpr` or a
   template parameter object needs nothing. This is why `execute_one`'s `row` is `static`: expanding
   over `row.steps` directly is what lets the step be the loop variable rather than an index into it.
-- **There is no `template switch`.** An expansion statement generates statements, and a `case`
-  label is not one, so a 256-way dispatch cannot be expanded into a `switch`. The generated forms
-  available are a table of function pointers (what `dispatch` does) or a chain of `if`s. A
-  `switch` over a dense contiguous range is the one shape the compiler turns into a jump table on
-  its own, so it is exactly the shape reflection cannot reach, worth knowing before assuming
-  generated dispatch matches a hand-written interpreter's codegen.
+- **There is no `template switch`.** The body of an expansion statement is control-flow-limited
+  ([stmt.expand]/2), so a `case` label inside it can only belong to a `switch` that is also inside
+  it ([stmt.label]/3), and a 256-way dispatch cannot be expanded into one. gcc says "jump to case
+  label ... enters 'template for' statement" (https://compiler-explorer.com/z/bbecnYhzP). The
+  generated forms available are a table of function pointers (what `dispatch` does) or a chain of
+  `if (opcode == N)`s. Checked 2026-10-03 at 256 cases, each calling its own handler: gcc 16.2
+  turns the chain into one jump table from `-O1`, the same code as a hand-written `switch`
+  (https://compiler-explorer.com/z/8n4enqveP), for a few tens of milliseconds more compilation.
+  The P2996 clang leaves it a linear compare chain at `-O1` and makes a cascade of jump tables at
+  `-O2` (https://compiler-explorer.com/z/4vj1ce5fT), and its compile time grows much faster with
+  the case count than a `switch`'s. Neither makes a table at `-O0`, where gcc leaves even a real
+  `switch` linear. The function-pointer table is one indexed jump at every level
+  (https://compiler-explorer.com/z/6zEdnTWre). So the chain is not ruled out by codegen on gcc; it
+  is ruled out by threading. A table gives every handler its own function with one signature, so
+  each can end in a tail call through the table, where a chain is one dispatch point. CE's "clang
+  (reflection)" compiler accepts the `case` inside a `template for`, against the wording, and the
+  local build of the same fork crashes on it.
 
 ### Toolchain
 
