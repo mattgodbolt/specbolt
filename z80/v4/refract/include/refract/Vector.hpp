@@ -53,11 +53,12 @@ struct Vector {
     return storage[at];
   }
   [[nodiscard]] constexpr const T *data() const { return storage.data(); }
-  // Defaulted, so it compares the unused tail as well as the used part. That is sound because nothing here ever
-  // shrinks: two vectors holding the same sequence reached it by the same appends, and their spare slots are equally
-  // untouched. Template-argument equivalence compares members the same way and never consults this operator; it is here
-  // for ordinary code, and agrees.
-  constexpr bool operator==(const Vector &) const = default;
+  // Compares the unused tail as well as the used part, as a defaulted one would. That is sound because nothing here
+  // ever shrinks: two vectors holding the same sequence reached it by the same appends, and their spare slots are
+  // equally untouched. Template-argument equivalence compares members the same way and never consults this operator; it
+  // is here for ordinary code, and agrees. Written out rather than defaulted so that it is instantiated only where two
+  // vectors are compared, and an element type needs an `==` only if they are (FINDINGS.md).
+  constexpr bool operator==(const Vector &other) const { return count == other.count && storage == other.storage; }
 };
 
 } // namespace specbolt::refract

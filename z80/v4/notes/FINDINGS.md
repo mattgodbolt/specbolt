@@ -300,6 +300,28 @@ The single most useful architectural fact:
 Note the contrast with advice that a `string_view` into the `#embed`ed blob "is trivially structural
 and survives promotion". It is neither, and both halves were verified false.
 
+### Which types need `==`, and why a defaulted one spread
+
+Found 2026-10-03. Every model type had a defaulted `operator==`, empty tags such as `Piece::Imm8` included. Few need
+one, and none for being a template argument: template-argument equivalence compares a structural type member by member
+and never calls `==`. What does need one:
+
+- **The library compares `Name` and `BitSlice`.** `same_address` decides whether two indirect operands are the same
+  place, which is what makes a write-back one, and `displaced_through` checks an instruction is displaced through one
+  base. Those comparisons are what the types mean.
+- **Tests compare exact values.** `Piece` (and so its alternatives and `Reference`) and `Operand::Kind` (and so
+  `Operand`'s alternatives), in TableTest. And `Call`, so `Vector`, `Resolved` and `Access` too, for the check that
+  opcodes sharing a `body_key` produce equal calls: the test's version of the equivalence the compiler applies to the
+  template arguments.
+- **Nothing else.** `Member`, its `Operation` and `Hole`, `Operand` itself, `Rule`, `Transfer` and `Step` had one only
+  because each sits in a `Vector`, and those are gone.
+
+They spread because gcc instantiates a defaulted `operator==` of a class template when the class is instantiated, even
+under a `requires` clause the element type fails (https://compiler-explorer.com/z/PWohe4bd5; gcc 16.2 and trunk both
+do it, clang does not). `Vector`'s compared a `std::array`, whose `==` is unconstrained, so every element type needed
+an `==` whether or not any `Vector` of it was ever compared. `Vector`'s is now written out, an ordinary member function
+of a template that is instantiated only where it is called.
+
 ### `consteval {}` blocks (P3289)
 
 - **gcc 16.2 implements them, at namespace, class and block scope.** A block runs its statements during constant

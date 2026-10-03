@@ -121,7 +121,6 @@ struct Operand : Access {
 
   using Kind = std::variant<Constant, Named, Immediate, Vocabulary, Discard>;
   Kind kind;
-  constexpr bool operator==(const Operand &) const = default;
 
   // One of each kind. A designated initialiser cannot name a base's member, so the aggregate-with-a-base spelling
   // lives here, once, rather than at every place the lexer makes one.
@@ -232,12 +231,9 @@ struct Member {
     static constexpr std::size_t max_arguments = 3;
     std::string_view name;
     Vector<Operand, max_arguments> arguments{};
-    constexpr bool operator==(const Operation &) const = default;
   };
   // `-`: no member here, so a row naming this one does not cover the opcode.
-  struct Hole {
-    constexpr bool operator==(const Hole &) const = default;
-  };
+  struct Hole {};
 
   static constexpr std::size_t max_pieces = 3;
   std::string_view display{};
@@ -246,7 +242,6 @@ struct Member {
   Vector<Piece, max_pieces> pieces{};
   // An operand's text is the display itself, parsed once here.
   std::variant<Operand, Operation, Hole> kind{};
-  constexpr bool operator==(const Member &) const = default;
 };
 
 // A named list of members, one per value of the slice that selects among them.
@@ -279,7 +274,6 @@ struct Rule {
   // member the view can select: the Z80's `pair.hl -> {index:view}` covers `ix` and `iy` at once.
   bool to_is_view{};
   std::uint8_t to_vocabulary{};
-  constexpr bool operator==(const Rule &) const = default;
 };
 
 // The renamings one table applies to what it decodes.
@@ -440,7 +434,6 @@ struct Transfer {
   // Or the view this table was decoded under, handed on, when the goto names this table's own view parameter (as the
   // Z80's `goto indexed_cb(view)` does).
   bool forwards_view{};
-  constexpr bool operator==(const Transfer &) const = default;
 };
 
 // One step of a row: an operation applied to its operands, with its result written to its destinations. A step whose
@@ -453,7 +446,6 @@ struct Step {
   std::optional<Reference> operation_reference{};
   Vector<Operand, max_operands> destinations{};
   Vector<Operand, max_operands> operands{};
-  constexpr bool operator==(const Step &) const = default;
 };
 
 // One line of a table: the encoding it matches, the mnemonic it renders, and what it does.
