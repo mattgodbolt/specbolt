@@ -10,12 +10,10 @@
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
 #include "refract/Visit.hpp"
-#include "refract/Workarounds.hpp"
 
 #include <concepts>
 #include <cstdint>
 #include <format>
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -38,13 +36,8 @@ inline constexpr std::size_t max_instruction_bytes = 8;
 // Renders the instruction at `address` as text, and says how many bytes it occupies. `byte_at(n)` is the nth byte of
 // the instruction, counting from `address`; `address` itself is needed because a relative jump renders where it lands
 // rather than how far it goes.
-[[nodiscard]] inline Disassembly disassemble(const Description &description, const std::uint16_t address,
-#if defined(__cpp_lib_function_ref)
-    const std::function_ref<std::uint8_t(std::size_t)> byte_at) {
-#else
-    // REFRACT_CLANG_WORKAROUNDS: the library has no `std::function_ref`. See WASM.md.
-    std::invocable<std::size_t> auto &&byte_at) {
-#endif
+[[nodiscard]] Disassembly disassemble(
+    const Description &description, const std::uint16_t address, std::invocable<std::size_t> auto &&byte_at) {
   // Follow prefixes until a row that renders something is reached. An encoding may take its displacement between the
   // prefix and the byte that says what to do (the Z80's `dd cb d op`), so the latch is filled inside this loop rather
   // than after it.

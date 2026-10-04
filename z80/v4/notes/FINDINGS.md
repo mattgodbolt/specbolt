@@ -98,7 +98,8 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 
 ### Library, on libstdc++ 16
 
-- `std::function_ref` and `std::copyable_function` are there; `disassemble` takes the former.
+- `std::function_ref` and `std::copyable_function` are there. `disassemble` took the former until 2026-10-04, when it
+  became a constrained `auto` everywhere because libc++ lacks it (WASM.md, item 3).
 - `std::optional<T&>` is there, which an earlier note here had said it was not. `Description::row_for`
   and `rule_for` still return pointers and could return one.
 - `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`, and refract builds its

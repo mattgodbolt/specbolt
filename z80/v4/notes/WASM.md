@@ -116,8 +116,9 @@ made since June is not in it until Barry merges.
    Workaround: `static_assert(sizeof(Call) > 0)` first. [Reduced](https://compiler-explorer.com/z/M9GohWEEa).
 2. **`[[gnu::musttail]]` is unknown to clang.** clang's spelling is `[[clang::musttail]]`, which gcc accepts as well,
    so the tail calls now use that. Not a workaround: it is the spelling both compilers take.
-3. **`std::function_ref` is not in libc++.** `disassemble` takes a constrained `auto` parameter instead when
-   `__cpp_lib_function_ref` is not defined.
+3. **`std::function_ref` is not in libc++.** `disassemble` took a constrained `auto` parameter instead when
+   `__cpp_lib_function_ref` was not defined. *2026-10-04: it takes one on every compiler now, since an `#if` inside a
+   parameter list was the hardest of these to read and `function_ref` bought nothing a template does not.*
 4. **Two warnings, which `-Werror` makes errors.** Lambdas in `execute_one` captured `machine` by name where only one
    `if constexpr` branch uses it, which clang reports as an unused capture: the thing the May build found, come back.
    `[&]` is the answer for both compilers. Separately, the `Byte`/`Word` aliases in `check_destinations_fit` are
@@ -154,17 +155,15 @@ With those, `z80_v4_test` passes every assertion under the fork natively, and un
 ## The workarounds, and how to find them
 
 Every change made for clang's sake that is not simply better code is behind `REFRACT_CLANG_WORKAROUNDS`, defined in
-`refract/Workarounds.hpp` as whether the compiler is clang, with the straightforward code in the other branch. The
-one that is a library gap rather than a compiler bug tests the standard feature macro and names
-`REFRACT_CLANG_WORKAROUNDS` in a comment, so a single search finds all of them. Build with
-`-DREFRACT_CLANG_WORKAROUNDS=0` to try the straightforward code on a newer fork.
+`refract/Workarounds.hpp` as whether the compiler is clang, with the straightforward code in the other branch, so a
+single search finds all of them. Build with `-DREFRACT_CLANG_WORKAROUNDS=0` to try the straightforward code on a newer
+fork.
 
 | where | what it avoids | gone when |
 |---|---|---|
 | `Execute.hpp`, before the `is_structural_type(^^Call)` assert | item 1, the crash | the reduced case compiles |
 | `Execute.hpp`, `direct_value_of` | item 6, the wrong bit | the fork merges upstream past the fix |
 | `Execute.hpp`, `check_destinations_fit` | item 4, the alias warning | the fork counts `^^` as a use |
-| `Disassemble.hpp`, `disassemble` | item 3, no `function_ref` | libc++ defines `__cpp_lib_function_ref` |
 
 ## For Barry
 
