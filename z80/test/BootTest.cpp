@@ -30,25 +30,18 @@ namespace {
 
 constexpr std::size_t frames = 200; // the ROM tests memory before it draws anything
 
+// The whole of memory once a 48K machine built on `Cpu` has run the ROM for `frames` frames.
 template<typename Cpu>
-struct Booted {
-  std::vector<std::uint8_t> memory;
-  RegisterFile registers;
-  std::size_t cycles{};
-};
-
-template<typename Cpu>
-Booted<Cpu> boot() {
+std::vector<std::uint8_t> boot() {
   Spectrum<Cpu> spectrum{Variant::Spectrum48, get_asset_dir() / "48.rom", 16000};
-  std::size_t cycles = 0;
   for (std::size_t frame = 0; frame < frames; ++frame)
-    cycles += spectrum.run_frame();
+    spectrum.run_frame();
 
-  Booted<Cpu> result{.memory = {}, .registers = spectrum.z80().regs(), .cycles = cycles};
-  result.memory.reserve(0x10000);
+  std::vector<std::uint8_t> memory;
+  memory.reserve(0x10000);
   for (std::size_t address = 0; address < 0x10000; ++address)
-    result.memory.push_back(spectrum.memory().read(static_cast<std::uint16_t>(address)));
-  return result;
+    memory.push_back(spectrum.memory().read(static_cast<std::uint16_t>(address)));
+  return memory;
 }
 
 // The ROM clears the display and writes its copyright line, so a booted 48K
@@ -66,7 +59,7 @@ TEST_CASE("Booting the 48K ROM") {
   const auto v3 = boot<v3::Z80>();
 
   SECTION("gets somewhere: the ROM has drawn to the screen") {
-    const auto pixels = set_pixels(v3.memory);
+    const auto pixels = set_pixels(v3);
     CHECK(pixels > 0);
     CHECK(pixels < 0x1800 * 8);
   }
@@ -79,7 +72,7 @@ TEST_CASE("Booting the 48K ROM") {
     std::size_t first = 0x10000;
     std::size_t differences = 0;
     for (std::size_t address = 0x4000; address < 0x5b00; ++address)
-      if (v3.memory[address] != v4.memory[address]) {
+      if (v3[address] != v4[address]) {
         first = std::min(first, address);
         ++differences;
       }

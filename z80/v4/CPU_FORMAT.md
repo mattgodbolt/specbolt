@@ -645,14 +645,14 @@ happens to charge the same way, and it takes a single digit.
 - returns nothing → the row may name no destination;
 - returns one value → the row names one or more destinations, and every one
   receives it (which is how the undocumented `DD CB` register copy is written);
-- returns a class whose non-static data members are all public and its own →
-  the row names one destination per member, filled in declaration order. Most
-  Z80 arithmetic returns `{result, flags}`, which is why so many rows read
+- returns an aggregate, a bundle of public fields → the row names one
+  destination per member, filled in declaration order. Most Z80 arithmetic
+  returns `{result, flags}`, which is why so many rows read
   `something dest, flags <- …`.
 
-A class that keeps all of its state private is one value; the Z80's `Flags` is.
-A class with only one member, with some members hidden, or with a base class is
-refused, since a row could not tell what it was being given.
+Any other class is one value; the Z80's `Flags` is. An aggregate with only one
+member, or with a base class, is refused, since a row could not tell what it was
+being given.
 
 `-` discards a result and may only be a destination. A destination is a
 location, an address, or `-`; a constant or `n` can only be written through, as
@@ -839,9 +839,8 @@ the address costs*. A processor that wraps within a page for one mode and
 charges for crossing one in another says so there, not here. It is told how many
 bytes the instruction has already read, because on some machines those reads
 happen inside the same window. (That is why the Z80's `ld (ix+d), n` is 19
-T-states and not 22.) The count is a template argument, so a machine whose
-window cannot hold that many refuses it with a constraint, and the row that
-needs it is the error.
+T-states and not 22.) The machine also says how many bytes its window holds,
+as `displacement_window_bytes`, and a row that reads more is the error.
 
 What the CPU description does *not* decide is the offset's width or sign. One
 signed byte is baked into the format: it is what the encoding column's `d`

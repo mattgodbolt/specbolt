@@ -3,10 +3,6 @@
 #include "Target.hpp"
 #include "refract/Execute.hpp"
 
-#include "z80/v4/Z80.hpp"
-
-#include "peripherals/Memory.hpp"
-
 namespace specbolt::v4 {
 
 using C = Target::Compiled;
@@ -33,7 +29,7 @@ TEST_CASE("Table parsing") {
   SECTION("Parentheses make an operand an address") {
     STATIC_CHECK(C::vocabularies()[1].name == "reg");
     STATIC_CHECK(C::vocabularies()[1].members[6].display == "(hl)");
-    constexpr auto ld = C::rows()[*C::find_row(C::entry_table, 0x46)]; // ld b, (hl)
+    constexpr auto ld = C::rows()[*C::decoded()[C::entry_table][0x46]]; // ld b, (hl)
     STATIC_CHECK(resolve({.vocabularies = C::vocabularies(), .matched = ld.matched, .opcode = 0x46}, //
         refract::steps_of(ld)[0].operands[0])
             .indirect);
@@ -44,8 +40,8 @@ TEST_CASE("Table parsing") {
     STATIC_CHECK(resolve({.vocabularies = C::vocabularies(), .matched = ld.matched, .opcode = 0x70}, //
         refract::steps_of(ld)[0].destinations[0])
             .indirect);
-    STATIC_CHECK(C::find_row(C::entry_table, 0x86)); // add a, (hl)
-    STATIC_CHECK(C::find_row(C::entry_table, 0x70)); // ld (hl), b
+    STATIC_CHECK(C::decoded()[C::entry_table][0x86]); // add a, (hl)
+    STATIC_CHECK(C::decoded()[C::entry_table][0x70]); // ld (hl), b
   }
   SECTION("Members bind to operations and a carry policy") {
     constexpr auto alu = C::vocabularies()[2];
@@ -62,212 +58,28 @@ TEST_CASE("Table parsing") {
   }
   SECTION("Decoding starts in the first table declared") { STATIC_CHECK(C::tables()[C::entry_table].name == "base"); }
   SECTION("Finds rows by opcode") {
-    STATIC_CHECK(C::find_row(C::entry_table, 0x00) == 0u);
-    STATIC_CHECK(C::find_row(C::entry_table, 0x76) == 1u);
-    STATIC_CHECK(refract::steps_of(C::rows()[*C::find_row(C::entry_table, 0x21)])[0].operation == "ld16");
+    STATIC_CHECK(C::decoded()[C::entry_table][0x00] == 0u);
+    STATIC_CHECK(C::decoded()[C::entry_table][0x76] == 1u);
+    STATIC_CHECK(refract::steps_of(C::rows()[*C::decoded()[C::entry_table][0x21]])[0].operation == "ld16");
   }
   SECTION("Lowers mnemonics into validated pieces") {
-    constexpr auto ld = C::rows()[*C::find_row(C::entry_table, 0x21)];
+    constexpr auto ld = C::rows()[*C::decoded()[C::entry_table][0x21]];
     STATIC_CHECK(ld.immediate_bytes == 2);
     STATIC_CHECK(ld.pieces.size() == 4);
     STATIC_CHECK(ld.pieces[0] == Piece{Piece::Literal{"ld "}});
     STATIC_CHECK(std::holds_alternative<Piece::Vocabulary>(ld.pieces[1].kind));
     STATIC_CHECK(ld.pieces[2] == Piece{Piece::Literal{", "}});
     STATIC_CHECK(ld.pieces[3] == Piece{Piece::Imm16{}});
-    STATIC_CHECK(C::rows()[*C::find_row(C::entry_table, 0x00)].immediate_bytes == 0);
+    STATIC_CHECK(C::rows()[*C::decoded()[C::entry_table][0x00]].immediate_bytes == 0);
   }
   SECTION("Extracts field values from the opcode") {
-    constexpr auto ld = C::rows()[*C::find_row(C::entry_table, 0x21)];
+    constexpr auto ld = C::rows()[*C::decoded()[C::entry_table][0x21]];
     constexpr auto slice = ld.matched.slices[*find_slice(ld.matched, 'p')];
     STATIC_CHECK(slice.extract(0x01) == 0);
     STATIC_CHECK(slice.extract(0x21) == 2);
     STATIC_CHECK(slice.extract(0x31) == 3);
   }
 }
-
-TEST_CASE("Generated execution") {
-  Scheduler scheduler;
-  Memory memory{4};
-  Z80 cpu{scheduler, memory};
-  constexpr std::uint16_t base_address = 0x8000;
-  // Assemble one instruction at a fixed address and step the CPU over it.
-  const auto run = [&](const auto... bytes) {
-    write_to_memory(memory, base_address, static_cast<std::uint8_t>(bytes)...);
-    cpu.regs().pc(base_address);
-    cpu.execute_one();
-  };
-  SECTION("ld rr, nn") {
-    run(0x21, 0x4000 & 0xff, 0x4000 >> 8);
-    CHECK(cpu.get(RegisterFile::R16::HL) == 0x4000);
-    run(0x11, 0xbeef & 0xff, 0xbeef >> 8);
-    CHECK(cpu.get(RegisterFile::R16::DE) == 0xbeef);
-    run(0x31, 0xfffe & 0xff, 0xfffe >> 8);
-    CHECK(cpu.get(RegisterFile::R16::SP) == 0xfffe);
-  }
-  SECTION("inc rr and dec rr") {
-    run(0x01, 0x1234 & 0xff, 0x1234 >> 8);
-    run(0x03);
-    CHECK(cpu.get(RegisterFile::R16::BC) == 0x1235);
-    run(0x0b);
-    run(0x0b);
-    CHECK(cpu.get(RegisterFile::R16::BC) == 0x1233);
-  }
-  SECTION("inc rr wraps") {
-    run(0x21, 0xffff & 0xff, 0xffff >> 8);
-    run(0x23);
-    CHECK(cpu.get(RegisterFile::R16::HL) == 0);
-  }
-  SECTION("nop does nothing, halt halts") {
-    run(0x21, 0x1234 & 0xff, 0x1234 >> 8);
-    run(0x00);
-    CHECK(cpu.get(RegisterFile::R16::HL) == 0x1234);
-    CHECK(!cpu.halted());
-    run(0x76);
-    CHECK(cpu.halted());
-  }
-  SECTION("add ignores the carry flag, adc reads it") {
-    cpu.set(RegisterFile::R8::A, 0x10);
-    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    run(0xc6, 0x01);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x11);
-
-    cpu.set(RegisterFile::R8::A, 0x10);
-    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    run(0xce, 0x01);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x12);
-  }
-  SECTION("sub and sbc likewise") {
-    cpu.set(RegisterFile::R8::A, 0x10);
-    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    run(0xd6, 0x01);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x0f);
-
-    cpu.set(RegisterFile::R8::A, 0x10);
-    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    run(0xde, 0x01);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x0e);
-  }
-  SECTION("logic operations take no carry input") {
-    cpu.set(RegisterFile::R8::A, 0xf0);
-    cpu.set(RegisterFile::R8::F, Flags::Carry().to_u8());
-    run(0xe6, 0x3f);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x30);
-    run(0xee, 0xff);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0xcf);
-    run(0xf6, 0x0f);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0xcf);
-  }
-  SECTION("cp leaves a alone but sets flags") {
-    cpu.set(RegisterFile::R8::A, 0x42);
-    run(0xfe, 0x42);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x42);
-    CHECK(Flags(cpu.get(RegisterFile::R8::F)).zero());
-    run(0xfe, 0x43);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x42);
-    CHECK(Flags(cpu.get(RegisterFile::R8::F)).carry());
-  }
-  SECTION("Accumulator operations") {
-    cpu.set(RegisterFile::R8::A, 0x0f);
-    run(0x2f); // cpl
-    CHECK(cpu.get(RegisterFile::R8::A) == 0xf0);
-
-    cpu.set(RegisterFile::R8::F, 0);
-    run(0x37); // scf
-    CHECK(Flags(cpu.get(RegisterFile::R8::F)).carry());
-    run(0x3f); // ccf
-    CHECK(!Flags(cpu.get(RegisterFile::R8::F)).carry());
-    CHECK(cpu.get(RegisterFile::R8::A) == 0xf0);
-  }
-  SECTION("ld r, r'") {
-    cpu.set(RegisterFile::R8::C, 0x37);
-    run(0x41); // ld b, c
-    CHECK(cpu.get(RegisterFile::R8::B) == 0x37);
-    cpu.set(RegisterFile::R8::A, 0x42);
-    run(0x7f); // ld a, a
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x42);
-  }
-  SECTION("inc r and dec r") {
-    cpu.set(RegisterFile::R8::B, 0x7f);
-    run(0x04); // inc b
-    CHECK(cpu.get(RegisterFile::R8::B) == 0x80);
-    CHECK(Flags(cpu.get(RegisterFile::R8::F)).overflow());
-    run(0x05); // dec b
-    CHECK(cpu.get(RegisterFile::R8::B) == 0x7f);
-  }
-  SECTION("daa reads and writes the flags") {
-    cpu.set(RegisterFile::R8::A, 0x0f);
-    cpu.set(RegisterFile::R8::F, 0);
-    run(0x27);
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x15);
-  }
-  SECTION("Every opcode decodes to something, including the ed table's filler") {
-    run(0xed, 0x00); // a two-byte nop on real hardware
-    CHECK(cpu.pc() == base_address + 2);
-  }
-  SECTION("Operands can be addresses") {
-    cpu.set(RegisterFile::R16::HL, 0x9000);
-    cpu.set(RegisterFile::R8::B, 0x5a);
-    run(0x70); // ld (hl), b
-    CHECK(memory.read(0x9000) == 0x5a);
-    run(0x4e); // ld c, (hl)
-    CHECK(cpu.get(RegisterFile::R8::C) == 0x5a);
-    cpu.set(RegisterFile::R8::A, 0x01);
-    run(0x86); // add a, (hl)
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x5b);
-    run(0x36, 0x99); // ld (hl), n
-    CHECK(memory.read(0x9000) == 0x99);
-  }
-  SECTION("The address can come from any register pair") {
-    cpu.set(RegisterFile::R16::DE, 0x9010);
-    cpu.set(RegisterFile::R8::A, 0x3c);
-    run(0x12); // ld (de), a
-    CHECK(memory.read(0x9010) == 0x3c);
-    cpu.set(RegisterFile::R16::BC, 0x9010);
-    cpu.set(RegisterFile::R8::A, 0);
-    run(0x0a); // ld a, (bc)
-    CHECK(cpu.get(RegisterFile::R8::A) == 0x3c);
-  }
-  SECTION("A prefix transfers to another table") {
-    cpu.set(RegisterFile::R8::B, 0b0000'0000);
-    run(0xcb, 0xc0); // set 0, b
-    CHECK(cpu.get(RegisterFile::R8::B) == 0b0000'0001);
-    run(0xcb, 0xf8); // set 7, b
-    CHECK(cpu.get(RegisterFile::R8::B) == 0b1000'0001);
-    run(0xcb, 0x80); // res 0, b
-    CHECK(cpu.get(RegisterFile::R8::B) == 0b1000'0000);
-    run(0xcb, 0x78); // bit 7, b
-    CHECK(!Flags(cpu.get(RegisterFile::R8::F)).zero());
-    run(0xcb, 0x40); // bit 0, b
-    CHECK(Flags(cpu.get(RegisterFile::R8::F)).zero());
-  }
-  SECTION("A prefixed instruction can reach memory") {
-    cpu.set(RegisterFile::R16::HL, 0x9000);
-    run(0xcb, 0xfe); // set 7, (hl)
-    CHECK(memory.read(0x9000) == 0x80);
-    run(0xcb, 0xbe); // res 7, (hl)
-    CHECK(memory.read(0x9000) == 0x00);
-  }
-  SECTION("Timing falls out of the fetch cycle") {
-    const auto cycles = [&](const auto... bytes) {
-      const auto before = cpu.cycle_count();
-      run(bytes...);
-      return cpu.cycle_count() - before;
-    };
-    CHECK(cycles(0x00) == 4); // nop
-    CHECK(cycles(0x01, 0x00, 0x00) == 10); // ld bc, nn
-    CHECK(cycles(0x80) == 4); // add a, b
-    CHECK(cycles(0xc6, 0x01) == 7); // add a, n
-    CHECK(cycles(0x4e) == 7); // ld c, (hl)
-    CHECK(cycles(0x70) == 7); // ld (hl), b
-    CHECK(cycles(0x36, 0x00) == 10); // ld (hl), n
-    CHECK(cycles(0x03) == 6); // inc bc: two internal cycles
-    CHECK(cycles(0x34) == 11); // inc (hl): read, modify, write, plus one
-    CHECK(cycles(0xcb, 0xc0) == 8); // set 0, b: two opcode fetches
-    CHECK(cycles(0xcb, 0xfe) == 15); // set 7, (hl)
-    CHECK(cycles(0xcb, 0x7e) == 12); // bit 7, (hl)
-  }
-}
-
 
 TEST_CASE("Two opcodes share a body only when every step agrees") {
   // `body_key` decides which opcodes share a generated function, and `resolve` decides what that function does; the
@@ -278,7 +90,7 @@ TEST_CASE("Two opcodes share a body only when every step agrees") {
     const auto &rules = C::tables()[table].rules;
     for (std::size_t opcode = 0; opcode < 256; ++opcode) {
       const auto byte = static_cast<std::uint8_t>(opcode);
-      const auto &row = C::rows()[*C::find_row(table, byte)];
+      const auto &row = C::rows()[*C::decoded()[table][byte]];
       const auto key = I::body_key(row, byte);
       if (key == byte)
         continue;

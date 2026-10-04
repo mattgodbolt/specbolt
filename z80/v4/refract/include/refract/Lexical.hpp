@@ -26,6 +26,20 @@ namespace specbolt::refract {
   return text;
 }
 
+// The fields of `text` that any character of `delims` separates, blanks trimmed and empty ones dropped: a list's items
+// with `","`, or a line's words with `Parser::blanks`. Each is a `std::string_view` into `text`.
+[[nodiscard]] constexpr std::vector<std::string_view> fields(std::string_view text, const std::string_view delims) {
+  std::vector<std::string_view> result;
+  while (true) {
+    const auto end = text.find_first_of(delims);
+    if (const auto field = Parser::trim(text.substr(0, end)); !field.empty())
+      result.push_back(field);
+    if (end == std::string_view::npos)
+      return result;
+    text.remove_prefix(end + 1);
+  }
+}
+
 // Whether the line opens with `keyword` as a whole word. A keyword on its own is still that keyword, so `table` with no
 // name reaches the diagnostic that says so rather than being silently ignored.
 [[nodiscard]] constexpr bool is_directive(const std::string_view line, const std::string_view keyword) {
@@ -174,6 +188,18 @@ namespace specbolt::refract {
   return {Name{keyword}, word.substr(at + 1)};
 }
 
+// Splits `name(inner)` into the name and what its parentheses hold, or returns the word whole with nothing inside. A
+// table declaration writes its view this way, and a goto the view it enters with; `what` says which, for the error.
+[[nodiscard]] constexpr std::pair<std::string_view, std::optional<std::string_view>> split_parenthesised(
+    const std::string_view word, const std::string_view what) {
+  const auto open = word.find('(');
+  if (open == std::string_view::npos)
+    return {word, std::nullopt};
+  if (!word.ends_with(')'))
+    throw std::runtime_error("unterminated '(' in " + std::string(what));
+  return {word.substr(0, open), word.substr(open + 1, word.size() - open - 2)};
+}
+
 // Parses one vocabulary member, written `display[:operation[(argument, ...)]][/delay=n]`, or `-` for a hole. The
 // display is itself an operand, and the arguments are operands the member appends to the row's, each of which may be
 // `name=`d.
@@ -220,11 +246,7 @@ namespace specbolt::refract {
     if (!arguments.ends_with(')'))
       throw std::runtime_error("a member's argument list is not closed");
     arguments.remove_suffix(1);
-    Parser list(arguments);
-    while (!list.eof()) {
-      const auto word = trim_comma(list.take_until(','));
-      if (word.empty())
-        continue;
+    for (const auto word: fields(arguments, ",")) {
       const auto [parameter, rest] = split_keyword(word);
       auto argument = parse_simple_operand(rest, 0);
       argument.parameter = parameter;

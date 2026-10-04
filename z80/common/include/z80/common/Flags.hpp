@@ -58,8 +58,6 @@ public:
 
   constexpr bool operator==(const Flags &rhs) const = default;
 
-  // Private, so `Flags` cannot be decomposed: a structured binding, or refract splitting an operation's result across
-  // destinations, sees one value.
 private:
   std::uint8_t value_{};
 };

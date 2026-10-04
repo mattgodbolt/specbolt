@@ -143,12 +143,12 @@ public:
   // How a displacement offsets a base, and what forming that address costs. The Z80 sign-extends and spends a
   // five-T-state window doing it, but any immediate the instruction also carries is read *inside* that window, which is
   // why `ld (ix+d), n` is 19 T-states and not 22, and why the framework says how many bytes it already read. Three per
-  // byte, so the window holds one, and the constraint refuses more: the framework asks before it calls, and reports
-  // the row that wanted it.
-  template<std::uint8_t BytesRead>
-    requires(BytesRead <= 1)
-  [[nodiscard]] std::uint16_t displaced_address(const std::uint16_t base, const std::uint8_t offset) {
-    delay(5 - 3 * BytesRead);
+  // byte, so the window holds one; the framework checks every displaced row against that, and reports one that reads
+  // more.
+  static constexpr std::uint8_t displacement_window_bytes = 1;
+  [[nodiscard]] std::uint16_t displaced_address(
+      const std::uint16_t base, const std::uint8_t offset, const std::uint8_t bytes_read) {
+    delay(static_cast<std::uint8_t>(5 - 3 * bytes_read));
     return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
   }
 
@@ -229,6 +229,10 @@ private:
   void handle_interrupt();
   // Steps the refresh counter, as every M1 cycle does.
   void refresh();
+  // Reading and writing a port: an I/O cycle on the bus, then the transfer, as `read_memory` and `write_memory` are for
+  // memory.
+  [[nodiscard]] std::uint8_t read_port(std::uint16_t port);
+  void write_port(std::uint16_t port, std::uint8_t value);
 
   // What the address bus last held, which is what an internal cycle presents.
   std::uint16_t bus_address_{};
@@ -244,11 +248,11 @@ private:
   // here.
   [[nodiscard]] Flags stepped(Flags flags);
   // Rotates a nibble between `a` and `value` for `rrd` and `rld`, changing `a` in place and returning what goes back to
-  // memory with the flags. `right` is `rrd`: the low nibble of `value` goes into `a`, `value`'s high nibble drops to
-  // the low half of what is written back, and `a`'s old low nibble fills the high half. `rld` rotates the other way:
+  // memory with the flags. `Right` is `rrd`: the low nibble of `value` goes into `a`, `value`'s high nibble drops to
+  // the low half of what is written back, and `a`'s old low nibble fills the high half. `Left` is `rld`, the other way:
   // the high nibble of `value` goes into `a`, `value`'s low nibble rises to the high half, and `a`'s old low nibble
   // fills the low half.
-  [[nodiscard]] Alu::R8 nibble(std::uint8_t value, Flags flags, bool right);
+  [[nodiscard]] Alu::R8 nibble(std::uint8_t value, Flags flags, Alu::Direction direction);
 };
 
 } // namespace specbolt::v4

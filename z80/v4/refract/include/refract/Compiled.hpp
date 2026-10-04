@@ -7,6 +7,8 @@
 //   tables         the `table` lines, in declaration order
 //   rows           every row of every table, in file order
 //   decoded        per table, which row (an index into `rows`) each of its 256 opcodes decodes to, or nothing
+//                  where no row claims it; the checks require every table to be total, so a consumer may
+//                  dereference each
 //   latched        per table, whether it is entered with a displacement byte already read, because the row that
 //                  reached it read one before the opcode (CPU_FORMAT.md, "Latched tables")
 //
@@ -22,7 +24,6 @@
 
 #include <array>
 #include <concepts>
-#include <optional>
 #include <string_view>
 #include <type_traits>
 
@@ -45,41 +46,44 @@ concept SourceLike = requires {
   typename std::integral_constant<std::size_t, std::string_view{S::text}.size()>;
 };
 
-// Each constant is the answer of one step of the pipeline, fixed by `to_array`; the size of each is whatever the text
-// turned out to say. A step that rejects the text throws with the line, and `naming` adds the file.
+// Each constant is the answer of one step of the pipeline; the size of each is whatever the text turned out to say.
 namespace steps {
 
-// The vocabularies the text declares, in declaration order.
+// One step of the pipeline: what `Step` returns, fixed by `to_array`. A step that rejects the text throws with the
+// line, and `naming` adds the file.
+template<SourceLike Source, std::regular_invocable auto Step>
+inline constexpr auto fixed = to_array<[] { return naming(Source::file, Step); }>();
+
+// The vocabularies the text declares, in declaration order. Every other part is made from these, so this step runs
+// first whatever asks, and is where every line is checked for meaning something: a mistyped line is then reported at
+// the typo rather than where something names it.
 template<SourceLike Source>
-inline constexpr auto vocabularies =
-    to_array<[] { return naming(Source::file, [] { return parse_vocabularies(Source::text); }); }>();
+inline constexpr auto vocabularies = fixed<Source, [] {
+  check_every_line_means_something(Source::text);
+  return parse_vocabularies(Source::text);
+}>;
 
 // The tables the text declares, in declaration order.
 template<SourceLike Source>
-inline constexpr auto tables =
-    to_array<[] { return naming(Source::file, [] { return parse_tables(Source::text, vocabularies<Source>); }); }>();
+inline constexpr auto tables = fixed<Source, [] { return parse_tables(Source::text, vocabularies<Source>); }>;
 
 // Every row of every table, in the order the text writes them.
 template<SourceLike Source>
-inline constexpr auto rows = to_array<[] {
-  return naming(Source::file, [] { return parse_rows(Source::text, vocabularies<Source>, tables<Source>); });
-}>();
+inline constexpr auto rows =
+    fixed<Source, [] { return parse_rows(Source::text, vocabularies<Source>, tables<Source>); }>;
 
 // The opcodes each row claims, index-coupled to `rows`.
 template<SourceLike Source>
-inline constexpr auto row_opcodes =
-    to_array<[] { return naming(Source::file, [] { return opcodes_of_each(vocabularies<Source>, rows<Source>); }); }>();
+inline constexpr auto row_opcodes = fixed<Source, [] { return opcodes_of_each(vocabularies<Source>, rows<Source>); }>;
 
 // Per table, which row (as an index into `rows`) each of its 256 opcodes decodes to, or nothing where no row claims it.
 template<SourceLike Source>
-inline constexpr auto decoded = to_array<[] {
-  return naming(Source::file, [] { return decode_tables(rows<Source>, row_opcodes<Source>, tables<Source>); });
-}>();
+inline constexpr auto decoded =
+    fixed<Source, [] { return decode_tables(rows<Source>, row_opcodes<Source>, tables<Source>); }>;
 
 // Per table, whether it is entered with a displacement already read.
 template<SourceLike Source>
-inline constexpr auto latched =
-    to_array<[] { return naming(Source::file, [] { return latched_tables(rows<Source>, tables<Source>.size()); }); }>();
+inline constexpr auto latched = fixed<Source, [] { return latched_tables(rows<Source>, tables<Source>.size()); }>;
 
 } // namespace steps
 
@@ -106,27 +110,20 @@ struct Compiled {
     return {vocabularies(), rows(), tables(), decoded(), entry_table};
   }
 
-  // The index into `rows()` of the row that decodes `opcode` in `table`, or nothing if no row does. Every table is
-  // total, since the checks below require it, so a consumer may dereference the answer.
-  [[nodiscard]] static constexpr std::optional<std::size_t> find_row(
-      const std::uint8_t table, const std::uint8_t opcode) {
-    return decoded()[table][opcode];
-  }
-
   // The rules the whole description must obey, run once when this class is instantiated: each throws against its line,
   // `naming` puts the file in front, and that is the compile error. The block may call the members above because this
   // is a class template, so it runs at instantiation, when their bodies exist; in a plain class it could not. `latched`
-  // is asked for here because deriving it is itself a check, and nothing else forces it.
+  // is asked for, by a check of its shape, because deriving it is itself a check and nothing else forces it.
   consteval {
-    // First, before anything parses, so a mistyped line is reported at the typo rather than where something names it.
-    naming(file, [] { return check_every_line_means_something(text); });
-    naming(file, [] { static_cast<void>(latched()); });
-    naming(file, [] { return check_row_precedence(description(), steps::row_opcodes<Source>); });
-    naming(file, [] { return check_derived_rows_override(description(), steps::row_opcodes<Source>); });
-    naming(file, [] { return check_tables_used(description()); });
-    naming(file, [] { return check_tables_total(description()); });
-    naming(file, [] { return check_inherited_literals(description()); });
-    naming(file, [] { return check_displacement_rendered(description()); });
+    static_assert(latched().size() == tables().size());
+    naming(file, [] {
+      check_row_precedence(description(), steps::row_opcodes<Source>);
+      check_derived_rows_override(description(), steps::row_opcodes<Source>);
+      check_tables_used(description());
+      check_tables_total(description());
+      check_inherited_literals(description());
+      check_displacement_rendered(description());
+    });
   }
 };
 

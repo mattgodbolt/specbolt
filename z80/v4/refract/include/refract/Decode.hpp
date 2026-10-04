@@ -97,11 +97,6 @@ namespace specbolt::refract {
 // constant evaluation since C++23.
 using OpcodeSet = std::bitset<256>;
 
-// Whether every opcode of `mine` is also one of `theirs`.
-[[nodiscard]] constexpr bool within(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & ~theirs).none(); }
-// Whether the two sets share any opcode at all.
-[[nodiscard]] constexpr bool overlaps(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & theirs).any(); }
-
 // The opcodes a row claims: every opcode its pattern matches whose vocabulary members are all live. A pattern
 // *generates* them, walking the cartesian product of its slices and placing each combination, rather than being tested
 // against all 256. `BitSlice::place` exists for exactly this.

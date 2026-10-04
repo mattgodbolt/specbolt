@@ -9,6 +9,7 @@
 #include "refract/Visit.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <string>
@@ -16,6 +17,15 @@
 #include <vector>
 
 namespace specbolt::refract {
+
+// Whether every opcode of `mine` is also one of `theirs`.
+[[nodiscard]] constexpr bool within(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & ~theirs).none(); }
+
+// Whether `mine` shares an opcode with `theirs` without lying wholly inside it. A row that wins over another and does
+// this takes some of its opcodes and leaves it the rest, which is an accident where containment would be an override.
+[[nodiscard]] constexpr bool partly_overlaps(const OpcodeSet &mine, const OpcodeSet &theirs) {
+  return (mine & theirs).any() && !within(mine, theirs);
+}
 
 // Checks that every row wins some opcode, and that where two rows of one table overlap the earlier is wholly contained
 // in the later. Line order silently decides who wins, so this says what the legal shapes are: containment is an
@@ -36,7 +46,7 @@ constexpr void check_row_precedence(const Description &description, const std::s
     for (std::size_t later = earlier + 1; later < rows.size(); ++later) {
       if (rows[later].table != rows[earlier].table)
         continue;
-      if (const auto &theirs = covers[later]; overlaps(mine, theirs) && !within(mine, theirs))
+      if (partly_overlaps(mine, covers[later]))
         throw table_error(rows[earlier].line, "this row overlaps a later one without being contained by it");
     }
   }
@@ -67,14 +77,8 @@ constexpr void check_tables_total(const Description &description) {
     what = what.substr(1, what.size() - 2);
   }
   const auto matches = [what, indirect](const Operand &operand) {
-    return refract::visit(
-        Overloaded{
-            [&](const Operand::Named &named) { return operand.indirect == indirect && named.name.view() == what; },
-            [](const OneOf<Operand::Constant, Operand::Immediate, Operand::Vocabulary, Operand::Discard> auto &) {
-              return false;
-            },
-        },
-        operand.kind);
+    const auto *named = std::get_if<Operand::Named>(&operand.kind);
+    return named && operand.indirect == indirect && named->name.view() == what;
   };
   return std::ranges::any_of(steps_of(row), [&](const Step &step) {
     return std::ranges::any_of(step.operands, matches) || std::ranges::any_of(step.destinations, matches);
@@ -111,16 +115,14 @@ constexpr void check_derived_rows_override(const Description &description, const
     const auto &table = tables[rows[mine].table];
     if (!table.derived)
       continue;
-    // The rows the parent decodes to, which is what this table inherits.
-    std::vector<bool> inherited(rows.size());
-    for (const auto &decoded: description.decoded[table.parent])
-      if (decoded)
-        inherited[*decoded] = true;
-    for (std::size_t theirs = 0; theirs < rows.size(); ++theirs)
-      if (inherited[theirs] && overlaps(covers[mine], covers[theirs]) && !within(covers[mine], covers[theirs]))
-        throw table_error(rows[mine].line,
-            "this row overlaps one it inherits from '" + std::string(tables[table.parent].name) +
-                "' without replacing it or fitting inside it, so it takes opcodes that row meant to keep");
+    // The rows the parent decodes to are what this table inherits.
+    const auto clashes = [&](const std::optional<std::size_t> inherited) {
+      return inherited && partly_overlaps(covers[mine], covers[*inherited]);
+    };
+    if (std::ranges::any_of(description.decoded[table.parent], clashes))
+      throw table_error(rows[mine].line,
+          "this row overlaps one it inherits from '" + std::string(tables[table.parent].name) +
+              "' without replacing it or fitting inside it, so it takes opcodes that row meant to keep");
   }
 }
 

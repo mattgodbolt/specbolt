@@ -60,11 +60,9 @@ struct Toy {
     write_memory(address, static_cast<std::uint8_t>(value));
     write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
   }
-  // Constrained so that the test below can watch the framework notice a refusal; the toy reads nothing inside its
-  // window.
-  template<std::uint8_t BytesRead>
-    requires(BytesRead == 0)
-  [[nodiscard]] std::uint16_t displaced_address(const std::uint16_t base, const std::uint8_t offset) {
+  // The toy has no displaced rows, and reads nothing inside the window that would form one.
+  static constexpr std::uint8_t displacement_window_bytes = 0;
+  [[nodiscard]] std::uint16_t displaced_address(const std::uint16_t base, const std::uint8_t offset, std::uint8_t) {
     return static_cast<std::uint16_t>(base + offset);
   }
   void delay(const std::uint8_t count) { cycles += count; }
@@ -138,11 +136,6 @@ TEST_CASE("A second machine runs beside the Z80") {
   CHECK(at(2).length == 2);
   CHECK(at(7).text == "copy a"); // the prefix renders nothing; the row it reaches does
   CHECK(at(7).length == 2);
-}
-
-TEST_CASE("A machine's constraint on its displacement window is what the framework asks") {
-  STATIC_CHECK(Interpreter<ToyTarget>::window_holds<0>);
-  STATIC_CHECK(!Interpreter<ToyTarget>::window_holds<1>);
 }
 
 } // namespace specbolt::refract

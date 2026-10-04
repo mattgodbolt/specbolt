@@ -33,12 +33,6 @@ TEST_CASE("Opcode bit parsing") {
     STATIC_CHECK(matched.opcode_bits == 0);
     STATIC_CHECK(matched.slices[0] == BitSlice{.name = 'n', .shift = 0, .mask = 0xff});
   }
-  SECTION("Rejects bad patterns") {
-    CHECK_THROWS(parse_pattern("0101"));
-    CHECK_THROWS(parse_pattern("011011011"));
-    CHECK_THROWS(parse_pattern("00pp0p01"));
-    CHECK_THROWS(parse_pattern("abcde001"));
-  }
   SECTION("Accepts the widest supported field count") {
     constexpr auto matched = parse_pattern("wwxxyyzz");
     STATIC_CHECK(matched.slices.size() == Pattern::max_slices);

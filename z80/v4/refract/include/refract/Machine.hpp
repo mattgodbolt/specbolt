@@ -52,9 +52,10 @@ concept MachineLike =
       { machine.write_memory16(address, word) };
 
       // Forming an indexed address, told how many bytes were already read inside whatever window the machine spends
-      // doing it. The count is a template argument so that the machine can refuse, by a constraint, a count its window
-      // cannot hold; the interpreter asks before it calls, and reports the row that wanted it.
-      { machine.template displaced_address<0>(address, byte) } -> std::same_as<std::uint16_t>;
+      // doing it. How many bytes that window holds is stated alongside, and the interpreter checks every displaced row
+      // against it.
+      { machine.displaced_address(address, byte, byte) } -> std::same_as<std::uint16_t>;
+      { M::displacement_window_bytes } -> std::convertible_to<std::uint8_t>;
 
       // Spending time on nothing.
       { machine.delay(byte) };

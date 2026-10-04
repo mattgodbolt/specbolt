@@ -49,16 +49,12 @@ void Z80::handle_interrupt() {
   delay(7);
   // The acknowledge is an M1 cycle, and every M1 refreshes.
   refresh();
-  const auto return_to = regs_.pc();
   regs_.sp(static_cast<std::uint16_t>(regs_.sp() - 2));
-  write_memory(regs_.sp(), static_cast<std::uint8_t>(return_to));
-  write_memory(static_cast<std::uint16_t>(regs_.sp() + 1), static_cast<std::uint8_t>(return_to >> 8));
+  write_memory16(regs_.sp(), regs_.pc());
   switch (irq_mode_) {
     case 2: {
       const auto vector = static_cast<std::uint16_t>(0xff | regs_.i() << 8);
-      const auto low = read_memory(vector);
-      const auto high = read_memory(static_cast<std::uint16_t>(vector + 1));
-      regs_.pc(static_cast<std::uint16_t>(high << 8 | low));
+      regs_.pc(read_memory16(vector));
       break;
     }
     case 0: // Nothing drives the bus, so the byte reads as 0xff: `rst 0x38`.
@@ -87,6 +83,11 @@ namespace {
 
 // `execute_one` relies on this: a deadline one cycle away is one instruction only while every instruction passes time.
 static_assert(cost_of(Bus::opcode) >= 1);
+
+// The address a block operation moves on to from `address`: the next byte up or down.
+[[nodiscard]] constexpr std::uint16_t next_address(const std::uint16_t address, const BlockDirection direction) {
+  return static_cast<std::uint16_t>(direction == BlockDirection::Up ? address + 1 : address - 1);
+}
 
 } // namespace
 
@@ -128,6 +129,16 @@ void Z80::write_memory(const std::uint16_t address, const std::uint8_t value) {
   memory_.write(address, value);
 }
 
+std::uint8_t Z80::read_port(const std::uint16_t port) {
+  bus(Bus::io_read, port);
+  return in(port);
+}
+
+void Z80::write_port(const std::uint16_t port, const std::uint8_t value) {
+  bus(Bus::io_write, port);
+  out(port, value);
+}
+
 void Z80::halted(const bool value) {
   if (value)
     halt();
@@ -141,37 +152,29 @@ void Z80::halted(const bool value) {
 // ---------------------------------------------------------------------------
 
 void Z80::out_n(const std::uint8_t port, const std::uint8_t value) {
-  const auto address = static_cast<std::uint16_t>(value << 8 | port);
-  bus(Bus::io_write, address);
-  out(address, value);
+  write_port(static_cast<std::uint16_t>(value << 8 | port), value);
 }
 
 std::uint8_t Z80::in_n(const std::uint8_t port, const std::uint8_t high) {
-  const auto address = static_cast<std::uint16_t>(high << 8 | port);
-  bus(Bus::io_read, address);
-  return in(address);
+  return read_port(static_cast<std::uint16_t>(high << 8 | port));
 }
 
 Alu::R8 Z80::in_c(const std::uint16_t port, const Flags flags) {
-  bus(Bus::io_read, port);
-  const auto value = in(port);
+  const auto value = read_port(port);
   return {value, Alu::parity_flags_for(value) | (flags & Flags::Carry())};
 }
 
-void Z80::out_c(const std::uint16_t port, const std::uint8_t value) {
-  bus(Bus::io_write, port);
-  out(port, value);
-}
+void Z80::out_c(const std::uint16_t port, const std::uint8_t value) { write_port(port, value); }
 
 std::uint16_t Z80::ex_sp_hl(const std::uint16_t value) {
   const auto sp = regs_.sp();
-  const auto low = read_memory(sp);
-  const auto high = read_memory(static_cast<std::uint16_t>(sp + 1));
+  const auto old = read_memory16(sp);
   delay(1);
+  // High byte first, the reverse of `write_memory16`.
   write_memory(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
   write_memory(sp, static_cast<std::uint8_t>(value));
   delay(2);
-  return static_cast<std::uint16_t>(high << 8 | low);
+  return old;
 }
 
 void Z80::exx() { regs_.exx(); }
@@ -182,8 +185,9 @@ Alu::R8 Z80::ld_a_special(const std::uint8_t value, const Flags flags) const {
   return {value, Alu::iff2_flags_for(value, flags, iff2())};
 }
 
-Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const bool right) {
+Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const Alu::Direction direction) {
   const auto a = regs_.get(RegisterFile::R8::A);
+  const bool right = direction == Alu::Direction::Right;
   const auto updated =
       static_cast<std::uint8_t>(right ? (a & 0xf0) | (value & 0x0f) : (a & 0xf0) | (value >> 4 & 0x0f));
   const auto written = static_cast<std::uint8_t>(right ? value >> 4 | (a & 0x0f) << 4 : value << 4 | (a & 0x0f));
@@ -192,8 +196,8 @@ Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const bool righ
   return {written, (flags & Flags::Carry()) | Alu::parity_flags_for(updated)};
 }
 
-Alu::R8 Z80::rrd8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, true); }
-Alu::R8 Z80::rld8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, false); }
+Alu::R8 Z80::rrd8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, Alu::Direction::Right); }
+Alu::R8 Z80::rld8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, Alu::Direction::Left); }
 
 Flags Z80::counted(const Flags flags, const std::uint16_t bc, const std::uint8_t noise) {
   auto result = flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow() | Flags::Flag3() | Flags::Flag5());
@@ -214,27 +218,25 @@ Flags Z80::stepped(const Flags flags) {
 }
 
 Flags Z80::block_load(const BlockDirection direction, const Flags flags) {
-  const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
   const auto hl = regs_.get(RegisterFile::R16::HL);
   const auto de = regs_.get(RegisterFile::R16::DE);
   const auto bc = regs_.get(RegisterFile::R16::BC);
   const auto byte = read_memory(hl);
   write_memory(de, byte);
   delay(2);
-  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
-  regs_.set(RegisterFile::R16::DE, static_cast<std::uint16_t>(de + step));
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
+  regs_.set(RegisterFile::R16::DE, next_address(de, direction));
   regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
   // Flags 3 and 5 come from the byte plus the accumulator; `counted` says which bits.
   return counted(flags, bc, static_cast<std::uint8_t>(byte + regs_.get(RegisterFile::R8::A)));
 }
 
 Flags Z80::block_compare(const BlockDirection direction, const Flags flags) {
-  const auto step = static_cast<std::uint16_t>(direction == BlockDirection::Up ? 1 : 0xffff);
   const auto hl = regs_.get(RegisterFile::R16::HL);
   const auto bc = regs_.get(RegisterFile::R16::BC);
   const auto byte = read_memory(hl);
   delay(5);
-  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + step));
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
   regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
   const auto compared = Alu::sub8(regs_.get(RegisterFile::R8::A), byte, false);
   // Flags 3 and 5 come from the difference, less one where it borrowed.
@@ -247,12 +249,10 @@ Flags Z80::block_compare(const BlockDirection direction, const Flags flags) {
 
 Flags Z80::block_in(const BlockDirection direction, const Flags flags) {
   delay(1);
-  const auto port = regs_.get(RegisterFile::R16::BC);
-  bus(Bus::io_read, port);
-  const auto value = in(port);
+  const auto value = read_port(regs_.get(RegisterFile::R16::BC));
   const auto hl = regs_.get(RegisterFile::R16::HL);
   write_memory(hl, value);
-  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
   return stepped(flags);
 }
 
@@ -260,12 +260,10 @@ Flags Z80::block_out(const BlockDirection direction, const Flags flags) {
   delay(1);
   const auto hl = regs_.get(RegisterFile::R16::HL);
   const auto value = read_memory(hl);
-  regs_.set(RegisterFile::R16::HL, static_cast<std::uint16_t>(hl + (direction == BlockDirection::Up ? 1 : 0xffff)));
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
   // B is counted down before the port goes on the bus, so it addresses with the new value.
   const auto result = stepped(flags);
-  const auto port = regs_.get(RegisterFile::R16::BC);
-  bus(Bus::io_write, port);
-  out(port, value);
+  write_port(regs_.get(RegisterFile::R16::BC), value);
   return result;
 }
 

@@ -206,6 +206,10 @@ in another. Being a member of the machine is what lets the cost live there. Ever
 a machine whose window cannot hold that many bytes refuses the count with a constraint, and the
 interpreter reports the row that wanted it (`Z80.hpp`, `refract/Machine.hpp`).*
 
+*2026-10-04: back to an ordinary argument, `displaced_address(base, offset, bytes_read)`. The machine
+states the capacity as data, `displacement_window_bytes`, and the interpreter checks each displaced
+row against it, with the same diagnostic and no probe of a constraint.*
+
 Verified in `ExecuteTest.cpp` against the counts `OpcodeTests.cpp` asserts of v1/v2/v3: 19 for
 `ld r,(ix+d)`, `ld (ix+d),r`, `ld (ix+d),n` and `add a,(ix+d)`; 23 for `inc (ix+d)`; 8 for a DD that
 renames nothing; and `dd dd dd 23` at 4 T-states a prefix byte. Generated code forms the address once

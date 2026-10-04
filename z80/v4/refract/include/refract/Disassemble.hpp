@@ -18,6 +18,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 
 namespace specbolt::refract {
@@ -78,7 +79,7 @@ inline constexpr std::size_t max_instruction_bytes = 8;
   // The displacement precedes any immediate, so it is taken before the pieces are walked and whatever they read follows
   // it, unless a prefix already did.
   const auto displaced = displaced_through(description.vocabularies, *row, opcode, rules);
-  const unsigned displacement = latch ? *latch : displaced ? byte_at(offset) : 0;
+  const auto displacement = static_cast<std::int8_t>(latch ? *latch : displaced ? byte_at(offset) : 0);
   if (displaced && !latch)
     ++offset;
 
@@ -97,10 +98,8 @@ inline constexpr std::size_t max_instruction_bytes = 8;
                          for (const auto &inner: member_of(at, vocabulary.reference).pieces)
                            self(inner);
                        },
-                       [&](const Piece::Displacement) {
-                         result += displacement < 0x80 ? std::format("+0x{:02x}", displacement)
-                                                       : std::format("-0x{:02x}", 0x100 - displacement);
-                       },
+                       // Signed, and always with its sign: `+0x05`, `-0x80`.
+                       [&](const Piece::Displacement) { result += std::format("{:+#05x}", displacement); },
                        [&](const Piece::Imm8) {
                          result += std::format("0x{:02x}", byte_at(offset));
                          offset += 1;
@@ -124,7 +123,7 @@ inline constexpr std::size_t max_instruction_bytes = 8;
   };
   for (const auto &piece: row->pieces)
     render(piece);
-  return {result, offset};
+  return {std::move(result), offset};
 }
 
 } // namespace specbolt::refract

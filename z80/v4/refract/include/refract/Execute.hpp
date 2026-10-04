@@ -23,7 +23,6 @@
 #include "refract/Machine.hpp"
 #include "refract/Model.hpp"
 #include "refract/TableError.hpp"
-#include "refract/ToArray.hpp"
 #include "refract/Visit.hpp"
 #include "refract/Workarounds.hpp"
 
@@ -96,10 +95,8 @@ namespace specbolt::refract {
 // *can* escape into a `constexpr` variable and still be usable as a template argument afterwards.
 //
 // **`std::meta::access_context::current()`** means the context of the function that names it, `Interpreter`'s own scope
-// here rather than the caller's, and `Interpreter` is nobody's friend. Load-bearing twice: it is why a result's private
-// members are out of reach here, as they are to a structured binding written outside the class (the Z80's `Flags` keeps
-// its byte private, so a row receives it whole, as one value), and why a private helper in an operation scope cannot be
-// named by a table.
+// here rather than the caller's, and `Interpreter` is nobody's friend. It is why a private helper in an operation scope
+// cannot be named by a table.
 //
 // ---------------------------------------------------------------------------
 // Why the data looks the way it does
@@ -163,10 +160,9 @@ struct Interpreter {
   // Whether a declaration carries `[[=refract::operation]]`. The annotation's type is const-qualified when it came from
   // the constant, so the qualifier is taken off before comparing.
   [[nodiscard]] static consteval bool is_operation(const std::meta::info fn) {
-    for (const auto annotation: std::meta::annotations_of(fn))
-      if (std::meta::remove_cv(std::meta::type_of(annotation)) == ^^Operation)
-        return true;
-    return false;
+    return std::ranges::any_of(std::meta::annotations_of(fn), [](const std::meta::info annotation) {
+      return std::meta::remove_cv(std::meta::type_of(annotation)) == ^^Operation;
+    });
   }
 
   // Every function a description may name: the machine's marked members, static or not, and every public static
@@ -223,6 +219,12 @@ struct Interpreter {
     return std::ranges::equal(lhs, rhs, {}, to_lower_case, to_lower_case);
   }
 
+  // `names` separated by commas, as a diagnostic lists what it found or what was on offer.
+  [[nodiscard]] static consteval std::string comma_separated(std::ranges::viewable_range auto &&names) {
+    return std::forward<decltype(names)>(names) | std::views::join_with(std::string_view(", ")) |
+           std::ranges::to<std::string>();
+  }
+
   // The one candidate, when there is exactly one; an error against `line` otherwise. Every name a table uses must
   // resolve to exactly one thing, and throwing from a `consteval` function is how a bad name becomes a compile error
   // naming the line of the description that wrote it.
@@ -235,14 +237,13 @@ struct Interpreter {
       // likely a scope the reader did not know was being searched.
       // A scope's parent may be the global or an unnamed namespace, which has no identifier to show, so it is shown as
       // the compiler writes it.
-      std::string found;
-      for (const auto candidate: candidates) {
+      const auto scope_of = [](const std::meta::info candidate) {
         const auto parent = std::meta::parent_of(candidate);
-        found += (found.empty() ? " (in " : ", ") + std::string(std::meta::has_identifier(parent)
-                                                                    ? std::meta::identifier_of(parent)
-                                                                    : std::meta::display_string_of(parent));
-      }
-      throw error(line, "this CPU has more than one thing named '" + std::string(name) + "'" + found + ")");
+        return std::meta::has_identifier(parent) ? std::meta::identifier_of(parent)
+                                                 : std::meta::display_string_of(parent);
+      };
+      throw error(line, "this CPU has more than one thing named '" + std::string(name) + "' (in " +
+                            comma_separated(candidates | std::views::transform(scope_of)) + ")");
     }
     return candidates.front();
   }
@@ -260,16 +261,18 @@ struct Interpreter {
   // C++ type's name, not something written the way assembly is written. Two enums of that name from different
   // namespaces are as ambiguous as any other name, so `only_match` reports them.
   [[nodiscard]] static consteval std::meta::info find_scope(const std::string_view name, const std::size_t line) {
+    const auto scopes = named_scopes();
     std::vector<std::meta::info> candidates;
-    std::string offered;
-    for (const auto scope: named_scopes()) {
+    for (const auto scope: scopes)
       if (std::meta::identifier_of(scope) == name)
         candidates.push_back(scope);
-      offered += (offered.empty() ? " (this CPU offers " : ", ") + std::string(std::meta::identifier_of(scope));
+    if (candidates.empty()) {
+      const auto offered =
+          scopes | std::views::transform([](const std::meta::info scope) { return std::meta::identifier_of(scope); });
+      throw error(line,
+          "no scope named '" + std::string(name) + "'" +
+              (scopes.empty() ? ", and this CPU offers none" : " (this CPU offers " + comma_separated(offered) + ")"));
     }
-    if (candidates.empty())
-      throw error(line, "no scope named '" + std::string(name) + "'" +
-                            (offered.empty() ? ", and this CPU offers none" : offered + ")"));
     return only_match(candidates, name, line);
   }
 
@@ -306,17 +309,18 @@ struct Interpreter {
   // and D registers everywhere else.)
   [[nodiscard]] static consteval std::meta::info find_spelling(
       const std::meta::info scope, const std::string_view name, const std::size_t line) {
+    const auto enumerators = std::meta::enumerators_of(scope);
     std::vector<std::meta::info> candidates;
-    std::string offered;
-    for (const auto enumerator: std::meta::enumerators_of(scope)) {
-      const auto spelling = spelling_of(enumerator);
-      offered += (offered.empty() ? " (it has " : ", ") + spelling;
-      if (same_ignoring_case(spelling, name))
+    for (const auto enumerator: enumerators)
+      if (same_ignoring_case(spelling_of(enumerator), name))
         candidates.push_back(enumerator);
+    if (candidates.empty()) {
+      const auto offered =
+          enumerators | std::views::transform([](const std::meta::info enumerator) { return spelling_of(enumerator); });
+      throw error(line,
+          "no member of '" + std::string(std::meta::identifier_of(scope)) + "' is called '" + std::string(name) + "'" +
+              (enumerators.empty() ? ", which has no members" : " (it has " + comma_separated(offered) + ")"));
     }
-    if (candidates.empty())
-      throw error(line, "no member of '" + std::string(std::meta::identifier_of(scope)) + "' is called '" +
-                            std::string(name) + "'" + (offered.empty() ? ", which has no members" : offered + ")"));
     if (candidates.size() > 1)
       throw error(line, "more than one member of '" + std::string(std::meta::identifier_of(scope)) + "' is called '" +
                             std::string(name) + "'");
@@ -402,34 +406,24 @@ struct Interpreter {
   template<std::meta::info Fn, std::size_t I>
   using parameter_type = [:std::meta::type_of(std::meta::parameters_of(Fn)[I]):];
 
-  // The members a result is split across, or an empty span for a result that is one value. A class comes apart when
-  // every non-static data member is public and its own; one that hides all of its state is one value. One that hides
-  // some of it, or has a base class, is refused, because a row could be given only part of it. Stricter than a
-  // structured binding, which also accepts members all in one base.
+  // The members a result is split across, or an empty span for a result that is one value. An aggregate, a bundle of
+  // public fields, comes apart into its members; any other type is one value, as the Z80's `Flags` is. An aggregate
+  // with a base class is refused, because a row could be given only part of it.
   [[nodiscard]] static consteval std::span<const std::meta::info> decomposes_into(
       const std::meta::info type, const std::size_t line) {
-    if (!std::meta::is_class_type(type))
+    if (!std::meta::is_class_type(type) || !std::meta::is_aggregate_type(type))
       return {};
-    const auto visible = std::meta::nonstatic_data_members_of(type, std::meta::access_context::current());
-    const auto every = std::meta::nonstatic_data_members_of(type, std::meta::access_context::unchecked());
-    if (visible.size() != every.size()) {
-      if (!visible.empty())
-        throw error(line, "this operation returns a type with some of its members hidden, so a row could be "
-                          "given only part of it");
-      return {};
-    }
-    if (!std::meta::bases_of(type, std::meta::access_context::unchecked()).empty())
+    if (!std::meta::bases_of(type, std::meta::access_context::current()).empty())
       throw error(line, "this operation returns a type with a base class, whose members a row could not be given");
-    return std::define_static_array(visible);
+    return std::define_static_array(std::meta::nonstatic_data_members_of(type, std::meta::access_context::current()));
   }
 
-  // Whether `Fn` is a member of the machine, called on it, rather than a static function called on nothing. A member
-  // reaches the machine as `this`, which is not a parameter, so the row's operands are the whole parameter list either
-  // way; one that only reads the machine is `const`. `^^Machine` reflects the alias, and a parent is never an alias,
-  // hence `dealias`.
+  // Whether `Fn` is a member of the machine, called on it, rather than a static function called on nothing. Not being
+  // static says so, because `operations` takes only static functions from a palette. A member reaches the machine as
+  // `this`, which is not a parameter, so the row's operands are the whole parameter list either way; one that only
+  // reads the machine is `const`.
   template<std::meta::info Fn>
-  static constexpr bool machine_member =
-      (std::meta::parent_of(Fn) == std::meta::dealias(^^Machine)) && !std::meta::is_static_member(Fn);
+  static constexpr bool machine_member = !std::meta::is_static_member(Fn);
 
   // Whether any parameter of `Fn` is the machine, which nothing may ask for: an operation that needs the machine is a
   // member of it. One asking this way would be handed a row's operand instead, and the error would be about that
@@ -585,41 +579,33 @@ struct Interpreter {
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
     std::array<std::size_t, C.operands.size()> written{};
-    std::size_t named = 0;
-    for (const auto &operand: C.operands)
-      if (!operand.parameter.empty())
-        ++named;
-    if (named == 0) {
+    const auto is_named = [](const Resolved &operand) { return !operand.parameter.empty(); };
+    if (std::ranges::none_of(C.operands, is_named)) {
       std::ranges::iota(written, 0uz);
       return written;
     }
-    if (named != C.operands.size())
+    if (!std::ranges::all_of(C.operands, is_named))
       throw error(C.line, "this step names some of its parameters and not others; name all of them or none, so that "
-                          "reading it needs no "
-                          "rule about which is which");
+                          "reading it needs no rule about which is which");
 
     const auto parameters = std::meta::parameters_of(Fn);
-    std::string offered;
-    for (std::size_t slot = 0; slot < written.size(); ++slot) {
-      const auto parameter = parameters[slot];
-      if (!std::meta::has_identifier(parameter))
-        throw error(C.line, "this operation was declared without parameter names, so there is nothing to name here");
-      offered += (offered.empty() ? " (it takes " : ", ") + std::string(std::meta::identifier_of(parameter));
-    }
-    for (std::size_t slot = 0; slot < written.size(); ++slot) {
+    const auto has_name = [](const std::meta::info parameter) { return std::meta::has_identifier(parameter); };
+    if (!std::ranges::all_of(parameters, has_name))
+      throw error(C.line, "this operation was declared without parameter names, so there is nothing to name here");
+    for (const auto slot: std::views::iota(0uz, written.size())) {
       const auto name = std::meta::identifier_of(parameters[slot]);
-      std::size_t found = 0;
-      std::size_t matches = 0;
-      for (const auto [at, operand]: std::views::enumerate(C.operands))
-        if (same_ignoring_case(operand.parameter.view(), name)) {
-          found = static_cast<std::size_t>(at);
-          ++matches;
-        }
-      if (matches == 0)
-        throw error(C.line, "no operand is given for '" + std::string(name) + "'" + offered + ")");
+      const auto feeds = [name](const Resolved &operand) { return same_ignoring_case(operand.parameter.view(), name); };
+      const auto matches = std::ranges::count_if(C.operands, feeds);
+      if (matches == 0) {
+        const auto offered = parameters | std::views::transform([](const std::meta::info parameter) {
+          return std::meta::identifier_of(parameter);
+        });
+        throw error(
+            C.line, "no operand is given for '" + std::string(name) + "' (it takes " + comma_separated(offered) + ")");
+      }
       if (matches > 1)
         throw error(C.line, "'" + std::string(name) + "' is given more than one operand");
-      written[slot] = found;
+      written[slot] = static_cast<std::size_t>(std::ranges::find_if(C.operands, feeds) - C.operands.begin());
     }
     return written;
   }
@@ -631,7 +617,7 @@ struct Interpreter {
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> parameter_for_operand() {
     constexpr auto operand = operand_for_parameter<Fn, C>();
     std::array<std::size_t, C.operands.size()> parameter{};
-    for (std::size_t slot = 0; slot < operand.size(); ++slot)
+    for (const auto slot: std::views::iota(0uz, operand.size()))
       parameter[operand[slot]] = slot;
     return parameter;
   }
@@ -664,13 +650,6 @@ struct Interpreter {
       else
         return [:Fn:](std::get<operand[S]>(arguments)...);
     }(std::make_index_sequence<C.operands.size()>{});
-  }
-
-  // One member of a returned struct. A splice in member-access position is legitimate and reads as a typo, so it
-  // appears once, here, rather than inline at the only place that wants it.
-  template<std::meta::info Member>
-  [[nodiscard]] static constexpr decltype(auto) member_of_result(const auto &result) {
-    return result.[:Member:];
   }
 
   // An operation's name as a diagnostic quotes it.
@@ -727,8 +706,7 @@ struct Interpreter {
   // Checks every operand against the parameter it feeds.
   template<std::meta::info Fn, Call C>
   static consteval void check_each_operand_fits() {
-    []<std::size_t... I>(std::index_sequence<I...>) { (check_operand_fits<Fn, C, I>(), ...); }(
-        std::make_index_sequence<C.operands.size()>{});
+    template for (constexpr auto at: std::views::iota(0uz, C.operands.size())) { check_operand_fits<Fn, C, at>(); }
   }
 
   // Checks a step against the operation it applies: the row supplies every parameter the operation has, and each
@@ -755,7 +733,7 @@ struct Interpreter {
     const auto destinations = C.destinations.size();
     if (parts.size() == 1)
       throw error(C.line, name + " returns a type with one part, which could mean one value or a bundle holding "
-                                 "one; give it a second part, or keep its state private so it is one value");
+                                 "one; give it a second part, or a constructor so it is one value");
     if constexpr (std::is_void_v<Result>) {
       if (destinations != 0)
         throw error(C.line, name + " returns nothing, so this row may not name a destination");
@@ -779,11 +757,12 @@ struct Interpreter {
     using Byte = std::uint8_t;
     using Word = std::uint16_t;
 #endif
-    for (const auto [at, destination]: std::views::enumerate(C.destinations)) {
+    for (const auto at: std::views::iota(0uz, C.destinations.size())) {
+      const auto &destination = C.destinations[at];
       if (destination.kind == Resolved::Kind::Discard)
         continue;
-      const auto handed = std::meta::dealias(
-          std::meta::remove_cv(parts.size() > 1 ? std::meta::type_of(parts[static_cast<std::size_t>(at)]) : ^^Result));
+      const auto handed =
+          std::meta::dealias(std::meta::remove_cv(parts.size() > 1 ? std::meta::type_of(parts[at]) : ^^Result));
       if (destination.indirect) {
         if (handed != std::meta::dealias(^^Byte) && handed != std::meta::dealias(^^Word))
           throw error(C.line, name + " returns " + std::meta::display_string_of(handed) +
@@ -791,7 +770,7 @@ struct Interpreter {
                                   "or std::uint16_t");
       }
       else if (destination.kind != Resolved::Kind::Named)
-        throw error(C.line, "destination " + decimal(static_cast<std::size_t>(at) + 1) + " of " + name +
+        throw error(C.line, "destination " + decimal(at + 1) + " of " + name +
                                 " is not a location; a result goes to a named location, an address or '-'");
     }
   }
@@ -820,38 +799,33 @@ struct Interpreter {
   // declaration order.
   template<std::meta::info Fn, Call C>
   static void apply(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
-    // Gating the body on the arity, rather than only asserting it, keeps a wrong count from being one message followed
-    // by twenty: the `decltype` below instantiates a parameter type per operand, and an operand with no parameter would
-    // index past the end of the parameter list.
-    constexpr bool arity_matches = C.operands.size() == arity_of<Fn>;
     consteval { check_operands_fit<Fn, C>(); }
-    if constexpr (arity_matches) {
-      const auto call = [&machine](const auto &arguments) { return call_with<Fn, C>(machine, arguments); };
-
-      // Unevaluated, despite everything just said about operands having effects: `decltype` asks for the type and calls
-      // nothing.
-      using Result = decltype(call(operands_of<Fn, C>(machine, decoded, indexed)));
-      // A `std::span`, and safe to hold: `decomposes_into` promotes its contents with `define_static_array`, so what
-      // this points at has static storage and `members[at]` is a constant expression a splice can use.
-      static constexpr auto members = decomposes_into(^^Result, C.line);
-      consteval { check_destinations_fit<Fn, C, Result>(members); }
-      if constexpr (std::is_void_v<Result>) {
-        call(operands_of<Fn, C>(machine, decoded, indexed));
+    using Result = [:std::meta::remove_cvref(std::meta::return_type_of(Fn)):];
+    // A `std::span`, and safe to hold: `decomposes_into` promotes its contents with `define_static_array`, so what this
+    // points at has static storage and `members[at]` is a constant expression a splice can use.
+    static constexpr auto members = decomposes_into(^^Result, C.line);
+    consteval { check_destinations_fit<Fn, C, Result>(members); }
+    // Gated on the arity as well as checked, so that a wrong count is one message rather than one followed by twenty:
+    // reading the operands instantiates a parameter type per operand, and an operand with no parameter would index past
+    // the end of the parameter list.
+    if constexpr (C.operands.size() != arity_of<Fn>)
+      return;
+    else if constexpr (std::is_void_v<Result>)
+      call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
+    else if constexpr (members.size() > 1) {
+      // A result that comes apart is typically a value and the flags it set, one destination per part, each taken out
+      // of the result by splicing in its member.
+      const auto result = call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
+      template for (constexpr auto at: std::views::iota(0uz, C.destinations.size())) {
+        store<C.destinations[at], C.line>(machine, decoded, indexed, result.[:members[at]:]);
       }
-      else if constexpr (members.size() > 1) {
-        // A result that comes apart is typically a value and the flags it set, one destination per part.
-        const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
-        template for (constexpr auto at: std::views::iota(0uz, C.destinations.size())) {
-          store<C.destinations[at], C.line>(machine, decoded, indexed, member_of_result<members[at]>(result));
-        }
-      }
-      else {
-        // More than one *destination* is how an instruction writes one result to two places, as the Z80's `dd cb d op`
-        // puts it through the addressing mode and into the register its low bits name.
-        const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
-        template for (constexpr auto destination: C.destinations) {
-          store<destination, C.line>(machine, decoded, indexed, result);
-        }
+    }
+    else {
+      // More than one *destination* is how an instruction writes one result to two places, as the Z80's `dd cb d op`
+      // puts it through the addressing mode and into the register its low bits name.
+      const auto result = call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
+      template for (constexpr auto destination: C.destinations) {
+        store<destination, C.line>(machine, decoded, indexed, result);
       }
     }
   }
@@ -861,8 +835,6 @@ struct Interpreter {
   [[nodiscard]] static consteval bool returns_continue(const std::meta::info fn) {
     return std::meta::dealias(std::meta::remove_cvref(std::meta::return_type_of(fn))) == ^^Continue;
   }
-  template<std::meta::info Fn>
-  static constexpr bool is_condition = returns_continue(Fn);
 
   // Checks that the operations of each vocabulary agree about being conditions. A row that names one by reference is
   // a condition at every opcode or at none, since nothing in the row can say which; a vocabulary that mixed the two
@@ -909,7 +881,7 @@ struct Interpreter {
   // it has done its work.
   template<std::meta::info Fn, Call C>
   [[nodiscard]] static Continue run_step(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
-    if constexpr (is_condition<Fn>)
+    if constexpr (returns_continue(Fn))
       return evaluate<Fn, C>(machine, decoded, indexed);
     else {
       apply<Fn, C>(machine, decoded, indexed);
@@ -1039,31 +1011,27 @@ struct Interpreter {
       // The encoding column says what is fetched, and it is fetched once, before any step, rather than where it is
       // used: the order arguments are evaluated in is unspecified, so a fetch inside a call could land after a memory
       // access the row puts before it.
-      const std::uint16_t immediate = [&] -> std::uint16_t {
-        if constexpr (row.immediate_bytes == 2)
-          return machine.fetch_immediate16();
-        else if constexpr (row.immediate_bytes == 1)
-          return machine.fetch_immediate();
-        else {
-          static_assert(row.immediate_bytes == 0, "the parser allows at most two immediate bytes");
-          return 0;
-        }
-      }();
+      std::uint16_t immediate = 0;
+      if constexpr (row.immediate_bytes == 2)
+        immediate = machine.fetch_immediate16();
+      else if constexpr (row.immediate_bytes == 1)
+        immediate = machine.fetch_immediate();
+      else
+        static_assert(row.immediate_bytes == 0, "the parser allows at most two immediate bytes");
       // What the instruction carries, gathered once its bytes are fetched, for every operand to read.
       const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
       // The displaced address, formed once after both fetches and handed to every operand displaced through it. The
       // machine is told how many bytes were read before the address is formed: the row's immediate bytes, and a
       // latched table's opcode, which was read after the displacement. Whether those reads overlap the forming is the
-      // machine's call (on the Z80 they do). The count is a template argument so that a machine can refuse, at compile
-      // time, one it cannot hold. Assigned rather than formed by a lambda, which would capture `decoded` and
-      // `displacement` by reference and so take their addresses, refusing the tail call below in any build that does
-      // not inline it.
+      // machine's call (on the Z80 they do), and how many its window holds is the machine's to say. Assigned rather
+      // than formed by a lambda, which would capture `decoded` and `displacement` by reference and so take their
+      // addresses, refusing the tail call below in any build that does not inline it.
       std::uint16_t indexed = 0;
       if constexpr (displaced) {
         constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
-        consteval { check_window_holds<read_inside>(row.line); }
-        indexed = machine.template displaced_address<read_inside>(
-            direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement);
+        consteval { check_window_holds(read_inside, row.line); }
+        indexed = machine.displaced_address(
+            direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement, read_inside);
       }
       // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
@@ -1095,17 +1063,16 @@ struct Interpreter {
   // every opcode it claims, and a row reading two three-bit slices is sixty-four. The functions below enumerate those
   // bodies once each and fill a table's 256 entries by pointing at them.
 
-  // Which of a row's slices, as indices into `row.matched.slices`, change the generated code. Three kinds do not: a
-  // view is a run-time value, a numeric vocabulary is read straight out of the opcode, and the mnemonic's own
-  // references are the disassembler's business; nothing below this line ever looks at `row.pieces`.
-  [[nodiscard]] static constexpr Vector<std::uint8_t, Pattern::max_slices> slices_read_by(const Row &row) {
-    Vector<std::uint8_t, Pattern::max_slices> used;
-    const auto note = [&used](const Reference reference) {
+  // The bits of the opcode that change a row's generated code: those of each slice it reads, as a mask. Three kinds of
+  // reference read none: a view is a run-time value, a numeric vocabulary is read straight out of the opcode, and the
+  // mnemonic's own references are the disassembler's business; nothing below this line ever looks at `row.pieces`.
+  [[nodiscard]] static constexpr std::uint8_t bits_read_by(const Row &row) {
+    std::uint8_t read = 0;
+    const auto note = [&read, &row](const Reference reference) {
       if (reference.from_view || Compiled::vocabularies()[reference.vocabulary_index].numeric)
         return;
-      if (std::ranges::contains(used, reference.slice_index))
-        return;
-      used.push_back(reference.slice_index);
+      const auto &slice = row.matched.slices[reference.slice_index];
+      read = static_cast<std::uint8_t>(read | slice.place(slice.mask));
     };
     const auto note_operand = [&](const Operand &operand) {
       refract::visit(
@@ -1121,21 +1088,15 @@ struct Interpreter {
       std::ranges::for_each(step.operands, note_operand);
       std::ranges::for_each(step.destinations, note_operand);
     }
-    return used;
+    return read;
   }
 
   // The encoding with every unread variable bit cleared, which names the body this opcode wants: two opcodes of one row
-  // share a body exactly when this agrees. The slices `slices_read_by` leaves out must be exactly the ones the
-  // generated code does not branch on; a new kind of reference the code branches on has to be noted there, or two
-  // opcodes would share a body they disagree about. TableTest checks that every opcode of every body agrees with its
-  // key.
+  // share a body exactly when this agrees. The slices `bits_read_by` leaves out must be exactly the ones the generated
+  // code does not branch on; a new kind of reference the code branches on has to be noted there, or two opcodes would
+  // share a body they disagree about. TableTest checks that every opcode of every body agrees with its key.
   [[nodiscard]] static constexpr std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
-    auto result = row.matched.opcode_bits;
-    for (const auto index: slices_read_by(row)) {
-      const auto &slice = row.matched.slices[index];
-      result = static_cast<std::uint8_t>(result | slice.place(slice.extract(opcode)));
-    }
-    return result;
+    return static_cast<std::uint8_t>(row.matched.opcode_bits | (opcode & bits_read_by(row)));
   }
 
   // One generated function, named by the row it runs, as an index into `Compiled::rows()`, and the encoding that fixes
@@ -1160,7 +1121,7 @@ struct Interpreter {
     // reads. Per row as well as per key, because two rows may narrow to the same encoding and are still two rows.
     std::vector<std::array<std::optional<std::uint16_t>, 256>> made(Compiled::rows().size());
     for (const auto opcode: std::views::iota(0uz, 256uz)) {
-      const auto row = Compiled::find_row(table, static_cast<std::uint8_t>(opcode)).value();
+      const auto row = Compiled::decoded()[table][opcode].value();
       const auto key = body_key(Compiled::rows()[row], static_cast<std::uint8_t>(opcode));
       auto &body = made[row][key];
       if (!body) {
@@ -1172,10 +1133,10 @@ struct Interpreter {
     return result;
   }
 
-  // A table's bodies, and which body each of its 256 opcodes uses, as arrays: `decoding_for` answers in a
-  // `std::vector`, which `to_array` fixes.
+  // A table's bodies, promoted out of the `std::vector` `decoding_for` answers in, and which body each of its 256
+  // opcodes uses.
   template<std::uint8_t Table>
-  static constexpr auto bodies_of = to_array<[] { return decoding_for(Table).bodies; }>();
+  static constexpr auto bodies_of = std::define_static_array(decoding_for(Table).bodies);
   template<std::uint8_t Table>
   static constexpr auto body_of = decoding_for(Table).body_of;
 
@@ -1207,19 +1168,12 @@ struct Interpreter {
     [[clang::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
   }
 
-  // Whether the machine will form a displaced address with this many bytes already read inside its window. A machine
-  // refuses a count by constraining `displaced_address`.
-  template<std::uint8_t BytesRead>
-  static constexpr bool window_holds = requires(Machine &machine, const std::uint16_t base, const std::uint8_t offset) {
-    machine.template displaced_address<BytesRead>(base, offset);
-  };
-
-  // Asks `window_holds` before the call is made, so that a refusal is a diagnostic against the row that needs the count
-  // rather than a failure inside the machine.
-  template<std::uint8_t BytesRead>
-  static consteval void check_window_holds(const std::size_t line) {
-    if constexpr (!window_holds<BytesRead>)
-      throw error(line, "this row reads " + decimal(BytesRead) +
+  // Checks a row's count of bytes read inside the window that forms its displaced address against what the machine
+  // says the window holds, so that a row asking for more is a diagnostic against it rather than a machine asked to
+  // spend time it does not have.
+  static consteval void check_window_holds(const std::uint8_t bytes_read, const std::size_t line) {
+    if (bytes_read > Machine::displacement_window_bytes)
+      throw error(line, "this row reads " + decimal(bytes_read) +
                             " byte(s) inside the window that forms its displaced address, which is more than this "
                             "machine's window holds");
   }

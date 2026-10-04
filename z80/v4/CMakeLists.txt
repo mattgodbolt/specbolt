@@ -9,6 +9,9 @@ endif ()
 add_library(z80_v4)
 target_link_libraries(z80_v4 PUBLIC z80_common peripherals)
 target_link_libraries(z80_v4 PUBLIC opt::pedantic opt::c++26)
+# Whatever links v4 is told so: that is how code shared with the other
+# implementations, which builds without it too, knows to include it.
+target_compile_definitions(z80_v4 INTERFACE SPECBOLT_HAS_V4)
 
 target_include_directories(z80_v4 PUBLIC include refract/include)
 

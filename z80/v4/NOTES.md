@@ -118,9 +118,8 @@ Three properties of the primitive, all read by reflection, none of them Z80-spec
   parameter makes a name a value rather than a location
 - its return type: `void` means the row may name no destination; `refract::Continue` makes the step
   a condition, with no destination; a single value means one or more destinations, each of which
-  receives it; and a class whose data members are all public and its own means one destination per
-  member, in declaration order. A class that hides all of its state is one value, and one with a
-  single member, some members hidden, or a base class is refused.
+  receives it; and an aggregate means one destination per member, in declaration order. Any other
+  class is one value, and an aggregate with a single member or a base class is refused.
 
 A `-` destination discards a component, which is how `cp` uses `cmp8` without writing the result
 back to `a`.
