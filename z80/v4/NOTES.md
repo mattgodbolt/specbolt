@@ -78,7 +78,8 @@ Lowering the table to a validated fixed shape at parse time removes that half en
 
 ## Where the framework/CPU boundary sits
 
-`refract/` is the library, and knows no CPU. The Z80's whole side of the contract is `z80.cpu`,
+`refract/` is the library, and knows no CPU; it is a CMake target of its own, whose tests build with
+nothing of the Z80 on the include path. The Z80's whole side of the contract is `z80.cpu`,
 `Target.hpp`, `Operations.hpp`, and `Z80.hpp` with its definitions in `Z80.cpp`; `Disassembler.cpp`
 only says where the disassembler's bytes come from. Retargeting means writing these and nothing
 else:

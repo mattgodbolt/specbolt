@@ -2,18 +2,20 @@
 # module partition, so its definitions duplicate; z80/CMakeLists.txt skips this
 # directory entirely when modules are on. See notes/JOURNAL.md.
 
+add_subdirectory(refract)
+
 if (SPECBOLT_TESTS)
     add_subdirectory(test)
 endif ()
 
 add_library(z80_v4)
-target_link_libraries(z80_v4 PUBLIC z80_common peripherals)
+target_link_libraries(z80_v4 PUBLIC refract z80_common peripherals)
 target_link_libraries(z80_v4 PUBLIC opt::pedantic opt::c++26)
 # Whatever links v4 is told so: that is how code shared with the other
 # implementations, which builds without it too, knows to include it.
 target_compile_definitions(z80_v4 INTERFACE SPECBOLT_HAS_V4)
 
-target_include_directories(z80_v4 PUBLIC include refract/include)
+target_include_directories(z80_v4 PUBLIC include)
 
 target_sources(z80_v4 PRIVATE
         Disassembler.cpp
@@ -24,21 +26,4 @@ target_sources(z80_v4 PUBLIC FILE_SET interface TYPE HEADERS FILES
         Target.hpp
         include/z80/v4/Disassembler.hpp
         include/z80/v4/Z80.hpp
-        refract/include/refract/Compiled.hpp
-        refract/include/refract/Checks.hpp
-        refract/include/refract/Continue.hpp
-        refract/include/refract/Decode.hpp
-        refract/include/refract/Disassemble.hpp
-        refract/include/refract/Execute.hpp
-        refract/include/refract/Lexical.hpp
-        refract/include/refract/Machine.hpp
-        refract/include/refract/Model.hpp
-        refract/include/refract/Parse.hpp
-        refract/include/refract/Parser.hpp
-        refract/include/refract/Pattern.hpp
-        refract/include/refract/TableError.hpp
-        refract/include/refract/ToArray.hpp
-        refract/include/refract/Vector.hpp
-        refract/include/refract/Visit.hpp
-        refract/include/refract/Workarounds.hpp
 )

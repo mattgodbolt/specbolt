@@ -67,8 +67,8 @@ bugs we work around on our side.
        -DSPECBOLT_WASM=ON -DSPECBOLT_MODULES=OFF -DSPECBOLT_TESTS=ON -DSPECBOLT_REFLECTION=ON \
        -DSPECBOLT_REFLECTION_CLANG=$HOME/opt/barry-patched -DSPECBOLT_WASI_SYSROOT=$HOME/opt/wasi-sysroot-34.0 \
        -DSPECBOLT_WASM_LIBCXX_HEADERS=$HOME/opt/wasm-reflect/include/c++/v1
-   cmake --build build/wasm-v4 --target z80_v4_test spectrum.wasm z80_bench_v4
-   ctest --test-dir build/wasm-v4 -R v4
+   cmake --build build/wasm-v4 --target refract_test z80_v4_test spectrum.wasm z80_bench_v4
+   ctest --test-dir build/wasm-v4 -R "v4|refract"
    node web/tools/boot.mjs build/wasm-v4/web/spectrum.wasm --model 128
    ```
 

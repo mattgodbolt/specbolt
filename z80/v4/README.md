@@ -7,8 +7,10 @@ description is a compile error naming its line.
 
 ## What is where
 
-- **`refract/include/refract/`** is the library. It knows no CPU: it reads a `.cpu` description,
-  checks it, and generates code against whatever machine a target names.
+- **`refract/`** is the library, the `refract` CMake target, with its headers in
+  `refract/include/refract/` and its own tests in `refract/test/`. It knows no CPU: it reads a
+  `.cpu` description, checks it, and generates code against whatever machine a target names. Its
+  tests build with nothing of the Z80 on the include path, so the build checks that it needs none.
 - **Everything else here is the Z80:**
   - `z80.cpu`, the description;
   - `Target.hpp`, which embeds it and names the machine and its palettes of verbs;
@@ -16,7 +18,7 @@ description is a compile error naming its line.
   - `include/z80/v4/Z80.hpp` and `Z80.cpp`, the machine: its state, the verbs it publishes, and what
     the library calls on it;
   - `Disassembler.cpp`, which tells the library's disassembler where the bytes come from;
-  - `test/`, the unit tests.
+  - `test/`, the unit tests of the Z80 as v4 builds it.
 
 ## Reading order
 
@@ -38,10 +40,11 @@ reflection and modules are off, which is what the reflection presets set:
 ```sh
 CC=~/opt/gcc-16.2.0/bin/gcc CXX=~/opt/gcc-16.2.0/bin/g++ cmake --preset debug-reflection
 cmake --build --preset debug-reflection
-ctest --preset debug-reflection -R v4
+ctest --preset debug-reflection -R "v4|refract"
 ```
 
-`-R v4` runs `Z80 v4 Unit Tests` (the `z80_v4_test` binary). Without the filter, `ctest` also runs
+The filter runs `refract Unit Tests` (the `refract_test` binary, the library on its own) and `Z80 v4
+Unit Tests` (`z80_v4_test`, the Z80 built from it). Without the filter, `ctest` also runs
 `Z80 Opcode and Boot Tests`, the shared suite in `z80/test`, which covers every core the build has,
 v4 included. Use `release-reflection` for the zexdoc regression test too
 (`Z80 Regression Test (v4 implementation)`), which is skipped in Debug as too slow. `Z80.cpp` is the slowest translation unit in the repository
