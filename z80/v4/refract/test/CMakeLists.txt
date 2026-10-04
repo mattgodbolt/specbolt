@@ -1,11 +1,13 @@
 ensure_catch2()
 
 # The tests that need nothing but the library: its parser and patterns, its
-# diagnostics, each driven by a description of its own, and a second machine run
-# end to end. Linked against refract alone, so nothing of the Z80 is in reach.
+# diagnostics and the interpreter's, each driven by a description of its own,
+# and a second machine run end to end. Linked against refract alone, so nothing
+# of the Z80 is in reach.
 add_executable(
         refract_test
         DiagnosticsTest.cpp
+        InterpreterDiagnosticsTest.cpp
         ParserTest.cpp
         PatternTest.cpp
         SecondMachineTest.cpp

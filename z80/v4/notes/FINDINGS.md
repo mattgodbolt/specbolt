@@ -64,6 +64,8 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   `is_static_member` says which of the two call forms a function wants. A namespace-scope constant
   named for the annotation must not share its name with any local, since `-Wshadow` sees through
   the attribute. `members_of` does not walk base classes, so a marked member of a base is not found.
+- **`annotations_of_with_type(r, ^^T)` is in gcc 16.2 and not in Barry's clang fork** (2026-10-04), which has only
+  `annotation_of_type<T>`. It would replace the scan in `Interpreter::is_marked`, which the fork keeps for now.
 - **`^^Alias` reflects the alias, not what it names.** `parent_of(^^Z80::delay) == ^^Machine` is
   false when `Machine` is `using Machine = Z80;`, and quietly so; `dealias(^^Machine)` is what to
   compare against. `members_of` dealiases for itself, which is why the same alias works there and
@@ -86,6 +88,13 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   message the parser threw with only a line, so the library never has to know what file it is
   reading. The idiom that a mistake in the description is a thrown `consteval` exception survives:
   nothing catches the rethrow.
+- **It is also how the interpreter's diagnostics are tested** (2026-10-04). Its lookups are `consteval`, so
+  `CHECK_THROWS_WITH` cannot call them; a test-only `consteval` helper catches what one throws and compares the
+  message under `STATIC_CHECK` (`refract/test/InterpreterDiagnosticsTest.cpp`). gcc 16.2 defines
+  `__cpp_constexpr_exceptions` as 202411L. Barry's clang fork (2026-09-22) defines neither it nor
+  `__cpp_lib_constexpr_exceptions`, and refuses any throw during constant evaluation, caught or not, so those tests
+  are guarded on the language macro and skipped there. It still reports a description's mistake, by pointing at the
+  `throw` with the message unevaluated.
 
 ### Library, on libstdc++ 16
 
@@ -377,6 +386,11 @@ of a template that is instantiated only where it is called.
   `static_assert` does. `Compiled<Source>` runs the whole-description checks that way, so a description is checked
   wherever its `Compiled` is first named and there is no `check()` for a consumer to forget. Member functions
   declared earlier in the class can be called from the block; the `steps::` variable templates can too.
+- **A block in a class template is instantiated whole before any of it runs** (2026-10-04). Anything its statements
+  name whose type depends on the template, such as a `std::array` sized by the description, is worked out first, so
+  the order of the statements cannot make one check run before another's inputs are computed. `Compiled` checks
+  every line for meaning something inside the `vocabularies` step instead, which every other step depends on, so a
+  typo is reported at the typo.
 - **`[[nodiscard]]` still applies inside a block.** `naming(file, check)` returned the check's `true` and every call
   in the block tripped `-Werror=unused-result`; the checks return `void` now, which is what they meant.
 
