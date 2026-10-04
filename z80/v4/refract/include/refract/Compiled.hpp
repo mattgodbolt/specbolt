@@ -1,7 +1,7 @@
 #pragma once
 
 // A description, compiled: the constants every consumer of a parsed `.cpu` file needs, made from its text during
-// constant evaluation and checked there. `Compiled<Source>` hands out five parts, in the order the pipeline makes them:
+// constant evaluation and checked there. `Compiled<Source>` hands out its parts, in the order the pipeline makes them:
 //
 //   vocabularies   the `vocab` lines, in declaration order
 //   tables         the `table` lines, in declaration order
@@ -32,8 +32,8 @@ namespace specbolt::refract {
 // because a `std::string_view` is not structural, so it cannot be a template argument itself, and a type carries both
 // facts under one name:
 //
-//   struct Z80Source {
-//     static constexpr std::string_view file = "z80.cpu";
+//   struct MySource {
+//     static constexpr std::string_view file = "my.cpu";
 //     static constexpr std::string_view text = ...;   // the file's contents, usually by `#embed`
 //   };
 template<typename S>
@@ -93,7 +93,7 @@ struct Compiled {
   // The table decoding starts in: the first one declared, since the format reserves no name for the entry table.
   static constexpr std::uint8_t entry_table = 0;
 
-  // The parts of the description, each evaluated on first use. What each holds is set out at the top of this file.
+  // The parts of the description, as constants. What each holds is set out at the top of this file.
   [[nodiscard]] static constexpr const auto &vocabularies() { return steps::vocabularies<Source>; }
   [[nodiscard]] static constexpr const auto &tables() { return steps::tables<Source>; }
   [[nodiscard]] static constexpr const auto &rows() { return steps::rows<Source>; }
@@ -118,8 +118,9 @@ struct Compiled {
   // is a class template, so it runs at instantiation, when their bodies exist; in a plain class it could not. `latched`
   // is asked for here because deriving it is itself a check, and nothing else forces it.
   consteval {
-    naming(file, [] { static_cast<void>(latched()); });
+    // First, before anything parses, so a mistyped line is reported at the typo rather than where something names it.
     naming(file, [] { return check_every_line_means_something(text); });
+    naming(file, [] { static_cast<void>(latched()); });
     naming(file, [] { return check_row_precedence(description(), steps::row_opcodes<Source>); });
     naming(file, [] { return check_derived_rows_override(description(), steps::row_opcodes<Source>); });
     naming(file, [] { return check_tables_used(description()); });

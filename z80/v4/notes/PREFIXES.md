@@ -6,11 +6,23 @@ single argument in these notes, kept whole because it only makes sense in one pi
 
 Part of [v4's notes](../NOTES.md).
 
+> **A design record, not a reference** (2026-10-03). This file was written while the prefixes were
+> being built, and much of it describes intermediate states: rule syntax without a vocabulary
+> (`hl->ix`), references without one (`{b}`, `{r:z}`), separate `ix`/`iy` and `ddcb`/`fdcb` tables
+> before views existed, and a dispatch loop returning `Next` that a chain of tail calls has since
+> replaced. [CPU_FORMAT.md](../CPU_FORMAT.md) is the reference for how prefixes, views and latched
+> tables work now. What this file keeps is the argument: why DDCB is not `cb` renamed, why
+> substitution is opt-in, and what the other implementations do instead. Dated notes in *italics*
+> mark where a statement below has since stopped being true.
+
 ---
 
 ## Prefixes
 
 ### Status: table switches, views, indexed addressing and DDCB all work
+
+*2026-10-03: this section is a snapshot from part-way through. A `goto` is now the whole of its row
+rather than a step, every opcode of every table decodes, and the scores below are history.*
 
 `table <name>` declares a decoding table, and `goto <table>` is a step. A prefix is an ordinary row:
 
@@ -55,9 +67,11 @@ the things the suites do *not* catch, or catch only because we match an approxim
   does not. Not a papered-over difference so much as a missing feature, but it is missing.
   *(Since fixed: `Z80::handle_interrupt` does all three modes, `ei` defers acceptance by one
   instruction, and `ExecuteTest` covers it. What remains open is that nothing ever releases /INT;
-  see the section on it below.)*
+  see [NOTES.md](../NOTES.md).)*
 - **The immediate is fetched once, before any step**, rather than at the token that names it. Fine
-  for every row that exists; wrong for `ld (ix+d), n`.
+  for every row that exists; wrong for `ld (ix+d), n`. *(2026-10-03: still fetched once, but
+  `ld (ix+d), n` is right: the machine is told the byte was read inside the window that forms the
+  address. See "The displacement is derived, not declared", below.)*
 - **A push writes its two bytes in the wrong order.** `write_memory16` goes low byte first, which is
   what `ld (nn), hl` does; hardware pushes high to sp-1 and then low to sp-2. The bytes end up in the
   same places, so nothing can see it until `Z80::bus` starts contending or something watches writes.
@@ -89,6 +103,11 @@ and the groundwork is this, roughly in the order it has to happen:
    It costs one branch per instruction and nothing per prefix byte: `cb` compiles to
    `mov $0x101,%eax; ret`, and the two-dimensional dispatch folds into a single scaled load indexed
    by `table << 8 | opcode`.
+
+   *2026-10-03: `Next` and the loop have gone too. Every handler now ends in a `[[clang::musttail]]`
+   call, a prefix's to the next table's handler and anything else's to the next instruction's, so a
+   run of prefixes is a run of jumps and still cannot grow the stack. Notes.md, "Attempted, and it is
+   worth more than the estimate", has why and what it bought.*
 2. ~~**`goto` learns `with view=`.**~~ **Not needed, the item dissolved.** The sketch below spelled
    the same idea twice: `goto base with view=ix` *and* `table ix = base with hl->ix, …`. Only the
    second is necessary. If a view is a **derived table**, then `goto` never changes: it already takes
@@ -115,10 +134,14 @@ and the groundwork is this, roughly in the order it has to happen:
    - A derived table with no rows of its own is legal (it *is* its parent, renamed) so
      `check_tables_used` no longer demands rows of one.
 
+   *2026-10-03: rules now name the vocabulary they rewrite (`pair.hl -> ix`; see below for why), and
+   the `ix` and `iy` tables became one table taking a view, `indexed(view:index)`.*
+
    Not yet wired into `z80.cpu`: `(hl)` must become `(ix+d)`, which fetches a displacement byte, and
    that is item 4. Adding `dd` before then would decode `inc (hl)` as `inc (hl)` under DD, a
    knowingly wrong emulator, so the mechanism is tested on its own description in `DiagnosticsTest`
-   instead, including that `dd dd` re-enters.
+   instead, including that `dd dd` re-enters. *(2026-10-03: wired in, and the whole prefixed
+   instruction set with it.)*
 3. ~~**References before views.**~~ **Done.** `Operand` and `Piece` each spelled a reference as two
    loose indices, and four places spelled out the lookup that follows one. Both now hold a
    `Reference`, and `member_of` is the only place one is followed, which is the place a view will
@@ -179,6 +202,10 @@ It owns both how a base and an offset combine *and* what forming the address cos
 facts about the machine, a 6502 wraps within page zero for one mode and charges for a page crossing
 in another. Being a member of the machine is what lets the cost live there. Everything else the table already said.
 
+*2026-10-03: the count is now a template argument, `displaced_address<BytesRead>(base, offset)`, so
+a machine whose window cannot hold that many bytes refuses the count with a constraint, and the
+interpreter reports the row that wanted it (`Z80.hpp`, `refract/Machine.hpp`).*
+
 Verified in `ExecuteTest.cpp` against the counts `OpcodeTests.cpp` asserts of v1/v2/v3: 19 for
 `ld r,(ix+d)`, `ld (ix+d),r`, `ld (ix+d),n` and `add a,(ix+d)`; 23 for `inc (ix+d)`; 8 for a DD that
 renames nothing; and `dd dd dd 23` at 4 T-states a prefix byte. Generated code forms the address once
@@ -188,8 +215,11 @@ with `add`, reuses it for the read and the write, and folds both idles into cons
 a row's mnemonic is (`pieces_of` does both) with `Piece::Kind::Displacement` for the hole `+d`
 leaves. A row renders its pieces, and a member renders its own, so `inc (ix-0x01)` falls out without
 the disassembler parsing anything at runtime. The displacement is taken before the pieces are walked,
-because it precedes any immediate, which also makes the reported length right.
-5. ~~**Capacity.**~~ **Checked; nothing to change.** `Field::max_values` is 8 and the `ix` view's
+because it precedes any immediate, which also makes the reported length right. *(2026-10-03:
+`Piece::Kind::Displacement` is now `Piece::Displacement`, one alternative of a variant.)*
+5. ~~**Capacity.**~~ **Checked; nothing to change.** *(2026-10-03: `Field::max_values` is now
+   `Vocabulary::max_members`, and CPU_FORMAT.md, "Limits", names every capacity's constant.)*
+   `Field::max_values` is 8 and the `ix` view's
    register vocabulary is exactly 8 (`b c d e ixh ixl (ix+d) a`), it fits, with no headroom.
    `Rules` holds 6 and `ix` needs 4. `Row::max_steps` is 6, which DDCB might exceed, but bumping a
    limit before something reaches it is guessing.
@@ -204,7 +234,9 @@ what is missing is the machinery underneath it.
 
 Still untested for real: that a long prefix chain does not grow the stack. `DiagnosticsTest` asserts
 only that a self-goto *parses*, because no row uses one yet. The test to write alongside DD is
-`dd dd dd … 00`: constant stack, 4T a byte, `r` incremented once a byte.
+`dd dd dd … 00`: constant stack, 4T a byte, `r` incremented once a byte. *(2026-10-03: `ExecuteTest`
+runs `dd dd dd 23` at four T-states a byte, and with every hand-over a mandatory tail call, a prefix
+chain has no frames to grow.)*
 
 ### What DD actually does, measured
 
@@ -252,12 +284,15 @@ Stating DD as "re-enter the table you were already in" is also more honest than 
 makes clear a full opcode fetch follows, with its 4 T-states and R increment.
 
 State is one table index, seven of them, exactly v2's seven tables. Prefix chains (`DD DD FD`) fall
-out: `ix` inherits base's `goto iy` row, so each byte just re-enters, last wins.
+out: `ix` inherits base's `goto iy` row, so each byte just re-enters, last wins. *(2026-10-03:
+views made it fewer declared tables plus a run-time view, and `z80.cpu` writes the prefixes as
+`goto indexed(ix)` and `goto indexed(iy)`. Chains still fall out the same way.)*
 
 **One rule to keep: only `{field}` references are rewritten; literal text never is.** `ex de, hl`
 written literally is therefore immune by construction. Substitution-by-default would reproduce the
-exact bug v2 and v3 both have. This is now structural rather than a rule to remember: `member_of` is
-the only place a rule is consulted, and it is only reachable through a `{field}`.
+exact bug v2 and v3 both have. *(2026-10-03: fixed in both, #43.)* This is now structural rather
+than a rule to remember: `member_of` is the only place a rule is consulted, and it is only reachable
+through a `{field}`.
 
 Naming a different vocabulary *is* enough, now that a rule carries the vocabulary it rewrites; it
 was not when rules matched on member text alone, and `ExecuteTest` caught the difference. What stays
@@ -291,7 +326,8 @@ Everything else is derived from that one token:
 
 So the latch is `Next` carrying a byte, and it costs nothing: the displacement arrives in a register
 parameter. `set 4, (ix+d), b` compiles to sign-extend, `idle`, `add`, `read`, `or $0x10`, `idle`,
-`write`, `mov`, the primitive inlined and the undocumented copy a single store.
+`write`, `mov`, the primitive inlined and the undocumented copy a single store. *(2026-10-03: with
+`Next` gone, the latch is the `latch` argument every handler takes, still in a register.)*
 
 Two small capabilities came with it, both general rather than DDCB-shaped: an operand written out in
 a row may carry `/delay=1` exactly as a vocabulary member can, and one result may name more than one
@@ -301,15 +337,19 @@ Timings verified against `OpcodeTests.cpp`: 20 for `bit n,(ix+d)`, 23 for `set`/
 come from `wzh`, the high byte of the address the machine last formed, which is a named location now
 rather than a papered-over `h`.
 
-Still missing from these tables: the rotate family, because `cb` does not have it either.
+~~Still missing from these tables: the rotate family, because `cb` does not have it either.~~
+*(2026-10-03: done; `cb` and `indexed_cb` both carry the `shift` family.)*
 
 ### DDCB is different in kind, and substitution provably cannot express it
 
 CB and ED are pure table switches. DD and FD are re-readings of the same map. **DDCB is both, plus a
 fetch reordering**, the only encoding in the instruction set where the opcode byte is not the last
-byte read. It gets its own four-row table, and that is not a taste judgement:
+byte read. It gets its own four-row table, and that is not a taste judgement. *(2026-10-03: its own
+table still, now with the rotates and one row per undocumented-copy form, and one table for both
+index registers, `indexed_cb(view:index)`.)*
 
-**v2 and v3 both build DDCB by substitution, and are wrong for 224 of 256 entries.** The generated
+**v2 and v3 both build DDCB by substitution, and are wrong for 224 of 256 entries.** *(Still true on
+2026-10-03; issue #38.)* The generated
 code fetches the displacement, then operates on the named register and never touches memory:
 
 ```
@@ -326,7 +366,8 @@ So the repo contains a working implementation of "DD is a view over the CB table
 
 The undocumented register copy is a second destination, and `z == 6` is a separate row reached by
 first-match-wins rather than a "no destination" member, `s` already has a hole at 6, so `10bbbzzz`
-does not claim it and `10bbb110` does. No new vocabulary syntax was needed.
+does not claim it and `10bbb110` does. No new vocabulary syntax was needed. *(2026-10-03: `s` is
+`real` in today's `z80.cpu`.)*
 
 **A second instance of the same class arrived while this was being written.** #39, fixed in #43:
 v2 and v3 both disassembled and executed `DD EB` as `ex de, ix`, because their prefix handling
@@ -346,13 +387,16 @@ looks. Both schemes can be wrong; what differs is which way they fail when nobod
 attention. v2 and v3 substitute by default and must remember to stop, so a forgotten exception is a
 *changed* instruction. v4 substitutes only where asked, so a forgotten exception is an *unchanged*
 one. Neither is caught by the compiler. But the DD/FD prefix leaves most of the map alone, so the
-lazier default is also the more often correct one, and the exceptions are nine rows one can read.
+lazier default is also the more often correct one, and the exceptions are a handful of rows one can
+read.
 
-`ddcb` and `fdcb` are written out twice rather than one derived from the other, because they differ
+~~`ddcb` and `fdcb` are written out twice rather than one derived from the other, because they differ
 only in a *literal* operand and a rule rewrites only `{field}` references. That is the same rule that
 keeps `ex de, hl` safe, so the duplication is the price of it; worth revisiting together when
 `ex de,hl`, `jp (hl)` and `ld sp,hl` land, since those are the rows that decide whether literals
-should ever be rewritten.
+should ever be rewritten.~~ *(2026-10-03: a view made them one table, `indexed_cb(view:index)`,
+whose rows name `{index_mem:view}` rather than a literal, so the duplication went without any
+literal being rewritten.)*
 
 ### Pure goto is refuted by v1
 
@@ -391,11 +435,16 @@ still not done, but it has somewhere to go, the top of the loop is exactly the p
 not accept an interrupt at, because a prefix and its opcode are one instruction. Knowing that
 requires the state to be a value, which it now is.
 
+*2026-10-03: superseded twice. The loop became a chain of tail calls, and interrupts are taken in
+the machine's `start_instruction`, which the chain passes through between instructions and never
+between a prefix and its opcode, since a prefix hands straight to the next table.*
+
 ### Costs, measured
 
 7 states × 256 = 1792 instantiations, of which **338 are byte-identical duplicates** (169 per index
 register). Aliasing those, plus folding `fdcb` into `ddcb` with the index register as a runtime
-value, leaves ~1200.
+value, leaves ~1200. *(2026-10-03: views did the folding, and generation is now one function per
+body rather than per opcode; JOURNAL.md records the counts as each change landed.)*
 
 Dispatch machinery floor on gcc 16.2 (`-O1 -freflection`, trivial bodies): 1×256 = 1.59 s / 114 MB;
 3×256 = 3.10 s / 154 MB; 7×256 = 4.80 s / 233 MB, roughly **0.53 s and 20 MB per additional
@@ -422,3 +471,7 @@ rather than reporting that it has no name.
 
 The same change is what a second CPU needs, since nothing about the parser now says `z80.cpu` except
 the one line that embeds it.
+
+*2026-10-03: the parser has since moved into refract, and a description reaches it as
+`refract::Compiled<Source>`, so nothing in the library names `z80.cpu` at all: `Target.hpp` embeds
+it, and `SecondMachineTest` runs a second description in the same binary.*

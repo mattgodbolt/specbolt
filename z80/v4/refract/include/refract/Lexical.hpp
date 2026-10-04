@@ -1,8 +1,8 @@
 #pragma once
 
 // Everything that parses a fragment of text without needing the whole description: which kind of line this is, what an
-// operand says, what a vocabulary member says. Each takes a string and returns a value, so each is testable a line at
-// a time; none knows which line it is reading, since `at_line` names that when one of them throws.
+// operand says, what a vocabulary member says. Each takes text and returns a value, so each is testable a line at a
+// time; none knows which line it is reading, since `at_line` names that when one of them throws.
 
 #include "refract/Model.hpp"
 #include "refract/Parser.hpp"
@@ -46,6 +46,19 @@ namespace specbolt::refract {
   return static_cast<std::uint8_t>(value.front() - '0');
 }
 
+// Splits `text/delay=n` into the text and the delay it gives, or returns the word whole with no delay. Members and row
+// operands both write the attribute, and both read it here so that they accept and refuse the same spellings.
+[[nodiscard]] constexpr std::pair<std::string_view, std::optional<std::uint8_t>> split_delay(
+    const std::string_view word) {
+  const auto slash = word.find('/');
+  if (slash == std::string_view::npos)
+    return {word, std::nullopt};
+  Parser attribute(word.substr(slash + 1));
+  if (attribute.take_until('=') != "delay")
+    throw std::runtime_error("expected 'delay=n' after '/' in '" + std::string(word) + "'");
+  return {word.substr(0, slash), parse_delay(attribute.rest())};
+}
+
 // Parses an operand as a row or a member writes it: `-`, `n`, a number, or a name, any of which may be wrapped `(...)`
 // as an address, with `+d` inside the parentheses for a displaced one, and `/delay=n` on the end for the idle cycles a
 // write back through it costs. Anything in braces is a vocabulary reference, which is `parse_operand`'s business.
@@ -53,12 +66,9 @@ namespace specbolt::refract {
   if (word.empty())
     throw std::runtime_error("empty operand in action");
   // An addressing mode written out in a row says what it costs the same way a vocabulary member does.
-  if (const auto slash = word.find('/'); slash != std::string_view::npos) {
-    Parser attribute(word.substr(slash + 1));
-    if (attribute.take_until('=') != "delay")
-      throw std::runtime_error("'" + std::string(word.substr(slash + 1)) + "' is not an operand attribute");
-    auto attributed = parse_simple_operand(word.substr(0, slash), immediate_bytes);
-    attributed.write_back_delay = parse_delay(attribute.rest());
+  if (const auto [text, delay] = split_delay(word); delay) {
+    auto attributed = parse_simple_operand(text, immediate_bytes);
+    attributed.write_back_delay = *delay;
     return attributed;
   }
   if (word == "-")
@@ -86,15 +96,13 @@ namespace specbolt::refract {
   if (word.front() >= '0' && word.front() <= '9') {
     const auto hex = word.starts_with("0x");
     const auto digits = hex ? word.substr(2) : word;
-    // Into an `unsigned` and then range-checked, rather than straight into a `std::uint16_t`, so that "too big" and
-    // "not a number" stay separate answers however far past 16 bits the text goes.
-    unsigned value = 0;
+    std::uint16_t value = 0;
     const auto [end, failure] = std::from_chars(digits.data(), digits.data() + digits.size(), value, hex ? 16 : 10);
-    if (failure == std::errc::result_out_of_range || value > 0xffff)
+    if (failure == std::errc::result_out_of_range)
       throw std::runtime_error("constant '" + std::string(word) + "' does not fit in 16 bits");
     if (failure != std::errc{} || end != digits.data() + digits.size())
       throw std::runtime_error("malformed constant '" + std::string(word) + "'");
-    return Operand::literal(static_cast<std::uint16_t>(value));
+    return Operand::literal(value);
   }
   if (word.size() > Name::capacity)
     throw std::runtime_error("operand name '" + std::string(word) + "' is too long");
@@ -147,8 +155,8 @@ namespace specbolt::refract {
 }
 
 // Splits `name=rest` into the parameter an operand names and the operand, or returns the word whole with an empty name.
-// A keyword is an identifier followed by `=`, which is what keeps `(hl)/delay=1` from looking like one: what precedes
-// its `=` is not an identifier.
+// A keyword is an identifier followed by `=`, which is what keeps an attributed operand such as `(name)/delay=1` from
+// looking like one: what precedes its `=` is not an identifier.
 [[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(const std::string_view word) {
   const auto at = word.find('=');
   if (at == std::string_view::npos || at == 0)
@@ -170,23 +178,17 @@ namespace specbolt::refract {
 // display is itself an operand, and the arguments are operands the member appends to the row's, each of which may be
 // `name=`d.
 [[nodiscard]] constexpr Member parse_member(const std::string_view text) {
-  Parser whole(text);
-  Parser parser(whole.take_until('/'));
+  const auto [body, delay_attribute] = split_delay(text);
+  Parser parser(body);
   Member member{.display = parser.take_until(':')};
   const auto bound_text = parser.rest();
-  std::optional<std::uint8_t> delay_attribute;
-  if (const auto attributes = whole.rest(); !attributes.empty()) {
-    Parser attribute(attributes);
-    const auto key = attribute.take_until('=');
-    const auto value = attribute.rest();
-    if (key != "delay")
-      throw std::runtime_error("'" + std::string(key) + "' is not a member attribute; expected 'delay'");
-    delay_attribute = parse_delay(value);
-  }
   if (member.display.empty())
     throw std::runtime_error("a vocabulary member has no name");
   if (member.display.contains('$'))
     throw std::runtime_error("a vocabulary member cannot render an immediate; only the encoding fetches those");
+  // Asked of `body`, because `take_until` hands back the same empty rest whether or not it found the `:`.
+  if (bound_text.empty() && body.contains(':'))
+    throw std::runtime_error("':' introduces the operation a member binds, and none was given");
   if (member.display == "-") {
     member.kind = Member::Hole{};
     return member;

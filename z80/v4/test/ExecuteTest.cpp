@@ -125,6 +125,15 @@ TEST_CASE("Ports and the odd exchange") {
     CHECK(regs.get(RegisterFile::R8::A) == 0xa5);
     CHECK(t.z80.cycle_count() == 11);
   }
+  SECTION("in r, (c) reports the byte without disturbing the carry") {
+    t.z80.add_in_handler([](std::uint16_t) { return std::optional<std::uint8_t>{0x00}; });
+    t.z80.flags(Flags::Carry());
+    regs.set(RegisterFile::R16::BC, 0x1234);
+    t.run(0xed, 0x48); // in c, (c)
+    CHECK(regs.get(RegisterFile::R8::C) == 0x00);
+    CHECK(t.z80.flags() == (Flags::Carry() | Flags::Zero() | Flags::Parity()));
+    CHECK(t.z80.cycle_count() == 12);
+  }
   SECTION("ex (sp), hl") {
     regs.sp(0x9000);
     t.memory.write16(0x9000, 0x1234);
@@ -242,16 +251,6 @@ TEST_CASE("Interrupts") {
   auto &regs = t.regs;
   regs.sp(0x8000);
 
-  SECTION("in r, (c) reports the byte without disturbing the carry") {
-    t.z80.add_in_handler([](std::uint16_t) { return std::optional<std::uint8_t>{0x00}; });
-    t.z80.flags(Flags::Carry());
-    regs.set(RegisterFile::R16::BC, 0x1234);
-    t.run(0xed, 0x48); // in c, (c)
-    CHECK(regs.get(RegisterFile::R8::C) == 0x00);
-    CHECK(t.z80.flags() == (Flags::Carry() | Flags::Zero() | Flags::Parity()));
-    CHECK(t.z80.cycle_count() == 12);
-  }
-
   SECTION("ld a, i and ld a, r report iff2 in the parity flag") {
     // These are the only rows whose operation reads the machine without changing it, so they are also where a `const`
     // machine parameter has to keep being recognised as the machine. Each value's own parity is the opposite of the
@@ -282,30 +281,10 @@ TEST_CASE("Interrupts") {
     CHECK(regs.sp() == 0x7ffe);
   }
 
-  SECTION("the refresh register counts the acknowledge, and counts through a halt") {
-    t.z80.iff1(true);
-    t.z80.iff2(true);
-    t.regs.r(0);
-    t.run(0x76); // halt
-    CHECK(t.regs.r() == 1);
-    CHECK(t.z80.cycle_count() == 4);
-
-    t.z80.execute_one(); // halted: an internal nop, which still refreshes
-    CHECK(t.regs.r() == 2);
-    CHECK(t.z80.cycle_count() == 8);
-
-    t.z80.interrupt();
-    t.z80.execute_one();
-    // Two more: the acknowledge is an M1, and the handler's first instruction is fetched in the same call.
-    CHECK(t.regs.r() == 4);
-    CHECK_FALSE(t.z80.halted());
-  }
-
   SECTION("a halted cycle is a real opcode fetch, so the bus keeps following it") {
-    // The halted path once spent its four cycles directly rather than through `bus`, which left the address bus holding
-    // whatever the last instruction put there for as long as the machine idled, and idling in `halt` until the frame
-    // interrupt is the commonest thing a Spectrum program does. It also meant the one place contention would matter
-    // most was the one place the seam did not reach.
+    // A halted Z80 goes on fetching, so its four cycles go through `bus` like any other fetch and the address bus
+    // follows pc. Idling in `halt` until the frame interrupt is the commonest thing a Spectrum program does, which
+    // makes this the place contention most needs to reach.
     t.regs.pc(0x1234);
     t.run(0x00); // a nop, to leave the bus somewhere known
     REQUIRE(t.z80.bus_address() == 0x1234);
@@ -317,13 +296,7 @@ TEST_CASE("Interrupts") {
     const auto before = t.z80.cycle_count();
     t.z80.execute_one();
     CHECK(t.z80.bus_address() == 0x4321);
-    CHECK(t.z80.cycle_count() == before + 4); // an opcode cycle, as before
-  }
-
-  SECTION("the refresh register's top bit is not counted") {
-    t.regs.r(0xff);
-    t.run(0x00);
-    CHECK(t.regs.r() == 0x80); // seven bits wrapped, the eighth kept
+    CHECK(t.z80.cycle_count() == before + 4); // the four cycles of an opcode fetch
   }
 
   SECTION("an interrupt raised while disabled is held, not dropped") {
@@ -337,6 +310,37 @@ TEST_CASE("Interrupts") {
     t.run(0x00);
     CHECK(t.memory.read16(0x7ffe) == 2); // held, then taken
     CHECK(regs.sp() == 0x7ffe);
+  }
+}
+
+TEST_CASE("The refresh register") {
+  Tester t;
+  auto &regs = t.regs;
+  regs.sp(0x8000);
+
+  SECTION("it counts the acknowledge, and counts through a halt") {
+    t.z80.iff1(true);
+    t.z80.iff2(true);
+    regs.r(0);
+    t.run(0x76); // halt
+    CHECK(regs.r() == 1);
+    CHECK(t.z80.cycle_count() == 4);
+
+    t.z80.execute_one(); // halted: an internal nop, which still refreshes
+    CHECK(regs.r() == 2);
+    CHECK(t.z80.cycle_count() == 8);
+
+    t.z80.interrupt();
+    t.z80.execute_one();
+    // Two more: the acknowledge is an M1, and the handler's first instruction is fetched in the same call.
+    CHECK(regs.r() == 4);
+    CHECK_FALSE(t.z80.halted());
+  }
+
+  SECTION("its top bit is not counted") {
+    regs.r(0xff);
+    t.run(0x00);
+    CHECK(regs.r() == 0x80); // seven bits wrapped, the eighth kept
   }
 }
 
@@ -516,10 +520,10 @@ TEST_CASE("Indexed addressing") {
   }
 
   SECTION("bit n, (ix+d) reads wzh after the memory access, not before") {
-    // `test_bit flags <- (ix+d) {b} flags wzh` has two operands that touch the bus: the memory read sets the address
-    // wzh then reports. If the arguments were evaluated in the other order, wzh would report the *previous* address:
-    // the opcode fetch, near zero, whose bits 3 and 5 are clear. So choose an index whose high byte has both set, and
-    // the two orders differ.
+    // On the ix page the row reads `test_bit flags <- value=(ix+d) bit={bit:b} flags=flags bus=wzh`, and two of those
+    // operands touch the bus: the memory read sets the address that wzh then reports. If the arguments were evaluated
+    // in the other order, wzh would report the *previous* address: the opcode fetch, near zero, whose bits 3 and 5 are
+    // clear. So choose an index whose high byte has both set, and the two orders differ.
     t.z80.flags(Flags());
     regs.set(RegisterFile::R16::IX, 0x2834); // +2 -> 0x2836, high byte 0b0010'1000
     t.memory.write(0x2836, 0xff);

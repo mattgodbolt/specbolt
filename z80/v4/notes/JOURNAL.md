@@ -12,9 +12,10 @@ reference. What is true *now* is in [NOTES.md](../NOTES.md), and the code.
 
 *Written when these were open, and kept because the reasoning is why the data has the shape it
 has. All but one are settled: what remains open is WZ/MEMPTR, in §8 below and in
-[NOTES.md](../NOTES.md). The types named here were later renamed, `Field` to `Reference` and
+[NOTES.md](../NOTES.md). The types named here were later renamed, `Field` to `Vocabulary` and
 `Matched` to `Pattern`, and the references were spelled `{p}` before a vocabulary had to be named,
-so read the examples for their argument rather than their syntax.*
+so read the examples for their argument rather than their syntax. (Corrected 2026-10-03: this note
+had said `Field` became `Reference`; commit 12e4c80 made it `Vocabulary`.)*
 
 These dictate the row data shapes and are expensive to retrofit. Everything else is additive.
 
@@ -222,6 +223,7 @@ gained by silently shadowing another row.
 Landed, but not where this section predicted. Cost turned out to belong to the **addressing mode**
 for anything to do with an operand, with an explicit `delay` step only for idle cycles belonging to
 the operation itself. See "Where cost actually lives" and "Time passes in exactly one place" below.
+*(2026-10-03: both have been in MEASUREMENTS.md since the notes were split.)*
 The original argument, which still stands:
 
 - v3 has **no cycle numbers anywhere**. Timing emerges from the primitives (`read`/`write` = 3,
@@ -812,7 +814,8 @@ deferred rather than forgotten.
 - ~~**A mistyped line vanishes.**~~ **Fixed.** After blanks and `#`, every line must be a
   declaration or a row; `check_every_line_means_something` says so. Still true and unfixed:
   `next_word` splits on spaces only, so a tab-indented `field` is not recognised at all, `trim`
-  handles tabs, which shows they were meant to be whitespace.
+  handles tabs, which shows they were meant to be whitespace. *(2026-10-03: fixed since; a tab is a
+  blank to `Parser`, and a declaration keyword may be followed by one.)*
 - ~~**`SPECBOLT_CPU_TABLE` lives in `TableError.hpp`**, so a framework header names the CPU
   description, and `Execute.hpp` includes the Z80's headers by name for the same reason.~~ **Both
   fixed**. See "the line between the library and the Z80" above. What is left is that one binary
@@ -820,9 +823,11 @@ deferred rather than forgotten.
 - ~~**`Operand` carries jobs that already have types.**~~ **Done.** `Reference` is a type, and
   `write_back_delay` now lives only on `Operand`, `parse_member` writes it there directly, so
   `resolve` is a one-liner and there is nothing to keep in step.
-- **The write-back-delay rule compares only the name**, not that both ends are indirect, and two
+- ~~**The write-back-delay rule compares only the name**, not that both ends are indirect, and two
   nameless indirect operands compare equal. Nothing exercises it today; the rule meant is "the
-  destination is the same addressing mode as one of the operands".
+  destination is the same addressing mode as one of the operands".~~ *(2026-10-03: fixed.
+  `same_address` in Model.hpp requires both ends indirect and compares how each is reached, constant
+  included.)*
 - ~~**`Matched::matches` is test-only and misleading**~~ **Fixed by deleting it**, along with
   `fixed_mask` and `variable_mask`, which existed only to serve it. It was the obvious way to decode
   (AND with a mask, compare) sitting in the first file a reader opens, in a design that
@@ -830,16 +835,19 @@ deferred rather than forgotten.
   precomputed table. A decoy in production code, kept alive by nothing but its own test.
 - **Naming.** "field" means the `.cpu` keyword, the C++ `Field`, a `BitSlice` (in one error message),
   and `Piece::Kind::Field`. One word per concept. `Matched` is a participle for "a parsed opcode
-  pattern". `Member::display` is not only for display.
-- **The v4 `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so every
+  pattern". `Member::display` is not only for display. *(2026-10-03: mostly done. The keyword is
+  `vocab`, the type `Vocabulary`, `Matched` is `Pattern`, and `Piece`'s kinds are variant
+  alternatives; `Member::display` stands.)*
+- ~~**The v4 `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so every
   `SPECBOLT_MODULES` branch in v4 is unbuildable by construction, and the partitions do not include
-  the headers they would need. They look maintained and are not.
+  the headers they would need. They look maintained and are not.~~ *(2026-10-03: resolved by
+  deletion in 9e1cc02. v4 has no modules build, and is not built when modules are on.)*
 - ~~**`DisassemblerTest` understates coverage.**~~ **Stale, no commented-out `CHECK`s remain**; the
   only markers left say "tested elsewhere". What is genuinely missing is a test that the *two
   artefacts agree*: for every (table, opcode), that `disassemble(...).length` equals how far the
   interpreter moved PC, and that nothing renders `??`. The format's headline claim is "one
   description, two artefacts", and length is checked on one side and PC on the other and never
-  against each other.
+  against each other. *(2026-10-03: still missing, and now listed in NOTES.md.)*
 
 ## A second review, and what came of it
 
@@ -916,7 +924,9 @@ the talk needs first.
 **Unresolved and worth knowing.** `a substitution's reference must be selected by the table's view`
 appears unreachable: `parse_substitutions` calls `reference_from_braces` with an empty `Pattern`, so
 any reference that is *not* the view fails earlier on "names a slice the opcode pattern does not
-define". The throw stays as a guard, but no test can reach it.
+define". The throw stays as a guard, but no test can reach it. *(2026-10-03: removed, since nothing
+could reach it. "Splitting `Operand` into parsed and resolved halves", above, was done too: see
+"Done: an operand before an opcode, and an operand after one", below.)*
 
 ## The original plan, in the order it was meant to happen
 
@@ -1252,6 +1262,18 @@ requirement in the text. A check that fires at a use site has to be asked which
 of the two it is really about, and it is usually not the one it happens to be
 standing on.
 
+*Correction, 2026-10-03: this was reversed on 2026-09-21 (e2b6510), when every
+line-reading pass came to run under `at_line`, which names the line being read.
+The check now reports against the use and names the declaration in the text:*
+
+```
+6: vocabulary 'm' (declared at line 1) is selected by a view here, so all of its
+members must have the same shape as '(ix+d)'; '(iy)' does not
+```
+
+*Both lines are still in the message, which was the point; the one in front is
+now the one being read, not the one to edit. CPU_FORMAT.md describes it this way.*
+
 ## Done: an operand before an opcode, and an operand after one
 
 One `Operand` served three roles: what a row wrote, what a vocabulary member
@@ -1449,3 +1471,24 @@ value still needs a destination, so a forgotten destination stays an error rathe
 generated step now answers whether the row goes on, and a row runs until one says no.
 
 The cost, and the sideline it opened about `std::visit` during constant evaluation, are in FINDINGS.md.
+
+## Done: the framework stopped inferring meaning from types
+
+*Done 2026-08-11 (c8fc5d0). This entry was moved here from NOTES.md on 2026-10-03, where it had sat
+as "The collapse that got us here"; it is out of order for that reason. It is in the syntax of the
+time: `add:add8+0` is now `add:add8(0)`, and `{q} a, flags <- a {r:z}` is now
+`{arith:q} a, flags <- a {reg:z}`.*
+
+Three Z80-isms used to live in the framework, and all three were the same mistake, inferring
+meaning from a C++ type rather than reading it off the row:
+
+- `Operand::Kind::Accumulator` presumed a CPU has one.
+- `CarrySource` filled a `bool` parameter from the carry flag. Already wrong for
+  `Alu::iff2_flags_for(u8, Flags, bool iff2)`, whose `bool` is not carry.
+- `is_supplied_by_framework` did the same for `Flags` and the machine.
+
+All three became one operand concept, constant, immediate, name, field reference, or discard, where
+`a`, `carry` and `flags` are just names the CPU resolves. Vocabulary members may append an operand
+(`add:add8+0`, `adc:add8+carry`), so the carry policy is data in the table. Destinations are a list,
+so `{q} a, flags <- a {r:z}` destructures whatever the primitive returns, and the last assumption
+(that a result type has a member called `flags`) went with it.

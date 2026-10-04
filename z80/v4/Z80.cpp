@@ -32,8 +32,6 @@ bool Z80::start_instruction() {
   }
 }
 
-// The one sequence the table cannot describe: no opcode encodes it, and the byte it reads in mode 0 comes from the
-// interrupting device rather than from memory. It is the machine's, not the instruction set's.
 void Z80::handle_interrupt() {
   // The request is a level the device holds until it is acknowledged, so one arriving while interrupts are off waits
   // rather than being lost.
@@ -93,9 +91,7 @@ static_assert(cost_of(Bus::opcode) >= 1);
 } // namespace
 
 void Z80::bus(const Bus kind, const std::uint16_t address) {
-  // A machine that contends or stretches does it here, from the kind, the address and the position within the frame.
-  // The Spectrum contends 0x4000-0x7fff while the display is being drawn; nothing models that yet. TODO:
-  // pass_time(contention(kind, address, cycle_count()));
+  // Not modelled: contention, such as the Spectrum's on 0x4000-0x7fff while the display is drawn, which belongs here.
   pass_time(cost_of(kind));
   bus_address_ = address;
 }
@@ -167,8 +163,6 @@ void Z80::out_c(const std::uint16_t port, const std::uint8_t value) {
   out(port, value);
 }
 
-// Swaps `value` with the word at sp and returns the old word. Nineteen T-states with the fetch: two reads, an idle
-// cycle, two writes, then two more idle cycles, which is where the two `delay`s sit.
 std::uint16_t Z80::ex_sp_hl(const std::uint16_t value) {
   const auto sp = regs_.sp();
   const auto low = read_memory(sp);
@@ -188,10 +182,6 @@ Alu::R8 Z80::ld_a_special(const std::uint8_t value, const Flags flags) const {
   return {value, Alu::iff2_flags_for(value, flags, iff2())};
 }
 
-// Rotates a nibble between `a` and `value`, changing `a` in place and returning what goes back to memory with the
-// flags. `right` is `rrd`: the low nibble of `value` goes into `a`, `value`'s high nibble drops to the low half of what
-// is written back, and `a`'s old low nibble fills the high half. `rld` rotates the other way: the high nibble of
-// `value` goes into `a`, `value`'s low nibble rises to the high half, and `a`'s old low nibble fills the low half.
 Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const bool right) {
   const auto a = regs_.get(RegisterFile::R8::A);
   const auto updated =

@@ -11,8 +11,8 @@ namespace specbolt {
 SPECBOLT_EXPORT
 class Flags {
 public:
-  // One flag each, as the bit it occupies in the register, so that a single
-  // flag can be spoken of on its own.
+  // One flag each, as the bit it occupies in the register, so that a single flag can be named on its own. The
+  // lowercase enumerator names are matched against v4's `.cpu` description, so renaming one renames it there.
   enum class Bit : std::uint8_t {
     carry = 0x01,
     subtract = 0x02,
@@ -58,9 +58,8 @@ public:
 
   constexpr bool operator==(const Flags &rhs) const = default;
 
-  // Private for the usual reason, with the usual consequence: a type whose
-  // state is its own cannot be decomposed, so `Flags` is one value everywhere,
-  // including anywhere that would otherwise take it apart.
+  // Private, so `Flags` cannot be decomposed: a structured binding, or refract splitting an operation's result across
+  // destinations, sees one value.
 private:
   std::uint8_t value_{};
 };

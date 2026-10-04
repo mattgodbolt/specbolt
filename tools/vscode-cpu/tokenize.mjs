@@ -13,14 +13,16 @@
 
 import * as fs from 'fs';
 import { createRequire } from 'module';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 const require = createRequire(import.meta.url);
 const vsctm = require('vscode-textmate');
 const oniguruma = require('vscode-oniguruma');
 
-const here = new URL('.', import.meta.url).pathname;
-const grammarPath = `${here}syntaxes/cpu.tmLanguage.json`;
-const filePath = process.argv[2] ?? `${here}../../z80/v4/z80.cpu`;
+const here = path.dirname(fileURLToPath(import.meta.url));
+const grammarPath = path.join(here, 'syntaxes', 'cpu.tmLanguage.json');
+const filePath = process.argv[2] ?? path.join(here, '..', '..', 'z80', 'v4', 'z80.cpu');
 const filter = process.argv[3];
 
 const wasm = fs.readFileSync(require.resolve('vscode-oniguruma/release/onig.wasm'));

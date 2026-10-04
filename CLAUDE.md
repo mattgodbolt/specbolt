@@ -40,8 +40,9 @@ See [README.md](README.md) for getting a gcc 16 toolchain, or Barry Revzin's cla
 
 Reflection works inside module interface units on gcc 16 — including `template for` in a module purview, and exported
 templates that reflect on their own parameters and get instantiated in importing TUs. The reflection presets set
-`SPECBOLT_MODULES=OFF`, and v4 is not built when modules are on: its table is a header included into more than one
-module partition, so its definitions duplicate. Everything else builds under both.
+`SPECBOLT_MODULES=OFF`, and v4 has no modules build, so it is not built when modules are on: a module build would include
+its table header into more than one partition, duplicating its definitions. Everything else builds under both. Start
+reading v4 at [z80/v4/README.md](z80/v4/README.md).
 
 ## Lint/Format
 

@@ -7,7 +7,8 @@ power of modern C++ features including modules and std::ranges while emulating t
 
 specbolt is structured into several key components:
 
-- **Z80 CPU Emulation** - Multiple implementations showcasing different architectural approaches
+- **Z80 CPU Emulation** - Multiple implementations showcasing different architectural approaches, including
+  [v4](z80/v4/README.md), which C++26 reflection generates at compile time from a text description of the instruction set
 - **Memory and Peripherals** - Clean abstractions for ZX Spectrum hardware components
 - **Visualization Tools** - Including memory heatmap visualization for educational purposes
 - **Multiple Frontends** - SDL, Console, and Web interfaces
@@ -57,18 +58,18 @@ curl -fsSL https://s3.amazonaws.com/compiler-explorer/opt/gcc-16.2.0.tar.xz | ta
 CC=~/opt/gcc-16.2.0/bin/gcc CXX=~/opt/gcc-16.2.0/bin/g++ cmake --preset debug-reflection
 ```
 
-Barry Revzin's clang fork ([brevzin/llvm-project](https://github.com/brevzin/llvm-project)) builds
-everything too, and is the only clang that does without extra switches beyond `-freflection`. Point
-it at a libstdc++ new enough for the C++23 library pieces:
+Barry Revzin's clang fork ([brevzin/llvm-project](https://github.com/brevzin/llvm-project)) builds everything too. Of
+the clangs, it is the one that needs no reflection switch beyond `-freflection`; the configure step adds that and the
+other flags clang wants (a larger constexpr step budget, and `-Wno-c23-extensions` for `#embed`). Point it at a
+libstdc++ new enough for the C++23 library pieces:
 
 ```bash
 CC=<clang>/bin/clang CXX=<clang>/bin/clang++ cmake --preset debug-reflection \
     -DCMAKE_CXX_FLAGS=--gcc-toolchain=$HOME/opt/gcc-16.2.0
 ```
 
-It is about 1.4× slower than gcc at compiling v4; see
-[z80/v4/notes/MEASUREMENTS.md](z80/v4/notes/MEASUREMENTS.md) for the
-numbers and for what each compiler needed.
+It compiles v4 more slowly than gcc does; [z80/v4/notes/MEASUREMENTS.md](z80/v4/notes/MEASUREMENTS.md) has the
+numbers and what each compiler needed.
 
 ### Web/WASM Build
 
@@ -76,26 +77,29 @@ numbers and for what each compiler needed.
 # Install WASM dependencies
 sudo apt install libc++-20-dev-wasm32 libclang-rt-20-dev-wasm32
 
-# Configure with WASI support
-cmake -B build/Wasm -G Ninja -DSPECBOLT_WASM=ON -DSPECBOLT_WASI_SYSROOT=/path/to/wasi
+# Configure and build with WASI support, into build/wasm
+CC=clang-20 CXX=clang++-20 cmake --preset wasm -DSPECBOLT_WASI_SYSROOT=/path/to/wasi-sysroot
+cmake --build --preset wasm
 
-# Setup web environment
+# Set up the web environment, pointing it at that build
 cd web
 npm install
-echo "VITE_SPECBOLT_WASI_SYSROOT=/home/user/path/to/build/root" > .env.local
+echo "VITE_WASM_BUILD_DIR=$PWD/../build/wasm" > .env.local
 
 # Run development server
 npm start
 ```
 
 The web build uses v2, because stock clang has no reflection. v4 builds for the browser too, with a reflection clang and
-`cmake/wasm-reflection.cmake`; [z80/v4/notes/WASM.md](z80/v4/notes/WASM.md) has the recipe. Any wasm build runs its
-tests
-under Node through `ctest`, and `node web/tools/boot.mjs build/<dir>/web/spectrum.wasm` boots one without a browser and
-writes the screen out.
+`cmake/wasm-reflection.cmake`; [z80/v4/notes/WASM.md](z80/v4/notes/WASM.md) has the recipe.
+
+The `wasm` preset turns the tests off. Configure with `-DSPECBOLT_TESTS=ON` as well and, with `node` on the path,
+`ctest` runs them under Node. `node web/tools/boot.mjs build/<dir>/web/spectrum.wasm` boots a build without a browser
+and writes the screen out.
 
 ## Project Documentation
 
+- [v4](z80/v4/README.md) - The Z80 core generated at compile time from a text description, and where to start reading
 - [The `.cpu` format](z80/v4/CPU_FORMAT.md) - Reference for the instruction-set description v4 compiles
 - [Style Guide](STYLE_GUIDE.md) - Comprehensive coding standards for the project
 - [Project Glossary](GLOSSARY.md) - Definitions of ZX Spectrum and emulator terminology

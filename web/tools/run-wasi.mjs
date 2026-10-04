@@ -12,7 +12,7 @@ if (!path) {
     console.error("usage: node run-wasi.mjs <module.wasm> [args...]");
     process.exit(2);
 }
-const wasi = new WASI({version : "preview1", args : [ path, ...args ], env : {}, preopens : {"/" : process.cwd()}});
+const wasi = new WASI({version: "preview1", args: [path, ...args], env: {}, preopens: {"/": process.cwd()}});
 const module = await WebAssembly.compile(await readFile(path));
 const instance = await WebAssembly.instantiate(module, wasi.getImportObject());
 process.exit(wasi.start(instance));

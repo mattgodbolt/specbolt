@@ -13,17 +13,12 @@ import z80_common;
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
 #include "z80/v3/Z80.hpp"
-#endif
-
 // Set by CMake when the v4 target exists, which is not the same as reflection
 // being available: v4 is excluded when modules are on, and gcc 16 has both.
 #ifdef SPECBOLT_HAS_V4
 #include "z80/v4/Z80.hpp"
-#define SPECBOLT_IMPLEMENTATIONS v1::Z80, v2::Z80, v3::Z80, v4::Z80
-#else
-#define SPECBOLT_IMPLEMENTATIONS v1::Z80, v2::Z80, v3::Z80
 #endif
-
+#endif
 
 #ifdef SPECBOLT_MODULES
 import peripherals;
@@ -1522,37 +1517,49 @@ struct OpcodeTester {
   }
 };
 
+// The implementations each suite runs against. v1 decodes the dd, fd and ed
+// prefixes too, but is not run through their suites and is not known to pass
+// them; the `use_new_code` guards in the indexed suites are there for it.
+#ifdef SPECBOLT_HAS_V4
+#define SPECBOLT_ALL_IMPLEMENTATIONS v1::Z80, v2::Z80, v3::Z80, v4::Z80
+#define SPECBOLT_PREFIXED_IMPLEMENTATIONS v2::Z80, v3::Z80, v4::Z80
+#else
+#define SPECBOLT_ALL_IMPLEMENTATIONS v1::Z80, v2::Z80, v3::Z80
+#define SPECBOLT_PREFIXED_IMPLEMENTATIONS v2::Z80, v3::Z80
+#endif
+
 TEMPLATE_TEST_CASE_METHOD(
-    OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]", SPECBOLT_IMPLEMENTATIONS) {
+    OpcodeTester, "Unprefixed opcode execution tests", "[opcode][generated]", SPECBOLT_ALL_IMPLEMENTATIONS) {
   OpcodeTester<TestType>::unprefixed();
 }
 
-TEMPLATE_TEST_CASE_METHOD(OpcodeTester, "cb opcode execution tests", "[opcode][generated]", SPECBOLT_IMPLEMENTATIONS) {
+TEMPLATE_TEST_CASE_METHOD(
+    OpcodeTester, "cb opcode execution tests", "[opcode][generated]", SPECBOLT_ALL_IMPLEMENTATIONS) {
   OpcodeTester<TestType>::cb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(
-    OpcodeTester, "dd opcode execution tests", "[opcode][generated]", SPECBOLT_IMPLEMENTATIONS) {
+TEMPLATE_TEST_CASE_METHOD(
+    OpcodeTester, "dd opcode execution tests", "[opcode][generated]", SPECBOLT_PREFIXED_IMPLEMENTATIONS) {
   OpcodeTester<TestType>::dd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(
-    OpcodeTester, "fd opcode execution tests", "[opcode][generated]", SPECBOLT_IMPLEMENTATIONS) {
+TEMPLATE_TEST_CASE_METHOD(
+    OpcodeTester, "fd opcode execution tests", "[opcode][generated]", SPECBOLT_PREFIXED_IMPLEMENTATIONS) {
   OpcodeTester<TestType>::fd_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(
-    OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]", SPECBOLT_IMPLEMENTATIONS) {
+TEMPLATE_TEST_CASE_METHOD(
+    OpcodeTester, "ddcb opcode execution tests", "[opcode][generated]", SPECBOLT_PREFIXED_IMPLEMENTATIONS) {
   OpcodeTester<TestType>::ddcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(
-    OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]", SPECBOLT_IMPLEMENTATIONS) {
+TEMPLATE_TEST_CASE_METHOD(
+    OpcodeTester, "fdcb opcode execution tests", "[opcode][generated]", SPECBOLT_PREFIXED_IMPLEMENTATIONS) {
   OpcodeTester<TestType>::fdcb_prefix();
 }
 
-TEMPLATE_TEST_CASE_METHOD_SIG(
-    OpcodeTester, "ed opcode execution tests", "[opcode][generated]", SPECBOLT_IMPLEMENTATIONS) {
+TEMPLATE_TEST_CASE_METHOD(
+    OpcodeTester, "ed opcode execution tests", "[opcode][generated]", SPECBOLT_PREFIXED_IMPLEMENTATIONS) {
   OpcodeTester<TestType>::ed_prefix();
 }
 

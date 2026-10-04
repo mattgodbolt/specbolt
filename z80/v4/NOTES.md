@@ -1,8 +1,9 @@
 # v4: notes
 
-Working notes for the table-driven, compile-time v4: what it does today, what is still open, and
-where the rest of the record lives. For the `.cpu` format itself, its grammar, semantics and worked
-examples, see [CPU_FORMAT.md](CPU_FORMAT.md). These notes are about *why* it is that shape.
+Notes on v4, the Z80 core that the `refract` library (in `refract/`) generates at compile time from
+[`z80.cpu`](z80.cpu): what it does today, what is still open, and where the rest of the record lives.
+[README.md](README.md) is where to start reading. The `.cpu` format itself, its grammar, semantics
+and worked examples, is [CPU_FORMAT.md](CPU_FORMAT.md). These notes are about *why* it is that shape.
 
 Known bugs in v1/v2/v3 found while researching this are filed as issues rather than recorded here.
 
@@ -14,10 +15,12 @@ what belongs in it, so that this one stops growing:
 | | holds | what goes in it |
 |---|---|---|
 | [notes/FINDINGS.md](notes/FINDINGS.md) | what C++26 actually did, on a real compiler | any new language fact |
-| [notes/MEASUREMENTS.md](notes/MEASUREMENTS.md) | speed, build cost, what accuracy buys | any number, with its method |
-| [notes/PREFIXES.md](notes/PREFIXES.md) | how prefixes, views and latched tables work | that one argument, kept whole |
+| [notes/MEASUREMENTS.md](notes/MEASUREMENTS.md) | speed, build cost, what accuracy buys | any number, with its method and date |
+| [notes/PREFIXES.md](notes/PREFIXES.md) | how the prefix design was reached, and why DDCB is not `cb` renamed | that one argument, kept whole, as a dated record |
 | [notes/WASM.md](notes/WASM.md) | getting v4 into the browser, and what that took | anything about the wasm build |
 | [notes/JOURNAL.md](notes/JOURNAL.md) | what was decided and why, in order | **new "Done:" entries** |
+
+How prefixes, views and latched tables work today is CPU_FORMAT.md's business, not PREFIXES.md's.
 
 The journal is a record, not a reference: every entry was true when it was written and describes
 the code at that moment. When it disagrees with this file, this file wins; when this file
@@ -25,22 +28,31 @@ disagrees with the code, the code wins.
 
 ---
 
-## Where the spike is
+## What v4 does
 
-`z80.cpu` is `#embed`ed, parsed at compile time, and drives two artefacts. 127 rows in seven decoding
-tables decode **every one of 1792 entries**: `base`, `cb`, the `ix`/`iy` views, `ddcb`/`fdcb` and `ed`
-are all complete, and the instruction set is finished.
+`z80.cpu` is `#embed`ed, parsed during constant evaluation by refract, and drives two artefacts.
+Every opcode of every table decodes, prefixed pages included: `base`, `cb`, the `ix`/`iy` views of
+`indexed`, the `indexed_cb` pages that `dd cb` and `fd cb` reach, and `ed` are complete, and the
+instruction set is finished. That is a compile-time check, so a description with a gap does not
+build.
 
-- **Disassembly.** Walks the row's lowered pieces, following a `goto` through a prefix table.
-- **Execution.** A 256-entry dispatch table per decoding table, built with a `template for`
-  expansion statement, one `execute_one<Table, Opcode, Index>` instantiation per entry, each
-  resolving its verb by reflection over the target's palettes and the machine's marked members.
+- **Disassembly** (`refract/Disassemble.hpp`) walks the row's lowered pieces, following a `goto`
+  through a prefix table.
+- **Execution** (`refract/Execute.hpp`) generates one function per *body*: a row together with the
+  slices it reads, so that every opcode which would generate the same code shares one. Each is an
+  `execute_one<Table, BodyKey, Index>` instantiation, made by a `template for` expansion statement,
+  and resolves its verbs by reflection over the target's palettes and the machine's marked members.
+  Each declared table gets a 256-entry table of pointers to those functions; a view is a run-time
+  argument rather than a second table. No handler returns to a loop: each ends in a
+  `[[clang::musttail]]` call to the next instruction's handler, or, for a prefix, to the next
+  table's, so a run is one chain of tail calls.
 
-The pipeline is `#embed` → `consteval` parse → lower to validated pieces → `template for` → splice.
+The pipeline is `#embed` → parse during constant evaluation → lower to validated pieces →
+`template for` → splice.
 
 A row has three columns: an encoding token sequence, a mnemonic, and an ordered list of steps. Each
-column is checked against the others, length and what is fetched come from the encoding, never from
-the display text.
+column is checked against the others; what is fetched comes from the encoding (and, for a
+displacement, from what the operands resolve to), never from the display text.
 
 Mnemonics are **lowered at parse time** into a fixed `Piece` array (a literal chunk, a vocabulary
 reference with its vocabulary and slice already resolved, an immediate slot), so the disassembler
@@ -59,47 +71,42 @@ z80.cpu:25: this row overlaps a later one without being contained by it
 
 Everything inside `consteval` is memory-safe by construction, constant evaluation refuses to index
 out of bounds or to read a dangling pointer, so a parser bug is a compile error rather than a corrupt
-table. Every correctness hole found in the first cut of the spike was in the half left at runtime.
+table. Every correctness hole found in the first cut of v4 was in the half left at runtime.
 Lowering the table to a validated fixed shape at parse time removes that half entirely.
 
 ---
 
 ## Where the framework/CPU boundary sits
 
-`Target.hpp`, `Operations.hpp` and `Z80.hpp` are the whole customisation surface. Retargeting
-means writing these and nothing else:
+`refract/` is the library, and knows no CPU. The Z80's whole side of the contract is `z80.cpu`,
+`Target.hpp`, `Operations.hpp`, and `Z80.hpp` with its definitions in `Z80.cpp`; `Disassembler.cpp`
+only says where the disassembler's bytes come from. Retargeting means writing these and nothing
+else:
 
 - `Target`: which machine, which description, and which palettes
 - `Z80`, the machine state, marking with `[[=refract::operation]]` the verbs that touch it
-- `Operations`, the verbs that touch nothing
+- `Operations`, a palette of verbs that touch nothing (the shared `Alu` is the other palette)
 - `read`/`write` overloads: how to touch storage, and, for `read`, what storage there is
-- `read_memory`/`write_memory`: how to touch memory through an address
+- `read_memory`/`write_memory` and their 16-bit forms: how to touch memory through an address
 - `fetch_opcode`/`fetch_immediate`/`fetch_immediate16`: how to read the instruction stream
+- `displaced_address`: how a base and a displacement combine, and what forming the address costs
 - `delay`: how to spend an idle cycle
+- `start_instruction`: what happens between instructions (an interrupt, a halt), and whether to
+  run another
+- `refract::Spelling` annotations, where an enumerator's assembly spelling differs from its C++ name
+
+`refract/Machine.hpp` states the part the framework calls as a concept, and CPU_FORMAT.md, "What the
+CPU description must supply", says what each construct in a row needs.
 
 A verb that needs the machine is a member of it, called on it; a verb that does not is a static
 function of a palette, called on nothing. The machine's public interface is larger than its
-vocabulary, so it publishes its verbs one by one; a palette is built to be named, so everything in
-it counts.
+vocabulary, so it publishes its verbs one by one; a palette is built to be named, so everything
+public in it counts.
 
 The framework names no CPU type at all: not `RegisterFile`, not `Alu`, not `Flags`. It knows only
 that a row has a verb, some operands and some destinations, and that the CPU can resolve a name.
-
-### The collapse that got us here
-
-Three Z80-isms used to live in the framework, and all three were the same mistake, inferring
-meaning from a C++ type rather than reading it off the row:
-
-- `Operand::Kind::Accumulator` presumed a CPU has one.
-- `CarrySource` filled a `bool` parameter from the carry flag. Already wrong for
-  `Alu::iff2_flags_for(u8, Flags, bool iff2)`, whose `bool` is not carry.
-- `is_supplied_by_framework` did the same for `Flags` and the machine.
-
-All three became one operand concept, constant, immediate, name, field reference, or discard, where `a`, `carry` and
-`flags` are just names the CPU resolves. Vocabulary members may append an
-operand (`add:add8+0`, `adc:add8+carry`), so the carry policy is data in the table. Destinations
-are a list, so `{q} a, flags <- a {r:z}` destructures whatever the primitive returns, and the last
-assumption (that a result type has a member called `flags`) went with it.
+It used to infer meaning from C++ types (an accumulator, a carry flag behind a `bool`); how that
+went is in the journal, "Done: the framework stopped inferring meaning from types".
 
 ### What the framework relies on instead
 
@@ -107,9 +114,13 @@ Three properties of the primitive, all read by reflection, none of them Z80-spec
 
 - its arity, checked against the number of operands the row supplies
 - its parameter types, which each operand converts to, so a 16-bit location handed to an 8-bit
-  parameter is a `-Wconversion` error, not a truncation
-- its return type: `void` means the row may name no destination, a scalar means exactly one, and a
-  class means one destination per non-static data member, in declaration order
+  parameter is a `-Wconversion` error in this project's build, not a truncation; and an enum
+  parameter makes a name a value rather than a location
+- its return type: `void` means the row may name no destination; `refract::Continue` makes the step
+  a condition, with no destination; a single value means one or more destinations, each of which
+  receives it; and a class whose data members are all public and its own means one destination per
+  member, in declaration order. A class that hides all of its state is one value, and one with a
+  single member, some members hidden, or a base class is refused.
 
 A `-` destination discards a component, which is how `cp` uses `cmp8` without writing the result
 back to `a`.
@@ -118,141 +129,71 @@ back to `a`.
 
 ## What a second CPU would need
 
-The format has described exactly one processor, and an outside reader given only
-[CPU_FORMAT.md](CPU_FORMAT.md) (told to know 6502 and Z80 but not to look at the code) went
-looking for the seams and found them. Recorded here because "not Z80-specific" is currently a design
-intent that has been half-tested, and it should either become true or stop being claimed.
+The format has described one real processor. An outside reader given only
+[CPU_FORMAT.md](CPU_FORMAT.md), told to know 6502 and Z80 but not to look at the code, predicted
+where a 6502 would break it. A 6502 description was then prototyped on 2026-09-27 and 2026-09-28,
+on the branch `mg/v4_spike_6502` (unmerged, kept on origin). It describes the documented NMOS
+instruction set in `z80/v4/m6502/6502.cpu`, runs it beside the Z80, has smoke tests only, and keeps
+the detail in that branch's `z80/v4/notes/6502.md`. What it found:
 
-Each of these is a concrete 6502 instruction that cannot be written today.
+- **An addressing mode cannot fetch its own operand, and that is the limit that bit.** The 6502's
+  `aaabbbcc` puts the mode in `bbb`, which is what a vocabulary is for, but its modes fetch
+  different numbers of bytes, and a member may neither render nor pass an immediate. With refract
+  unchanged the description was 46 rows plus a catch-all for 151 opcodes, a row per group per mode,
+  so the format's headline ("one row, sixty-four instructions") did not transfer.
+- **Nested indirection and register indexing did not block.** Addresses are formed in steps through
+  `ea`, a location standing for the chip's address latch: `(zp),Y` is
+  `zp_pointer ea <- n ; index ea <- ea y`, then `(ea)`. `displaced_address` is not used at all.
+- **Cost that depends on the data moved into the machine.** `index` records that a fix-up is owed;
+  a read pays the extra cycle only if the index crossed a page, and a write always pays, which is
+  what the chip's dummy read does. One addressing mode then serves loads, stores and
+  read-modify-writes, with no framework change.
+- **Bus timing at step granularity** (CPU_FORMAT.md, "What this model cannot say") was not tested.
+  The Spectrum's contention will decide whether it matters.
 
-### 1. An addressing mode must be able to fetch its own operand
-
-The 6502's `aaabbbcc` puts the addressing mode in `bbb`, which is exactly what a vocabulary is
-for, but its members are different *lengths*: `#` and `zp` fetch one byte, `abs` two, accumulator
-mode none. The encoding column is per-row and fixed, and `parse_member` explicitly refuses:
-
-```
-a vocabulary member cannot append an immediate; only the encoding fetches those
-```
-
-So the one thing that makes the 6502 compressible is unusable, and every operation group becomes
-eight rows instead of one. This is the finding that matters most: it is the difference between the
-format's headline claim ("one row, sixty-four instructions") transferring or not.
-
-**The machinery half exists.** `(ix+d)` already causes a fetch that no encoding column declares, and
-`displaced_through` already derives per (row, table, opcode) whether that fetch happens. What is
-missing is generalising it from *one signed displacement byte* to *an arbitrary operand of a width
-the member states*, and making `immediate_bytes` a property of the decoded state rather than of the
-row. `check_immediates` would move with it.
-
-That diagnostic was written when a member could not have an access sequence at all. It is now the
-main thing standing in the way, and it should probably go.
-
-### 2. Indirection cannot nest
-
-`indirect = "(" , ( "n" | number | name ) , [ "+d" ] , ")"` is one level deep, so `LDA ($20),Y`
-(`B1`) (read a pointer from a fetched zero-page address, then index it) has nowhere to go. The
-escape is a CPU-supplied `lda_indirect_y` primitive, at which point the table has stopped naming
-general operations and the whole argument collapses for that CPU.
-
-### 3. Indexing is hard-wired to a displacement byte
-
-`(ix+d)` means "base plus one signed byte read from the instruction". `LDA $1234,X` (`BD`) is
-"16-bit immediate base plus the contents of a register", and there is no syntax for it. The two are
-the same idea (a base and an offset) with the offset coming from different places.
-
-### 4. Cost that depends on the data
-
-The 6502 charges one extra cycle on `abs,X`, `abs,Y` and `(zp),Y` **when the index crosses a page
-boundary, and only on reads**: `LDA $1234,X` is 4 or 5 cycles, `STA $1234,X` is always 5.
-
-`displaced_address` takes the machine by reference, so it *can* charge conditionally, but it is not
-told whether the access it is forming will be a read or a write, so it cannot tell those two apart.
-That is a small signature change. The harder half is that we form the address **once per
-instruction** (§ *indexed addressing*), which is right for the Z80 and wrong for a machine where the
-cost belongs to each access.
-
-### 5. Bus timing is ordered at step granularity
-
-Not a 6502 issue, but the same review raised it and it belongs here. Cost is a total per instruction,
-ordered by step; a multi-byte access is indivisible and nothing below a step can be scheduled. Good
-enough for totals and for contention at instruction granularity, not enough for a *schedule* of bus
-cycles at known offsets. The Spectrum's contention will decide whether this matters, see
-*Time passes in exactly one place*.
-
-### What is already fine
-
-Worth saying, so the list above is not read as worse than it is: eight-bit opcodes, no prefixes
-needed, conditions, relative jumps, the stack, and page-zero addressing all work today, and the
-6502's flag model is no harder than the Z80's. The gaps are addressing modes and their cost, not the
+Eight-bit opcodes, conditions, relative jumps, the stack and page-zero addressing all worked as they
+were, and the 6502's flag model was no harder than the Z80's. The gaps are addressing modes, not the
 shape of the thing.
 
-### What the 6502 spike found, and the design it points to
+### The design it points to: a mode is a block of row fragments
 
-Tried 2026-09-27 and 2026-09-28 on the branch `mg/v4_spike_6502`, which describes the documented NMOS instruction
-set in `z80/v4/m6502/6502.cpu`, runs it beside the Z80, and keeps the detail in its own `notes/6502.md`. Exploratory:
-smoke tests only. Against the predictions above:
-
-- **§1 was the one that bit.** With refract unchanged, the description was 46 rows plus a catch-all for 151 opcodes,
-  because each group needed a row per addressing mode.
-- **§2 and §3 did not block.** Addresses are formed in steps through `ea`, a location standing for the chip's internal
-  address latch: `(zp),Y` is `zp_pointer ea <- n ; index ea <- ea y`, then `(ea)`. Nesting and register indexing are
-  just more steps, and `displaced_address` is not used at all.
-- **§4 moved into the machine.** `index` records that a fix-up is owed; a read pays the extra cycle only if the index
-  crossed a page, and a write always pays, which is what the chip's dummy read does. One addressing mode then serves
-  loads, stores and read-modify-writes. No framework change.
-- **§5** was not tested.
-
-**The design: a mode is a block of row fragments.** A `mode` declaration opens a block, as `table` does, and each
-line after it is one member, written like a row with four columns: the slice's value with the bytes the member adds
-to the encoding, the text it renders, the operand it stands for, and the steps it runs first.
+A `mode` declaration opens a block, as `table` does, and each line in it is one member, written like
+a row: the slice's value with the bytes the member adds to the encoding, the text it renders, the
+operand it stands for, and the steps it runs first. A row names a mode with the ordinary reference
+syntax; the member's steps run once, before the row's own, however often the row names it.
 
 ```
 mode am
 000 n   | ($nn,x) | (ea) | zp_index ea <- n x ; zp_pointer ea <- ea
-001 n   | $nn     | (n)  |
 010 n   | #$nn    | n    |
-011 n n | $nnnn   | (n)  |
 ...
-mode store = am with 010 -> -
-
 aaabbb01 | {alu:a} {am:b} | {alu:a} a, p <- a {am:b} p
-100bbb01 | sta {store:b}  | ld8 {store:b} <- a
 ```
 
-A row names a mode with the ordinary reference syntax: in the mnemonic it renders the member's text, in a step it
-stands for the member's operand, and the member's steps run once, before the row's own, however often the row names
-it. The value is written out rather than implied by line order, so reordering cannot change the meaning and a missing
-value is a hole; the block a line sits in says how many columns to expect, so a wrong count is an error at once
-rather than a line that parses as the other kind. Prototyped there, the description came to 28 rows plus the
-catch-all, every regular group one row, and the Z80 unchanged.
+Prototyped on that branch, it took the description to 28 rows plus the catch-all, every regular
+group one row, with the Z80 unchanged. It was cheap because a member's pieces could already render
+and consume bytes, and `body_key` already gives each value of a slice its own body, so the width of
+the immediate could become a property of the body rather than of the row.
 
-**What made it cheap.** The disassembler needed nothing, since a member's pieces could already render and consume
-bytes. `body_key` already gives each value of a slice a reference reads its own body, so the number of immediate
-bytes became a property of the body rather than of the row, and a member's steps go in front of the row's. The
-exhaustive visits over a member's kind flagged every place the new kind needed a decision.
+Open questions, for when this is taken up for real:
 
-**Open questions, for when this is taken up for real:**
+1. **Derived modes can only borrow.** `mode store = am with 010 -> -` removes a member and
+   `101 -> other.101` borrows one; a member no other mode has means writing the mode out in full.
+2. **A mode must appear in both the mnemonic and the steps, or neither**, since the disassembler
+   finds its bytes through the one and the interpreter through the other.
+3. **One immediate per instruction** still holds; relaxing it needs a stated byte order.
+4. **Precedence reads backwards in places**: the read-modify-write row claims the slots where
+   single-opcode instructions sit, so those rows come first. Worth a sentence in CPU_FORMAT.md.
+5. **There are now two kinds of vocabulary**: a mode member cannot stand where an operation belongs,
+   and a view cannot select from a mode.
+6. **A member's steps cannot use `{v:s}` references**, since a member has no slices of its own.
+7. **The Z80's `(ix+d)` stays as it is.** A displacement that arrives before the opcode
+   (`dd cb d op`) is the part a mode does not model, so latched tables remain.
 
-1. **Derived modes can only borrow.** `mode store = am with 010 -> -` removes a member, and `101 -> other.101` borrows
-   one; a member no other mode has means writing the mode out in full (the 6502's `ldx`, whose zero-page `$nn,y` is
-   unique to it). The spike recommends keeping `-` and `mode.value` as the only right-hand sides, since a member
-   written inline would put `|` and `;` inside a comma-separated list.
-2. **A mode must appear in both the mnemonic and the steps, or neither.** The disassembler finds its bytes through the
-   text and the interpreter through the steps, so they must agree about the instruction's length; the prototype
-   checks this.
-3. **One immediate per instruction** still holds: a row naming a mode that fetches may not fetch its own. Relaxing it
-   needs a stated byte order; a member's bytes before the row's is the `(ix+d)` precedent.
-4. **Precedence reads backwards in places.** The read-modify-write row claims the slots where single-opcode
-   instructions sit, so those rows have to come first. Correct, but worth a sentence in CPU_FORMAT.md.
-5. **There are now two kinds of vocabulary.** A mode member cannot stand where an operation belongs, and a view cannot
-   select from a mode; both are refused, but the distinction needs saying.
-6. **A member's steps cannot use `{v:s}` references,** since a member has no slices of its own.
-7. **The Z80's `(ix+d)` stays as it is.** A displacement that arrives before the opcode (`dd cb d op`) is the part a
-   mode does not model, so latched tables remain.
-
-**Smaller, separate:** a number format the target supplies (`$42` rather than `0x42`), an encoding letter for a byte
-that is fetched and ignored (the 6502's `brk`), and keeping a palette's `private:` helpers out of what a row may name.
+**Smaller, separate:** a number format the target supplies (`$42` rather than `0x42`); an encoding
+letter for a byte that is fetched and ignored (the 6502's `brk`); and the helpers a palette's
+operations share are nameable from a row because they are public, which a `private:` section
+already prevents.
 
 ---
 
@@ -268,31 +209,37 @@ journal now, most of their items struck through. This is what survived them.
   data-model decisions in the journal.
 - **Nothing would catch an undocumented-flag regression.** The only regression test in the
   repository is zexdoc, and "doc" is documented flags. There is no zexall run.
+- **Nothing checks that the two artefacts agree about length.** The disassembler and the interpreter
+  take an instruction's length from the same derivation, but no test walks every (table, opcode)
+  comparing the disassembled length with how far the program counter moved, or checks that nothing
+  renders `??`.
+- **A push writes its two bytes low first.** `write_memory16` serves `ld (nn), hl` and `push`
+  alike, and the chip pushes the high byte first. The bytes land in the same places, so only
+  contention or a watchpoint could tell (PREFIXES.md, "What is papered over").
 - **A conditional cycle schedule has no expression.** `djnz` is 8 or 13 T-states and the format
   can only say one of them plus a `delay` step. jsbeeb forks the remaining schedule on the
   condition, which states both rather than asserting a range.
 - **A row is scanned rather than projected.** The disassembler walks a row's pieces at run time
   where it could be handed a table built at compile time.
-- **v4's `.cppm` files cannot compile.** v4 is excluded whenever modules are on, so nothing checks
-  them; the table is a header included into more than one partition and its definitions duplicate.
 - **Which core is fastest depends on the machine.** v2 leads `z80_bench` on an AMD desktop and on
-  the Intel laptop, v4 led it on the Intel desktop in Notes.md, and the cores that did not change
-  between two commits moved by 5% to 8% anyway (MEASUREMENTS.md). Not a regression; the per-core
-  binaries agree that v4 alone got 11% faster and v2 alone did not move. Why the machines disagree
-  about the combined binary is open: indirect-branch prediction on a function-pointer chain is the
-  first suspect, and `perf stat -e br_misp_retired.all_branches` per core on each machine is the
-  first measurement.
+  the Intel laptop, v4 led it on the Intel desktop in Notes.md, and cores whose source did not change
+  between two commits moved anyway (MEASUREMENTS.md, "The fetch was the call that mattered"). Not a
+  regression: the per-core binaries agree that v4 alone got faster and v2 alone did not move. Why
+  the machines disagree about the combined binary is open: indirect-branch prediction on a
+  function-pointer chain is the first suspect, and `perf stat -e br_misp_retired.all_branches` per
+  core on each machine is the first measurement.
 - **Diagnostics are built by concatenation, waiting on a `constexpr` `std::format`.** Every message refract throws
   during constant evaluation is a chain of `+` with `std::string(...)` and `decimal(...)` around its parts, because
   libstdc++ 16's `std::format` cannot run there. gcc trunk's can, so the plan is to move to `std::format` once gcc 17
   is released, staying on released compilers for the main build rather than moving to trunk for this. The WASM build's
   libc++ would still need a stand-in then. The run-time tests could use `std::format` today. Details in FINDINGS.md.
 - **`Name` could be replaced by interning, for a tenth of the interpreter's compile time.** Spiked on
-  `mg/v4_static_spike`: `std::define_static_string` and `std::define_static_array` remove `Name` and `Vector`'s
-  structural duty with the same generated code. Undecided; FINDINGS.md, "Interning in place of a structural string".
-- **Peak compile memory rose by half when the target became a parameter**, from 1.2 GB to 1.8 GB a
-  unit, because gcc collects only between top-level declarations. The six-line consumer-side
-  workaround is in MEASUREMENTS.md; a library-side one has not been found.
+  `mg/v4_static_spike` (unmerged, kept on origin; commit 38af817): `std::define_static_string` and
+  `std::define_static_array` remove `Name` and `Vector`'s structural duty with the same generated code. Undecided;
+  FINDINGS.md, "Interning in place of a structural string".
+- **Peak compile memory rose when the target became a parameter**, because gcc collects only
+  between top-level declarations (MEASUREMENTS.md, "Making the target a parameter costs peak
+  memory"). A consumer-side workaround is recorded there; a library-side one has not been found.
 
 ### /INT is a level, and v4 has no way to release it
 

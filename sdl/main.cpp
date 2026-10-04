@@ -24,10 +24,9 @@ import z80_v3;
 #include "z80/v1/Z80.hpp"
 #include "z80/v2/Z80.hpp"
 #include "z80/v3/Z80.hpp"
-#endif
-
 #ifdef SPECBOLT_HAS_V4
 #include "z80/v4/Z80.hpp"
+#endif
 #endif
 
 

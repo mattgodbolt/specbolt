@@ -38,24 +38,22 @@ if (NOT SPECBOLT_REFLECTION STREQUAL "OFF")
 endif ()
 
 if (SPECBOLT_HAS_REFLECTION)
-    # Two more flags that only clang wants, both discovered by trying to build
-    # v4 with it. Probed rather than keyed off the compiler id, so a future gcc
-    # that wants either gets it too.
+    # Two more flags v4 needs from compilers that have them. Probed rather than
+    # keyed off the compiler id, so whichever compiler accepts one gets it.
     include(CheckCXXCompilerFlag)
 
-    # clang's constexpr budget defaults to about a million steps against gcc's
-    # 33.5 million, and parsing the description alone exceeds it: the failure
-    # reads "constexpr evaluation hit maximum step limit; possible infinite
-    # loop?", which is not what has happened.
+    # Parsing the description takes more constexpr steps than clang's default
+    # allows, and the failure reads "possible infinite loop?", which it is not.
     check_cxx_compiler_flag("-fconstexpr-steps=100000000" SPECBOLT_HAS_CONSTEXPR_STEPS)
     if (SPECBOLT_HAS_CONSTEXPR_STEPS)
         list(APPEND SPECBOLT_REFLECTION_FLAGS "-fconstexpr-steps=100000000")
     endif ()
 
-    # `#embed` is C23, and clang says so under -pedantic; this project builds
-    # with -Werror, and the description is embedded.
-    check_cxx_compiler_flag("-Wno-c23-extensions" SPECBOLT_HAS_C23_EXTENSIONS_WARNING)
-    if (SPECBOLT_HAS_C23_EXTENSIONS_WARNING)
+    # The description is `#embed`ded, which clang counts as a C23 extension,
+    # and this project builds with -Werror. The positive form is probed because
+    # gcc accepts any -Wno- flag, known or not.
+    check_cxx_compiler_flag("-Wc23-extensions" SPECBOLT_HAS_C23_EXTENSIONS_FLAG)
+    if (SPECBOLT_HAS_C23_EXTENSIONS_FLAG)
         list(APPEND SPECBOLT_REFLECTION_FLAGS "-Wno-c23-extensions")
     endif ()
 endif ()

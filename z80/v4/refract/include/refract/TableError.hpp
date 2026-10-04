@@ -1,5 +1,10 @@
 #pragma once
 
+// How a diagnostic about a description gets its file and line. Code that knows which line it is about throws
+// `table_error(line, ...)` itself; code that does not throws a bare message and runs under `at_line`, which adds the
+// line; `naming` adds the file to either; and code that knows both uses the three-argument form directly. Nothing
+// enforces this, so a `table_error(line, ...)` thrown under `at_line` would read "3: 3: ...".
+
 #include <array>
 #include <charconv>
 #include <concepts>
@@ -17,12 +22,6 @@ namespace specbolt::refract {
   return {digits.data(), end};
 }
 
-// How a diagnostic gets its file and line. Code that runs while one line is being read (Lexical.hpp, Parse.hpp) throws
-// a bare message and runs under `at_line`, which adds the line; code that runs over the whole description (Decode.hpp,
-// Checks.hpp) throws `table_error(line, ...)` itself, since no single line is being read; `naming` adds the file to
-// either; and the interpreter, which knows both, uses the three-argument form directly. Nothing enforces this, so a
-// `table_error(line, ...)` thrown under `at_line` would read "3: 3: ...".
-//
 // A mistake in a description, reported against its line; `naming` puts the file in front of it.
 [[nodiscard]] constexpr std::runtime_error table_error(const std::size_t line, const std::string_view what) {
   return std::runtime_error(decimal(line) + ": " + std::string(what));

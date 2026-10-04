@@ -9,11 +9,11 @@ import {parseArgs} from "node:util";
 import {WASI} from "node:wasi";
 
 const {values, positionals} = parseArgs({
-    allowPositionals : true,
-    options : {
-        model : {type : "string", default : "48"},
-        frames : {type : "string", default : "200"},
-        out : {type : "string", default : "screen.ppm"},
+    allowPositionals: true,
+    options: {
+        model: {type: "string", default: "48"},
+        frames: {type: "string", default: "200"},
+        out: {type: "string", default: "screen.ppm"},
     },
 });
 const [wasmPath] = positionals;
@@ -23,7 +23,7 @@ if (!wasmPath) {
 }
 
 // The page gives the module stdio and an `assets` directory holding the ROMs; this does the same from the checkout.
-const wasi = new WASI({version : "preview1", args : [], env : {}, preopens : {assets : `${process.cwd()}/assets`}});
+const wasi = new WASI({version: "preview1", args: [], env: {}, preopens: {assets: `${process.cwd()}/assets`}});
 const {instance} = await WebAssembly.instantiate(await readFile(wasmPath), wasi.getImportObject());
 wasi.start(instance);
 const exports = instance.exports;
@@ -46,6 +46,6 @@ const pixels = new Uint8Array(exports.memory.buffer, exports.render_video(spectr
 const rgb = Buffer.alloc(3 * width * height);
 for (let at = 0; at < width * height; ++at)
     rgb.set(pixels.subarray(4 * at, 4 * at + 3), 3 * at);
-await writeFile(values.out, Buffer.concat([ Buffer.from(`P6 ${width} ${height} 255\n`), rgb ]));
+await writeFile(values.out, Buffer.concat([Buffer.from(`P6 ${width} ${height} 255\n`), rgb]));
 console.log(`${frames} frames in ${elapsed.toFixed(1)} ms (${(elapsed / frames).toFixed(3)} ms a frame, ` +
-            `${(20 * frames / elapsed).toFixed(1)}x real time); screen written to ${values.out}`);
+    `${(20 * frames / elapsed).toFixed(1)}x real time); screen written to ${values.out}`);

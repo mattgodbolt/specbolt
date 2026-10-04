@@ -9,9 +9,24 @@ namespace specbolt::v4 {
 
 using namespace refract;
 
+namespace {
+
+using Lines = std::vector<std::pair<std::size_t, std::string_view>>;
+
+// Each logical line of a description as its number and its text, which is what the line tests compare.
+Lines numbers_and_text(const std::string_view description) {
+  return lines_of(description) |
+         std::views::transform([](const Line &line) { return std::pair{line.number, line.text}; }) |
+         std::ranges::to<std::vector>();
+}
+
+} // namespace
+
 TEST_CASE("Parser tests") {
-  Parser parser("# I am a comment");
-  SECTION("Starts out sensibly") { CHECK(!parser.eof()); }
+  SECTION("Starts out sensibly") {
+    const Parser parser("# I am a comment");
+    CHECK(!parser.eof());
+  }
   SECTION("Takes up to a delimiter") {
     Parser lines("one\ntwo\nthree");
     CHECK(lines.take_until('\n') == "one");
@@ -60,12 +75,6 @@ TEST_CASE("Parser tests") {
 }
 
 TEST_CASE("Lines are numbered from one") {
-  const auto numbers_and_text = [](const std::string_view description) {
-    return lines_of(description) |
-           std::views::transform([](const Line &line) { return std::pair{line.number, line.text}; }) |
-           std::ranges::to<std::vector>();
-  };
-  using Lines = std::vector<std::pair<std::size_t, std::string_view>>;
   SECTION("Every line carries the number a diagnostic names it by") {
     CHECK(numbers_and_text("one\ntwo\nthree") == Lines{{1, "one"}, {2, "two"}, {3, "three"}});
   }
@@ -82,12 +91,6 @@ TEST_CASE("Lines are numbered from one") {
 }
 
 TEST_CASE("A trailing backslash joins a line to the next") {
-  const auto numbers_and_text = [](const std::string_view description) {
-    return lines_of(description) |
-           std::views::transform([](const Line &line) { return std::pair{line.number, line.text}; }) |
-           std::ranges::to<std::vector>();
-  };
-  using Lines = std::vector<std::pair<std::size_t, std::string_view>>;
   SECTION("The joined text is one view over the original, backslash and newline included") {
     CHECK(numbers_and_text("one \\\ntwo") == Lines{{1, "one \\\ntwo"}});
   }

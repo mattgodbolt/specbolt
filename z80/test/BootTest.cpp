@@ -14,17 +14,16 @@ import z80_v3;
 #include "spectrum/Assets.hpp"
 #include "spectrum/Spectrum.hpp"
 #include "z80/v3/Z80.hpp"
-#endif
-
 #ifdef SPECBOLT_HAS_V4
 #include "z80/v4/Z80.hpp"
 #endif
+#endif
 
 // Booting the real ROM is a different kind of test from an opcode suite: it
-// runs whatever the ROM happens to do, in whatever order, for a second of
-// emulated time, and nobody chose the instruction mix. Two implementations that
-// agree on every byte of memory and every register after that are agreeing
-// about a great deal more than any table of expectations could state.
+// runs whatever the ROM happens to do, in whatever order, for `frames` frames
+// of emulated time, and nobody chose the instruction mix. Two implementations
+// that draw the same screen after that are agreeing about a great deal more
+// than any table of expectations could state.
 
 namespace specbolt {
 namespace {

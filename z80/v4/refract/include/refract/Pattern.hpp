@@ -1,7 +1,7 @@
 #pragma once
 
-// The opcode pattern a row's encoding column opens with: eight characters, each a `0` or `1` fixing that bit or a
-// letter naming a slice, a run of one letter being one slice.
+// The opcode pattern a row's encoding column opens with: one character per bit, each a `0` or `1` fixing that bit or
+// any other character naming a slice, a run of one character being one slice.
 
 #include "refract/Vector.hpp"
 
@@ -37,8 +37,8 @@ struct Pattern {
   Vector<BitSlice, max_slices> slices{};
 };
 
-// Parses an eight-character pattern such as `01yyyzzz`: the fixed bits go into `opcode_bits`, and each distinct letter
-// becomes a slice, whose bits must be contiguous.
+// Parses a pattern such as `01yyyzzz`: the fixed bits go into `opcode_bits`, and each distinct character other than `0`
+// and `1` becomes a slice, whose bits must be contiguous. A letter is the convention, but nothing requires one.
 [[nodiscard]] constexpr Pattern parse_pattern(const std::string_view bits) {
   if (bits.size() != Pattern::num_bits)
     throw std::runtime_error("opcode pattern must be 8 characters");

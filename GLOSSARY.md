@@ -1,7 +1,6 @@
 # specbolt Project Glossary
 
-This document defines terminology specific to the ZX Spectrum, emulation, and the specbolt project to ensure consistent
-understanding across the codebase.
+This document defines terminology specific to the ZX Spectrum, emulation, and the specbolt project to ensure consistent understanding across the codebase.
 
 ## ZX Spectrum Hardware
 

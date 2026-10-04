@@ -35,9 +35,8 @@ struct Target {
   using Machine = Z80;
   using Compiled = refract::Compiled<Z80Source>;
 
-  // The palettes: types built to be named, every public static function of which is a verb. The chip's own verbs are
-  // the members `Z80` publishes with `[[=refract::operation]]`, and its locations are whatever it can `read`, so
-  // neither is listed here.
+  // The palettes: types built to be named, every public static function of which is a verb. The chip's own verbs and
+  // its locations come from `Z80` itself, so neither is listed here.
   static consteval std::vector<std::meta::info> palettes() { return {^^Operations, ^^Alu}; }
 };
 

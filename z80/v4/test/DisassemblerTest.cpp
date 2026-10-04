@@ -6,7 +6,7 @@
 #include "peripherals/Memory.hpp"
 
 namespace specbolt::v4 {
-TEST_CASE("Opcode generation tests") {
+TEST_CASE("Disassembly") {
   constexpr auto base_address = 0x8000u;
   auto dis = [](auto... bytes) {
     Memory memory{4};
@@ -26,6 +26,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0x06, 0xce) == "ld b, 0xce");
     CHECK(dis(0x07) == "rlca");
     CHECK(dis(0x08) == "ex af, af'");
+    CHECK(dis(0x09) == "add hl, bc");
     CHECK(dis(0x0a) == "ld a, (bc)");
     CHECK(dis(0x0b) == "dec bc");
     CHECK(dis(0x0c) == "inc c");
@@ -41,6 +42,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0x16, 0x00) == "ld d, 0x00");
     CHECK(dis(0x17) == "rla");
     CHECK(dis(0x18, 0x40) == "jr 0x8042");
+    CHECK(dis(0x19) == "add hl, de");
     CHECK(dis(0x1a) == "ld a, (de)");
     CHECK(dis(0x1b) == "dec de");
     CHECK(dis(0x1c) == "inc e");
@@ -56,6 +58,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0x26, 0x00) == "ld h, 0x00");
     CHECK(dis(0x27) == "daa");
     CHECK(dis(0x28, 0x80) == "jr z, 0x7f82");
+    CHECK(dis(0x29) == "add hl, hl");
     CHECK(dis(0x2a, 0xef, 0xbe) == "ld hl, (0xbeef)");
     CHECK(dis(0x2b) == "dec hl");
     CHECK(dis(0x2c) == "inc l");
@@ -71,6 +74,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0x36, 0x00) == "ld (hl), 0x00");
     CHECK(dis(0x37) == "scf");
     CHECK(dis(0x38, 0x00) == "jr c, 0x8002");
+    CHECK(dis(0x39) == "add hl, sp");
     CHECK(dis(0x3a, 0xe3, 0x3e) == "ld a, (0x3ee3)");
     CHECK(dis(0x3b) == "dec sp");
     CHECK(dis(0x3c) == "inc a");
@@ -131,6 +135,7 @@ TEST_CASE("Opcode generation tests") {
     CHECK(dis(0x73) == "ld (hl), e");
     CHECK(dis(0x74) == "ld (hl), h");
     CHECK(dis(0x75) == "ld (hl), l");
+    CHECK(dis(0x76) == "halt");
     CHECK(dis(0x77) == "ld (hl), a");
     CHECK(dis(0x78) == "ld a, b");
     CHECK(dis(0x79) == "ld a, c");

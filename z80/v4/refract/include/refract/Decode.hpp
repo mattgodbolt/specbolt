@@ -27,8 +27,8 @@ namespace specbolt::refract {
 // that reads and writes through the same address wants one displacement read and one sum formed, as the chip does (the
 // Z80's `inc (ix+d)` is one).
 //
-// This is the one source of an instruction's length: Disassemble.hpp and Execute.hpp both ask it, which is why the two
-// agree about how many bytes an instruction has.
+// This is the one place that decides whether an instruction carries a displacement byte: Disassemble.hpp and
+// Execute.hpp both ask it, which is why the two agree about whether one is read.
 //
 // No `view` parameter: every member of a vocabulary a view selects is required to have the same shape, so view 0
 // answers for all of them. That requirement is `check_view_vocabulary` in Parse.hpp, without which one page of a
@@ -41,7 +41,7 @@ namespace specbolt::refract {
     const auto resolved = resolve(at, operand);
     if (!resolved.displaced)
       return;
-    if (found && found->name != resolved.name)
+    if (found && !same_address(*found, resolved))
       throw std::runtime_error("an instruction may only be displaced through one base");
     found = resolved;
   };
@@ -97,7 +97,7 @@ namespace specbolt::refract {
 // constant evaluation since C++23.
 using OpcodeSet = std::bitset<256>;
 
-// Whether every opcode of `mine` is also one of `theirs`: an override, rather than an accident.
+// Whether every opcode of `mine` is also one of `theirs`.
 [[nodiscard]] constexpr bool within(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & ~theirs).none(); }
 // Whether the two sets share any opcode at all.
 [[nodiscard]] constexpr bool overlaps(const OpcodeSet &mine, const OpcodeSet &theirs) { return (mine & theirs).any(); }
@@ -125,16 +125,16 @@ using OpcodeSet = std::bitset<256>;
 }
 
 // The opcodes each row claims, index-coupled to `rows`. Walking a row's cartesian product is the expensive part of
-// evaluating a description, and `decode_tables` below and two of the checks in Checks.hpp want the answer, so it is
-// computed once here and passed to each.
+// evaluating a description, and `decode_tables` below and checks in Checks.hpp want the answer, so it is computed once
+// here and passed to each.
 [[nodiscard]] constexpr std::vector<OpcodeSet> opcodes_of_each(
     const std::span<const Vocabulary> vocabularies, const std::span<const Row> rows) {
   return rows | std::views::transform([&](const Row &row) { return opcodes_of(vocabularies, row); }) |
          std::ranges::to<std::vector>();
 }
 
-// One decoded instruction: a (table, opcode) that a row answers to, and the renaming it answers under. The checks in
-// Checks.hpp are each one question asked of every one of these, and walking is not what any of them is about.
+// One decoded instruction: a (table, opcode) that a row answers to, and the renaming it answers under. A check that
+// asks one question of every decoded instruction walks these, so the walk is written once.
 struct Instruction {
   std::uint8_t table{};
   std::uint8_t opcode{};
@@ -163,8 +163,7 @@ struct Instruction {
 [[nodiscard]] constexpr std::vector<DecodeTable> decode_tables(const std::span<const Row> rows,
     const std::span<const OpcodeSet> opcodes, const std::span<const TableDecl> tables) {
   std::vector<DecodeTable> all(tables.size());
-  // `rows` and `opcodes` are index-coupled by construction, because `opcodes_of_each` built one from the other, so zip
-  // says that rather than trusting it.
+  // Walks `rows` and `opcodes` in step, which is sound because `opcodes_of_each` built one from the other.
   for (const auto [index, row, claimed]: std::views::zip(std::views::iota(0uz), rows, opcodes))
     for (const auto opcode: std::views::iota(0uz, 256uz))
       if (claimed.test(opcode) && !all[row.table][opcode])

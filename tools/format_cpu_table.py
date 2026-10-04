@@ -17,21 +17,24 @@ import sys
 from pathlib import Path
 
 
+def first_word(line: str) -> str:
+    words = line.split(maxsplit=1)
+    return words[0] if words else ""
+
+
 def is_row(line: str) -> bool:
     """Mirrors `is_row` in Lexical.hpp: a row is a non-comment, non-declaration line with a `|`."""
     stripped = line.strip()
     return (
         bool(stripped)
         and not stripped.startswith("#")
-        and not stripped.startswith("vocab ")
-        and not stripped.startswith("table ")
+        and first_word(stripped) not in ("vocab", "table")
         and "|" in stripped
     )
 
 
 def starts_table(line: str) -> bool:
-    stripped = line.strip()
-    return stripped == "table" or stripped.startswith("table ")
+    return first_word(line) == "table"
 
 
 def split_row(line: str) -> list[str]:

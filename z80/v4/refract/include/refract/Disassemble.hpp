@@ -1,10 +1,11 @@
 #pragma once
 
-// The description's other artefact. `Execute.hpp` turns a parsed table into an interpreter; this turns the same table
-// into text, from the same rows, the same vocabularies and the same lowered pieces.
+// Renders a description's instructions as text: its other artefact, beside the interpreter `Execute.hpp` makes from the
+// same rows and vocabularies. Nothing here parses anything: a mnemonic was split into `Piece`s at parse time, so
+// rendering one is walking a list. All a machine supplies is where the bytes come from.
 //
-// Nothing here is any particular CPU's, and nothing here parses anything: a mnemonic was split into `Piece`s at parse
-// time, so rendering one is walking a list. All a machine supplies is where the bytes come from.
+// A few choices are the format's rather than the machine's: a displacement is one signed byte, a relative jump lands a
+// signed byte from the end of the instruction, and a sixteen-bit immediate is assembled low byte first.
 
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
@@ -60,15 +61,11 @@ inline constexpr std::size_t max_instruction_bytes = 8;
     ++offset;
     if (!row)
       return {"??", offset};
-    // Read here, inside the loop, because the displacement belongs to the prefix row that declares `d`, and the loop
-    // moves on to the next table before the row that uses it is reached.
     if (row->reads_displacement)
       latch = byte_at(offset++);
     const auto next = transfer_of(*row);
     if (!next)
       break;
-    // A run of prefixes may be unbounded, and a disassembler has to answer, so it gives up rather than follow one to
-    // the end of memory.
     if (offset >= max_instruction_bytes)
       return {"??", offset};
     view = next->forwards_view ? view : next->target_view;
@@ -109,8 +106,9 @@ inline constexpr std::size_t max_instruction_bytes = 8;
                          offset += 1;
                        },
                        [&](const Piece::Relative) {
-                         // Measured from the byte after the offset, which is the end of the instruction: a relative
-                         // jump never carries anything else. The sum is formed at the width the machine forms it at.
+                         // Measured from the end of the instruction: a row carries one immediate and any
+                         // displacement comes before it, so the offset is the last byte. The sum wraps at the
+                         // sixteen bits of an address.
                          const auto to = static_cast<std::int8_t>(byte_at(offset));
                          offset += 1;
                          const auto end_of_instruction = static_cast<std::uint16_t>(address + offset);

@@ -1,9 +1,9 @@
 #pragma once
 
-// The shapes a parsed instruction table is made of, all of them plain value types. `Name` and `Resolved` are non-type
-// template parameters later, so they are *structural*: literal, with every member public, recursively, which is what
-// `Name` exists to be. The rest hold `std::string_view`s into the description and so could not be however they were
-// written.
+// The shapes a parsed instruction table is made of, all of them plain value types. `Resolved` is a template argument
+// later and `Spelling` an annotation, so both are *structural*: literal, with every member public, recursively, which
+// is what `Name` exists to be. Nothing they do not hold has to be, so the rest are free to hold variants and
+// `std::string_view`s into the description.
 
 #include "refract/Continue.hpp"
 #include "refract/Pattern.hpp"
@@ -132,8 +132,9 @@ struct Operand : Access {
 };
 
 // An operand once an opcode has settled which vocabulary member it meant. `Operand` is what a description wrote; this
-// is what the generated code is built from, and `resolve` is the only way to arrive at one. It has no `Reference`,
-// since that has been followed, and gains the fields below, which mean nothing until the member is known.
+// is what the generated code is built from. `resolve` makes one from what a row wrote, and `as_resolved` from an
+// operand that names no vocabulary, such as an argument a member appends. It has no `Reference`, since that has been
+// followed, and gains the fields below, which mean nothing until the member is known.
 //
 // A handler is a template on one of these, so every field is part of its identity: two operands that differ anywhere
 // are two handlers.
@@ -164,7 +165,6 @@ struct Resolved : Access {
 // lexical parse cannot produce one, since it is the reference syntax that makes an operand a vocabulary reference and
 // only a row can write it.
 [[nodiscard]] constexpr Resolved as_resolved(const Operand &operand) {
-  // The `Access` part is copied whole; the kind is mapped along with whatever it carries.
   Resolved result{static_cast<const Access &>(operand)};
   refract::visit(Overloaded{
                      [&](const Operand::Constant &constant) {
@@ -209,7 +209,8 @@ struct Piece {
   struct Imm16 {
     constexpr bool operator==(const Imm16 &) const = default;
   };
-  // The displacement an indexed mode carries, rendered signed.
+  // The displacement an indexed mode carries, rendered as one signed byte, which is the format's choice and not the
+  // machine's.
   struct Displacement {
     constexpr bool operator==(const Displacement &) const = default;
   };
@@ -265,7 +266,7 @@ struct Vocabulary {
 // derived table re-reads its parent's rows with some vocabulary members renamed; the Z80's `indexed` table is `base`
 // read with `pair.hl -> {index:view}`. A rule names the vocabulary as well as the member, because the same text means
 // different things in different vocabularies: `reg.h` is renamed by a view and the `real.h` of an indexed load is not.
-// The right side is a whole member, so a substitute may bring its own access sequence.
+// The right side is a whole member, so a substitute may bring its own addressing mode and write-back delay.
 struct Rule {
   std::uint8_t vocabulary_index{};
   std::string_view from{};
@@ -279,10 +280,11 @@ struct Rule {
 // The renamings one table applies to what it decodes.
 using Rules = Vector<Rule, 6>;
 
-// Whether a vocabulary *is* its slice: member n is the number n, as in the Z80's `bit = 0 1 2 3 4 5 6 7`. Its members
-// differ in a value and nothing else, so the opcode can supply it at run time and no function per member is needed.
-// Identity is required, not just numbers: a member that is a *function* of the slice, as the Z80's
-// `rst = 0x00 0x08 ... 0x38` is, would be read as its index.
+// Whether a vocabulary *is* its slice: member n is the plain number n, as in the Z80's `bit = 0 1 2 3 4 5 6 7`. Its
+// members differ in a value and nothing else, so the opcode can supply it at run time and no function per member is
+// needed. Identity is required, not just numbers: a member that is a *function* of the slice, as the Z80's
+// `rst = 0x00 0x08 ... 0x38` is, would be read as its index, and a member written as an address, such as `(1)`, names
+// the memory there rather than the number.
 [[nodiscard]] constexpr bool is_numeric(const Vocabulary &vocabulary) {
   auto any = false;
   for (const auto [at, member]: std::views::enumerate(vocabulary.members)) {
@@ -291,6 +293,9 @@ using Rules = Vector<Rule, 6>;
         Overloaded{
             [&](const Operand &operand) {
               any = true;
+              // A displacement is only ever written inside an address, so this rules out both.
+              if (operand.indirect)
+                return false;
               return refract::visit(Overloaded{
                                         [&](const Operand::Constant &constant) { return constant.value == at; },
                                         [](const OneOf<Operand::Named, Operand::Immediate, Operand::Vocabulary,
@@ -310,9 +315,6 @@ using Rules = Vector<Rule, 6>;
 
 // Where a reference is resolved: the vocabularies to look in, the encoding the row matched, the opcode that selects
 // within it, the renaming the table applies to what it decodes, and the view a prefix chose.
-//
-// Passed by const reference: `Rules` holds whole members, so copying it per call would be paid for in constant
-// evaluation.
 struct Resolution {
   std::span<const Vocabulary> vocabularies{};
   Pattern matched{};
@@ -322,7 +324,8 @@ struct Resolution {
 };
 
 // Whether two indirect operands address the same place: the same name or constant, reached the same way. Which is what
-// makes a write-back a write-back, rather than a write through one address after a read through another.
+// makes a write-back a write-back, rather than a write through one address after a read through another, and what
+// `displaced_through` in Decode.hpp means by an instruction being displaced through one base.
 [[nodiscard]] constexpr bool same_address(const Resolved &lhs, const Resolved &rhs) {
   return lhs.indirect && rhs.indirect && lhs.kind == rhs.kind && lhs.name == rhs.name && lhs.constant == rhs.constant &&
          lhs.displaced == rhs.displaced && lhs.from_opcode == rhs.from_opcode && lhs.slice == rhs.slice &&
@@ -340,8 +343,10 @@ struct Resolution {
 }
 
 // Follows a reference to the member it names: the opcode's slice, or the table's view, says which, and the table's
-// rules may rename it. This is the one place a reference is followed, so it is the one place renaming happens. A check
-// asks with view 0 and trusts the answer for every view, which `check_view_vocabulary` in Parse.hpp makes sound.
+// rules may rename it. `source_of` follows a reference the same way to say where the member came from; the two share
+// `rule_for` so that they agree about which rule fires. A check asks with view 0 and trusts the answer for every view,
+// which `check_view_vocabulary` in Parse.hpp makes sound for the member's shape, on the assumption about rules that
+// `source_of` states.
 [[nodiscard]] constexpr Member member_of(const Resolution &at, const Reference reference) {
   const auto which = reference.from_view ? at.view : at.matched.slices[reference.slice_index].extract(at.opcode);
   const auto &member = at.vocabularies[reference.vocabulary_index].members[which];
@@ -354,8 +359,9 @@ struct Resolution {
 // member. Only `resolve` needs this: an operand the view chose must name the vocabulary rather than the member, because
 // the member is not known yet.
 [[nodiscard]] constexpr std::pair<std::uint8_t, bool> source_of(const Resolution &at, const Reference reference) {
-  // Member 0 stands for all of them here: this matches rules by display text alone, and every member of a view
-  // vocabulary shares a shape and so is rewritten by the same rule or by none.
+  // Member 0 stands for every member the view could select. That assumes no rule names a member of a vocabulary a view
+  // selects: rules match by display text, which differs between those members and which `check_view_vocabulary` does
+  // not compare, so such a rule would fire for one view and not the others. Nothing checks the assumption.
   const std::size_t which = reference.from_view ? 0u : at.matched.slices[reference.slice_index].extract(at.opcode);
   const auto &member = at.vocabularies[reference.vocabulary_index].members[which];
   if (const auto *rule = rule_for(at.rules, reference, member.display))
@@ -405,10 +411,7 @@ struct Resolution {
 }
 
 // Resolves an operand against this opcode: a vocabulary reference becomes the member its slice, or the view, selects,
-// and anything else resolves to itself. This is the one way from what a row wrote to what the generated code is built
-// from. A reference names whichever vocabulary member its slice selects, and that member is written the same way an
-// operand is written in a row, so most of this is deciding what the member could not know: which parameter it feeds,
-// which scope its name belongs to, and whether the encoding or the view will answer at run time.
+// and anything else resolves to itself.
 [[nodiscard]] constexpr Resolved resolve(const Resolution &at, const Operand &operand) {
   return refract::visit(
       Overloaded{

@@ -99,7 +99,8 @@ constexpr void check_every_line_means_something(const std::string_view descripti
 }
 
 // The bare name in a table declaration's first word: `t(view:v)` declares a table called `t`, the parenthesised part
-// being its view. Both the declaration and the scan for a table's rows need the bare name.
+// being its view. `parse_rows` uses it to find the table a row belongs to, and checks nothing, because `parse_tables`
+// has already read the same line.
 [[nodiscard]] constexpr std::string_view table_name_of(const std::string_view word) {
   const auto open = word.find('(');
   return open == std::string_view::npos ? word : word.substr(0, open);
@@ -151,9 +152,9 @@ constexpr void parse_substitutions(
     if (to.starts_with('{')) {
       if (!table.takes_view())
         throw std::runtime_error("only a table that takes a view may substitute a view reference");
+      // Parsed against an empty pattern: a substitution has no opcode, so the view is the only thing that can select
+      // its member, and any other reference fails for want of a slice.
       const auto reference = reference_from_braces(vocabularies, to, Pattern{}, table);
-      if (!reference.from_view)
-        throw std::runtime_error("a substitution's reference must be selected by the table's view");
       substitution.to_is_view = true;
       substitution.to_vocabulary = reference.vocabulary_index;
     }
@@ -381,9 +382,8 @@ constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Ro
 // Checks that a row's three columns agree about its immediate: the encoding says what is fetched, the mnemonic must
 // render exactly that, and the action must use it, or one of the three is lying.
 constexpr void check_immediates(const Row &row) {
-  // A row fetches one immediate, of `immediate_bytes` bytes, so the mnemonic must render exactly one, of exactly that
-  // width. Summing widths would let `$nn $nn` pass against `n n` and then disassemble as two bytes where the machine
-  // read one sixteen-bit value.
+  // Counted rather than summed: summing widths would let `$nn $nn` pass against `n n`, and then disassemble as two
+  // bytes where the machine read one sixteen-bit value.
   std::size_t rendered = 0;
   std::size_t width = 0;
   const auto immediate_width = [](const Piece &piece) {
@@ -432,6 +432,9 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     if (token == "d") {
       if (row.reads_displacement)
         throw std::runtime_error("a row reads at most one displacement");
+      // The column lists bytes in the order they are fetched, and the displacement is always fetched first.
+      if (row.immediate_bytes != 0)
+        throw std::runtime_error("'d' must come before 'n': the displacement is fetched before the immediate");
       row.reads_displacement = true;
       continue;
     }

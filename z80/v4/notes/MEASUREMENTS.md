@@ -6,9 +6,18 @@ reversed a conclusion the laptop had already sold us.
 
 Part of [v4's notes](../NOTES.md).
 
+Each section says when it was first written. A number is true of the code as it stood that day, and
+the names it uses are that day's names. Where the mechanism has moved since, a dated note in
+*italics* says so; the measured results are left as they were taken.
+
 ---
 
 ## Speed, measured
+
+*First written 2026-08-12. Superseded: on a quiet desktop the gap below is gone (Notes.md,
+"Confirmed on a machine that can actually be measured"), and threading the interpreter has changed
+v4's speed since (Notes.md, "Attempted, and it is worth more than the estimate"). Read this as the
+first measurement, and its hypotheses as history.*
 
 zexdoc, sequential, same machine, same `release-reflection` build, one run each. All four execute the
 identical program, so the ratio is relative interpreter throughput.
@@ -35,12 +44,20 @@ hypothesis worth testing first is that v4 routes *every* idle cycle through `Z80
 out-of-line call that switches on the access kind and stores the bus address, where v2 charges its
 internal cycles directly. That would be the price of *Time passes in exactly one place*, a design
 choice made deliberately so contention has somewhere to live, and one worth knowing the cost of
-before the Spectrum needs it. **Profile before believing any of this.**
+before the Spectrum needs it. **Profile before believing any of this.** *(2026-10-03: idle cycles
+no longer go through `bus`; `Z80::delay` passes time directly. See "Time passes in exactly one
+place", below.)*
 
 Caveats: one run each, no repeats, on a laptop; and zexdoc's instruction mix is ALU-heavy, so this
 under-reports dispatch cost relative to a program doing more loads and jumps.
 
 ## Compile time, measured
+
+*First written 2026-08-13, when v4 generated one handler per (table, opcode) over seven tables, 1792
+in all, and dispatched through `all_dispatches` and an `execute_instruction` loop. Views, generation
+per body and a vocabulary that is its own slice have cut the handlers a long way since, and the
+dispatch is a chain of tail calls; JOURNAL.md measures each change as it landed. This section and
+its subsections, to "What compilers could do", describe that earlier build.*
 
 The other half of the trade, and the one that is easy to forget because `ccache` hides it. Same
 compiler for all four (gcc 16.2, `-O0 -g`, `-freflection`), `ccache` bypassed, each translation unit
@@ -166,13 +183,16 @@ asked to write, so the only changes that matter are ones that ask for fewer.**
    handlers recorded above are the same observation from the other end, and aliasing them would be
    the same win by another route. This is the firmest number here: gcc's scaling curve says 11.2s a
    table and clang's per-instantiation trace independently says about 12s, so the saving is measured
-   rather than estimated.
+   rather than estimated. *(2026-10-03: done, by views. JOURNAL.md, "Done: a view is a parameter,
+   not a copy", measured what it saved.)*
 2. **Split the translation unit, for wall clock only.** Seven TUs would each pay the 12.6s fixed
    cost, so total CPU goes *up*, to about 167s; but wall clock on four cores falls to roughly 45s
    and on sixteen to about 25s. Worth doing for a developer's edit-build loop, not for CI throughput.
    It needs a change first: `inline constexpr auto dispatches` is a namespace-scope variable, so
    **merely including `Execute.hpp` instantiates all 1792 handlers**, used or not. Found the hard
-   way, trying to measure one table by including the header and touching nothing.
+   way, trying to measure one table by including the header and touching nothing. *(2026-10-03: no
+   longer: the dispatch tables are members of `Interpreter<Target>`, instantiated only for a target
+   something runs.)*
 
 ### And two things that look like levers and are not
 
@@ -246,7 +266,7 @@ Two implementations agreeing on the output while differing 1.4× on the cost of 
 about the most useful thing this section can say: the expense is inherent to the workload rather
 than a quirk of one compiler.
 
-**Both are capable.** Every idiom this spike depends on was tried against both: enumerator splices
+**Both are capable.** Every idiom v4 depends on was tried against both: enumerator splices
 resolving an overload set, `members_of` with `access_context::current()` hiding private helpers,
 `define_static_array` promoting `nonstatic_data_members_of`, `std::meta::info` as a non-type template
 parameter, `parameters_of` in a variable template, `typename[: :]`, member splices, `[:Fn:](…)` in
@@ -356,6 +376,10 @@ To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang buil
 
 ## What the real Z80 buys, measured
 
+*First written 2026-08-11, while the table was being built up a row at a time; every opcode of every
+table has decoded since. The subsections below, to "Addresses are a modifier", date from the same
+week and use that week's names.*
+
 The description targets `v4::Z80 : Z80Base` rather than a stand-in struct, so v4 can be dropped
 straight into `z80/test/OpcodeTests.cpp`, that suite is already a template over the
 implementation, which makes it the scoreboard. Two measurements, before and after memory operands:
@@ -410,6 +434,12 @@ special-cased `Flags`, a *domain* type. The machine is the single type the frame
 so it is the one thing it can always hand over, and it is what `jp`, `call`, `push` and `in`/`out`
 will all need.
 
+*2026-10-03: both halves of that have moved. An operation that needs the machine is now a member of
+it, published with `[[=refract::operation]]`, and one that asks for the machine as a parameter is
+refused (JOURNAL.md, "Done: the machine publishes its verbs"). And `delay` is now part of what the
+framework calls (`refract/Machine.hpp`), since the framework charges a write-back delay itself; the
+Z80 publishes the same member as an operation so that rows can write `delay` steps.*
+
 The conditional part (`inc (hl)` costs one more than `inc r`, and `{4,5,6}` is not maskable) needs
 no mechanism either. A specific row placed before the general one wins by first-match-wins, which
 §5 already requires. This is the same override mechanism the prefix design depends on, so prefixes
@@ -420,10 +450,20 @@ equal to the undecoded-opcode count, **zero wrong answers of any kind**.
 
 ### Time passes in exactly one place
 
-`Z80::bus(Bus kind, uint16_t address)` is the only function in the CPU that advances the clock.
-Every access routes through it: `read_opcode`, `read_immediate`, `read`, `write`, and `idle`. It
-takes the address and runs *before* the transfer, so anything scheduled sees the machine as it was
-at the moment of the access.
+*Rewritten 2026-10-03. As first written on 2026-08-11, `bus` was the only function in the CPU that
+advanced the clock, idle cycles included, and the accessors had other names (`read_opcode`,
+`read_immediate`, `read`, `write`, `idle`). Idle cycles now take the shorter route below.*
+
+Every access advances the clock through `Z80::bus(Bus kind, uint16_t address)`: `fetch_opcode`,
+`fetch_immediate`, `read_memory`, `write_memory` and the port accesses all route through it. It takes
+the address and runs *before* the transfer, so anything scheduled sees the machine as it was at the
+moment of the access.
+
+Idle cycles do not go through it. `Z80::delay` passes time directly, because an internal cycle
+transfers nothing and presents whatever address the last access left on the bus, so a run of them
+only moves the clock, and spending them in one go fires the same tasks at the same cycles as one at a
+time. Both routes end in `pass_time`, which is the one place time passes. A machine that contends
+each internal cycle separately would loop inside `delay`.
 
 ```cpp
 enum class Bus : std::uint8_t { opcode, operand, read, write, io_read, io_write, internal };
@@ -435,10 +475,10 @@ discarded, a *write* on the NMOS 6502 and a *read* on the 65C12. I/O is in, beca
 genuinely has a separate address space with its own wait state, and separate address spaces are not
 unusual.
 
-Contention and cycle stretching are one commented line inside `bus`. Everything they need is already
-there: the kind, the address, and `cycle_count()`, from which frame position is `% 70000`. Nothing in
-the repo models either today, the Spectrum contends `0x4000-0x7fff` while the display is drawn, and
-none of v1, v2 or v3 attempt it.
+Contention and cycle stretching belong inside `bus`, and a comment there says so; nothing models
+either yet. Everything they need is already there: the kind, the address, and `cycle_count()`, from
+which frame position is `% 70000`. The Spectrum contends `0x4000-0x7fff` while the display is drawn,
+and none of v1, v2 or v3 attempt it either.
 
 ### What jsbeeb does, and what is worth taking
 
@@ -459,6 +499,8 @@ What it validates:
 - **Cycles that cannot stretch pass no address.** jsbeeb uses plain `polltime` for zero-page and
   stack, which are always fast. The Spectrum differs: an internal cycle still contends on whatever
   the address bus holds, which is why `idle` presents `bus_address_` rather than nothing.
+  *(2026-10-03: `idle` is now `delay`, which keeps `bus_address_` as the last access left it, for a
+  contending machine to read.)*
 
 Two ideas worth stealing that we have no answer for yet:
 
@@ -468,7 +510,9 @@ Two ideas worth stealing that we have no answer for yet:
 - **The interrupt is sampled at a named position in the schedule**, jsbeeb injects `checkInt()`
   before the penultimate cycle. Since v4 does not handle interrupts at all yet, that is the detail
   that makes them exact rather than approximate, and it argues for adding them as a step position
-  rather than a check at the top of `execute_one`.
+  rather than a check at the top of `execute_one`. *(2026-10-03: v4 now takes interrupts in
+  `start_instruction`, between instructions, which is the approximate version; a named position in
+  the schedule is still not done.)*
 
 #### Where cost actually lives
 
@@ -481,7 +525,9 @@ Three places, and none of them is a number written on a row:
   operand, `inc {p} ; delay 2`, and `bit {b}, (hl)`
 
 A row states a number only in the third case, which is the case where the number is genuinely a
-property of that instruction. Everything else falls out.
+property of that instruction. Everything else falls out. *(2026-10-03: the accessors are now
+`fetch_opcode`, `fetch_immediate`, `read_memory` and `write_memory`; CPU_FORMAT.md, "Where time
+goes", has the current list.)*
 
 #### The steps really do vanish
 
@@ -517,12 +563,15 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 
 ## Memoising the reflection queries buys nothing, and nearly said otherwise
 
+*First written 2026-08-16. `takes_machine` has since gone, with the rule it served: an operation
+that needs the machine is a member of it now, and `machine_member` and `asks_for_machine` say which.*
+
 `arity_of<Fn>` is a variable template rather than a function, with a comment saying the point is that
 the answer is computed once. `takes_machine<Fn>()` and `operand_for_parameter<Fn, C>()` were not, and
 were called five and three times per step, so making them variable templates too looked like free
 speed on a translation unit that costs a minute and a half.
 
-Three runs before, three after, of `Z80.cpu`'s own compile with ccache bypassed:
+Three runs before, three after, of `Z80.cpp`'s own compile with ccache bypassed:
 
 | | run 1 | run 2 | run 3 | mean |
 |---|---|---|---|---|
@@ -556,6 +605,10 @@ standing only because nothing argues against the form it already has.
 
 ## Bundling the handler's arguments costs 3%
 
+*First written 2026-08-16, and counted rather than timed. "The fetch was the call that mattered",
+below, is why a count says whether the work changed but not what a change costs in time; this
+result has not been re-measured in nanoseconds.*
+
 `Handler` takes three `std::uint8_t`s positionally through a function-pointer table, so swapping two
 of them is caught by nothing. That is the coupling this file objects to on a description's behalf,
 and `Decoded` already bundles what an instruction carries for the same reason, so bundling these
@@ -585,6 +638,8 @@ The safety it gives up is real: the two call sites are `execute_one`'s hand-over
 
 ## Making the target a parameter costs peak memory, and where gcc collects is why
 
+*First written 2026-09-21.*
+
 Peak RSS and wall clock of one compile, gcc 16.2 `RelWithDebInfo`, `/usr/bin/time`, same machine,
 each configuration compiled twice and agreeing to 0.1% on memory. `Disassembler.cpp` is the parse
 and every check with no handlers; `Z80.cpp` is the same plus the interpreter.
@@ -605,22 +660,29 @@ Three arrangements inside the library made no difference, because none of them i
 declaration: variable templates at namespace scope instantiated from `Compiled`, member functions
 so that `Compiled` itself evaluates nothing, and the seven checks as separate `static_assert`s.
 
-The six lines that do help, in a consumer, before its `Target`:
+The lines that do help, one per step of the pipeline, in a consumer before its `Target`:
 
 ```cpp
-static_assert(!refract::steps::vocabularies<z80_cpu, "z80.cpu">.empty());
-static_assert(!refract::steps::tables<z80_cpu, "z80.cpu">.empty());
-static_assert(!refract::steps::rows<z80_cpu, "z80.cpu">.empty());
-static_assert(!refract::steps::row_opcodes<z80_cpu, "z80.cpu">.empty());
-static_assert(!refract::steps::decoded<z80_cpu, "z80.cpu">.empty());
-static_assert(!refract::steps::latched<z80_cpu, "z80.cpu">.empty());
+static_assert(!refract::steps::vocabularies<Z80Source>.empty());
+static_assert(!refract::steps::tables<Z80Source>.empty());
+static_assert(!refract::steps::rows<Z80Source>.empty());
+static_assert(!refract::steps::row_opcodes<Z80Source>.empty());
+static_assert(!refract::steps::decoded<Z80Source>.empty());
+static_assert(!refract::steps::latched<Z80Source>.empty());
 ```
+
+*(2026-10-03: written in today's spelling, where a step takes the `SourceLike` type that carries
+the text and the file name, `Z80Source` in `Target.hpp`. It was measured as
+`steps::vocabularies<z80_cpu, "z80.cpu">`, when `Compiled` took the two as separate template
+arguments. The new spelling has not been re-measured.)*
 
 Not adopted, because it is the boilerplate the change exists to remove, and 1.8 GB a unit fits
 the machines that build this. Written down because it is the first thing to reach for if it stops
 fitting, and because "where does the compiler collect" is not a question the source usually asks.
 
 ## The fetch was the call that mattered, and two ideas that did not
+
+*First written 2026-09-21.*
 
 Nanoseconds per emulated instruction over 20M instructions of zexdoc, `z80_bench_v4` and
 `z80_bench_v2`, one core per binary, gcc 16.2 `RelWithDebInfo`, the bench's own best of five,

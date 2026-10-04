@@ -76,7 +76,7 @@ namespace specbolt::refract {
 //                                      picks the `read` for that kind of
 //                                      location. The framework never dispatches
 //                                      on the kind of location; C++ does.
-//   result.[:members[at]:]             a data member, in member-access position.
+//   result.[:Member:]                  a data member, in member-access position.
 //
 // **Expansion statements (P1306)**, `template for`. The body is *instantiated once per element*, so it is code size
 // rather than a loop, and the induction variable is `constexpr` inside the body, which is what lets it be used as a
@@ -85,20 +85,21 @@ namespace specbolt::refract {
 // inside it can only belong to a `switch` that is also inside it, and a 256-way dispatch cannot be expanded into one.
 // Hence a table of function pointers.
 //
-// **`consteval` functions that throw, called from `consteval {}` blocks.** Nothing catches them. A block runs its
-// statements during compilation, a throw that escapes one is not a constant expression, and *that* is the diagnostic: a
-// mistake in the description becomes a compile error carrying its line number. This is the most surprising idiom in the
-// file, and it is used everywhere a check has a line to report against.
+// **`consteval` functions that throw, called from `consteval {}` blocks.** Nothing swallows the exception: `naming` and
+// `at_line` catch one only to rethrow it with the file and line in front. A block runs its statements during
+// compilation, a throw that escapes one is not a constant expression, and *that* is the diagnostic: a mistake in the
+// description becomes a compile error carrying its line number. This is the most surprising idiom in the file, and it
+// is used everywhere a check has a line to report against.
 //
 // **`std::define_static_array`.** `nonstatic_data_members_of` returns a `std::vector`, whose allocation cannot survive
 // constant evaluation. This promotes the contents into an object with static storage duration, so a `span` over it
 // *can* escape into a `constexpr` variable and still be usable as a template argument afterwards.
 //
 // **`std::meta::access_context::current()`** means the context of the function that names it, `Interpreter`'s own scope
-// here rather than the caller's, and `Interpreter` is nobody's friend. Load-bearing twice: it is why asking what a
-// result decomposes into gives the same answer here as a structured binding would give anywhere (the Z80's `Flags`, for
-// one, keeps its byte private, so it reaches a row as one value rather than a pair), and why a private helper in an
-// operation scope cannot be named by a table.
+// here rather than the caller's, and `Interpreter` is nobody's friend. Load-bearing twice: it is why a result's private
+// members are out of reach here, as they are to a structured binding written outside the class (the Z80's `Flags` keeps
+// its byte private, so a row receives it whole, as one value), and why a private helper in an operation scope cannot be
+// named by a table.
 //
 // ---------------------------------------------------------------------------
 // Why the data looks the way it does
@@ -106,8 +107,8 @@ namespace specbolt::refract {
 //
 // `Call` and `Resolved` are non-type template parameters, so they must be *structural*: literal types whose members and
 // bases are all public, recursively. That single requirement explains a lot of the model: why `Vector` exposes its
-// `storage` and `count`, and why `Name` is a fixed `std::array<char, 15>` rather than a `std::string_view` (which has
-// private members and is not structural).
+// `storage` and `count`, and why `Name` is a fixed-size `std::array` of `char` rather than a `std::string_view` (which
+// has private members and is not structural).
 //
 // It is also why the parse cannot simply hand its `std::vector`s over: `std::define_static_array` would promote them,
 // but only for a structural element type, and a `Row` holds `std::string_view`s. `ToArray.hpp` is what stands in its
@@ -189,23 +190,31 @@ struct Interpreter {
     return c >= 'A' && c <= 'Z' ? static_cast<char>(c - 'A' + 'a') : c;
   }
 
-  // Checks that no two of the machine's readable locations share a name, ignoring case; true if none do, and an error
-  // naming both scopes otherwise. Checked over the whole pool rather than as each name happens to be looked up:
-  // `only_match` would catch an ambiguity, but only for a name some description writes; this makes it a property of the
-  // machine, so a CPU that grows a second `carry` is told at once rather than whenever a row first wants one.
+  // Checks that no two of the machine's readable locations share a name, ignoring case, and throws naming both scopes
+  // if two do. A location is claimed by every name `find_location` can match it by, its identifier and the spelling it
+  // declares, so a spelling that collides with another location's identifier is caught too. Checked over the whole pool
+  // rather than as each name happens to be looked up: `only_match` would catch an ambiguity, but only for a name some
+  // description writes; this makes it a property of the machine, so a machine that grows a second `carry` is told at
+  // once rather than whenever a row first wants one.
   static consteval void check_location_names_unique() {
     std::vector<std::pair<std::string, std::meta::info>> seen;
+    const auto claim = [&seen](std::string name, const std::meta::info scope) {
+      std::ranges::transform(name, name.begin(), to_lower_case);
+      if (const auto earlier = std::ranges::find(seen, name, &std::pair<std::string, std::meta::info>::first);
+          earlier != seen.end())
+        throw std::runtime_error("two of this machine's readable locations are spelled '" + name + "' (in " +
+                                 std::string(std::meta::identifier_of(earlier->second)) + " and " +
+                                 std::string(std::meta::identifier_of(scope)) +
+                                 "), so a description could not say which it meant");
+      seen.emplace_back(name, scope);
+    };
     for (const auto scope: location_scopes())
       for (const auto enumerator: std::meta::enumerators_of(scope)) {
-        auto name = std::string(spelling_of(enumerator));
-        std::ranges::transform(name, name.begin(), to_lower_case);
-        if (const auto earlier = std::ranges::find(seen, name, &std::pair<std::string, std::meta::info>::first);
-            earlier != seen.end())
-          throw std::runtime_error("two of this machine's readable locations are spelled '" + name + "' (in " +
-                                   std::string(std::meta::identifier_of(earlier->second)) + " and " +
-                                   std::string(std::meta::identifier_of(scope)) +
-                                   "), so a description could not say which it meant");
-        seen.emplace_back(name, scope);
+        const auto identifier = std::meta::identifier_of(enumerator);
+        claim(std::string(identifier), scope);
+        // An enumerator with no spelling of its own is spelled by its identifier, which is already claimed.
+        if (const auto spelling = spelling_of(enumerator); !same_ignoring_case(spelling, identifier))
+          claim(spelling, scope);
       }
   }
 
@@ -224,10 +233,15 @@ struct Interpreter {
     if (candidates.size() > 1) {
       // Naming both is the point: the scopes are found by scanning rather than listed, so "more than one" is most
       // likely a scope the reader did not know was being searched.
+      // A scope's parent may be the global or an unnamed namespace, which has no identifier to show, so it is shown as
+      // the compiler writes it.
       std::string found;
-      for (const auto candidate: candidates)
-        found +=
-            (found.empty() ? " (in " : ", ") + std::string(std::meta::identifier_of(std::meta::parent_of(candidate)));
+      for (const auto candidate: candidates) {
+        const auto parent = std::meta::parent_of(candidate);
+        found += (found.empty() ? " (in " : ", ") + std::string(std::meta::has_identifier(parent)
+                                                                    ? std::meta::identifier_of(parent)
+                                                                    : std::meta::display_string_of(parent));
+      }
       throw error(line, "this CPU has more than one thing named '" + std::string(name) + "'" + found + ")");
     }
     return candidates.front();
@@ -243,15 +257,20 @@ struct Interpreter {
   }
 
   // The enum a vocabulary named as its scope, or an error listing what the machine offers. Compared exactly: it is a
-  // C++ type's name, not something written the way assembly is written.
+  // C++ type's name, not something written the way assembly is written. Two enums of that name from different
+  // namespaces are as ambiguous as any other name, so `only_match` reports them.
   [[nodiscard]] static consteval std::meta::info find_scope(const std::string_view name, const std::size_t line) {
+    std::vector<std::meta::info> candidates;
     std::string offered;
     for (const auto scope: named_scopes()) {
       if (std::meta::identifier_of(scope) == name)
-        return scope;
+        candidates.push_back(scope);
       offered += (offered.empty() ? " (this CPU offers " : ", ") + std::string(std::meta::identifier_of(scope));
     }
-    throw error(line, "no scope named '" + std::string(name) + "'" + offered + ")");
+    if (candidates.empty())
+      throw error(line, "no scope named '" + std::string(name) + "'" +
+                            (offered.empty() ? ", and this CPU offers none" : offered + ")"));
+    return only_match(candidates, name, line);
   }
 
   // The enumerator a location name denotes, in one of the scopes the CPU offers, such as the Z80's `a`, `hl`, `carry`
@@ -271,7 +290,8 @@ struct Interpreter {
         if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
           candidates.push_back(enumerator);
     // A spelling is consulted only when no identifier matched: almost every name is an identifier, and reading every
-    // enumerator's annotations on every lookup was measured to cost more than it is worth (notes/MEASUREMENTS.md).
+    // enumerator's annotations on every lookup was measured to cost more than it is worth (notes/FINDINGS.md, "Compile
+    // time, and where it went when it moved").
     if (candidates.empty())
       for (const auto everywhere: location_scopes())
         for (const auto enumerator: std::meta::enumerators_of(everywhere))
@@ -326,8 +346,9 @@ struct Interpreter {
   }
 
   // The locations a view selects between, in the order its vocabulary lists them, so that the view *is* the index.
-  // Every member resolves to a location of the same type, which `check_view_vocabulary` guarantees, so the machine is
-  // handed a location it already knows how to read and needs no notion of a view.
+  // Every member must name a location of the same type, which the first loop below checks (`check_view_vocabulary` has
+  // only made them operands of one shape), so the machine is handed a location it already knows how to read and needs
+  // no notion of a view.
   //
   // `template for` rather than a loop, because a splice needs a constant operand and an expansion statement's induction
   // variable is one.
@@ -410,16 +431,16 @@ struct Interpreter {
   static constexpr bool machine_member =
       (std::meta::parent_of(Fn) == std::meta::dealias(^^Machine)) && !std::meta::is_static_member(Fn);
 
-  // Whether `Fn` asks for the machine as a parameter, which nothing may: an operation that needs the machine is a
+  // Whether any parameter of `Fn` is the machine, which nothing may ask for: an operation that needs the machine is a
   // member of it. One asking this way would be handed a row's operand instead, and the error would be about that
-  // operand rather than about the signature, so it is named here.
+  // operand rather than about the signature, so it is named here. Both sides are dealiased because `^^Machine`, and a
+  // parameter's type, may reflect an alias.
   template<std::meta::info Fn>
-  static constexpr bool asks_for_machine = [] {
-    if constexpr (arity_of<Fn> == 0)
-      return false;
-    else
-      return std::is_same_v<std::remove_cvref_t<parameter_type<Fn, 0>>, Machine>;
-  }();
+  static constexpr bool asks_for_machine =
+      std::ranges::any_of(std::meta::parameters_of(Fn), [](const std::meta::info parameter) {
+        return std::meta::dealias(std::meta::remove_cvref(std::meta::type_of(parameter))) ==
+               std::meta::dealias(^^Machine);
+      });
 
   // What the instruction carries: the immediate its encoding fetched, the view a prefix chose, and the opcode itself.
   // Fixed for the whole of one instruction. Passed by value, and it must be: a handler ends in a mandatory tail call,
@@ -435,21 +456,21 @@ struct Interpreter {
   struct Call {
     Vector<Resolved, max_operands> operands{};
     Vector<Resolved, max_operands> destinations{};
-    // The description line, for diagnostics. Threaded through `value_of` and `store` as its own template parameter and
-    // kept out of `Resolved`: `Resolved` is a template argument, and equal operands on different lines would become
-    // different arguments, splitting every instantiation below for a field only an error message reads.
+    // The description line, for diagnostics. It belongs to the step rather than to any one operand, and `resolve`,
+    // which makes each `Resolved`, has no line to give, so `value_of` and `store` take it as a template argument of its
+    // own.
     std::size_t line{};
     constexpr bool operator==(const Call &) const = default;
   };
 
-  // The rule the paragraph above states, said in a way the compiler checks, in one place rather than at whichever
-  // template first takes the type.
+  // Checks that the types used as template arguments are structural, the rule set out under "Why the data looks the way
+  // it does" at the top of this file, in one place rather than at whichever template first takes the type.
   static_assert(std::meta::is_structural_type(^^Name),
       "Name is a template argument, so every member must be public and itself structural");
   static_assert(std::meta::is_structural_type(^^Resolved),
       "Resolved is a template argument, so every member and base must be public and itself structural");
 #if REFRACT_CLANG_WORKAROUNDS
-  // Completes `Call` before it is asked about. See WASM.md, "is_structural_type of a nested class".
+  // Completes `Call` before it is asked about. See notes/WASM.md, "The fork on the host, first", item 1.
   static_assert(sizeof(Call) > 0);
 #endif
   static_assert(std::meta::is_structural_type(^^Call),
@@ -466,7 +487,7 @@ struct Interpreter {
       if constexpr (Op.from_opcode) {
         // The instruction carries the number and the slice says where.
 #if REFRACT_CLANG_WORKAROUNDS
-        // Copied out before the call. See WASM.md, "A member call on a template argument's subobject".
+        // Copied out before the call. See notes/WASM.md, "The fork on the host, first", item 6.
         constexpr auto slice = Op.slice;
         return static_cast<Parameter>(slice.extract(decoded.opcode));
 #else
@@ -703,7 +724,7 @@ struct Interpreter {
                               "std::uint16_t, the widths the machine reads at");
   }
 
-  // Checks every operand against the parameter it feeds; true if all fit.
+  // Checks every operand against the parameter it feeds.
   template<std::meta::info Fn, Call C>
   static consteval void check_each_operand_fits() {
     []<std::size_t... I>(std::index_sequence<I...>) { (check_operand_fits<Fn, C, I>(), ...); }(
@@ -750,7 +771,8 @@ struct Interpreter {
     // the machine writes at. The widths are spelled through aliases of our own because a reflect-expression may not
     // name a using-declarator, which is how a standard library may bring `uint8_t` into `std`.
 #if REFRACT_CLANG_WORKAROUNDS
-    // Marked because a reflect-expression is not counted as a use. See WASM.md, "An alias used only by `^^`".
+    // Marked because a reflect-expression is not counted as a use. See notes/WASM.md, "The fork on the host, first",
+    // item 4.
     using Byte [[maybe_unused]] = std::uint8_t;
     using Word [[maybe_unused]] = std::uint16_t;
 #else
@@ -827,8 +849,9 @@ struct Interpreter {
         // More than one *destination* is how an instruction writes one result to two places, as the Z80's `dd cb d op`
         // puts it through the addressing mode and into the register its low bits name.
         const auto result = call(operands_of<Fn, C>(machine, decoded, indexed));
-        template for (constexpr auto destination: C.destinations)
-            store<destination, C.line>(machine, decoded, indexed, result);
+        template for (constexpr auto destination: C.destinations) {
+          store<destination, C.line>(machine, decoded, indexed, result);
+        }
       }
     }
   }
@@ -971,10 +994,11 @@ struct Interpreter {
   // reads none of its variable bits shares one; `body_key` is what decides. Each is typically a handful of
   // instructions, because every choice below is made at compile time.
   //
-  // `Table` and `BodyKey` are template parameters rather than arguments precisely so that `Compiled::rows()[Index]`,
-  // the vocabulary lookups, and the renaming rules are all constants here. `BodyKey` is not the opcode: it is the
-  // opcode with every slice this body does not read cleared, so the compile-time lookups below see only the bits that
-  // vary the code they generate, while the run-time `opcode` parameter still carries all of them. See `body_key`.
+  // `Table`, `BodyKey` and `Index` are template parameters rather than arguments precisely so that
+  // `Compiled::rows()[Index]`, the vocabulary lookups, and the renaming rules are all constants here. `BodyKey` is not
+  // the opcode: it is the opcode with every slice this body does not read cleared, so the compile-time lookups below
+  // see only the bits that vary the code they generate, while the run-time `opcode` parameter still carries all of
+  // them. See `body_key`.
   template<std::uint8_t Table, std::uint8_t BodyKey, std::size_t Index>
   static void execute_one(
       Machine &machine, const std::uint8_t latch, const std::uint8_t view, const std::uint8_t opcode) {
@@ -983,14 +1007,15 @@ struct Interpreter {
     // rewrites, not just the member, so a row can opt out of a renaming by naming a vocabulary no rule mentions. (That
     // is how the Z80's `ld {real:y}, {index_mem:view}` keeps a real h.)
     static constexpr auto rules = Compiled::tables()[Table].rules;
-    // The base this body is displaced through, if any. `static` because the lambda below uses it without capturing it,
-    // so it has to have static storage.
+    // The base this body is displaced through, if any. `static` because the displacement below tests it at run time,
+    // through a member of `std::optional` that takes its address, and nothing in the frame a mandatory tail call
+    // abandons may have had its address taken.
     static constexpr auto displaced = displaced_through(Compiled::vocabularies(), row, BodyKey, rules);
     constexpr bool entered_latched = Compiled::latched()[Table];
     // The displacement byte comes before any immediate, unless the table was entered with one already latched, in which
     // case it arrived before this opcode did.
     const std::uint8_t displacement =
-        row.reads_displacement || (displaced && !entered_latched) ? machine.fetch_immediate() : latch;
+        (row.reads_displacement || (displaced && !entered_latched)) ? machine.fetch_immediate() : latch;
     // A transfer is the whole of its row: a prefix reads no operands and has no immediate, so nothing in the steps'
     // branch applies to one. It is also why the hand-over happens *here* rather than among the steps: a mandatory tail
     // call abandons the frame, so it is refused wherever a local has had its address taken, and the steps' branch has
@@ -1000,10 +1025,13 @@ struct Interpreter {
       constexpr auto transfer = std::get<Transfer>(row.action);
       constexpr std::uint8_t next_table = transfer.target;
       const auto next_view = static_cast<std::uint8_t>(transfer.forwards_view ? view : transfer.target_view);
-      // The next table's opcode is fetched here, since the hand-over is the loop. A latched table's opcode arrives as
-      // an operand read rather than an instruction fetch: the machine has already committed, so it costs less and does
-      // not refresh.
+      // The next table's opcode is fetched here, since the hand-over is the loop. A latched table's opcode arrives by
+      // `fetch_immediate` rather than `fetch_opcode`: the machine has already committed to an instruction, so this byte
+      // is part of it rather than a choice of what to run. What that saves is the machine's business (on the Z80, a
+      // cycle and a refresh).
       const auto next_opcode = Compiled::latched()[next_table] ? machine.fetch_immediate() : machine.fetch_opcode();
+      // A mandatory tail call, spelt `[[clang::musttail]]` because clang knows no other spelling and gcc accepts this
+      // one.
       [[clang::musttail]] return dispatch<next_table>[next_opcode](machine, displacement, next_view, next_opcode);
     }
     else if constexpr (std::holds_alternative<Row::Steps>(row.action)) {
@@ -1021,18 +1049,17 @@ struct Interpreter {
           return 0;
         }
       }();
-      // Formed once, after both, and handed to every operand that shares it. The machine is told what else was read
-      // first, because a machine may fold those reads into the window that forms the address, as the Z80 does.
+      // What the instruction carries, gathered once its bytes are fetched, for every operand to read.
       const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
-      // Assigned rather than formed by a lambda, which would capture `decoded` and `displacement` by reference and so
-      // take their addresses, refusing the tail call below in any build that does not inline it.
+      // The displaced address, formed once after both fetches and handed to every operand displaced through it. The
+      // machine is told how many bytes were read before the address is formed: the row's immediate bytes, and a
+      // latched table's opcode, which was read after the displacement. Whether those reads overlap the forming is the
+      // machine's call (on the Z80 they do). The count is a template argument so that a machine can refuse, at compile
+      // time, one it cannot hold. Assigned rather than formed by a lambda, which would capture `decoded` and
+      // `displacement` by reference and so take their addresses, refusing the tail call below in any build that does
+      // not inline it.
       std::uint16_t indexed = 0;
       if constexpr (displaced) {
-        // A latched table read its opcode inside the same window, so that byte counts too, and the machine is charged
-        // for the window once rather than for each read inside it.
-        //
-        // The count is a template argument so that the machine, which knows how long its window is, can refuse a count
-        // it cannot hold at compile time.
         constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
         consteval { check_window_holds<read_inside>(row.line); }
         indexed = machine.template displaced_address<read_inside>(
@@ -1044,16 +1071,14 @@ struct Interpreter {
       // range's *address* has to be a constant, and a local copy's would not be.
       constexpr const auto &steps = std::get<Row::Steps>(row.action);
       template for (constexpr auto step: steps) {
-        {
-          constexpr auto verb = verb_for(step, row.matched, BodyKey, row.line, rules);
-          constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
-          // After a condition that says no, the rest of the row is skipped, which is where the extra cycles of a taken
-          // branch come from. `break` rather than `return`, because abandoning the rest of a row is not abandoning the
-          // run: the hand-over below still has to happen, and a `return` here stops the machine at the first untaken
-          // branch.
-          if (run_step<find_operation(verb, row.line), call>(machine, decoded, indexed) == Continue::no)
-            break;
-        }
+        constexpr auto verb = verb_for(step, row.matched, BodyKey, row.line, rules);
+        constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
+        // After a condition that says no, the rest of the row is skipped, which is where the extra cycles of a taken
+        // branch come from. `break` rather than `return`, because abandoning the rest of a row is not abandoning the
+        // run: the hand-over below still has to happen, and a `return` here stops the machine at the first untaken
+        // branch.
+        if (run_step<find_operation(verb, row.line), call>(machine, decoded, indexed) == Continue::no)
+          break;
       }
     }
     else
@@ -1201,9 +1226,9 @@ struct Interpreter {
 
   // Starts the run. The handlers tail-call each other from here on, so this is the only frame the run keeps.
   //
-  // The machine's locations are checked here rather than by `TargetLike`, because the check needs this class's own scan
-  // of the machine; this is the one entry point, so it runs once regardless. The description was checked when
-  // `Compiled` was instantiated.
+  // The checks that need this class's own scan of the machine run here rather than in `TargetLike`: that its readable
+  // locations have distinct names, and that each vocabulary's operations agree about being conditions. This is the one
+  // entry point, so they run once regardless. The description on its own was checked when `Compiled` was instantiated.
   static void run(Machine &machine) {
     consteval {
       check_location_names_unique();

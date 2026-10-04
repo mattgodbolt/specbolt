@@ -180,16 +180,17 @@ One number is unexplained and left standing rather than quietly dropped. An
 earlier laptop run recorded v3 at 58.6 cycles per emulated instruction in its
 own binary; a later re-measurement of the same configuration, on the same
 machine and compiler, gave 88.7. That is far outside the couple of per cent
-cycles usually vary by here. The candidate is that this branch puts
+cycles usually vary by here. The candidate is that a build with v4 in it has
 `-freflection` on `opt::c++26`, so every target is built with it where a build
-without v4 is not, but nobody has checked. **Treat the cycle figures below as
-the weaker half of the evidence, and the retired-instruction ones as the
-strong half.**
+without v4 is not, but nobody has checked. The laptop's cycle counts are not to
+be relied on for that reason; the comparison that settles the ranking is the
+desktop's, in nanoseconds, below.
 
 #### Confirmed on a machine that can actually be measured
 
 All of the above was found on a thermally limited laptop (i7-10510U). Repeating it
-on a quiet desktop (i9-9980XE, 18 cores, 24.75MB L3) with the same compiler:
+on a quiet desktop (i9-9980XE, 18 cores and 36 threads, 24.75MB L3) with the same
+compiler:
 
 Retired instructions came back **identical to within 0.03%** on every
 implementation (v1 +0.02%, v2 -0.03%, v3 -0.01%, v4 -0.02%). That is the
@@ -274,13 +275,21 @@ mostly the dispatch. As a share of cycles at an 18-cycle Skylake penalty, v4:
 | dizzy 2 | 276K | 3.4% |
 | elite | 633K | 6.8% |
 
+Both columns overstate what the dispatch costs: "non-conditional" includes
+returns, and 18 cycles is the textbook penalty, some of which out-of-order
+execution hides.
+
 **zexdoc understates this by up to 3x.** Its instruction mix runs in tight loops
 that the indirect predictor learns; elite's attract mode is a rotating wireframe
 with real line drawing and matrix work, and it mispredicts three times as often.
 The ordering across games tracks how much the loop actually does, which is what
 it should track if the number means anything.
 
-So a threaded interpreter, each handler ending in a `[[gnu::musttail]]` call to
+v2 measures the same rate as v4 (6.3% against 6.6% on elite). Both dispatch
+through a function-pointer table, so this is a property of the shape they share,
+not of v4's generated one.
+
+So a threaded interpreter, each handler ending in a `[[clang::musttail]]` call to
 the next rather than returning to a loop, is competing for **2-7% and probably
 more in real play**, not the ~3% zexdoc alone suggests. The cost is that handlers
 stop returning per instruction, so `execute_one()` becomes a run loop and the
@@ -288,8 +297,8 @@ stop returning per instruction, so `execute_one()` becomes a run loop and the
 
 #### Attempted, and it is worth more than the estimate
 
-Done, on gcc 16.2. Five interleaved rounds per workload on an idle 36-core
-machine, best of three repetitions each, v4 against v4:
+Done, on gcc 16.2. Five interleaved rounds per workload on an idle machine with 36
+hardware threads, best of three repetitions each, v4 against v4:
 
 | workload | returning | threaded | |
 |---|---:|---:|---:|
@@ -328,6 +337,11 @@ The first two are worth knowing before starting; the third is worth knowing
 because it is not obvious that an expansion statement should constrain calling
 convention, and it does.
 
+2026-10-03: "at all" was too strong. The third is the frame rule above, applied
+to the induction variable: it blocks a tail call only once its address may
+escape. The correction is in z80/v4/notes/JOURNAL.md, under "Done: an expansion
+statement constrains the calling convention".
+
 #### The bug that only a long run could show
 
 An untaken conditional used to `return`. Under threading a `return` ends the
@@ -337,14 +351,6 @@ instruction budgeted, stopping the row and stopping the run are the same thing.
 Booting the ROM found it immediately, at **1558 cycles where 14 million were
 due**. A test that runs one instruction cannot distinguish the two, and after
 this change they are no longer the same thing.
-
-Worth noting v2 measures the same rate as v4 (6.3% against 6.6% on elite). Both
-dispatch through a function-pointer table, so this is a property of the shape
-they share, not of v4's generated one.
-
-Both of these numbers are upper bounds twice over: 18 cycles is the textbook
-penalty and out-of-order execution hides some of it, and "non-conditional"
-includes returns.
 
 ### Compile time
 

@@ -58,7 +58,6 @@ TEST_CASE("Table parsing") {
     constexpr auto adc = std::get<Member::Operation>(alu.members[1].kind);
     STATIC_CHECK(adc.name == "add8");
     STATIC_CHECK(adc.arguments[0].kind == Operand::Kind{Operand::Named{"carry"}});
-    STATIC_CHECK(std::holds_alternative<Member::Hole>(C::vocabularies()[3].members[3].kind));
     STATIC_CHECK(std::holds_alternative<Operand>(C::vocabularies()[0].members[0].kind));
   }
   SECTION("Decoding starts in the first table declared") { STATIC_CHECK(C::tables()[C::entry_table].name == "base"); }
@@ -183,8 +182,9 @@ TEST_CASE("Generated execution") {
     cpu.set(RegisterFile::R8::C, 0x37);
     run(0x41); // ld b, c
     CHECK(cpu.get(RegisterFile::R8::B) == 0x37);
+    cpu.set(RegisterFile::R8::A, 0x42);
     run(0x7f); // ld a, a
-    CHECK(cpu.get(RegisterFile::R8::C) == 0x37);
+    CHECK(cpu.get(RegisterFile::R8::A) == 0x42);
   }
   SECTION("inc r and dec r") {
     cpu.set(RegisterFile::R8::B, 0x7f);
@@ -200,7 +200,7 @@ TEST_CASE("Generated execution") {
     run(0x27);
     CHECK(cpu.get(RegisterFile::R8::A) == 0x15);
   }
-  SECTION("Nothing is undecoded any more, including the ed table's filler") {
+  SECTION("Every opcode decodes to something, including the ed table's filler") {
     run(0xed, 0x00); // a two-byte nop on real hardware
     CHECK(cpu.pc() == base_address + 2);
   }
@@ -272,7 +272,7 @@ TEST_CASE("Generated execution") {
 TEST_CASE("Two opcodes share a body only when every step agrees") {
   // `body_key` decides which opcodes share a generated function, and `resolve` decides what that function does; the
   // slices the first ignores must be the ones the second folds away. Checked here, over every opcode of every table,
-  // rather than in the build, where it was measured to cost a fifth of the interpreter's compile time.
+  // rather than in the build, where it adds noticeably to the interpreter's compile time.
   using I = refract::Interpreter<Target>;
   for (std::uint8_t table = 0; table < C::tables().size(); ++table) {
     const auto &rules = C::tables()[table].rules;

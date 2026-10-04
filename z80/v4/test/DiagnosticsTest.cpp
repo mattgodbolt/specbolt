@@ -6,9 +6,9 @@
 // The parser reads whatever description it is handed, so these drive it with their own tables rather than damaging the
 // real one to see what it says. Every message the *parse* can produce should have a case here.
 //
-// The generator's messages cannot: `find_location`, `find_operation` and `operand_for_parameter` are `consteval`, so a
-// description they reject is a compile error rather than something a test can catch. Their messages are covered by the
-// description compiling at all, and by reading them.
+// The generator's messages are not tested here: `find_location`, `find_operation` and `operand_for_parameter` are
+// `consteval`, so a description they reject is a compile error rather than a throw at run time. Their messages are
+// covered by the real description compiling at all, and by reading them.
 
 namespace specbolt::v4 {
 
@@ -104,6 +104,9 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(
         parse("table t\n00000000 x | nop | nop\n"), Equals("2: 'x' is not an encoding byte; expected 'n' or 'd'"));
     CHECK_THROWS_WITH(parse("table t\n00000000 d d | nop | nop\n"), Equals("2: a row reads at most one displacement"));
+    // The displacement is always fetched first, so an encoding that writes it later would be read out of order.
+    CHECK_THROWS_WITH(parse("table t\n00110110 n d | nop | nop\n"),
+        Equals("2: 'd' must come before 'n': the displacement is fetched before the immediate"));
   }
   SECTION("Row precedence") {
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\n00000000 | also nop | nop\n"),
@@ -119,8 +122,11 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("vocab r =\ntable t\n"), Equals("1: vocabulary declares no members"));
     CHECK_THROWS_WITH(parse("vocab r = a b\nvocab r = c d\ntable t\n"), Equals("2: duplicate vocabulary name"));
     CHECK_THROWS_WITH(parse("vocab r = a b c d e f g h i\ntable t\n"), Equals("1: more than 8 Member"));
-    CHECK_THROWS_WITH(
-        parse("vocab r = a/wat=1 b\ntable t\n"), Equals("1: 'wat' is not a member attribute; expected 'delay'"));
+    CHECK_THROWS_WITH(parse("vocab r = a/wat=1 b\ntable t\n"), Equals("1: expected 'delay=n' after '/' in 'a/wat=1'"));
+    // A `/` or a `:` with nothing after it is a mistake, not a member that leaves the attribute or operation off.
+    CHECK_THROWS_WITH(parse("vocab r = b/ c\ntable t\n"), Equals("1: expected 'delay=n' after '/' in 'b/'"));
+    CHECK_THROWS_WITH(parse("vocab r = add: b\ntable t\n"),
+        Equals("1: ':' introduces the operation a member binds, and none was given"));
     CHECK_THROWS_WITH(parse("vocab r = a/delay=xx b\ntable t\n"), Equals("1: delay must be a single digit"));
     CHECK_THROWS_WITH(parse("vocab r = a:add8(n) b\ntable t\n"),
         Equals("1: a member cannot pass an immediate; only the encoding fetches those"));
@@ -169,6 +175,22 @@ TEST_CASE("Table diagnostics") {
         Equals("5: a substitution cannot rename something to nothing; a hole belongs in a vocabulary"));
     CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> n\n"),
         Equals("5: a vocabulary member must name something the CPU can resolve"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with q.b -> c\n"),
+        Equals("5: substitution names a vocabulary that does not exist"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b - c\n"),
+        Equals("5: expected '->' in table substitution 'r.b - c'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with rb -> c\n"),
+        Equals("5: a table substitution names the vocabulary it rewrites, as in "
+               "'vocabulary.member -> replacement'"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> {r:y}\n"),
+        Equals("5: only a table that takes a view may substitute a view reference"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with\n"),
+        Equals("5: a derived table declares no substitutions, so it is its parent"));
+    // A substitution's right side is parsed against an empty pattern, so a reference that is not the table's view fails
+    // for want of a slice.
+    CHECK_THROWS_WITH(parse("vocab r = b c\nvocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n"
+                            "table u(view:i) = t with r.b -> {r:y}\n0000000y | ld {r:y} | nop\n"),
+        Equals("5: reference names a slice the opcode pattern does not define"));
   }
   SECTION("A view's own row must fit inside the row it displaces") {
     // The row in `u` claims both opcodes; the parent keeps one for itself, and swallowing it would take that
@@ -244,10 +266,8 @@ TEST_CASE("Table diagnostics") {
         parse("table t\n00000000 | nop | ld8 a <- ((hl))\n"), Equals("2: an address cannot itself be indirect"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- hl+d\n"),
         Equals("2: a displacement only makes sense inside '(...)'"));
-    CHECK_THROWS_WITH(parse("table t\n00000000 n | nop | ld8 a <- nn\n"),
-        Equals("2: write 'n'; the encoding column says how many bytes it occupies"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- (hl)/wobble=1\n"),
-        Equals("2: 'wobble=1' is not an operand attribute"));
+        Equals("2: expected 'delay=n' after '/' in '(hl)/wobble=1'"));
     CHECK_THROWS_WITH(
         parse("table t\n00000000 | nop | ld8 a <- (hl)/delay=12\n"), Equals("2: delay must be a single digit"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | \n"), Equals("2: row has no action"));
@@ -268,6 +288,8 @@ TEST_CASE("Table diagnostics") {
   SECTION("Mnemonics") {
     CHECK_THROWS_WITH(
         parse("table t\n00000000 n | ld a, $x | ld8 a <- n\n"), Equals("2: expected $nn, $nnnn or $e in mnemonic"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | jr $ee | relative pc <- pc n\n"),
+        Equals("2: expected $nn, $nnnn or $e in mnemonic"));
     CHECK_THROWS_WITH(parse("table t\n00000000 n n | ld ($nnnn), $nnnn | ld8 (n) <- n\n"),
         Equals("2: a row renders at most one immediate; the encoding only fetches one"));
   }
@@ -278,45 +300,26 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("vocab r :\ntable t\n"),
         Equals("1: ':' introduces the scope a vocabulary's members come from, and none was given"));
     CHECK_THROWS_WITH(parse("vocab r : = b c\ntable t\n"), Equals("1: expected '=' in vocabulary declaration"));
-    // A scope was the one name that reached `Name` unchecked, and `Name` has no line to complain with. The Z80's own
-    // longest scope is 14 of the 15.
+    // A scope is checked where it is read, because `Name` has no line to complain with.
     CHECK_THROWS_WITH(parse("vocab r : AVeryLongScopeName = b c\ntable t\n"),
         Equals("1: scope name 'AVeryLongScopeName' is too long"));
     CHECK_THROWS_WITH(parse("vocab r = b:add8(0,1,2,3)\ntable t\n"), Equals("1: more than 3 Operand"));
-    CHECK_THROWS_WITH(parse("vocab r = b:add8(n)\ntable t\n"),
-        Equals("1: a member cannot pass an immediate; only the encoding fetches those"));
-  }
-  SECTION("Derived tables, further") {
-    constexpr std::string_view base = "vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n";
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with q.b -> c\n"),
-        Equals("5: substitution names a vocabulary that does not exist"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b - c\n"),
-        Equals("5: expected '->' in table substitution 'r.b - c'"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with rb -> c\n"),
-        Equals("5: a table substitution names the vocabulary it rewrites, as in "
-               "'vocabulary.member -> replacement'"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> {r:y}\n"),
-        Equals("5: only a table that takes a view may substitute a view reference"));
-    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with\n"),
-        Equals("5: a derived table declares no substitutions, so it is its parent"));
-    // A substitution's right side is parsed against an empty pattern, so a reference that is not the table's view fails
-    // for want of a slice first.
-    CHECK_THROWS_WITH(parse("vocab r = b c\nvocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n"
-                            "table u(view:i) = t with r.b -> {r:y}\n0000000y | ld {r:y} | nop\n"),
-        Equals("5: reference names a slice the opcode pattern does not define"));
   }
   SECTION("Immediates and displacements are counted, not guessed") {
     CHECK_THROWS_WITH(parse("table t\n00000000 n n n | ld a, $nnnn | ld8 a <- n\n"),
         Equals("2: an instruction may carry at most two immediate bytes"));
     CHECK_THROWS_WITH(parse("vocab m = (ix+d) (iy+d)\ntable t\n0000000y | ld {m:y} | ld8 {m:y} <- (hl+d)\n"),
         Equals("3: an instruction may only be displaced through one base"));
+    // Constant bases have no name to tell them apart, so two of them are told apart by where they point.
+    CHECK_THROWS_WITH(parse("table t\n00000000 | ld (1+d), (2+d) | ld8 (1+d) <- (2+d)\n"),
+        Equals("2: an instruction may only be displaced through one base"));
     CHECK_THROWS_WITH(parse("vocab r = b $nn\ntable t\n"),
         Equals("1: a vocabulary member cannot render an immediate; only the encoding fetches those"));
     CHECK_THROWS_WITH(parse("vocab r = b (a+d)+d\ntable t\n"), Equals("1: more than 3 Piece"));
   }
   SECTION("Immediates count wherever they appear") {
-    // An immediate destination is how `ld (nn), a` is written, and it used to be rejected because only operands were
-    // counted.
+    // An immediate destination is how `ld (nn), a` is written, so a destination uses the immediate as much as an
+    // operand does.
     CHECK_NOTHROW(parse("table t\n00110010 n n | ld ($nnnn), a | ld8 (n) <- a\n"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | ld (hl), a | ld8 (n) <- a\n"),
         Equals("2: the action and the encoding disagree about whether there is an immediate"));
@@ -350,8 +353,7 @@ TEST_CASE("Table diagnostics") {
     CHECK_NOTHROW(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | back | goto t\n"));
   }
   SECTION("Every fixed capacity says so when it is reached") {
-    // DD/FD will push on several of these, so what happens at the edge matters: each is a `Vector` whose overflow names
-    // the limit and what it holds, on the line that reached it.
+    // Each is a `Vector` whose overflow names the limit and what it holds, on the line that reached it.
     CHECK_THROWS_WITH(
         parse("table t\n00000000 | nop | nop ; nop ; nop ; nop ; nop ; nop ; nop\n"), Equals("2: more than 6 Step"));
     CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- a a a a a\n"), Equals("2: more than 4 Operand"));
@@ -459,8 +461,6 @@ TEST_CASE("Table diagnostics") {
         Equals("2: 'n' is a value, not somewhere a result can go; a destination is a location, or an address in "
                "parentheses"));
     CHECK_NOTHROW(parse("table t\n00000000 n | ld $nn | ld8 (n) <- a\n"));
-    CHECK_THROWS_WITH(parse("table t\n00000000 n | jr $ee | relative pc <- pc n\n"),
-        Equals("2: expected $nn, $nnnn or $e in mnemonic"));
     CHECK_THROWS_WITH(parse("vocab r = a:add8(-) b\ntable t\n"),
         Equals("1: '-' discards a result, and a member's argument is something the operation is given"));
     CHECK_THROWS_WITH(parse("vocab r = a:(0) b\ntable t\n"),
@@ -474,6 +474,12 @@ TEST_CASE("Table diagnostics") {
     CHECK_THROWS_WITH(parse("vocab bit = 0 1\ntable t\n0000000b | bit {bit:b} | nop\ntable u = t with bit.0 -> 1\n"),
         Equals("4: vocabulary 'bit' is its own slice, its members being the numbers the opcode carries, so a "
                "substitution cannot rename one"));
+  }
+  SECTION("A vocabulary is its own slice only when every member is plainly its own index") {
+    CHECK(parse_vocabularies("vocab v = 0 1\n")[0].numeric);
+    // An address names the memory there, so the opcode's bits cannot stand in for it.
+    CHECK_FALSE(parse_vocabularies("vocab v = 0 (1)\n")[0].numeric);
+    CHECK_FALSE(parse_vocabularies("vocab v = (0) (1)\n")[0].numeric);
   }
   SECTION("A tab is a blank") {
     CHECK_NOTHROW(parse("vocab\tr\t=\tb\tc\ntable\tt\n0000000y\t| ld {r:y}\t| ld8 {r:y}\t<-\ta\n"));

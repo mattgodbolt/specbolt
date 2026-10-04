@@ -1,9 +1,7 @@
 #pragma once
 
-// The rules a whole description must obey, each asked once decoding is known: precedence between rows, totality of
-// every table, reachability of every table, no inherited row spelling out a name its table renames, and a mnemonic
-// rendering a displacement exactly when an operand is displaced. Each throws against a line, and `Compiled` runs them
-// all when it is instantiated.
+// The rules a whole description must obey that can only be asked once decoding is known. Each throws against a line,
+// and `Compiled` runs them all when it is instantiated.
 
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
@@ -24,8 +22,7 @@ namespace specbolt::refract {
 // override, and a partial overlap is an accident.
 constexpr void check_row_precedence(const Description &description, const std::span<const OpcodeSet> covers) {
   const auto rows = description.rows;
-  // What each row wins once the rows before it have taken their share. Precedence is a fact about opcode sets, not
-  // about vocabularies, so this never resolves a name.
+  // Per table, the opcodes the rows walked so far have claimed in it.
   std::vector<OpcodeSet> claimed(description.tables.size());
 
   for (std::size_t earlier = 0; earlier < rows.size(); ++earlier) {
@@ -92,7 +89,7 @@ constexpr void check_tables_total(const Description &description) {
 // A row written *in* the derived table is exempt: putting it there is how one says the literal was meant.
 constexpr void check_inherited_literals(const Description &description) {
   for (const auto &[table, opcode, row, rules]: instructions_of(description)) {
-    if (row->table == table) // its own row, so the literal was meant
+    if (row->table == table)
       continue;
     for (const auto &rule: *rules)
       if (names_literally(*row, rule.from))
@@ -151,9 +148,9 @@ constexpr void check_derived_rows_override(const Description &description, const
 // member the opcode picks, and on the renaming the table it was decoded in applies, so it belongs here rather than
 // beside the row.
 //
-// A mismatch is not a length error: both the interpreter and the disassembler take the length from `displaced_through`,
-// so they agree about how many bytes to read and disagree only about what to print. The disassembler would quietly name
-// an addressing mode the machine did not use, or omit the one it did.
+// A mismatch is not a length error: the interpreter and the disassembler both ask `displaced_through` whether a
+// displacement byte is read, so they agree about how many bytes to read and disagree only about what to print. The
+// disassembler would quietly name an addressing mode the machine did not use, or omit the one it did.
 constexpr void check_displacement_rendered(const Description &description) {
   const auto vocabularies = description.vocabularies;
   for (const auto &[table, opcode, row, rules]: instructions_of(description)) {

@@ -12,7 +12,7 @@ if (TARGET z80_v4)
     target_compile_definitions(z80_test PRIVATE SPECBOLT_HAS_V4)
 endif ()
 
-add_test(NAME "Z80 v1 vs v2 Unit Tests" COMMAND z80_test)
+add_test(NAME "Z80 Opcode and Boot Tests" COMMAND z80_test)
 
 add_executable(zexdoc_test ZexDocTest.cpp)
 target_link_libraries(zexdoc_test PRIVATE z80_v1 z80_v2 z80_v3 lyra)
@@ -23,7 +23,7 @@ endif ()
 
 # One benchmark holding every implementation, and one per implementation.
 # Interprocedural optimisation is on for the whole link, so the combined binary
-# optimises the four against each other: editing one changes the code
+# optimises the implementations against each other: editing one changes the code
 # generated for the others, by enough to swamp what is being measured. The
 # combined binary is what the emulator ships; the single ones are what a
 # comparison between implementations should be read from.

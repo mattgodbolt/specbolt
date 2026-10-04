@@ -37,10 +37,15 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   initialiser, which is a constant-expression context, and read the result at run time. Found 2026-09-21.
 - **`access_context::current()` at namespace scope excludes private members.** This is why `Ops` is a
   struct with a private section rather than a namespace: access control gates which names the table
-  may use as verbs. Deliberate and worth keeping.
+  may use as verbs. Deliberate and worth keeping. *(2026-10-03: `Ops` is now `Operations`, a palette
+  with no private section. The fact stands: `Interpreter` asks `members_of` with
+  `access_context::current()`, which is its own scope, so a private helper in a palette cannot be
+  named by a row.)*
 - **Released clang has no reflection at all**, 22.1 and trunk both lack `<meta>`. The wasm build is
   clang, so v4 is excluded in CMake via `if (SPECBOLT_HAS_REFLECTION)` rather than by `#ifdef`s in
-  source. Bloomberg's P2996 fork is a different matter. See "The other implementation" below.
+  source. The P2996 forks are a different matter: MEASUREMENTS.md, "The other implementations: two
+  clang forks". *(2026-10-03: v4 now builds for wasm too, through Barry Revzin's fork; the stock wasm
+  build still has no reflection and still leaves v4 out. See WASM.md.)*
 - Reflection works inside module interface units, including `template for` in a module purview and
   exported templates that reflect on their own parameters and are instantiated in importing TUs.
 - **`^^std::uint8_t` is ill-formed.** A reflect-expression may not name a using-declarator, and
@@ -93,6 +98,7 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   `std::format` in a constant expression (https://compiler-explorer.com/z/avo378TcT, against gcc 16.2 failing at
   https://compiler-explorer.com/z/YbYen74Kn), so it should arrive with gcc 17. The libc++ that Barry's fork builds
   against for WASM does not have it yet.
+
 ### Why refract has its own `Vector`, and what it would take to use `std::inplace_vector`
 
 `Vector<T, N>` in Vector.hpp is a `std::array<T, N>` and a count, with a `push_back` that throws when full. It exists
@@ -315,19 +321,20 @@ The single most useful architectural fact:
   evaluation and passed between `consteval` functions freely. It just cannot escape into a
   namespace-scope `constexpr` variable.
 - **So the parse works in `std::vector` throughout and an array is made of the answer at the end.**
-  Getting the size means evaluating the whole parse twice, once for `.size()`, once for the contents
- , which is `to_array` in `ToArray.hpp`, and it is the only place in the pipeline that knows a count.
+  Getting the size means evaluating the whole parse twice, once for `.size()`, once for the contents,
+  which is `to_array` in `ToArray.hpp`, and it is the only place in the pipeline that knows a count.
   The earlier arrangement counted matching lines in a cheap pre-pass and passed the count as a
   template argument to each parse function; that had to be right in two places, and it made every
   parse function a template with a capacity check nobody could reach. **What the second parse costs,
   measured** (alternating A/B, twice each side, gcc 16.2 `-O0`): on `Disassembler.cpp`, which is the
   parse plus every check and nothing else, this one change took 9.3s/387MB to 12.6s/570MB, about
-  **+3.2s and +180MB**. On `Z80.cpp`, which is the same parse plus 1792 handler instantiations, 75.4s
-  became 73.2s: the same work, lost in the noise of what dominates that TU. Three seconds for a
-  pipeline in which one function knows a count. (For where those absolutes stand today, after the
-  rest of the clarity work, see "Compile time, measured".)
+  **+3.2s and +180MB**. On `Z80.cpp`, which was then the same parse plus 1792 handler instantiations,
+  75.4s became 73.2s: the same work, lost in the noise of what dominates that TU. Three seconds for a
+  pipeline in which one function knows a count. (For where those absolutes stood after the rest of
+  the clarity work, see MEASUREMENTS.md, "Compile time, measured".)
 - **Growing a `std::vector` during constant evaluation is much dearer than growing one at run time.**
-  `instructions_of` builds a 1792-element vector for the checks to walk; adding a `reserve` for it
+  `instructions_of` builds a vector of every (table, opcode) the description decodes, for the checks
+  to walk; adding a `reserve` for it
   took about a second off `Disassembler.cpp`. The evaluator has no `realloc`, every growth copies
   every element through the interpreter, so `reserve` is worth writing wherever the size is known,
   which in a parse it usually is.
@@ -403,6 +410,10 @@ of a template that is instantiated only where it is called.
   rather than an expansion statement, that one initialiser is not dependent. `Execute.hpp` said so
   all along; this file contradicted it.
 
+  *2026-10-03: `all_dispatches` has gone. The per-table `dispatch` is now a static member variable
+  template of `Interpreter<Target>`, a dependent context, and fills its table with a `template for`;
+  the bug itself is as described.*
+
   [pr124197]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124197
 - The range must be a constant expression, and for a range that means a constant *address*, not
   merely a constant value. A plain `constexpr auto row = …;` local does not qualify, gcc says so
@@ -410,6 +421,8 @@ of a template that is instantiated only where it is called.
   function; add `static`". `static constexpr` fixes it, and a namespace-scope `inline constexpr` or a
   template parameter object needs nothing. This is why `execute_one`'s `row` is `static`: expanding
   over `row.steps` directly is what lets the step be the loop variable rather than an index into it.
+  (Since 2026-09-27 a row's steps are one alternative of `row.action`, and `execute_one` expands
+  over a `static constexpr const auto &` bound to them, for the same reason.)
 - **There is no `template switch`.** The body of an expansion statement is control-flow-limited
   ([stmt.expand]/2), so a `case` label inside it can only belong to a `switch` that is also inside
   it ([stmt.label]/3), and a 256-way dispatch cannot be expanded into one. gcc says "jump to case

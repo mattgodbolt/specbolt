@@ -50,10 +50,9 @@ constexpr auto ld_rr_imm16 = parse_pattern("00pp0001");
 // A pattern is only ever read in one direction: `place` builds the opcodes a row claims, and `extract` reads a value
 // back out of one. Nothing tests an opcode *against* a pattern, because nothing does that. See `opcodes_of`.
 TEST_CASE("Opcode slices") {
-  constexpr auto matched = ld_rr_imm16;
   SECTION("Extracts and places field values") {
-    STATIC_CHECK(matched.slices[0].extract(0x21) == 2);
-    STATIC_CHECK(matched.slices[0].place(3) == 0x30);
+    STATIC_CHECK(ld_rr_imm16.slices[0].extract(0x21) == 2);
+    STATIC_CHECK(ld_rr_imm16.slices[0].place(3) == 0x30);
     STATIC_CHECK(std::ranges::all_of(std::views::iota(0, ld_rr_imm16.slices[0].mask + 1), [](const int value) {
       constexpr auto slice = ld_rr_imm16.slices[0];
       const auto narrowed = static_cast<std::uint8_t>(value);

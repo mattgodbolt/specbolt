@@ -28,8 +28,7 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 // The state a description may name beyond the registers of `RegisterFile` and the bits of `Flags::Bit`. Each is an enum
 // so that a row can write `halted` or `pc` exactly as it writes `a`: a splice of one picks the matching `read` or
 // `write` below by overload resolution, so the framework never knows what kind of location it holds. A name is found by
-// walking `enumerators_of`, so even a lone location is an enumerator. What makes a type a location is that the machine
-// can `read` one: `Bus` above is not, because nothing reads it.
+// walking `enumerators_of`, so even a lone location is an enumerator.
 
 // The same register taken whole, distinct from R8::F so that only a Flags-shaped value can be written to it.
 SPECBOLT_EXPORT enum class FlagWord : std::uint8_t { flags };
@@ -41,8 +40,8 @@ SPECBOLT_EXPORT enum class FlipFlop : std::uint8_t { halted, iff1, iff2, deferre
 // The program counter, which is not in the programmer's register file.
 SPECBOLT_EXPORT enum class ProgramCounter : std::uint8_t { pc };
 
-// The high byte of the last address on the bus. WZ, as the Z80 literature calls it. `bit n, (ix+d)` takes flags 3 and 5
-// from it.
+// The high byte of the last address on the bus, standing in for the high byte of WZ (MEMPTR), which is not modelled.
+// `bit n, (ix+d)` takes flags 3 and 5 from it.
 SPECBOLT_EXPORT enum class AddressLatch : std::uint8_t { wzh };
 
 // How the chip is to answer an interrupt: `i` supplies the high byte of the vector in mode 2, and `im` is the mode
@@ -117,8 +116,8 @@ public:
   [[nodiscard]][[= refract::operation]] Alu::R8 in_c(std::uint16_t port, Flags flags);
   [[= refract::operation]] void out_c(std::uint16_t port, std::uint8_t value);
 
-  // `ex (sp),hl`: swaps `value` with the word at sp and returns the old word. Three accesses and two idle stretches,
-  // interleaved in an order no row could write as operands.
+  // `ex (sp),hl`: swaps `value` with the word at sp and returns the old word, in nineteen T-states with the fetch: two
+  // reads, an idle cycle, two writes, then two more idle cycles. No row could write that interleaving as operands.
   [[nodiscard]][[= refract::operation]] std::uint16_t ex_sp_hl(std::uint16_t value);
   // The exchanges move whole register pairs about, which no operand can name.
   [[= refract::operation]] void exx();
@@ -133,9 +132,9 @@ public:
   [[nodiscard]][[= refract::operation]] Alu::R8 rrd8(std::uint8_t value, Flags flags);
   [[nodiscard]][[= refract::operation]] Alu::R8 rld8(std::uint8_t value, Flags flags);
 
-  // The block operations move or compare one byte, step hl (and de), and count bc down. The repeating forms are the
-  // same row with a condition and a rewind: the chip really does re-execute the opcode, which is why an interrupt can
-  // land in the middle of an `ldir`.
+  // The block operations move or compare one byte, step hl (and de), and count down: bc for the loads and compares, b
+  // for the in and out forms. The repeating forms are the same row with a condition and a rewind: the chip really does
+  // re-execute the opcode, which is why an interrupt can land in the middle of an `ldir`.
   [[nodiscard]][[= refract::operation]] Flags block_load(BlockDirection direction, Flags flags);
   [[nodiscard]][[= refract::operation]] Flags block_compare(BlockDirection direction, Flags flags);
   [[nodiscard]][[= refract::operation]] Flags block_in(BlockDirection direction, Flags flags);
@@ -153,9 +152,9 @@ public:
     return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
   }
 
-  // Reading and writing a named location. One overload per kind of location, all called `read` or `write`, then the
+  // Reading and writing a named location. One overload per kind of location, all called `read` or `write`, so the
   // framework has only the one name to call. A public `read(E)` overload publishes every enumerator of `E` to
-  // descriptions.
+  // descriptions, which is why `Bus` has none.
   [[nodiscard]] std::uint8_t read(const RegisterFile::R8 location) const { return get(location); }
   [[nodiscard]] std::uint16_t read(const RegisterFile::R16 location) const { return get(location); }
   void write(const RegisterFile::R8 location, const std::uint8_t value) { set(location, value); }
@@ -225,7 +224,8 @@ private:
   std::size_t until_{};
 
   // Accepts the pending interrupt: pushes the return address and jumps where the mode says. Accepting one is not an
-  // instruction: no encoding matches it, so it cannot be a row. It belongs to the machine that drives the decoder.
+  // instruction, so it cannot be a row: no opcode encodes it, and the byte it reads in mode 0 comes from the
+  // interrupting device rather than from memory. It belongs to the machine that drives the decoder.
   void handle_interrupt();
   // Steps the refresh counter, as every M1 cycle does.
   void refresh();
@@ -243,7 +243,11 @@ private:
   // from whether that sum passed 255; none of that is modelled, so only sign, zero and flags 3 and 5 are trustworthy
   // here.
   [[nodiscard]] Flags stepped(Flags flags);
-  // `rrd` and `rld`: the byte that ends up in memory, having changed `a`.
+  // Rotates a nibble between `a` and `value` for `rrd` and `rld`, changing `a` in place and returning what goes back to
+  // memory with the flags. `right` is `rrd`: the low nibble of `value` goes into `a`, `value`'s high nibble drops to
+  // the low half of what is written back, and `a`'s old low nibble fills the high half. `rld` rotates the other way:
+  // the high nibble of `value` goes into `a`, `value`'s low nibble rises to the high half, and `a`'s old low nibble
+  // fills the low half.
   [[nodiscard]] Alu::R8 nibble(std::uint8_t value, Flags flags, bool right);
 };
 

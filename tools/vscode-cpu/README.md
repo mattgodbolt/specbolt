@@ -89,25 +89,17 @@ node tokenize.mjs
 
 `tokenize.mjs` prints every token of `z80.cpu` with its scopes; a second
 argument filters to tokens whose scopes contain it. Two runs are the actual
-test, and both should print nothing but blank lines:
+test, and on a clean grammar both print nothing and exit zero:
 
 ```sh
 node tokenize.mjs ../../z80/v4/z80.cpu '<unscoped>'
 node tokenize.mjs ../../z80/v4/z80.cpu invalid
 ```
 
-A filter only shows what you asked about, so "nothing came out" can also mean a
-`begin`/`end` block ran away and ate the rest of the file, and nothing inside it
-was ever judged. Two checks run whatever the filter says, and make the exit
-status non-zero:
-
-- **no line ends inside a block**, unless it ended in a `\` and asked to be
-  continued. This is the one that catches a runaway rule.
-- **the tokens do not depend on the line terminator.** vscode-textmate appends
-  a `\n` to every line it is given, so the editor hands one over without it. A
-  grammar that matches newlines can be right one way and wrong the other, so
-  both are tried and compared, except across a continuation, where keeping the
-  block open is precisely a decision about that newline.
+Whatever the filter, the script also checks that no `begin`/`end` block runs on
+past the line it should close on, and that the tokens do not depend on the line
+terminator, and exits non-zero if either fails. Why each is needed is explained
+in `tokenize.mjs`, beside the check.
 
 ## Limits
 
