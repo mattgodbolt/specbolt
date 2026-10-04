@@ -15,7 +15,8 @@
 //   };
 //
 // A palette is a type every public static function of which is a verb. The machine's own verbs are the members it
-// publishes with `[[=refract::operation]]`, static or not; see Model.hpp.
+// publishes with `[[=refract::operation]]`, static or not, and its locations the enums its `[[=refract::location]]`
+// `read` overloads take; see Model.hpp.
 //
 // `Interpreter<Target>::run` then runs the machine until it says stop.
 
@@ -122,23 +123,34 @@ struct Interpreter {
     return table_error(Compiled::file, line, what);
   }
 
-  // The enums a location name may come from: the parameter type of each of the machine's public one-argument `read`
-  // overloads. A location is a thing the machine can read, so the pool is the capability itself. An enum with no `read`
-  // taking it is not a location: the Z80's `Bus`, which nothing reads, is one such.
+  // Whether a declaration carries an annotation of type `mark`, such as `[[=refract::operation]]`. The annotation's
+  // type is const-qualified when it came from the constant, so the qualifier is taken off before comparing.
+  [[nodiscard]] static consteval bool is_marked(const std::meta::info declaration, const std::meta::info mark) {
+    return std::ranges::any_of(std::meta::annotations_of(declaration), [mark](const std::meta::info annotation) {
+      return std::meta::remove_cv(std::meta::type_of(annotation)) == mark;
+    });
+  }
+
+  // The enums a location name may come from: the one each of the machine's `[[=refract::location]]` overloads takes.
+  // An enum no marked overload takes is not a location, however public a `read` of it is: the Z80's `Bus` is one.
   //
-  // `read_memory` is excluded by name; an overload taking more than the location is excluded by arity.
+  // The scan sees private members too, so that a mark on something the generated code could not call is an error rather
+  // than silently ignored: a location is read and written by calling `read` and `write` on it, so the mark belongs only
+  // on a public `read` taking the one enum.
   [[nodiscard]] static consteval std::vector<std::meta::info> location_scopes() {
     std::vector<std::meta::info> scopes;
-    for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current())) {
-      if (!std::meta::is_function(member) || !std::meta::has_identifier(member))
-        continue;
-      if (std::meta::identifier_of(member) != read_verb)
+    for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::unchecked())) {
+      if (!std::meta::is_function(member) || !is_marked(member, ^^Location))
         continue;
       const auto parameters = std::meta::parameters_of(member);
-      if (parameters.size() != 1)
-        continue;
-      if (const auto type = std::meta::type_of(parameters[0]);
-          std::meta::is_enum_type(type) && !std::ranges::contains(scopes, type))
+      if (!std::meta::is_public(member) || !std::meta::has_identifier(member) ||
+          std::meta::identifier_of(member) != read_verb || parameters.size() != 1 ||
+          !std::meta::is_enum_type(std::meta::type_of(parameters[0])))
+        throw std::runtime_error(
+            (std::meta::has_identifier(member) ? quoted_name_of(member) : std::string("a member")) +
+            " is marked [[=refract::location]], so it must be a public `" + std::string(read_verb) +
+            "` taking one enum, the location it reads");
+      if (const auto type = std::meta::type_of(parameters[0]); !std::ranges::contains(scopes, type))
         scopes.push_back(type);
     }
     return scopes;
@@ -157,21 +169,13 @@ struct Interpreter {
     return scopes;
   }
 
-  // Whether a declaration carries `[[=refract::operation]]`. The annotation's type is const-qualified when it came from
-  // the constant, so the qualifier is taken off before comparing.
-  [[nodiscard]] static consteval bool is_operation(const std::meta::info fn) {
-    return std::ranges::any_of(std::meta::annotations_of(fn), [](const std::meta::info annotation) {
-      return std::meta::remove_cv(std::meta::type_of(annotation)) == ^^Operation;
-    });
-  }
-
   // Every function a description may name: the machine's marked members, static or not, and every public static
   // function of each palette. `has_identifier` excludes the implicitly-declared special members, which have no name to
   // compare.
   [[nodiscard]] static consteval std::vector<std::meta::info> operations() {
     std::vector<std::meta::info> found;
     for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current()))
-      if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_operation(member))
+      if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_marked(member, ^^Operation))
         found.push_back(member);
     for (const auto palette: Target::palettes())
       for (const auto member: std::meta::members_of(palette, std::meta::access_context::current()))
@@ -370,8 +374,8 @@ struct Interpreter {
         throw error(Line, "'" + std::string(members[at].display) + "' and '" + std::string(members[0].display) +
                               "' are different kinds of location, and a view selects among one kind");
     }
-    using Location = [:std::meta::type_of(first):];
-    std::array<Location, members.size()> locations{};
+    using Kind = [:std::meta::type_of(first):];
+    std::array<Kind, members.size()> locations{};
     template for (constexpr auto at: std::views::iota(0uz, members.size())) {
       locations[at] = [:find_location(location_named(members[at], Line), Line, scope):];
     }
@@ -389,7 +393,7 @@ struct Interpreter {
     // decide, in silence, that it is not an operation.
     if (candidates.empty())
       for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::unchecked()))
-        if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_operation(member) &&
+        if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_marked(member, ^^Operation) &&
             same_ignoring_case(std::meta::identifier_of(member), name))
           throw error(line, "'" + std::string(name) +
                                 "' is marked as an operation but is not public, so a "

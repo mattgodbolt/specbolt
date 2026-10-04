@@ -54,6 +54,17 @@ struct Name {
 struct Operation {};
 inline constexpr Operation operation{};
 
+// Marks one of a machine's `read` overloads as reading a location, which publishes every enumerator of the enum it
+// takes as a name a description may write:
+//
+//   [[=refract::location]] std::uint8_t read(Register which) const;
+//
+// Marked rather than found by name, so that a machine may have a public `read` of its own, for a debugger say, without
+// its enum becoming part of the language. A row's location is still read and written by calling `read` and `write`, so
+// the mark goes only on a `read` taking one enum.
+struct Location {};
+inline constexpr Location location{};
+
 // How a `.cpu` file spells an enumerator, when that differs from its C++ name, as a C++26 annotation (P3394) on the
 // enumerator itself:
 //

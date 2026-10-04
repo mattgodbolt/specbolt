@@ -1230,6 +1230,15 @@ description happens to write; a `static_assert` over the derived scopes makes it
 a property of the machine. The Z80's 51 names are unique, which is the sort of
 thing worth knowing rather than assuming.
 
+*2026-10-04: reversed in part. The `read` overloads are still the pool, but each
+is now marked `[[=refract::location]]`, and only a marked one publishes its
+enum. What a machine can read is not the same as what a description should be
+able to name: a public `read(Bus)` added for a debugger would publish `opcode`
+and the rest again, silently. Operations were already marked one by one for that
+reason, so the two now work alike. This marks what a thing is, where the
+annotation tried above marked what it is not, and a mark on anything but a
+public `read` of one enum is an error.*
+
 ## Done: a diagnostic names the line you have to edit
 
 `check_view_vocabulary` fires when a row binds a vocabulary to a table's view,

@@ -153,19 +153,23 @@ public:
   }
 
   // Reading and writing a named location. One overload per kind of location, all called `read` or `write`, so the
-  // framework has only the one name to call. A public `read(E)` overload publishes every enumerator of `E` to
-  // descriptions, which is why `Bus` has none.
-  [[nodiscard]] std::uint8_t read(const RegisterFile::R8 location) const { return get(location); }
-  [[nodiscard]] std::uint16_t read(const RegisterFile::R16 location) const { return get(location); }
+  // framework has only the one name to call. Marking a `read` as a location publishes every enumerator of the enum it
+  // takes to descriptions; nothing is marked for `Bus`, so `opcode` and the rest are not names a row can write.
+  [[nodiscard]][[= refract::location]] std::uint8_t read(const RegisterFile::R8 location) const {
+    return get(location);
+  }
+  [[nodiscard]][[= refract::location]] std::uint16_t read(const RegisterFile::R16 location) const {
+    return get(location);
+  }
   void write(const RegisterFile::R8 location, const std::uint8_t value) { set(location, value); }
   void write(const RegisterFile::R16 location, const std::uint16_t value) { set(location, value); }
 
-  [[nodiscard]] bool read(const Flags::Bit which) const { return flags().test(which); }
+  [[nodiscard]][[= refract::location]] bool read(const Flags::Bit which) const { return flags().test(which); }
 
-  [[nodiscard]] Flags read(FlagWord) const { return flags(); }
+  [[nodiscard]][[= refract::location]] Flags read(FlagWord) const { return flags(); }
   void write(FlagWord, const Flags value) { flags(value); }
 
-  [[nodiscard]] bool read(const FlipFlop which) const {
+  [[nodiscard]][[= refract::location]] bool read(const FlipFlop which) const {
     switch (which) {
       case FlipFlop::halted: return halted();
       case FlipFlop::iff1: return iff1();
@@ -183,12 +187,14 @@ public:
     }
   }
 
-  [[nodiscard]] std::uint16_t read(ProgramCounter) const { return pc(); }
+  [[nodiscard]][[= refract::location]] std::uint16_t read(ProgramCounter) const { return pc(); }
   void write(ProgramCounter, const std::uint16_t value) { regs().pc(value); }
 
-  [[nodiscard]] std::uint8_t read(AddressLatch) const { return static_cast<std::uint8_t>(bus_address() >> 8); }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(AddressLatch) const {
+    return static_cast<std::uint8_t>(bus_address() >> 8);
+  }
 
-  [[nodiscard]] std::uint8_t read(const Interrupt which) const {
+  [[nodiscard]][[= refract::location]] std::uint8_t read(const Interrupt which) const {
     return which == Interrupt::i ? regs().i() : irq_mode();
   }
   void write(const Interrupt which, const std::uint8_t value) {
@@ -198,7 +204,7 @@ public:
       irq_mode(value);
   }
 
-  [[nodiscard]] std::uint8_t read(Refresh) const { return regs().r(); }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Refresh) const { return regs().r(); }
   void write(Refresh, const std::uint8_t value) { regs().r(value); }
 
   // Advances time for one access, before the transfer happens, so anything scheduled sees the machine as it was at that

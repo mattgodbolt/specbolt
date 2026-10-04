@@ -4,7 +4,8 @@
 //
 // A `.cpu` description names operations and locations; this says how the framework fetches, accesses memory, forms an
 // indexed address and spends time. Operation names resolve against the palettes the target lists and the members the
-// machine marks with `[[=refract::operation]]` (see Execute.hpp); location names resolve as `read_verb` below says.
+// machine marks with `[[=refract::operation]]`, and location names against the `read` overloads it marks with
+// `[[=refract::location]]` (both in Model.hpp).
 //
 // This is what the *framework* calls, not everything the machine is asked for: an operation is free to use whatever the
 // machine offers, and the Z80's use `bus`, `in`, `out` and the register file besides, which are between the description
@@ -24,10 +25,10 @@
 
 namespace specbolt::refract {
 
-// The member name that makes a type a location: a public `read(E)` overload on the machine publishes every enumerator
-// of `E` to descriptions. Named here because the scan for location scopes (`location_scopes` in Execute.hpp) finds
-// overloads by this spelling, and this is the file stating what a machine must provide. `write` needs no such constant:
-// the generator spells it at the calls it splices.
+// The name of the overloads a machine marks `[[=refract::location]]`: the generator reads a location by calling it, so
+// `location_scopes` in Execute.hpp refuses a mark on anything else. Named here because this is the file stating what a
+// machine must provide. `write` needs no such constant: nothing is marked with it, and the generator spells it at the
+// calls it splices.
 inline constexpr std::string_view read_verb = "read";
 
 // Everything the framework does *to* a machine. `delay` is separate from the accesses because an idle cycle is not a

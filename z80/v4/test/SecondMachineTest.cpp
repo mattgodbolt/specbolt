@@ -67,7 +67,7 @@ struct Toy {
   }
   void delay(const std::uint8_t count) { cycles += count; }
 
-  [[nodiscard]] std::uint8_t read(const Reg which) const { return which == Reg::a ? a : x; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(const Reg which) const { return which == Reg::a ? a : x; }
   void write(const Reg which, const std::uint8_t value) { (which == Reg::a ? a : x) = value; }
 
   // Two verbs the machine marks, one that needs it and one that does not. `delay` above is public and is not a verb,

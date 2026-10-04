@@ -116,8 +116,9 @@ supply is a compile error naming the line that asked for it.
 This document describes the table; the other half of the contract is the CPU
 description, and a `.cpu` file means nothing without it. That half says what a
 row's operations mean, what its names mean, and how the framework drives the
-chip. `Machine.hpp` states the last of these as a concept. Locations need no
-list: a location is whatever the machine can `read`. For the Z80 the palettes
+chip. `Machine.hpp` states the last of these as a concept. Locations are
+marked, as the machine's operations are: a location is an enumerator of an enum
+that a `read` marked `[[=refract::location]]` takes. For the Z80 the palettes
 are `Operations.hpp` and the shared `Alu`, and the machine itself, in `Z80.hpp`,
 supplies the rest. Be warned that the operations are not a small file: the easy
 majority of an instruction set becomes rows, and what stays behind is the
@@ -126,7 +127,7 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 | the table writes | the CPU supplies |
 |---|---|
 | an **operation**: `inc8`, `add16` | a static function of that name in a palette the target lists, or a member the machine publishes with `[[=refract::operation]]` |
-| a **location**: `a`, `hl`, `pc` | an enumerator of that name, and a public `read` taking its enum, which is what makes it a location; a `write` taking it too, if a row writes there |
+| a **location**: `a`, `hl`, `pc` | an enumerator of that name, and a public `read` taking its enum, marked `[[=refract::location]]`, which is what makes it a location; a `write` taking it too, if a row writes there |
 | a **value** an operation takes as an enum: `left`, `i` | an enumerator of the parameter's enum, under its [spelling](#spellings) |
 | a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, and `read_memory16` / `write_memory16` |
@@ -267,7 +268,7 @@ number          = digit , { digit } | "0x" , hex-digit , { hex-digit } ;
 (* terminals *)
 vocab-name      = ? a word, no space. Compared exactly, so `reg` and `Reg`
                     would be different vocabularies ? ;
-scope-name      = ? the identifier of an enum the machine can `read`, or of
+scope-name      = ? the identifier of an enum a marked `read` takes, or of
                     one some operation takes as a parameter. Compared
                     *exactly*, unlike a member: it names a C++ type rather than
                     something written the way assembly is written ? ;
@@ -329,7 +330,7 @@ want. With one the search is that enum and nothing else, so a member that is not
 one of its enumerators is an error naming the line, and a name that means two
 things elsewhere means only one thing here.
 
-The scope may be an enum the machine can `read`, which is a kind of location, or
+The scope may be an enum of the machine's locations, one a marked `read` takes, or
 an enum some operation takes as a parameter, which is how a vocabulary can
 select between values rather than places:
 
@@ -337,7 +338,7 @@ select between values rather than places:
 vocab dir : BlockDirection = i d
 ```
 
-An enum the machine declares but neither reads nor takes, such as the Z80's
+An enum the machine declares but neither marks nor takes, such as the Z80's
 `Bus`, is not a scope. Members are still matched ignoring case, and against an
 enumerator's [spelling](#spellings) where it declares one. The *scope* is
 matched exactly, because it names a C++ type.
