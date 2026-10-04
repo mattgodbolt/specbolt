@@ -235,14 +235,12 @@ constexpr void parse_substitutions(
         throw std::runtime_error("only a table that takes a view may substitute a view reference");
       // Parsed against an empty pattern: a substitution has no opcode, so the view is the only thing that can select
       // its member, and any other reference fails for want of a slice.
-      const auto reference = reference_from_braces(vocabularies, to, Pattern{}, table);
-      substitution.to_is_view = true;
-      substitution.to_vocabulary = reference.vocabulary_index;
+      substitution.to = Rule::FromView{reference_from_braces(vocabularies, to, Pattern{}, table).vocabulary_index};
     }
     else {
       // What a row claims is worked out before any rule is applied, so a row renamed to nothing would still claim its
       // opcodes and then resolve to a default zero.
-      substitution.to = parse_member(to);
+      const auto member = parse_member(to);
       refract::visit(Overloaded{
                          [](const Member::Hole &) {
                            throw std::runtime_error(
@@ -250,7 +248,8 @@ constexpr void parse_substitutions(
                          },
                          [](const OneOf<Operand, Member::Operation> auto &) {},
                      },
-          substitution.to.kind);
+          member.kind);
+      substitution.to = member;
     }
     table.rules.push_back(substitution);
   }
@@ -293,7 +292,6 @@ constexpr void parse_substitutions(
         const auto found = std::ranges::find(result, parent, &TableDecl::name);
         if (found == result.end())
           throw std::runtime_error("no table named '" + std::string(parent) + "' is declared above this one");
-        table.derived = true;
         table.parent = static_cast<std::uint8_t>(found - result.begin());
         if (parser.next_word() != "with")
           throw std::runtime_error("expected 'with' after the parent table name");

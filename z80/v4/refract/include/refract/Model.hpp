@@ -279,13 +279,15 @@ struct Vocabulary {
 // different things in different vocabularies: `reg.h` is renamed by a view and the `real.h` of an indexed load is not.
 // The right side is a whole member, so a substitute may bring its own addressing mode and write-back delay.
 struct Rule {
+  // A replacement chosen by the table's view rather than fixed: whichever member of this vocabulary the view selects.
+  // It is what lets one table stand for every member the view can select: the Z80's `pair.hl -> {index:view}` covers
+  // `ix` and `iy` at once.
+  struct FromView {
+    std::uint8_t vocabulary_index{};
+  };
   std::uint8_t vocabulary_index{};
   std::string_view from{};
-  Member to{};
-  // The replacement is chosen by the table's view rather than fixed, which is what lets one table stand for every
-  // member the view can select: the Z80's `pair.hl -> {index:view}` covers `ix` and `iy` at once.
-  bool to_is_view{};
-  std::uint8_t to_vocabulary{};
+  std::variant<Member, FromView> to{};
 };
 
 // The renamings one table applies to what it decodes.
@@ -354,30 +356,43 @@ struct Resolution {
 }
 
 // Follows a reference to the member it names: the opcode's slice, or the table's view, says which, and the table's
-// rules may rename it. `source_of` follows a reference the same way to say where the member came from; the two share
-// `rule_for` so that they agree about which rule fires. A check asks with view 0 and trusts the answer for every view,
-// which `check_view_vocabulary` in Parse.hpp makes sound for the member's shape, on the assumption about rules that
-// `source_of` states.
+// rules may rename it. `view_vocabulary_of` follows a reference the same way to say whether the view chose the member;
+// the two share `rule_for` so that they agree about which rule fires. A check asks with view 0 and trusts the answer
+// for every view, which `check_view_vocabulary` in Parse.hpp makes sound for the member's shape, on the assumption
+// about rules that `view_vocabulary_of` states.
 [[nodiscard]] constexpr Member member_of(const Resolution &at, const Reference reference) {
   const auto which = reference.from_view ? at.view : at.matched.slices[reference.slice_index].extract(at.opcode);
   const auto &member = at.vocabularies[reference.vocabulary_index].members[which];
   if (const auto *rule = rule_for(at.rules, reference, member.display))
-    return rule->to_is_view ? at.vocabularies[rule->to_vocabulary].members[at.view] : rule->to;
+    return refract::visit(
+        Overloaded{
+            [](const Member &fixed) { return fixed; },
+            [&](const Rule::FromView &chosen) { return at.vocabularies[chosen.vocabulary_index].members[at.view]; },
+        },
+        rule->to);
   return member;
 }
 
-// Which vocabulary a reference finally lands in, as an index into `at.vocabularies`, and whether the view chose the
-// member. Only `resolve` needs this: an operand the view chose must name the vocabulary rather than the member, because
-// the member is not known yet.
-[[nodiscard]] constexpr std::pair<std::uint8_t, bool> source_of(const Resolution &at, const Reference reference) {
+// The vocabulary the table's view selects a reference's member from, as an index into `at.vocabularies`, or nothing
+// when the opcode or a fixed rule settles which member it is. Only `resolve` needs this: an operand the view chose must
+// name the vocabulary rather than the member, because the member is not known yet.
+[[nodiscard]] constexpr std::optional<std::uint8_t> view_vocabulary_of(
+    const Resolution &at, const Reference reference) {
   // Member 0 stands for every member the view could select. That assumes no rule names a member of a vocabulary a view
   // selects: rules match by display text, which differs between those members and which `check_view_vocabulary` does
   // not compare, so such a rule would fire for one view and not the others. Nothing checks the assumption.
   const std::size_t which = reference.from_view ? 0u : at.matched.slices[reference.slice_index].extract(at.opcode);
   const auto &member = at.vocabularies[reference.vocabulary_index].members[which];
   if (const auto *rule = rule_for(at.rules, reference, member.display))
-    return {rule->to_vocabulary, rule->to_is_view};
-  return {reference.vocabulary_index, reference.from_view};
+    return refract::visit(
+        Overloaded{
+            [](const Member &) -> std::optional<std::uint8_t> { return std::nullopt; },
+            [](const Rule::FromView &chosen) -> std::optional<std::uint8_t> { return chosen.vocabulary_index; },
+        },
+        rule->to);
+  if (reference.from_view)
+    return reference.vocabulary_index;
+  return std::nullopt;
 }
 
 // The member a row's vocabulary reference selects, resolved as the operand the row wrote there: `resolve` for the
@@ -414,9 +429,9 @@ struct Resolution {
   // The member supplies the shape (indirect, displaced, what a write-back idles for) but *which* member is not known
   // until the table's view has been chosen, so the vocabulary is carried instead of a name. The generated code turns it
   // into the list of locations the view selects between.
-  if (const auto [vocabulary, from_view] = source_of(at, reference); from_view) {
+  if (const auto vocabulary = view_vocabulary_of(at, reference)) {
     result.from_view = true;
-    result.view_vocabulary = vocabulary;
+    result.view_vocabulary = *vocabulary;
   }
   return result;
 }
@@ -485,9 +500,9 @@ struct Row {
 struct TableDecl {
   std::string_view name{};
   std::size_t line{};
-  // A derived table decodes its parent's rows under `rules`, and may carry rows of its own that override them.
-  bool derived{};
-  std::uint8_t parent{};
+  // The table this one derives from, if it does. A derived table decodes its parent's rows under `rules`, and may carry
+  // rows of its own that override them.
+  std::optional<std::uint8_t> parent{};
   Rules rules{};
   // A table declared `t(view:v)` is decoded once for each member of `v` without being generated once for each; the
   // Z80's is `table indexed(view:index)`. The name is what a row writes where a slice letter would go; empty means the

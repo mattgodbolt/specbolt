@@ -113,15 +113,15 @@ constexpr void check_derived_rows_override(const Description &description, const
   const auto tables = description.tables;
   for (std::size_t mine = 0; mine < rows.size(); ++mine) {
     const auto &table = tables[rows[mine].table];
-    if (!table.derived)
+    if (!table.parent)
       continue;
     // The rows the parent decodes to are what this table inherits.
     const auto clashes = [&](const std::optional<std::size_t> inherited) {
       return inherited && partly_overlaps(covers[mine], covers[*inherited]);
     };
-    if (std::ranges::any_of(description.decoded[table.parent], clashes))
+    if (std::ranges::any_of(description.decoded[*table.parent], clashes))
       throw table_error(rows[mine].line,
-          "this row overlaps one it inherits from '" + std::string(tables[table.parent].name) +
+          "this row overlaps one it inherits from '" + std::string(tables[*table.parent].name) +
               "' without replacing it or fitting inside it, so it takes opcodes that row meant to keep");
   }
 }
@@ -176,7 +176,7 @@ constexpr void check_tables_used(const Description &description) {
   const auto tables = description.tables;
   for (const auto [which, table]: std::views::enumerate(tables))
     // A derived table with no rows of its own is its parent, renamed, which is the whole point of one.
-    if (!table.derived && !std::ranges::contains(description.rows, static_cast<std::uint8_t>(which), &Row::table))
+    if (!table.parent && !std::ranges::contains(description.rows, static_cast<std::uint8_t>(which), &Row::table))
       throw table_error(table.line, "this table has no rows");
 
   std::vector<bool> reachable(tables.size());

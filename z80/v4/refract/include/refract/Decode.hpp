@@ -164,10 +164,10 @@ struct Instruction {
       if (claimed.test(opcode) && !all[row.table][opcode])
         all[row.table][opcode] = index;
   for (std::size_t which = 0; which < tables.size(); ++which)
-    if (tables[which].derived)
+    if (const auto parent = tables[which].parent)
       for (std::size_t opcode = 0; opcode < 256; ++opcode)
         if (!all[which][opcode])
-          all[which][opcode] = all[tables[which].parent][opcode];
+          all[which][opcode] = all[*parent][opcode];
   return all;
 }
 
