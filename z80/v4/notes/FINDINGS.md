@@ -110,6 +110,10 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   `std::format` in a constant expression (https://compiler-explorer.com/z/avo378TcT, against gcc 16.2 failing at
   https://compiler-explorer.com/z/YbYen74Kn), so it should arrive with gcc 17. The libc++ that Barry's fork builds
   against for WASM does not have it yet.
+- `std::map` is not usable in constant evaluation at all, not even created and destroyed inside one evaluation: its
+  default constructor is not `constexpr` (https://compiler-explorer.com/z/v4ofv3o47, checked 2026-10-05). C++26 makes
+  it so (P3372); neither libstdc++ 16 nor the libc++ of Barry's fork has it yet. Even then a `constexpr` variable could
+  not keep its allocation, so a map to look names up in would be rebuilt by every evaluation that wanted one.
 
 ### Why refract has its own `Vector`, and what it would take to use `std::inplace_vector`
 
@@ -323,6 +327,56 @@ the quiet machine, alternating the two builds.
   load average 15. Peak memory is unaffected by load and time is not, so a time from a loaded
   machine is a bound at best. Every time above was taken with the load below two, alternating
   the two builds, or says so.
+
+### Scanning once rather than at every lookup
+
+*Written 2026-10-05; the names, counts and times below are that day's.*
+
+`find_operation` and `find_location` resolve every name a description writes, and each call used to begin by scanning
+the machine afresh: `members_of` over the machine and each palette, `annotations_of` on every member of the machine,
+and a `std::vector` built from what passed. `location_scopes`, `operations` and `named_scopes` now promote what their
+scans find with `define_static_array`, once per machine, and a lookup reads that.
+
+- **`Z80.cpp` went from 158s to 122s.** One compile of `z80/v4/Z80.cpp` with the release-reflection flags and gcc 16.2,
+  alternating, load below two: 157.5s and 158.1s at 5.05 GB before, 122.2s and 122.2s at 4.70 GB with the scans
+  cached as static data members, as they are now (then with the type deduced, which gcc allows). An interim version
+  with each list a `static constexpr` local of a function measured 122.3s at 4.70 GB against main's 158.4s at 5.05 GB
+  in one more alternating pair.
+  The same file took 68.5s on 2026-09-21 (above); it has doubled since, and nothing here says why.
+- **A synthetic lookup shows where the time goes.** A machine shaped like the Z80's, with eighty operations across it
+  and two palettes and unmarked members besides, looked up a thousand times, each lookup a template argument in its own
+  instantiation, as `run_step<find_operation(verb, row.line), call>` is. Per lookup, from the difference between a
+  thousand lookups and one, with `-fsyntax-only`:
+
+  | How a name is found                                                        | Per lookup | Once  |
+  |----------------------------------------------------------------------------|-----------:|------:|
+  | Rescan on every lookup (as before)                                         | 16 ms      |       |
+  | Scan promoted once, read linearly, compared ignoring case                  | 1.9 ms     |       |
+  | Promoted sorted by lower-cased name, `equal_range` lower-casing each probe | 11 ms      | 1 s   |
+  | Promoted with each name lower-cased up front, `equal_range`                | 1.85 ms    | 1.2 s |
+  | The same, read linearly                                                    | 3 ms       | 1.2 s |
+  | Promoted, and memoised per name through `std::meta::substitute`            | 0.5 ms     |       |
+
+  The rescan also peaked at 2.0 GB, against 0.35 GB for the promoted linear scan, because all thousand lookups ran
+  inside one declaration and nothing was reclaimed between them (the first bullet of the entry above).
+- **Sorting buys nothing at this size, and lower-casing costs.** A binary search over eighty entries is no faster than
+  reading them all, and the sort costs a second up front. Building a `std::string` to lower-case a name at each probe
+  is the slowest of all, and even names lower-cased in advance lose to `same_ignoring_case` comparing in place.
+- **gcc does not remember a `consteval` call.** Giving every lookup of a name the same line, so that
+  `find_operation(name, line)` was called with identical arguments over and over, changed nothing: the thousand
+  rescans compiled in 18.9s either way.
+- **Memoising per name is left undone.** A variable template keyed on a structural name, reached from inside
+  `find_operation` through `substitute`, searches each distinct name once. At the real file's scale that is an
+  estimated few seconds more, for a structural name type and an error that would have to be reported by the caller.
+- **`std::map` was not an option** (Library, above).
+- **A `static constexpr auto` data member is evaluated when its class is instantiated, on Barry's fork.** gcc 16.2
+  built the cached lists as static data members of `Interpreter` declared `auto`, evaluating each on first use. The
+  fork evaluated them while instantiating the class, to learn their type, so the scan's call to `quoted_name_of`,
+  declared further down, failed: "no member 'quoted_name_of' in 'specbolt::refract::Interpreter<specbolt::v4::Target>';
+  it has not yet been instantiated". gcc failed the same way, "declaration of 'quoted_name_of' depends on itself", once
+  one member's initialiser was a lambda whose return type had to be deduced. With the type spelled,
+  `std::span<const std::meta::info>`, both compilers accept the members wherever they are declared, as they do a deduced
+  member declared after everything it calls: checked on a small class template with both, then in the real build.
 
 ### Structural types and static promotion
 

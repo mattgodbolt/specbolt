@@ -166,7 +166,7 @@ TEST_CASE("A machine whose locations are marked wrongly is reported") {
   STATIC_CHECK(throws_with([] { Generator<Shadowing, Operations>::check_location_names_unique(); },
       "two of this machine's readable locations are spelled 'a' (in Reg and Other), so a description could not say "
       "which it meant"));
-  STATIC_CHECK(throws_with([] { return Generator<Mismarked, Operations>::location_scopes(); },
+  STATIC_CHECK(throws_with([] { return Generator<Mismarked, Operations>::scan_location_scopes(); },
       "'peek' is marked [[=refract::location]], so it must be a public `read` taking one enum, the location it reads"));
 }
 
