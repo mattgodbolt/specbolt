@@ -26,9 +26,9 @@
 namespace specbolt::refract {
 
 // The name of the overloads a machine marks `[[=refract::location]]`: the generator reads a location by calling it, so
-// `location_scopes` in Execute.hpp refuses a mark on anything else. Named here because this is the file stating what a
-// machine must provide. `write` needs no such constant: nothing is marked with it, and the generator spells it at the
-// calls it splices.
+// `scan_location_scopes` in Execute.hpp refuses a mark on anything else. Named here because this is the file stating
+// what a machine must provide. `write` needs no such constant: nothing is marked with it, and the generator spells it
+// at the calls it splices.
 inline constexpr std::string_view read_verb = "read";
 
 // Everything the framework does *to* every machine. `delay` is separate from the accesses because an idle cycle is not

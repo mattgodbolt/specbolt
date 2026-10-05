@@ -131,14 +131,14 @@ struct Interpreter {
     });
   }
 
-  // The enums a location name may come from: the one each of the machine's `[[=refract::location]]` overloads takes.
-  // An enum no marked overload takes is not a location, however public a `read` of it may be; the Z80's `Bus`, which
-  // only `Z80::bus` takes, is not one.
+  // Scans the machine for the enums a location name may come from: the one each of its `[[=refract::location]]`
+  // overloads takes. An enum no marked overload takes is not a location, however public a `read` of it may be; the
+  // Z80's `Bus`, which only `Z80::bus` takes, is not one.
   //
   // The scan sees private members too, so that a mark on something the generated code could not call is an error rather
   // than silently ignored: a location is read and written by calling `read` and `write` on it, so the mark belongs only
   // on a public `read` taking the one enum.
-  [[nodiscard]] static consteval std::vector<std::meta::info> location_scopes() {
+  [[nodiscard]] static consteval std::vector<std::meta::info> scan_location_scopes() {
     std::vector<std::meta::info> scopes;
     for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::unchecked())) {
       if (!std::meta::is_function(member) || !is_marked(member, ^^Location))
@@ -157,11 +157,12 @@ struct Interpreter {
     return scopes;
   }
 
-  // The enums a vocabulary may name as its scope: those the machine's marked `read` overloads take, and any enum an
-  // operation takes as a parameter. Nothing is declared a scope as such: an enum is one because a location or an
-  // operation uses it.
-  [[nodiscard]] static consteval std::vector<std::meta::info> named_scopes() {
-    auto scopes = location_scopes();
+  // Gathers the enums a vocabulary may name as its scope: those the machine's marked `read` overloads take, and any
+  // enum an operation takes as a parameter. Nothing is declared a scope as such: an enum is one because a location or
+  // an operation uses it.
+  [[nodiscard]] static consteval std::vector<std::meta::info> scan_named_scopes() {
+    const auto locations = location_scopes();
+    std::vector<std::meta::info> scopes(locations.begin(), locations.end());
     for (const auto candidate: operations())
       for (const auto parameter: std::meta::parameters_of(candidate))
         if (const auto type = std::meta::type_of(parameter);
@@ -170,10 +171,10 @@ struct Interpreter {
     return scopes;
   }
 
-  // Every function a description may name: the machine's marked members, static or not, and every public static
-  // function of each palette. `has_identifier` excludes the implicitly-declared special members, which have no name to
-  // compare.
-  [[nodiscard]] static consteval std::vector<std::meta::info> operations() {
+  // Scans the machine and its palettes for every function a description may name: the machine's marked members, static
+  // or not, and every public static function of each palette. `has_identifier` excludes the implicitly-declared special
+  // members, which have no name to compare.
+  [[nodiscard]] static consteval std::vector<std::meta::info> scan_operations() {
     std::vector<std::meta::info> found;
     for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current()))
       if (std::meta::is_function(member) && std::meta::has_identifier(member) && is_marked(member, ^^Operation))
@@ -182,6 +183,25 @@ struct Interpreter {
       for (const auto member: std::meta::members_of(palette, std::meta::access_context::current()))
         if (std::meta::is_function(member) && std::meta::is_static_member(member) && std::meta::has_identifier(member))
           found.push_back(member);
+    return found;
+  }
+
+  // What the scans above find, worked out once per machine and promoted to static storage, which is what every lookup
+  // reads. A scan reads every member of the machine with its annotations, and every member of each palette, while a
+  // description looks a name up at every step it writes, so scanning at each lookup is where much of a compile went
+  // (notes/FINDINGS.md, "Scanning once rather than at every lookup"). Each is a `static constexpr` inside a function
+  // rather than a static member, so that it is evaluated when first asked for, by which time every member the scan
+  // calls has been declared.
+  [[nodiscard]] static consteval std::span<const std::meta::info> location_scopes() {
+    static constexpr auto found = std::define_static_array(scan_location_scopes());
+    return found;
+  }
+  [[nodiscard]] static consteval std::span<const std::meta::info> operations() {
+    static constexpr auto found = std::define_static_array(scan_operations());
+    return found;
+  }
+  [[nodiscard]] static consteval std::span<const std::meta::info> named_scopes() {
+    static constexpr auto found = std::define_static_array(scan_named_scopes());
     return found;
   }
 
