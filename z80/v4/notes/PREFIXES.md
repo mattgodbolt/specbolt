@@ -478,4 +478,5 @@ the one line that embeds it.
 
 *2026-10-03: the parser has since moved into refract, and a description reaches it as
 `refract::Compiled<Source>`, so nothing in the library names `z80.cpu` at all: `Target.hpp` embeds
-it, and `SecondMachineTest` runs a second description in the same binary.*
+it, and `SecondMachineTest` runs a second description in the same binary.* *2026-10-04: that second
+description is now a 6502, run by `refract/test/M6502Test.cpp`.*

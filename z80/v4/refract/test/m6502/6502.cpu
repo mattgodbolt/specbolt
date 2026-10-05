@@ -1,0 +1,107 @@
+# The documented NMOS 6502, refract's second machine: see z80/v4/notes/6502.md for what this shape says about the
+# format, and where it bends.
+#
+# The 6502 lays its opcodes out as `aaabbbcc`: `cc` picks a group, `aaa` the operation within it, and `bbb` the
+# addressing mode. The operation is a vocabulary here, one row serving every operation of a group. The addressing mode
+# is not: its members would fetch different numbers of bytes, and an indexed or indirect mode is a computation rather
+# than an operand, so each mode is a row of its own, and forms its address in explicit steps through `ea`, the chip's
+# internal effective-address latch.
+
+# The accumulator group, `cc = 01`, chosen by `aaa`. Every one reads its operand and writes the accumulator except
+# `sta`, which reads the accumulator and writes memory, and whose indexed modes always pay for the page they might
+# cross. So where each writes, where it reads and how it indexes are vocabularies over the same bits, as they are
+# decoded on the chip. There is no `sta #`, which is the hole in `alu_imm`.
+vocab alu     = ora:ora8 and:and8 eor:eor8 adc:adc8 sta:sta8 lda:lda8 cmp:cmp8 sbc:sbc8
+vocab alu_imm = ora:ora8 and:and8 eor:eor8 adc:adc8 -        lda:lda8 cmp:cmp8 sbc:sbc8
+vocab into    = a    a    a    a    (ea) a    a    a
+vocab from    = (ea) (ea) (ea) (ea) a    (ea) (ea) (ea)
+vocab indexed = r:index r:index r:index r:index w:index_store r:index r:index r:index
+
+# The read-modify-write group, `cc = 10`. `stx` and `ldx` sit in the same column with the other index register's
+# addressing modes, so they are holes here and rows of their own below.
+vocab rmw = asl:asl8 rol:rol8 lsr:lsr8 ror:ror8 - - dec:dec8 inc:inc8
+vocab shift = asl:asl8 rol:rol8 lsr:lsr8 ror:ror8
+
+# The index registers, where one opcode bit chooses between them: `ldx` and `ldy`, `stx` and `sty`, `tax` and `tay`
+# differ in that bit alone. `other` is the register the one it names is indexed by: `ldx $nn,y` but `ldy $nn,x`.
+vocab xy = y x
+vocab other = x y
+
+# The branches: a status bit, and whether it must be clear or set.
+vocab cond = bpl:bit_clear(0x80) bmi:bit_set(0x80) bvc:bit_clear(0x40) bvs:bit_set(0x40) \
+             bcc:bit_clear(0x01) bcs:bit_set(0x01) bne:bit_clear(0x02) beq:bit_set(0x02)
+
+# The status instructions, one bit each; the slot `tya` occupies is a hole.
+vocab flagop = clc:flag(0x01,0) sec:flag(0x01,1) cli:flag(0x04,0) sei:flag(0x04,1) \
+               - clv:flag(0x40,0) cld:flag(0x08,0) sed:flag(0x08,1)
+
+# The two pushes, which differ in what they push and how.
+vocab push = php:push_status pha:push8
+vocab pushed = p a
+
+table main
+
+# The accumulator group, one row per addressing mode, `sta` included. Every mode but immediate forms its address in
+# `ea` first, even where that is only the operand byte, so that `into` and `from` can name it.
+aaa00001 n   | {alu:a} ($nn,x)          | zp_index ea <- n x ; zp_pointer ea <- ea ; {alu:a} {into:a}, p <- a {from:a} p
+aaa00101 n   | {alu:a} $nn              | ld16 ea <- n ; {alu:a} {into:a}, p <- a {from:a} p
+aaa01001 n   | {alu_imm:a} #$nn         | {alu_imm:a} a, p <- a n p
+aaa01101 n n | {alu:a} $nnnn            | ld16 ea <- n ; {alu:a} {into:a}, p <- a {from:a} p
+aaa10001 n   | {alu:a} ($nn),y          | zp_pointer ea <- n ; {indexed:a} ea <- ea y ; {alu:a} {into:a}, p <- a {from:a} p
+aaa10101 n   | {alu:a} $nn,x            | zp_index ea <- n x ; {alu:a} {into:a}, p <- a {from:a} p
+aaa11001 n n | {alu:a} $nnnn,y          | {indexed:a} ea <- n y ; {alu:a} {into:a}, p <- a {from:a} p
+aaa11101 n n | {alu:a} $nnnn,x          | {indexed:a} ea <- n x ; {alu:a} {into:a}, p <- a {from:a} p
+
+# The read-modify-write group. The chip writes the old value back before the new one, which is the idle cycle the
+# `/delay=1` charges.
+0aa01010     | {shift:a} a              | {shift:a} a, p <- a p ; delay 1
+aaa00110 n   | {rmw:a} $nn              | {rmw:a} (n)/delay=1, p <- (n) p
+aaa01110 n n | {rmw:a} $nnnn            | {rmw:a} (n)/delay=1, p <- (n) p
+aaa10110 n   | {rmw:a} $nn,x            | zp_index ea <- n x ; {rmw:a} (ea)/delay=1, p <- (ea) p
+aaa11110 n n | {rmw:a} $nnnn,x          | index_store ea <- n x ; {rmw:a} (ea)/delay=1, p <- (ea) p
+
+# Loads, stores and compares of an index register, each row serving both.
+101000r0 n   | ld{xy:r} #$nn            | load8 {xy:r}, p <- n p
+101001r0 n   | ld{xy:r} $nn             | load8 {xy:r}, p <- (n) p
+101011r0 n n | ld{xy:r} $nnnn           | load8 {xy:r}, p <- (n) p
+101101r0 n   | ld{xy:r} $nn,{other:r}   | zp_index ea <- n {other:r} ; load8 {xy:r}, p <- (ea) p
+101111r0 n n | ld{xy:r} $nnnn,{other:r} | index ea <- n {other:r} ; load8 {xy:r}, p <- (ea) p
+100001r0 n   | st{xy:r} $nn             | ld8 (n) <- {xy:r}
+100011r0 n n | st{xy:r} $nnnn           | ld8 (n) <- {xy:r}
+100101r0 n   | st{xy:r} $nn,{other:r}   | zp_index ea <- n {other:r} ; ld8 (ea) <- {xy:r}
+11r00000 n   | cp{xy:r} #$nn            | cmp8 {xy:r}, p <- {xy:r} n p
+11r00100 n   | cp{xy:r} $nn             | cmp8 {xy:r}, p <- {xy:r} (n) p
+11r01100 n n | cp{xy:r} $nnnn           | cmp8 {xy:r}, p <- {xy:r} (n) p
+
+# What is left of `cc = 00`.
+00100100 n   | bit $nn                  | bit8 p <- a (n) p
+00101100 n n | bit $nnnn                | bit8 p <- a (n) p
+01001100 n n | jmp $nnnn                | ld16 pc <- n
+01101100 n n | jmp ($nnnn)              | jmp_pointer pc <- n
+
+# The branches, all eight in one row. Two cycles untaken; the machine charges for taking it and for a page crossed.
+fff10000 n   | {cond:f} $e              | {cond:f} p ; branch pc <- pc n
+
+# The single-byte instructions. Every one takes two cycles, the second a dummy read.
+fff11000     | {flagop:f}               | {flagop:f} p <- p ; delay 1
+101010r0     | ta{xy:r}                 | load8 {xy:r}, p <- a p ; delay 1
+10011000     | tya                      | load8 a, p <- y p ; delay 1
+10001010     | txa                      | load8 a, p <- x p ; delay 1
+10011010     | txs                      | ld8 s <- x ; delay 1
+10111010     | tsx                      | load8 x, p <- s p ; delay 1
+11r01000     | in{xy:r}                 | inc8 {xy:r}, p <- {xy:r} p ; delay 1
+10001000     | dey                      | dec8 y, p <- y p ; delay 1
+11001010     | dex                      | dec8 x, p <- x p ; delay 1
+11101010     | nop                      | delay 1
+0r001000     | {push:r}                 | delay 1 ; {push:r} {pushed:r}
+00101000     | plp                      | delay 2 ; pull_status p <-
+01101000     | pla                      | delay 2 ; pull8 a <- ; load8 a, p <- a p
+
+# Calls, returns and the interrupt. `jsr` pushes the address of its own last byte, and `rts` steps past it.
+00000000     | brk                      | delay 1 ; brk
+00100000 n n | jsr $nnnn                | delay 1 ; dec16 ea <- pc ; push16 ea ; ld16 pc <- n
+01000000     | rti                      | delay 2 ; pull_status p <- ; pull16 pc <-
+01100000     | rts                      | delay 2 ; pull16 ea <- ; inc16 pc <- ea ; delay 1
+
+# Everything else is undocumented, and some of it halts the chip. Not modelled.
+xxxxxxxx     | ???                      | delay 1

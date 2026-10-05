@@ -1,7 +1,8 @@
 #pragma once
 
 // What refract generates for: the Z80, the verbs its description may name, and the description itself. This is the
-// whole of the Z80's side of the contract with the library; a second machine would be a second one of these.
+// whole of the Z80's side of the contract with the library; the 6502's, in `refract/test/m6502/Target.hpp`, is a
+// second one of these.
 
 #include "Operations.hpp"
 #include "refract/Compiled.hpp"

@@ -10,7 +10,9 @@ description is a compile error naming its line.
 - **`refract/`** is the library, the `refract` CMake target, with its headers in
   `refract/include/refract/` and its own tests in `refract/test/`. It knows no CPU: it reads a
   `.cpu` description, checks it, and generates code against whatever machine a target names. Its
-  tests build with nothing of the Z80 on the include path, so the build checks that it needs none.
+  tests build with nothing of the Z80 on the include path, so the build checks that it needs none,
+  and they include a second machine, a 6502 in `refract/test/m6502/`
+  ([notes/6502.md](notes/6502.md)).
 - **Everything else here is the Z80:**
   - `z80.cpu`, the description;
   - `Target.hpp`, which embeds it and names the machine and its palettes of verbs;

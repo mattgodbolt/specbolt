@@ -90,8 +90,10 @@ else:
 - `read`/`write` overloads: how to touch storage, and, by marking each `read` with
   `[[=refract::location]]`, what storage a description may name
 - `read_memory`/`write_memory` and their 16-bit forms: how to touch memory through an address
-- `fetch_opcode`/`fetch_immediate`/`fetch_immediate16`: how to read the instruction stream
-- `displaced_address`: how a base and a displacement combine, and what forming the address costs
+- `fetch_opcode`/`fetch_immediate`: how to read the instruction stream
+- `displaced_address` and `displacement_window_bytes`, for a description with displaced rows: how a
+  base and a signed displacement combine, what forming the address costs, and how many bytes the
+  window it takes holds
 - `delay`: how to spend an idle cycle
 - `start_instruction`: what happens between instructions (an interrupt, a halt), and whether to
   run another
@@ -133,9 +135,11 @@ back to `a`.
 The format has described one real processor. An outside reader given only
 [CPU_FORMAT.md](CPU_FORMAT.md), told to know 6502 and Z80 but not to look at the code, predicted
 where a 6502 would break it. A 6502 description was then prototyped on 2026-09-27 and 2026-09-28,
-on the branch `mg/v4_spike_6502` (unmerged, kept on origin). It describes the documented NMOS
-instruction set in `z80/v4/m6502/6502.cpu`, runs it beside the Z80, has smoke tests only, and keeps
-the detail in that branch's `z80/v4/notes/6502.md`. What it found:
+on the branch `mg/v4_spike_6502`. Its first form, which needs no change to refract, is now refract's
+second machine: the documented NMOS instruction set in `refract/test/m6502/6502.cpu`, run by
+`refract/test/M6502Test.cpp` with nothing of the Z80 in reach, and written up in
+[notes/6502.md](notes/6502.md). The branch (unmerged, kept on origin) goes on to try the `mode` block
+below. What it found:
 
 - **An addressing mode cannot fetch its own operand, and that is the limit that bit.** The 6502's
   `aaabbbcc` puts the mode in `bbb`, which is what a vocabulary is for, but its modes fetch
@@ -144,11 +148,13 @@ the detail in that branch's `z80/v4/notes/6502.md`. What it found:
   so the format's headline ("one row, sixty-four instructions") did not transfer.
 - **Nested indirection and register indexing did not block.** Addresses are formed in steps through
   `ea`, a location standing for the chip's address latch: `(zp),Y` is
-  `zp_pointer ea <- n ; index ea <- ea y`, then `(ea)`. `displaced_address` is not used at all.
-- **Cost that depends on the data moved into the machine.** `index` records that a fix-up is owed;
-  a read pays the extra cycle only if the index crossed a page, and a write always pays, which is
-  what the chip's dummy read does. One addressing mode then serves loads, stores and
-  read-modify-writes, with no framework change.
+  `zp_pointer ea <- n ; index ea <- ea y`, then `(ea)`. The machine has no `displaced_address`,
+  which only a machine with displaced rows needs.
+- **Cost that depends on the data moved into the machine.** A page crossing costs a read a cycle
+  and a write always: `index` charges only when the page changes, `index_store` always, and the row
+  says which. On the branch's `mode` version, `index` records that a fix-up is owed and the access
+  that follows settles it, which is what the chip's dummy read does, so one addressing mode serves
+  loads, stores and read-modify-writes.
 - **Bus timing at step granularity** (CPU_FORMAT.md, "What this model cannot say") was not tested.
   The Spectrum's contention will decide whether it matters.
 

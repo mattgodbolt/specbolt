@@ -62,7 +62,7 @@ an error) and, within a table, which of two overlapping rows wins.
 
 Nothing in the format names the Z80, and the framework knows no Z80
 instruction. But the format has been written against one processor, and it
-shows in three places:
+shows in these places:
 
 - **An addressing mode cannot fetch its own operand.** Only the encoding column
   fetches, so a vocabulary member may neither render nor pass an immediate (see
@@ -74,13 +74,17 @@ shows in three places:
   [Displacement](#displacement)). An index register scaled by a word, or an
   unsigned offset, cannot be described.
 - **An opcode is eight bits** (see [Limits](#limits)).
+- **A sixteen-bit immediate is little-endian.** The framework fetches its two
+  bytes low first and the disassembler reads them the same way, so a machine
+  with big-endian immediates cannot be described.
 
-A 6502 description, prototyped on an unmerged branch, got further than that list
-suggests: `LDA ($20),Y` and `LDA $1234,X` can be written today, as steps through
-a location standing for the chip's address latch rather than as addressing
-modes. [NOTES.md](NOTES.md#what-a-second-cpu-would-need) has what it found and
-the design it points to. Treat "not Z80-specific" as a design intent tested
-against one real processor and one prototype, not as a promise.
+A 6502 description, refract's second machine (`refract/test/m6502/`), got
+further than that list suggests: `LDA ($20),Y` and `LDA $1234,X` can be written
+today, as steps through a location standing for the chip's address latch rather
+than as addressing modes. [NOTES.md](NOTES.md#what-a-second-cpu-would-need) has
+what it found and the design it points to. Treat "not Z80-specific" as a design
+intent tested against two processors, one of them only as far as smoke tests,
+not as a promise.
 
 ### The three columns
 
@@ -131,11 +135,11 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 | a **value** an operation takes as an enum: `left`, `i` | an enumerator of the parameter's enum, under its [spelling](#spellings) |
 | a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, and `read_memory16` / `write_memory16` |
-| an **immediate**: `n` | `fetch_immediate` or `fetch_immediate16`, by width |
+| an **immediate**: `n` | `fetch_immediate`, once per byte, low byte first |
 | any **opcode fetch** | `fetch_opcode` |
 | the start of every instruction | `start_instruction`, which answers whether to run another; where a machine takes an interrupt or idles a halt |
 | `delay`, and any `/delay=` | `delay`, published as an operation too if rows write `delay` steps |
-| a **displacement**: `(ix+d)` | `displaced_address`, told how many bytes were already read |
+| a **displacement**: `(ix+d)` | `displaced_address`, given the offset as a signed byte and told how many bytes were already read, and `displacement_window_bytes`; only a machine with displaced rows needs either |
 
 An operation's signature is the interface:
 
@@ -705,7 +709,7 @@ list because nothing else here says so.
 | what | charged by |
 |---|---|
 | the opcode fetch, including every prefix byte | the CPU's `fetch_opcode` |
-| each immediate, and any displacement | the CPU's `fetch_immediate`, or `fetch_immediate16` for a wide one |
+| each byte of an immediate, and any displacement | the CPU's `fetch_immediate` |
 | each read or write through an indirect operand | the CPU's `read_memory` / `write_memory`, or their 16-bit forms |
 | forming an indexed address | the CPU's `displaced_address` |
 | an explicit `delay` step, or a `/delay=` on an addressing mode | the CPU's `delay` |
@@ -845,10 +849,10 @@ as `displacement_window_bytes`, and a row that reads more is the error.
 
 What the CPU description does *not* decide is the offset's width or sign. One
 signed byte is baked into the format: it is what the encoding column's `d`
-fetches, and the disassembler renders `+d` as `+0x02` or `-0x01` and `$e` as a
-target measured from the end of the instruction, with no way for a machine to
-say otherwise. This is one of the limits under
-[How general is it](#how-general-is-it).
+fetches, `displaced_address` is handed it as a `std::int8_t`, and the
+disassembler renders `+d` as `+0x02` or `-0x01` and `$e` as a target measured
+from the end of the instruction, with no way for a machine to say otherwise.
+This is one of the limits under [How general is it](#how-general-is-it).
 
 ---
 
