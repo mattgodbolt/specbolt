@@ -735,3 +735,36 @@ source changed, while v4 went 12.7 to 12.2. That is the link-order effect the to
 it is why the per-core binaries are the ones to read a change from. It is also why "which core is
 fastest" depends on the machine: v4 led the combined binary on the Intel desktop in the top-level Notes.md, and
 v2 leads it on this laptop and on an AMD desktop.
+
+## Two server nodes, and v4 no longer leading
+
+*First written 2026-10-05, at `260c0bf`. Matt's runs; the build and the bench's flags were not recorded.*
+
+`z80_bench` with all four cores in one binary, zexdoc, nanoseconds per emulated instruction, best of the
+bench's repetitions.
+
+| | shared AMD node | spread | dedicated Intel node | spread |
+|---|---:|---:|---:|---:|
+| v1 | 24.84 | 1.3% | 15.23 | 2.7% |
+| v2 | **8.81** | 28.1% | **5.89** | 9.5% |
+| v3 | 9.35 | 0.9% | 6.34 | 6.7% |
+| v4 | 9.62 | 12.1% | 6.50 | 7.9% |
+
+**The order is the same on both:** v2, v3, v4, v1. v4 is 2% to 3% behind v3 and about 10% behind v2,
+so generating the interpreter from a table still costs about what generating it from C++ does.
+
+**v4 led this binary once, before it was threaded.** On the i9-9980XE desktop (the top-level Notes.md,
+"Confirmed on a machine that can actually be measured") v4 was 10.05 ns to v2's 10.21 in the combined
+binary, and v2 led when each was built alone. That was a gap of under 6% either way and the link-order
+effect of the section above; threading came afterwards and was measured v4 against v4. Neither node
+reproduces the lead.
+
+**zexdoc cannot show what threading is worth.** The bench drives zexdoc through `execute_one()` one
+instruction at a time, to watch for CP/M calls, so a handler's tail call into the next one collects
+nothing between instructions; threading measured 8% here and 15% to 17% on games run a frame at a time
+(the top-level Notes.md, "Attempted, and it is worth more than the estimate"). `--snapshot` runs a game
+through frames, and is the mode in which to look.
+
+**Read the spreads first.** v2's 28% on the shared node says its best may be a lucky repetition, and 7%
+to 10% on a dedicated node is wide against the desktop's 0.5% to 1.5%. Neither node is comparable with
+the desktop's absolute figures.
