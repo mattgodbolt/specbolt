@@ -126,7 +126,7 @@
     "row": {
       "comment": "Three columns: encoding | mnemonic | action.",
       "name": "meta.row.cpu",
-      "begin": "^([^\\s|]{8})((?:\\s+[nd]\\b)*)\\s*(?=\\|)",
+      "begin": "^([^\\s|\\\\]{8})((?:\\s+[nd]\\b)*)\\s*(?=\\|)",
       "beginCaptures": {
         "1": {
           "name": "meta.encoding.cpu",
@@ -223,8 +223,8 @@
     },
 
     "step-continued": {
-      "comment": "A step that starts on the next line, after `; \\`. A grammar sees one line at a time, so step-operation's lookbehind cannot find the `;` from there. This holds the semicolon's line open and scopes the first word of the next as the operation, and ends at anything else, so it cannot run on.",
-      "begin": "(;)\\s*(\\\\[ \\t\\r]*\\n)",
+      "comment": "A step that starts on the next line, after a `\\` that follows the action column's `|` or a `;`. A grammar sees one line at a time, so step-operation's lookbehind cannot find the `|` or `;` from there. This holds that line open and scopes the first word of the next as the operation, and ends at anything else, so it cannot run on.",
+      "begin": "(?:(;)|(?<=\\|))\\s*(\\\\[ \\t\\r]*\\n)",
       "beginCaptures": {
         "1": { "name": "punctuation.separator.step.cpu" },
         "2": { "name": "keyword.operator.continuation.cpu" }
