@@ -126,7 +126,7 @@
     "row": {
       "comment": "Three columns: encoding | mnemonic | action.",
       "name": "meta.row.cpu",
-      "begin": "^([01A-Za-z_]{8})((?:\\s+[nd]\\b)*)\\s*(?=\\|)",
+      "begin": "^([^\\s|\\\\]{8})((?:\\s+[nd]\\b)*)\\s*(?=\\|)",
       "beginCaptures": {
         "1": {
           "name": "meta.encoding.cpu",
@@ -185,6 +185,7 @@
       "beginCaptures": { "0": { "name": "punctuation.separator.column.cpu" } },
       "end": "(?=\\n)",
       "patterns": [
+        { "include": "#step-continued" },
         { "include": "#continuation" },
         { "include": "#step-goto" },
         { "include": "#step-operation" },
@@ -218,6 +219,20 @@
         "3": { "name": "punctuation.definition.view.begin.cpu" },
         "4": { "name": "variable.parameter.view.cpu" },
         "5": { "name": "punctuation.definition.view.end.cpu" }
+      }
+    },
+
+    "step-continued": {
+      "comment": "A step that starts on the next line, after a `\\` that follows the action column's `|` or a `;`. A grammar sees one line at a time, so step-operation's lookbehind cannot find the `|` or `;` from there. This holds that line open and scopes the first word of the next as the operation, and ends at anything else, so it cannot run on.",
+      "begin": "(?:(;)|(?<=\\|))\\s*(\\\\[ \\t\\r]*\\n)",
+      "beginCaptures": {
+        "1": { "name": "punctuation.separator.step.cpu" },
+        "2": { "name": "keyword.operator.continuation.cpu" }
+      },
+      "end": "^\\s*(?:(\\{[^}]*\\})|([A-Za-z_][A-Za-z0-9_]*))|(?=\\S|\\n)",
+      "endCaptures": {
+        "1": { "patterns": [{ "include": "#reference" }] },
+        "2": { "name": "support.function.operation.cpu" }
       }
     },
 
