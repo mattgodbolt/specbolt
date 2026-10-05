@@ -338,9 +338,10 @@ and a `std::vector` built from what passed. `location_scopes`, `operations` and 
 scans find with `define_static_array`, once per machine, and a lookup reads that.
 
 - **`Z80.cpp` went from 158s to 122s.** One compile of `z80/v4/Z80.cpp` with the release-reflection flags and gcc 16.2,
-  alternating, load below two: 157.5s and 158.1s at 5.05 GB before, 122.2s and 122.2s at 4.70 GB with the trial patch,
-  which cached the scans as static data members. The change as committed, with each list a `static constexpr` local
-  (the last bullet below), measured 122.3s at 4.70 GB against main's 158.4s at 5.05 GB in one more alternating pair.
+  alternating, load below two: 157.5s and 158.1s at 5.05 GB before, 122.2s and 122.2s at 4.70 GB with the scans
+  cached as static data members, as they are now (then with the type deduced, which gcc allows). An interim version
+  with each list a `static constexpr` local of a function measured 122.3s at 4.70 GB against main's 158.4s at 5.05 GB
+  in one more alternating pair.
   The same file took 68.5s on 2026-09-21 (above); it has doubled since, and nothing here says why.
 - **A synthetic lookup shows where the time goes.** A machine shaped like the Z80's, with eighty operations across it
   and two palettes and unmarked members besides, looked up a thousand times, each lookup a template argument in its own
@@ -369,12 +370,13 @@ scans find with `define_static_array`, once per machine, and a lookup reads that
   estimated few seconds more, for a structural name type and an error that would have to be reported by the caller.
 - **`std::map` was not an option** (Library, above).
 - **A `static constexpr auto` data member is evaluated when its class is instantiated, on Barry's fork.** gcc 16.2
-  built the trial patch, whose cached lists were static data members of `Interpreter`, evaluating each on first use.
-  The fork evaluated them while instantiating the class, so the scan's call to `quoted_name_of`, declared further down,
-  failed: "no member 'quoted_name_of' in 'specbolt::refract::Interpreter<specbolt::v4::Target>'; it has not yet been
-  instantiated". gcc failed the same way, "declaration of 'quoted_name_of' depends on itself", once one member's
-  initialiser was a lambda whose return type had to be deduced. A `static constexpr` local of a `consteval` function
-  (P2647) is evaluated only when the function first is, so each list lives in the function that returns it.
+  built the cached lists as static data members of `Interpreter` declared `auto`, evaluating each on first use. The
+  fork evaluated them while instantiating the class, to learn their type, so the scan's call to `quoted_name_of`,
+  declared further down, failed: "no member 'quoted_name_of' in 'specbolt::refract::Interpreter<specbolt::v4::Target>';
+  it has not yet been instantiated". gcc failed the same way, "declaration of 'quoted_name_of' depends on itself", once
+  one member's initialiser was a lambda whose return type had to be deduced. With the type spelled,
+  `std::span<const std::meta::info>`, both compilers accept the members wherever they are declared, as they do a deduced
+  member declared after everything it calls: checked on a small class template with both, then in the real build.
 
 ### Structural types and static promotion
 

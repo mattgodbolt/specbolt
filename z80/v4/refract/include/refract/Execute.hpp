@@ -161,9 +161,8 @@ struct Interpreter {
   // enum an operation takes as a parameter. Nothing is declared a scope as such: an enum is one because a location or
   // an operation uses it.
   [[nodiscard]] static consteval std::vector<std::meta::info> scan_named_scopes() {
-    const auto locations = location_scopes();
-    std::vector<std::meta::info> scopes(locations.begin(), locations.end());
-    for (const auto candidate: operations())
+    std::vector<std::meta::info> scopes(location_scopes.begin(), location_scopes.end());
+    for (const auto candidate: operations)
       for (const auto parameter: std::meta::parameters_of(candidate))
         if (const auto type = std::meta::type_of(parameter);
             std::meta::is_enum_type(type) && !std::ranges::contains(scopes, type))
@@ -189,21 +188,11 @@ struct Interpreter {
   // What the scans above find, worked out once per machine and promoted to static storage, which is what every lookup
   // reads. A scan reads every member of the machine with its annotations, and every member of each palette, while a
   // description looks a name up at every step it writes, so scanning at each lookup is where much of a compile went
-  // (notes/FINDINGS.md, "Scanning once rather than at every lookup"). Each is a `static constexpr` inside a function
-  // rather than a static member, so that it is evaluated when first asked for, by which time every member the scan
-  // calls has been declared.
-  [[nodiscard]] static consteval std::span<const std::meta::info> location_scopes() {
-    static constexpr auto found = std::define_static_array(scan_location_scopes());
-    return found;
-  }
-  [[nodiscard]] static consteval std::span<const std::meta::info> operations() {
-    static constexpr auto found = std::define_static_array(scan_operations());
-    return found;
-  }
-  [[nodiscard]] static consteval std::span<const std::meta::info> named_scopes() {
-    static constexpr auto found = std::define_static_array(scan_named_scopes());
-    return found;
-  }
+  // (notes/FINDINGS.md, "Scanning once rather than at every lookup"). The type is spelled rather than deduced: deducing
+  // it would need the initialiser while the class is still being instantiated, before the members the scans call.
+  static constexpr std::span<const std::meta::info> location_scopes = std::define_static_array(scan_location_scopes());
+  static constexpr std::span<const std::meta::info> operations = std::define_static_array(scan_operations());
+  static constexpr std::span<const std::meta::info> named_scopes = std::define_static_array(scan_named_scopes());
 
   // `c` in lower case, if it is an ASCII letter. Names in a description are matched the way assembler is written,
   // without regard to case.
@@ -229,7 +218,7 @@ struct Interpreter {
                                  "), so a description could not say which it meant");
       seen.emplace_back(name, scope);
     };
-    for (const auto scope: location_scopes())
+    for (const auto scope: location_scopes)
       for (const auto enumerator: std::meta::enumerators_of(scope)) {
         const auto identifier = std::meta::identifier_of(enumerator);
         claim(std::string(identifier), scope);
@@ -286,17 +275,17 @@ struct Interpreter {
   // C++ type's name, not something written the way assembly is written. Two enums of that name from different
   // namespaces are as ambiguous as any other name, so `only_match` reports them.
   [[nodiscard]] static consteval std::meta::info find_scope(const std::string_view name, const std::size_t line) {
-    const auto scopes = named_scopes();
     std::vector<std::meta::info> candidates;
-    for (const auto scope: scopes)
+    for (const auto scope: named_scopes)
       if (std::meta::identifier_of(scope) == name)
         candidates.push_back(scope);
     if (candidates.empty()) {
-      const auto offered =
-          scopes | std::views::transform([](const std::meta::info scope) { return std::meta::identifier_of(scope); });
-      throw error(line,
-          "no scope named '" + std::string(name) + "'" +
-              (scopes.empty() ? ", and this CPU offers none" : " (this CPU offers " + comma_separated(offered) + ")"));
+      const auto offered = named_scopes | std::views::transform([](const std::meta::info scope) {
+        return std::meta::identifier_of(scope);
+      });
+      throw error(line, "no scope named '" + std::string(name) + "'" +
+                            (named_scopes.empty() ? ", and this CPU offers none"
+                                                  : " (this CPU offers " + comma_separated(offered) + ")"));
     }
     return only_match(candidates, name, line);
   }
@@ -313,7 +302,7 @@ struct Interpreter {
           candidates.push_back(enumerator);
       return only_match(candidates, name, line);
     }
-    for (const auto everywhere: location_scopes())
+    for (const auto everywhere: location_scopes)
       for (const auto enumerator: std::meta::enumerators_of(everywhere))
         if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
           candidates.push_back(enumerator);
@@ -322,7 +311,7 @@ struct Interpreter {
     // enumerator's annotations is the expensive half (notes/FINDINGS.md, "Compile time, and where it went when it
     // moved").
     if (candidates.empty())
-      for (const auto everywhere: location_scopes())
+      for (const auto everywhere: location_scopes)
         for (const auto enumerator: std::meta::enumerators_of(everywhere))
           if (same_ignoring_case(spelling_of(enumerator), name))
             candidates.push_back(enumerator);
@@ -408,7 +397,7 @@ struct Interpreter {
   // there is none or more than one.
   [[nodiscard]] static consteval std::meta::info find_operation(const std::string_view name, const std::size_t line) {
     std::vector<std::meta::info> candidates;
-    for (const auto candidate: operations())
+    for (const auto candidate: operations)
       if (same_ignoring_case(std::meta::identifier_of(candidate), name))
         candidates.push_back(candidate);
     // A marked member the scan above could not see is a mistake worth its own message: access control would otherwise
