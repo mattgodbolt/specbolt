@@ -1016,8 +1016,11 @@ struct Interpreter {
       // used: the order arguments are evaluated in is unspecified, so a fetch inside a call could land after a memory
       // access the row puts before it.
       std::uint16_t immediate = 0;
-      if constexpr (row.immediate_bytes == 2)
-        immediate = machine.fetch_immediate16();
+      if constexpr (row.immediate_bytes == 2) {
+        // Low byte first, the format's rule, which the disassembler follows too.
+        const auto low = machine.fetch_immediate();
+        immediate = static_cast<std::uint16_t>(machine.fetch_immediate() << 8 | low);
+      }
       else if constexpr (row.immediate_bytes == 1)
         immediate = machine.fetch_immediate();
       else
@@ -1033,9 +1036,11 @@ struct Interpreter {
       std::uint16_t indexed = 0;
       if constexpr (displaced) {
         constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
-        consteval { check_window_holds(read_inside, row.line); }
-        indexed = machine.displaced_address(
-            direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded), displacement, read_inside);
+        consteval { check_machine_displaces(read_inside, row.line); }
+        // Asked again, so that a machine that cannot displace is told so above and not by a failed call besides.
+        if constexpr (DisplacingMachine<Machine>)
+          indexed = machine.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded),
+              static_cast<std::int8_t>(displacement), read_inside);
       }
       // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
@@ -1172,11 +1177,14 @@ struct Interpreter {
     [[clang::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
   }
 
-  // Checks a row's count of bytes read inside the window that forms its displaced address against what the machine
-  // says the window holds, so that a row asking for more is a diagnostic against it rather than a machine asked to
-  // spend time it does not have.
-  static consteval void check_window_holds(const std::uint8_t bytes_read, const std::size_t line) {
-    if (bytes_read > Machine::displacement_window_bytes)
+  // Checks that a displaced row's machine can form its address, and that the bytes the row reads inside the window
+  // that forms it are no more than the machine says the window holds. Either is a diagnostic against the row, rather
+  // than a failed call or a machine asked to spend time it does not have.
+  static consteval void check_machine_displaces(const std::uint8_t bytes_read, const std::size_t line) {
+    if constexpr (!DisplacingMachine<Machine>)
+      throw error(line, "this row is displaced, so the machine needs displaced_address and displacement_window_bytes "
+                        "(DisplacingMachine in Machine.hpp)");
+    else if (bytes_read > Machine::displacement_window_bytes)
       throw error(line, "this row reads " + decimal(bytes_read) +
                             " byte(s) inside the window that forms its displaced address, which is more than this "
                             "machine's window holds");

@@ -13,8 +13,8 @@
 // a way the generator cannot use. Its lookups are `consteval`, so `CHECK_THROWS_WITH` cannot call them; constant
 // evaluation can catch an exception, though, so each message is pinned exactly here and a regression fails the build.
 //
-// Only a diagnostic thrown from a `consteval` function a test can call is reachable this way. One raised while a
-// handler is instantiated, such as the displacement window's, is a hard error that nothing can catch.
+// Each is thrown by a `consteval` function the test calls directly. Instantiating a handler that fails the same check
+// would be a hard error, with nothing to catch it.
 
 namespace specbolt::refract {
 namespace {
@@ -42,16 +42,13 @@ enum class Way : std::uint8_t {
 // Everything `MachineLike` asks for, and nothing a description can name. Each machine below adds what its test needs;
 // none of them is ever run.
 struct Bare {
-  static constexpr std::uint8_t displacement_window_bytes = 0;
   bool start_instruction() { return false; }
   std::uint8_t fetch_opcode() { return 0; }
   std::uint8_t fetch_immediate() { return 0; }
-  std::uint16_t fetch_immediate16() { return 0; }
   std::uint8_t read_memory(std::uint16_t) { return 0; }
   std::uint16_t read_memory16(std::uint16_t) { return 0; }
   void write_memory(std::uint16_t, std::uint8_t) {}
   void write_memory16(std::uint16_t, std::uint16_t) {}
-  std::uint16_t displaced_address(const std::uint16_t base, std::uint8_t, std::uint8_t) { return base; }
   void delay(std::uint8_t) {}
 };
 
@@ -62,6 +59,12 @@ struct Plain : Bare {
 struct Shadowing : Bare {
   [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
   [[nodiscard]][[= refract::location]] std::uint8_t read(Other) const { return 0; }
+};
+
+// A machine whose description may have displaced rows, with a window that holds no bytes.
+struct Displacing : Plain {
+  static constexpr std::uint8_t displacement_window_bytes = 0;
+  std::uint16_t displaced_address(const std::uint16_t base, std::int8_t, std::uint8_t) { return base; }
 };
 
 struct Mismarked : Bare {
@@ -165,6 +168,16 @@ TEST_CASE("A machine whose locations are marked wrongly is reported") {
       "which it meant"));
   STATIC_CHECK(throws_with([] { return Generator<Mismarked, Operations>::location_scopes(); },
       "'peek' is marked [[=refract::location]], so it must be a public `read` taking one enum, the location it reads"));
+}
+
+TEST_CASE("A displaced row is checked against what its machine can do") {
+  STATIC_CHECK(throws_with([] { Generator<Plain, Operations>::check_machine_displaces(0, 7); },
+      "plain.cpu:7: this row is displaced, so the machine needs displaced_address and displacement_window_bytes "
+      "(DisplacingMachine in Machine.hpp)"));
+  STATIC_CHECK(throws_with([] { Generator<Displacing, Operations>::check_machine_displaces(1, 7); },
+      "plain.cpu:7: this row reads 1 byte(s) inside the window that forms its displaced address, which is more than "
+      "this machine's window holds"));
+  STATIC_CHECK(!throws_with([] { Generator<Displacing, Operations>::check_machine_displaces(0, 7); }, ""));
 }
 
 TEST_CASE("A vocabulary that mixes conditions with operations is reported") {

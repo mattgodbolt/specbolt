@@ -90,11 +90,6 @@ public:
     bus(Bus::operand, address);
     return memory_.read(address);
   }
-  [[nodiscard]] std::uint16_t fetch_immediate16() {
-    const auto low = fetch_immediate();
-    const auto high = fetch_immediate();
-    return static_cast<std::uint16_t>(high << 8 | low);
-  }
   [[nodiscard]] std::uint8_t read_memory(std::uint16_t address);
   [[nodiscard]] std::uint16_t read_memory16(std::uint16_t address);
   void write_memory(std::uint16_t address, std::uint8_t value);
@@ -140,16 +135,16 @@ public:
   [[nodiscard]][[= refract::operation]] Flags block_in(BlockDirection direction, Flags flags);
   [[nodiscard]][[= refract::operation]] Flags block_out(BlockDirection direction, Flags flags);
 
-  // How a displacement offsets a base, and what forming that address costs. The Z80 sign-extends and spends a
-  // five-T-state window doing it, but any immediate the instruction also carries is read *inside* that window, which is
+  // How a displacement offsets a base, and what forming that address costs. The Z80 spends a five-T-state window doing
+  // it, but any immediate the instruction also carries is read *inside* that window, which is
   // why `ld (ix+d), n` is 19 T-states and not 22, and why the framework says how many bytes it already read. Three per
   // byte, so the window holds one; the framework checks every displaced row against that, and reports one that reads
   // more.
   static constexpr std::uint8_t displacement_window_bytes = 1;
   [[nodiscard]] std::uint16_t displaced_address(
-      const std::uint16_t base, const std::uint8_t offset, const std::uint8_t bytes_read) {
+      const std::uint16_t base, const std::int8_t offset, const std::uint8_t bytes_read) {
     delay(static_cast<std::uint8_t>(5 - 3 * bytes_read));
-    return static_cast<std::uint16_t>(base + static_cast<std::int8_t>(offset));
+    return static_cast<std::uint16_t>(base + offset);
   }
 
   // Reading and writing a named location. One overload per kind of location, all called `read` or `write`, so the

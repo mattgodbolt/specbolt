@@ -31,9 +31,8 @@ namespace specbolt::refract {
 // calls it splices.
 inline constexpr std::string_view read_verb = "read";
 
-// Everything the framework does *to* a machine. `delay` is separate from the accesses because an idle cycle is not a
-// transfer, and `displaced_address` is separate because how a base and an offset combine, and what that costs, is the
-// machine's business rather than the format's.
+// Everything the framework does *to* every machine. `delay` is separate from the accesses because an idle cycle is not
+// a transfer. A machine whose description has displaced rows owes `DisplacingMachine` below as well.
 template<typename M>
 concept MachineLike =
     requires(M &machine, const std::uint16_t address, const std::uint8_t byte, const std::uint16_t word) {
@@ -41,10 +40,10 @@ concept MachineLike =
       { machine.fetch_opcode() } -> std::same_as<std::uint8_t>;
       // Between instructions: false ends the run. What the machine does in between is its own business.
       { machine.start_instruction() } -> std::same_as<bool>;
-      // Reading the bytes that follow an opcode, in the two widths a row can ask for. Exact rather than convertible: a
-      // machine answering the wide one with a narrow type would drop the high byte of every sixteen-bit immediate.
+      // Reading a byte that follows an opcode. A sixteen-bit immediate is two of them, low byte first: that is the
+      // format's rule rather than the machine's, so the disassembler, which has no machine to ask, reads it the same
+      // way.
       { machine.fetch_immediate() } -> std::same_as<std::uint8_t>;
-      { machine.fetch_immediate16() } -> std::same_as<std::uint16_t>;
 
       // Reading and writing memory, in both widths a row can ask for.
       { machine.read_memory(address) } -> std::same_as<std::uint8_t>;
@@ -52,14 +51,20 @@ concept MachineLike =
       { machine.write_memory(address, byte) };
       { machine.write_memory16(address, word) };
 
-      // Forming an indexed address, told how many bytes were already read inside whatever window the machine spends
-      // doing it. How many bytes that window holds is stated alongside, and the interpreter checks every displaced row
-      // against it.
-      { machine.displaced_address(address, byte, byte) } -> std::same_as<std::uint16_t>;
-      { M::displacement_window_bytes } -> std::convertible_to<std::uint8_t>;
-
       // Spending time on nothing.
       { machine.delay(byte) };
+    };
+
+// What a machine adds when its description has displaced rows, such as the Z80's `(ix+d)`: how a base and a signed
+// offset combine, and what that costs, which is the machine's business rather than the format's. It is told how many
+// bytes were already read inside whatever window it spends forming the address, and states how many that window holds.
+// Asked only of a machine whose description has a displaced row, and then against that row's line; a machine without
+// one, such as a 6502, need not provide it.
+template<typename M>
+concept DisplacingMachine =
+    requires(M &machine, const std::uint16_t base, const std::int8_t offset, const std::uint8_t bytes_read) {
+      { machine.displaced_address(base, offset, bytes_read) } -> std::same_as<std::uint16_t>;
+      { M::displacement_window_bytes } -> std::convertible_to<std::uint8_t>;
     };
 
 // What `Interpreter` is given: the machine, the compiled description it runs, and the palettes the description may draw
