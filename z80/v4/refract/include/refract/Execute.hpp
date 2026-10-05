@@ -527,9 +527,10 @@ struct Interpreter {
   // The address an indirect operand addresses through. A displaced one was formed once for the whole instruction,
   // before any operand was touched.
   template<Resolved Op, std::size_t Line>
-  [[nodiscard]] static std::uint16_t address_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  [[nodiscard]] static std::uint16_t address_of(
+      Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     if constexpr (Op.displaced)
-      return indexed;
+      return displaced_address;
     else
       return direct_value_of<Op, Line, std::uint16_t>(machine, decoded);
   }
@@ -539,9 +540,10 @@ struct Interpreter {
   // says, so one operand spelling serves every width the machine offers. (On the Z80 that is `ld16 hl <- (n)` reading
   // two bytes where `ld8 a <- (n)` reads one.)
   template<Resolved Op, std::size_t Line, typename Parameter>
-  [[nodiscard]] static Parameter value_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  [[nodiscard]] static Parameter value_of(
+      Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     if constexpr (Op.indirect) {
-      const auto address = address_of<Op, Line>(machine, decoded, indexed);
+      const auto address = address_of<Op, Line>(machine, decoded, displaced_address);
       if constexpr (std::same_as<Parameter, std::uint16_t>)
         return machine.read_memory16(address);
       else
@@ -554,14 +556,14 @@ struct Interpreter {
   // Writes a value to one destination: through an address if the operand is indirect, into the location it names
   // otherwise, and nowhere for `-`. Whether the value suits the destination was settled by `check_destinations_fit`.
   template<Resolved Op, std::size_t Line, typename T>
-  static void store(Machine &machine, const Decoded decoded, const std::uint16_t indexed, const T value) {
+  static void store(Machine &machine, const Decoded decoded, const std::uint16_t displaced_address, const T value) {
     if constexpr (Op.kind == Resolved::Kind::Discard)
       static_cast<void>(value);
     else if constexpr (Op.indirect) {
       // The addressing mode says how long the machine idles before writing back.
       if constexpr (Op.write_back_delay != 0)
         machine.delay(Op.write_back_delay);
-      const auto address = address_of<Op, Line>(machine, decoded, indexed);
+      const auto address = address_of<Op, Line>(machine, decoded, displaced_address);
       if constexpr (std::same_as<T, std::uint16_t>)
         machine.write_memory16(address, value);
       else
@@ -636,11 +638,12 @@ struct Interpreter {
   //
   // A pack rather than `template for`: an expansion statement produces statements, and an argument list needs a pack.
   template<std::meta::info Fn, Call C>
-  [[nodiscard]] static auto operands_of(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  [[nodiscard]] static auto operands_of(
+      Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     constexpr auto parameter = parameter_for_operand<Fn, C>();
     return [&]<std::size_t... I>(std::index_sequence<I...>) {
       return std::tuple{
-          value_of<C.operands[I], C.line, parameter_type<Fn, parameter[I]>>(machine, decoded, indexed)...};
+          value_of<C.operands[I], C.line, parameter_type<Fn, parameter[I]>>(machine, decoded, displaced_address)...};
     }(std::make_index_sequence<C.operands.size()>{});
   }
 
@@ -804,7 +807,7 @@ struct Interpreter {
   // Arguments are supplied positionally, or by name where the row said so; destinations destructure the result in
   // declaration order.
   template<std::meta::info Fn, Call C>
-  static void apply(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  static void apply(Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     consteval { check_operands_fit<Fn, C>(); }
     using Result = [:std::meta::remove_cvref(std::meta::return_type_of(Fn)):];
     // A `std::span`, and safe to hold: `decomposes_into` promotes its contents with `define_static_array`, so what this
@@ -817,21 +820,21 @@ struct Interpreter {
     if constexpr (C.operands.size() != arity_of<Fn>)
       return;
     else if constexpr (std::is_void_v<Result>)
-      call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
+      call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, displaced_address));
     else if constexpr (members.size() > 1) {
       // A result that comes apart is typically a value and the flags it set, one destination per part, each taken out
       // of the result by splicing in its member.
-      const auto result = call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
+      const auto result = call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, displaced_address));
       template for (constexpr auto at: std::views::iota(0uz, C.destinations.size())) {
-        store<C.destinations[at], C.line>(machine, decoded, indexed, result.[:members[at]:]);
+        store<C.destinations[at], C.line>(machine, decoded, displaced_address, result.[:members[at]:]);
       }
     }
     else {
       // More than one *destination* is how an instruction writes one result to two places, as the Z80's `dd cb d op`
       // puts it through the addressing mode and into the register its low bits name.
-      const auto result = call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
+      const auto result = call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, displaced_address));
       template for (constexpr auto destination: C.destinations) {
-        store<destination, C.line>(machine, decoded, indexed, result);
+        store<destination, C.line>(machine, decoded, displaced_address, result);
       }
     }
   }
@@ -873,12 +876,13 @@ struct Interpreter {
   // Runs one condition and returns its answer. A condition is applied like any other operation; only what is done with
   // the answer differs.
   template<std::meta::info Fn, Call C>
-  [[nodiscard]] static Continue evaluate(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  [[nodiscard]] static Continue evaluate(
+      Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     consteval { check_condition_fits<Fn, C>(); }
     // Gated for the same reason `apply` is: a condition that does not fit gets one message rather than that message and
     // the cascade from calling it.
     if constexpr (!machine_member<Fn> && C.operands.size() == arity_of<Fn>)
-      return call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, indexed));
+      return call_with<Fn, C>(machine, operands_of<Fn, C>(machine, decoded, displaced_address));
     else
       return Continue::no;
   }
@@ -886,11 +890,12 @@ struct Interpreter {
   // Runs one step and says whether the row goes on: a condition's answer, or `Continue::yes` from any other step once
   // it has done its work.
   template<std::meta::info Fn, Call C>
-  [[nodiscard]] static Continue run_step(Machine &machine, const Decoded decoded, const std::uint16_t indexed) {
+  [[nodiscard]] static Continue run_step(
+      Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     if constexpr (returns_continue(Fn))
-      return evaluate<Fn, C>(machine, decoded, indexed);
+      return evaluate<Fn, C>(machine, decoded, displaced_address);
     else {
-      apply<Fn, C>(machine, decoded, indexed);
+      apply<Fn, C>(machine, decoded, displaced_address);
       return Continue::yes;
     }
   }
@@ -1035,14 +1040,15 @@ struct Interpreter {
       // machine's call (on the Z80 they do), and how many its window holds is the machine's to say. Assigned rather
       // than formed by a lambda, which would capture `decoded` and `displacement` by reference and so take their
       // addresses, refusing the tail call below in any build that does not inline it.
-      std::uint16_t indexed = 0;
+      std::uint16_t displaced_address = 0;
       if constexpr (displaced) {
         constexpr std::uint8_t read_after = row.immediate_bytes + (entered_latched ? 1 : 0);
         consteval { check_machine_displaces(read_after, row.line); }
         // Asked again, so that a machine that cannot displace is told so above and not by a failed call besides.
         if constexpr (DisplacingMachine<Machine>)
-          indexed = machine.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded),
-              static_cast<std::int8_t>(displacement), read_after);
+          displaced_address =
+              machine.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded),
+                  static_cast<std::int8_t>(displacement), read_after);
       }
       // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
@@ -1056,7 +1062,7 @@ struct Interpreter {
         // branch come from. `break` rather than `return`, because abandoning the rest of a row is not abandoning the
         // run: the hand-over below still has to happen, and a `return` here stops the machine at the first untaken
         // branch.
-        if (run_step<find_operation(verb, row.line), call>(machine, decoded, indexed) == Continue::no)
+        if (run_step<find_operation(verb, row.line), call>(machine, decoded, displaced_address) == Continue::no)
           break;
       }
     }
@@ -1105,10 +1111,41 @@ struct Interpreter {
   // The encoding with every unread variable bit cleared, which names the body this opcode wants: two opcodes of one row
   // share a body exactly when this agrees. The slices `bits_read_by` leaves out must be exactly the ones the generated
   // code does not branch on; a new kind of reference the code branches on has to be noted there, or two opcodes would
-  // share a body they disagree about. Nothing in the library checks that every opcode of every body agrees with its
-  // key, since doing so is slow; the Z80's TableTest does, for its description.
+  // share a body they disagree about. `disagreements` below checks that they do not.
   [[nodiscard]] static constexpr std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
     return static_cast<std::uint8_t>(row.matched.opcode_bits | (opcode & bits_read_by(row)));
+  }
+
+  // An opcode whose own steps differ from those of the body it shares: which table, which opcode, and the row's line.
+  struct Disagreement {
+    std::uint8_t table{};
+    std::uint8_t opcode{};
+    std::size_t line{};
+  };
+
+  // Every opcode of every table whose steps, resolved against its own encoding, differ in operation or in call from
+  // those resolved against its `body_key`, which are what its body runs. Empty when `bits_read_by` misses nothing this
+  // description branches on. Left to a target's tests to call rather than checked in the build, where it adds
+  // noticeably to the interpreter's compile time.
+  [[nodiscard]] static constexpr std::vector<Disagreement> disagreements() {
+    std::vector<Disagreement> result;
+    for (const auto table: std::views::iota(0uz, Compiled::tables().size())) {
+      const auto &rules = Compiled::tables()[table].rules;
+      for (const auto opcode: std::views::iota(0uz, 256uz)) {
+        const auto byte = static_cast<std::uint8_t>(opcode);
+        const auto &row = Compiled::rows()[Compiled::decoded()[table][opcode].value()];
+        const auto key = body_key(row, byte);
+        const auto agrees = [&](const Step &step) {
+          return verb_for(step, row.matched, byte, row.line, rules) ==
+                     verb_for(step, row.matched, key, row.line, rules) &&
+                 call_for(step, row.matched, byte, row.line, rules) ==
+                     call_for(step, row.matched, key, row.line, rules);
+        };
+        if (key != byte && !std::ranges::all_of(steps_of(row), agrees))
+          result.push_back({.table = static_cast<std::uint8_t>(table), .opcode = byte, .line = row.line});
+      }
+    }
+    return result;
   }
 
   // One generated function, named by the row it runs, as an index into `Compiled::rows()`, and the encoding that fixes

@@ -5,7 +5,7 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     strategy:
-      # One broken preset should not hide the other eleven.
+      # One broken preset should not hide the others.
       fail-fast: false
       matrix:
         preset: [ debug, debug-modules, release, release-modules ]
@@ -42,7 +42,7 @@ jobs:
     # leg is what keeps the modules build standard-conforming.
     runs-on: ubuntu-latest
     strategy:
-      # One broken preset should not hide the other eleven.
+      # One broken preset should not hide the others.
       fail-fast: false
       matrix:
         preset: [ debug-modules, debug-reflection, release-reflection ]
@@ -89,7 +89,7 @@ jobs:
   mac-build-and-test:
     runs-on: macos-15
     strategy:
-      # One broken preset should not hide the other eleven.
+      # One broken preset should not hide the others.
       fail-fast: false
       matrix:
         preset: [ debug, debug-modules, release, release-modules ]
@@ -121,7 +121,7 @@ jobs:
   wasm-build:
     runs-on: ubuntu-latest
     strategy:
-      # One broken preset should not hide the other eleven.
+      # One broken preset should not hide the others.
       fail-fast: false
       matrix:
         clang_version: [ 20 ]

@@ -17,7 +17,8 @@ specbolt is structured into several key components:
 
 ### Prerequisites
 
-- **Compiler:** Clang 20+ (required for C++26 modules support)
+- **Compiler:** Clang 20+ or gcc 16+; either builds the modules presets (clang with libc++). Reflection needs gcc 16+
+  or a clang fork: see [C++26 reflection](#c26-reflection)
   - On Ubuntu: `wget https://apt.llvm.org/llvm.sh; sudo bash llvm.sh 20 all`
 - **Build System:** CMake 3.30+ and Ninja
 - **Libraries:**
@@ -38,8 +39,8 @@ ctest --preset debug
 ./build/debug/sdl/specbolt_sdl
 ```
 
-Other useful presets: `debug-modules` (needs clang + libc++), `release` (RelWithDebInfo, runs the zexdoc regression
-tests), and `release-modules`.
+Other useful presets: `debug-modules` (clang 20+ with libc++, or gcc 16+), `release` (RelWithDebInfo, runs the zexdoc
+regression tests), and `release-modules`.
 
 To pin a specific compiler, set `CC`/`CXX` or create a local `CMakeUserPresets.json` (gitignored) that inherits a public
 preset and overrides `CMAKE_CXX_COMPILER`.

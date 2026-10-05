@@ -374,8 +374,8 @@ and never calls `==`. What does need one:
   base. Those comparisons are what the types mean.
 - **Tests compare exact values.** `Piece` (and so its alternatives and `Reference`) and `Operand::Kind` (and so
   `Operand`'s alternatives), in TableTest. And `Call`, so `Vector`, `Resolved` and `Access` too, for the check that
-  opcodes sharing a `body_key` produce equal calls: the test's version of the equivalence the compiler applies to the
-  template arguments.
+  opcodes sharing a `body_key` produce equal calls (since 2026-10-05 `Interpreter::disagreements`, which both
+  machines' tests run): a run-time version of the equivalence the compiler applies to the template arguments.
 - **Nothing else.** `Member`, its `Operation` and `Hole`, `Operand` itself, `Rule`, `Transfer` and `Step` had one only
   because each sits in a `Vector`, and those are gone.
 

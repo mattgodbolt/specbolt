@@ -83,24 +83,11 @@ TEST_CASE("Table parsing") {
 
 TEST_CASE("Two opcodes share a body only when every step agrees") {
   // `body_key` decides which opcodes share a generated function, and `resolve` decides what that function does; the
-  // slices the first ignores must be the ones the second folds away. Checked here, over every opcode of every table,
-  // rather than in the build, where it adds noticeably to the interpreter's compile time.
-  using I = refract::Interpreter<Target>;
-  for (std::uint8_t table = 0; table < C::tables().size(); ++table) {
-    const auto &rules = C::tables()[table].rules;
-    for (std::size_t opcode = 0; opcode < 256; ++opcode) {
-      const auto byte = static_cast<std::uint8_t>(opcode);
-      const auto &row = C::rows()[*C::decoded()[table][byte]];
-      const auto key = I::body_key(row, byte);
-      if (key == byte)
-        continue;
-      for (const auto &step: refract::steps_of(row)) {
-        INFO("table " << int{table} << " opcode " << opcode << " line " << row.line);
-        CHECK(I::call_for(step, row.matched, byte, row.line, rules) ==
-              I::call_for(step, row.matched, key, row.line, rules));
-      }
-    }
-  }
+  // slices the first ignores must be the ones the second folds away. refract's own 6502 test checks the same.
+  const auto disagreements = refract::Interpreter<Target>::disagreements();
+  for (const auto &[table, opcode, line]: disagreements)
+    UNSCOPED_INFO("table " << int{table} << " opcode " << int{opcode} << " line " << line);
+  CHECK(disagreements.empty());
 }
 
 } // namespace specbolt::v4

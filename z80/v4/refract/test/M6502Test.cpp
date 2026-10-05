@@ -117,4 +117,13 @@ TEST_CASE("The 6502 description charges the chip's cycles") {
   CHECK(cycles_of(machine, {0xd0, 0x02}) == 2); // bne, not taken
 }
 
+TEST_CASE("Two 6502 opcodes share a body only when every step agrees") {
+  // `body_key` decides which opcodes share a generated function, and `resolve` decides what that function does; the
+  // slices the first ignores must be the ones the second folds away. The Z80's TableTest checks the same.
+  const auto disagreements = refract::Interpreter<Target>::disagreements();
+  for (const auto &[table, opcode, line]: disagreements)
+    UNSCOPED_INFO("table " << int{table} << " opcode " << int{opcode} << " line " << line);
+  CHECK(disagreements.empty());
+}
+
 } // namespace specbolt::m6502
