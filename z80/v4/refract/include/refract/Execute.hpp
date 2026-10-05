@@ -16,7 +16,7 @@
 //
 // A palette is a type every public static function of which is a verb. The machine's own verbs are the members it
 // publishes with `[[=refract::operation]]`, static or not, and its locations the enums taken by the members it marks
-// `[[=refract::location.read]]` and `[[=refract::location.write]]`; see Model.hpp.
+// `[[=refract::location.reads]]` and `[[=refract::location.writes]]`; see Model.hpp.
 //
 // `Interpreter<Target>::run` then runs the machine until it says stop.
 
@@ -139,8 +139,8 @@ struct Interpreter {
     std::meta::info writer;
   };
 
-  // Scans the machine for its locations: each enum taken by a member marked `[[=refract::location.read]]` or
-  // `[[=refract::location.write]]`, with the members that read and write it. An enum no marked member takes is not a
+  // Scans the machine for its locations: each enum taken by a member marked `[[=refract::location.reads]]` or
+  // `[[=refract::location.writes]]`, with the members that read and write it. An enum no marked member takes is not a
   // location, however many public functions take it; the Z80's `Bus`, which only `Z80::bus` takes, is not one.
   //
   // The scan sees private members too, so that a mark on something the generated code could not call is an error rather
@@ -157,8 +157,8 @@ struct Interpreter {
         const auto mark = std::meta::remove_cv(std::meta::type_of(annotation));
         if (mark == ^^Location)
           throw std::runtime_error(named(member) +
-                                   " is marked [[=refract::location]]; mark it [[=refract::location.read]] or "
-                                   "[[=refract::location.write]], for the access it gives");
+                                   " is marked [[=refract::location]]; mark it [[=refract::location.reads]] or "
+                                   "[[=refract::location.writes]], for the access it gives");
         if (mark != ^^Location::Access)
           continue;
         const auto reads = std::meta::extract<Location::Access>(annotation).role == Location::Access::Role::read;
@@ -172,10 +172,10 @@ struct Interpreter {
         };
         if (!shaped())
           throw std::runtime_error(
-              named(member) + (reads ? " is marked [[=refract::location.read]], so it must be a public member "
+              named(member) + (reads ? " is marked [[=refract::location.reads]], so it must be a public member "
                                        "function taking one enum, the location it reads, and returning what it "
                                        "holds"
-                                     : " is marked [[=refract::location.write]], so it must be a public member "
+                                     : " is marked [[=refract::location.writes]], so it must be a public member "
                                        "function taking an enum, the location it writes, and the value to write"));
         const auto scope = std::meta::type_of(std::meta::parameters_of(member)[0]);
         auto entry = std::ranges::find(found, scope, &LocationAccess::scope);
@@ -184,8 +184,8 @@ struct Interpreter {
         auto &accessor = reads ? entry->reader : entry->writer;
         if (accessor != std::meta::info{})
           throw std::runtime_error(quoted_name_of(accessor) + " and " + named(member) + " are both marked " +
-                                   (reads ? "[[=refract::location.read]]" : "[[=refract::location.write]]") + " for " +
-                                   std::string(std::meta::identifier_of(scope)) +
+                                   (reads ? "[[=refract::location.reads]]" : "[[=refract::location.writes]]") +
+                                   " for " + std::string(std::meta::identifier_of(scope)) +
                                    ", so there is no saying which to call");
         accessor = member;
       }
@@ -377,7 +377,7 @@ struct Interpreter {
     if (accessor == std::meta::info{})
       throw error(line, std::string("this row ") + (reads ? "reads" : "writes") + " '" + std::string(name) +
                             "', and nothing taking " + std::string(std::meta::identifier_of(scope)) + " is marked " +
-                            (reads ? "[[=refract::location.read]]" : "[[=refract::location.write]]"));
+                            (reads ? "[[=refract::location.reads]]" : "[[=refract::location.writes]]"));
     return accessor;
   }
 

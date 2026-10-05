@@ -88,8 +88,8 @@ else:
 - `Target`: which machine, which description, and which palettes
 - `Z80`, the machine state, marking with `[[=refract::operation]]` the verbs that touch it
 - `Operations`, a palette of verbs that touch nothing (the shared `Alu` is the other palette)
-- location accessors: how to touch storage, and, by marking each with `[[=refract::location.read]]`
-  or `[[=refract::location.write]]`, what storage a description may name and how it may reach it
+- location accessors: how to touch storage, and, by marking each with `[[=refract::location.reads]]`
+  or `[[=refract::location.writes]]`, what storage a description may name and how it may reach it
 - `read_memory`/`write_memory` and their 16-bit forms: how to touch memory through an address
 - `fetch_opcode`/`fetch_immediate`: how to read the instruction stream
 - `displaced_address` and `displacement_window_bytes`, for a description with displaced rows: how a

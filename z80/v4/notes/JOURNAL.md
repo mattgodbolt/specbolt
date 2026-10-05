@@ -1244,7 +1244,7 @@ a `read` but described the enum it took; the generator still called `read` and
 `write` by name; and nothing checked a `write`, so a row writing a location that
 can only be read, such as the Z80's `wzh`, failed as an overload error inside a
 splice with no line. Each accessor is now marked for the access it gives,
-`[[=refract::location.read]]` or `[[=refract::location.write]]`, and the scan
+`[[=refract::location.reads]]` or `[[=refract::location.writes]]`, and the scan
 groups them by the enum they take, so a kind of location has a read, a write or
 both. The generator splices the member it found rather than spelling a name, so
 `read_verb` is gone and the machine names its accessors as it likes. A row that

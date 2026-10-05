@@ -58,8 +58,8 @@ inline constexpr Operation operation{};
 // the kind of location it reaches, and every enumerator of an enum a marked function takes is a name a description may
 // write:
 //
-//   [[=refract::location.read]] std::uint8_t get(Register which) const;
-//   [[=refract::location.write]] void set(Register which, std::uint8_t value);
+//   [[=refract::location.reads]] std::uint8_t get(Register which) const;
+//   [[=refract::location.writes]] void set(Register which, std::uint8_t value);
 //
 // The generator calls the function it finds marked, so the names are the machine's own, and a machine may have other
 // functions taking the same enum, for a debugger say, without their becoming part of the language. A kind of location
@@ -71,8 +71,8 @@ struct Location {
     enum class Role : std::uint8_t { read, write };
     Role role;
   };
-  Access read{Access::Role::read};
-  Access write{Access::Role::write};
+  Access reads{Access::Role::read};
+  Access writes{Access::Role::write};
 };
 inline constexpr Location location{};
 

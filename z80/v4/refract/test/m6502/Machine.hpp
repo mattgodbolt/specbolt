@@ -55,7 +55,7 @@ struct Machine {
     write_memory(address, static_cast<std::uint8_t>(value));
     write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
   }
-  [[nodiscard]][[= refract::location.read]] std::uint8_t read(const R8 which) const {
+  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(const R8 which) const {
     switch (which) {
       case R8::a: return a;
       case R8::x: return x;
@@ -65,7 +65,7 @@ struct Machine {
     }
     return 0;
   }
-  [[= refract::location.write]] void write(const R8 which, const std::uint8_t value) {
+  [[= refract::location.writes]] void write(const R8 which, const std::uint8_t value) {
     switch (which) {
       case R8::a: a = value; break;
       case R8::x: x = value; break;
@@ -74,10 +74,10 @@ struct Machine {
       case R8::p: p = value; break;
     }
   }
-  [[nodiscard]][[= refract::location.read]] std::uint16_t read(const R16 which) const {
+  [[nodiscard]][[= refract::location.reads]] std::uint16_t read(const R16 which) const {
     return which == R16::pc ? pc : ea;
   }
-  [[= refract::location.write]] void write(const R16 which, const std::uint16_t value) {
+  [[= refract::location.writes]] void write(const R16 which, const std::uint16_t value) {
     (which == R16::pc ? pc : ea) = value;
   }
 
