@@ -123,9 +123,9 @@ namespace specbolt::refract {
   return Operand::named(Name{word});
 }
 
-// Splits display text around the values it renders rather than spells: `$nn` and `$nnnn` come from the encoding, `+d`
-// is the displacement an indexed mode carries. Both a row's mnemonic and a vocabulary member's text are lowered with
-// this, so neither is parsed at runtime.
+// Splits display text around the values it renders rather than spells: `$nn`, `$nnnn` and `$e` come from the encoding,
+// and `+d` is the displacement a displaced mode carries. Both a row's mnemonic and a vocabulary member's text are
+// lowered with this, so neither is parsed at runtime.
 [[nodiscard]] constexpr std::vector<Piece> pieces_of(Parser text) {
   std::vector<Piece> pieces;
 

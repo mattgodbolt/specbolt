@@ -117,8 +117,8 @@ TEST_CASE_METHOD(Tester, "Effects the shared suite does not check") {
 
 TEST_CASE_METHOD(Tester, "Interrupts") {
   SECTION("ld a, i and ld a, r report iff2 in the parity flag") {
-    // These are the only rows whose operation reads the machine without changing it, so they are also where a `const`
-    // machine parameter has to keep being recognised as the machine. Each value's own parity is the opposite of the
+    // These are the only rows whose operation reads the machine without changing it, a `const` member, so they are
+    // where such a member has to keep being called on the machine. Each value's own parity is the opposite of the
     // iff2 it is read under, so an ordinary parity flag would fail both halves.
     regs.i(0x43); // three bits set
     z80.iff2(true);

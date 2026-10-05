@@ -24,11 +24,12 @@ namespace specbolt::refract {
 // The operand this opcode, decoded in this row under these rules, is displaced through, or nothing if it is not
 // displaced at all. Nothing declares this: a row names a vocabulary member, a view says that member is now a displaced
 // one, and the answer is whatever the operands resolve to. One per instruction, not one per operand: an instruction
-// that reads and writes through the same address wants one displacement read and one sum formed, as the chip does (the
+// that reads and writes through the same address wants one displacement read and one sum formed, as hardware does (the
 // Z80's `inc (ix+d)` is one).
 //
-// This is the one place that decides whether an instruction carries a displacement byte: Disassemble.hpp and
-// Execute.hpp both ask it, which is why the two agree about whether one is read.
+// This is the one place that decides whether an instruction's operands carry a displacement byte: Disassemble.hpp
+// and Execute.hpp both ask it, which is why the two agree about whether one is read. (A `d` in the encoding, which
+// hands a displacement on to a latched table, is the other way one is read, and both ask the row for that too.)
 //
 // No `view` parameter: every member of a vocabulary a view selects is required to have the same shape, so view 0
 // answers for all of them. That requirement is `check_view_vocabulary` in Parse.hpp, without which one page of a

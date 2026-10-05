@@ -18,6 +18,7 @@ what belongs in it, so that this one stops growing:
 | [notes/MEASUREMENTS.md](notes/MEASUREMENTS.md) | speed, build cost, what accuracy buys | any number, with its method and date |
 | [notes/PREFIXES.md](notes/PREFIXES.md) | how the prefix design was reached, and why DDCB is not `cb` renamed | that one argument, kept whole, as a dated record |
 | [notes/WASM.md](notes/WASM.md) | getting v4 into the browser, and what that took | anything about the wasm build |
+| [notes/6502.md](notes/6502.md) | the 6502, refract's second machine, as a test of the format | what a second CPU shows about the format |
 | [notes/JOURNAL.md](notes/JOURNAL.md) | what was decided and why, in order | **new "Done:" entries** |
 
 How prefixes, views and latched tables work today is CPU_FORMAT.md's business, not PREFIXES.md's.
@@ -36,9 +37,9 @@ Every opcode of every table decodes, prefixed pages included: `base`, `cb`, the 
 instruction set is finished. That is a compile-time check, so a description with a gap does not
 build.
 
-- **Disassembly** (`refract/Disassemble.hpp`) walks the row's lowered pieces, following a `goto`
+- **Disassembly** (`refract/include/refract/Disassemble.hpp`) walks the row's lowered pieces, following a `goto`
   through a prefix table.
-- **Execution** (`refract/Execute.hpp`) generates one function per *body*: a row together with the
+- **Execution** (`refract/include/refract/Execute.hpp`) generates one function per *body*: a row together with the
   slices it reads, so that every opcode which would generate the same code shares one. Each is an
   `execute_one<Table, BodyKey, Index>` instantiation, made by a `template for` expansion statement,
   and resolves its verbs by reflection over the target's palettes and the machine's marked members.
@@ -99,7 +100,7 @@ else:
   run another
 - `refract::Spelling` annotations, where an enumerator's assembly spelling differs from its C++ name
 
-`refract/Machine.hpp` states the part the framework calls as a concept, and CPU_FORMAT.md, "What the
+`refract/include/refract/Machine.hpp` states the part the framework calls as a concept, and CPU_FORMAT.md, "What the
 CPU description must supply", says what each construct in a row needs.
 
 A verb that needs the machine is a member of it, called on it; a verb that does not is a static
@@ -114,7 +115,7 @@ went is in the journal, "Done: the framework stopped inferring meaning from type
 
 ### What the framework relies on instead
 
-Three properties of the primitive, all read by reflection, none of them Z80-specific:
+The properties of the primitive, all read by reflection, none of them Z80-specific:
 
 - its arity, checked against the number of operands the row supplies
 - its parameter types, which each operand converts to, so a 16-bit location handed to an 8-bit
@@ -210,9 +211,9 @@ The two lists that used to live here, a review's leftovers and the original plan
 journal now, most of their items struck through. This is what survived them.
 
 - **/INT is a level, and v4 has no way to release it.** Below, in full: it is the only one of
-  these that can make the emulator behave differently from the hardware today.
-- **WZ/MEMPTR is not modelled.** `bit {b}, (hl)` names `h` as its bus-noise source, which is right
-  for that instruction and an approximation elsewhere, the same one v3 makes. See §8 of the
+  these where v4 behaves differently from v1, v2 and v3.
+- **WZ/MEMPTR is not modelled.** `bit {b}, (hl)` names `h` as its bus-noise source where the chip
+  uses W, the high byte of MEMPTR: an approximation, the same one v3 makes. See §8 of the
   data-model decisions in the journal.
 - **Nothing would catch an undocumented-flag regression.** The only regression test in the
   repository is zexdoc, and "doc" is documented flags. There is no zexall run.
@@ -223,13 +224,10 @@ journal now, most of their items struck through. This is what survived them.
 - **A push writes its two bytes low first.** `write_memory16` serves `ld (nn), hl` and `push`
   alike, and the chip pushes the high byte first. The bytes land in the same places, so only
   contention or a watchpoint could tell (PREFIXES.md, "What is papered over").
-- **A conditional cycle schedule has no expression.** `djnz` is 8 or 13 T-states and the format
-  can only say one of them plus a `delay` step. jsbeeb forks the remaining schedule on the
-  condition, which states both rather than asserting a range.
 - **A row is scanned rather than projected.** The disassembler walks a row's pieces at run time
   where it could be handed a table built at compile time.
 - **Which core is fastest depends on the machine.** v2 leads `z80_bench` on an AMD desktop and on
-  the Intel laptop, v4 led it on the Intel desktop in Notes.md, and cores whose source did not change
+  the Intel laptop, v4 led it on the Intel desktop in [the top-level Notes.md](../../Notes.md), and cores whose source did not change
   between two commits moved anyway (MEASUREMENTS.md, "The fetch was the call that mattered"). Not a
   regression: the per-core binaries agree that v4 alone got faster and v2 alone did not move. Why
   the machines disagree about the combined binary is open: indirect-branch prediction on a
@@ -240,10 +238,6 @@ journal now, most of their items struck through. This is what survived them.
   libstdc++ 16's `std::format` cannot run there. gcc trunk's can, so the plan is to move to `std::format` once gcc 17
   is released, staying on released compilers for the main build rather than moving to trunk for this. The WASM build's
   libc++ would still need a stand-in then. The run-time tests could use `std::format` today. Details in FINDINGS.md.
-- **`Name` could be replaced by interning, for a tenth of the interpreter's compile time.** Spiked on
-  `mg/v4_static_spike` (unmerged, kept on origin; commit 38af817): `std::define_static_string` and
-  `std::define_static_array` remove `Name` and `Vector`'s structural duty with the same generated code. Undecided;
-  FINDINGS.md, "Interning in place of a structural string".
 - **Peak compile memory rose when the target became a parameter**, because gcc collects only
   between top-level declarations (MEASUREMENTS.md, "Making the target a parameter costs peak
   memory"). A consumer-side workaround is recorded there; a library-side one has not been found.
@@ -263,13 +257,13 @@ and v1/v2/v3, take nothing.
 Two ways out, both out of scope for the change that found it:
 
 1. **Give the request a release.** `Z80Base` grows a deassert, and `Spectrum` drops the line after
-   the documented window. Correct, and it fixes all four cores at once, but it changes shared
+   the documented window. Correct, and it fixes every core at once, but it changes shared
    framework and every front end that raises an interrupt.
 2. **Give the request a lifetime inside v4.** Record the cycle it was raised at, and expire it after
    ~32 T-states. Keeps the fix's benefit, needs no shared change, and puts a machine-specific number
    inside the CPU where the machine cannot see it, which is the wrong place for it, but a small
    wrong place.
 
-Until one of them lands, v4 differs from the other three in a way real software could notice, and
+Until one of them lands, v4 differs from the other cores in a way real software could notice, and
 the difference is *more* wrong than what it replaced for long `di` regions, and *less* wrong for
 short ones.

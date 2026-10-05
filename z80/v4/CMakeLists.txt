@@ -1,5 +1,6 @@
-# v4 has no modules build. Its table is a header included into more than one
-# module partition, so its definitions duplicate; z80/CMakeLists.txt skips this
+# v4 has no modules build. Its compiled description, Target.hpp, is a header a
+# modules build would include into more than one partition, duplicating its
+# definitions; z80/CMakeLists.txt skips this
 # directory entirely when modules are on. See notes/JOURNAL.md.
 
 add_subdirectory(refract)

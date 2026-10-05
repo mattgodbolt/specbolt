@@ -14,9 +14,9 @@ the names it uses are that day's names. Where the mechanism has moved since, a d
 
 ## Speed, measured
 
-*First written 2026-08-12. Superseded: on a quiet desktop the gap below is gone (Notes.md,
-"Confirmed on a machine that can actually be measured"), and threading the interpreter has changed
-v4's speed since (Notes.md, "Attempted, and it is worth more than the estimate"). Read this as the
+*First written 2026-08-12. Superseded: on a quiet desktop the gap below is gone (the top-level
+Notes.md, "Confirmed on a machine that can actually be measured"), and threading the interpreter has changed
+v4's speed since (the top-level Notes.md, "Attempted, and it is worth more than the estimate"). Read this as the
 first measurement, and its hypotheses as history.*
 
 zexdoc, sequential, same machine, same `release-reflection` build, one run each. All four execute the
@@ -98,8 +98,8 @@ equivalent, and the option is not recognised. What gcc offers instead:
 
 - `-ftime-report` and `-ftime-report-details`, a table of *passes*, not of symbols. Useful, and
   used below, but it cannot tell you which instantiation or which `consteval` call was expensive.
-- `-fmem-report`, `-fpre-ipa-mem-report`, `-fpost-ipa-mem-report` (allocation by pass.
-- `-Q`) prints each function as it is compiled. Crude attribution, and it says nothing about the
+- `-fmem-report`, `-fpre-ipa-mem-report`, `-fpost-ipa-mem-report`: allocation by pass.
+- `-Q`: prints each function as it is compiled. Crude attribution, and it says nothing about the
   front end, which is where this workload lives.
 
 So on gcc the only way to see inside is to **profile `cc1plus` itself**. That works: the
@@ -122,8 +122,8 @@ gcc's own accounting for `Z80.cpp`:
 | **lang. deferred** (template instantiation and constant evaluation) | **41.3s** | **51%** |
 | **opt and generate** (the back end) | **26.1s** | **32%** |
 | last asm | 1.0s | 1% |
-| (*of which* overload resolution | 11.0s | 14% |
-|) *of which* garbage collection | 6.7s | 8% |
+| *of which* overload resolution | 11.0s | 14% |
+| *of which* garbage collection | 6.7s | 8% |
 
 5,400 MB allocated through the collector to compile one file.
 
@@ -309,12 +309,12 @@ instantiations*. Same TU, clang 23 with libstdc++, 126s traced:
 | phase | seconds | count |
 |---|---:|---:|
 | Frontend | **119.2** | |
-| (`PerformPendingInstantiations` | 85.2 | |
-|) `EvaluateAsConstantExpr` | 60.2 | **451,161** |
-| (`EvaluateAsInitializer` | 24.4 | 44,675 |
-|) `Source` (headers) | 27.9 | |
+| *of which* `PerformPendingInstantiations` | 85.2 | |
+| *of which* `EvaluateAsConstantExpr` | 60.2 | **451,161** |
+| *of which* `EvaluateAsInitializer` | 24.4 | 44,675 |
+| *of which* `Source` (headers) | 27.9 | |
 | Backend | **6.3** | |
-|, `CodeGen Function` | 5.9 | 13,982 |
+| *of which* `CodeGen Function` | 5.9 | 13,982 |
 | `CheckConstraintSatisfaction` | 1.7 | 720,105 |
 
 Note the split: **95% front end, 5% back end**, where gcc spent 32% in "opt and generate". The two
@@ -471,7 +471,9 @@ enum class Bus : std::uint8_t { opcode, operand, read, write, io_read, io_write,
 
 The enum is **per-CPU**, declared in `Z80.hpp` rather than the framework. A 6502 declares its own,
 and would add the one kind the Z80 has no use for: a dummy cycle the bus sees but whose value is
-discarded, a *write* on the NMOS 6502 and a *read* on the 65C12. I/O is in, because the Z80
+discarded, a *write* on the NMOS 6502 and a *read* on the 65C12. *(2026-10-04: the 6502 now in
+`refract/test/m6502/` has no bus at all: it counts a cycle per `read_memory` and `write_memory`, and
+charges its dummy cycles inside the operations that cause them, such as `zp_index`.)* I/O is in, because the Z80
 genuinely has a separate address space with its own wait state, and separate address spaces are not
 unusual.
 
@@ -564,7 +566,8 @@ the table, and it unlocked 24 opcodes across `ld r,r'`, the ALU group and `inc`/
 ## Memoising the reflection queries buys nothing, and nearly said otherwise
 
 *First written 2026-08-16. `takes_machine` has since gone, with the rule it served: an operation
-that needs the machine is a member of it now, and `machine_member` and `asks_for_machine` say which.*
+that needs the machine is a member of it now, and `machine_member` and `asks_for_machine` say which.
+`arity_of`'s comment has since been rewritten too, and now claims only that the form reads better.*
 
 `arity_of<Fn>` is a variable template rather than a function, with a comment saying the point is that
 the answer is computed once. `takes_machine<Fn>()` and `operand_for_parameter<Fn, C>()` were not, and
@@ -698,10 +701,10 @@ agree across rounds to within 1%, which is the number to read; the spreads withi
 **The fetches were the call.** `continue_running` is the one function every handler tail-calls,
 and the compiler had already inlined `start_instruction` into it, halt loop and interrupt path out
 of line, without being asked; the disassembly showed one `call` left on the hot path, to
-`fetch_opcode`. The same lesson as `Memory::read` and `Scheduler::tick` in Notes.md: with LTO on,
+`fetch_opcode`. The same lesson as `Memory::read` and `Scheduler::tick` in the top-level Notes.md: with LTO on,
 `inline` in a header tells the compiler nothing about visibility and everything about which budget
 applies, and for a function with a call site in every one of several hundred handlers the auto
-budget says no. v2 is still the faster core alone, here as on the desktop in Notes.md.
+budget says no. v2 is still the faster core alone, here as on the desktop in the top-level Notes.md.
 
 **Retired instructions are a change detector, not a benchmark.** They were used first here, being
 repeatable to a few parts per billion on this machine, and they moved by the same 11%
@@ -728,7 +731,7 @@ measured, because the disassembly said there was nothing to measure.
 
 **The combined binary moves every core when one changes.** In `z80_bench`, which links all four,
 the same two commits gave v2 11.1 to 11.8, v3 13.0 to 12.0 and v1 24.4 to 26.3 ns, none of whose
-source changed, while v4 went 12.7 to 12.2. That is the link-order effect Notes.md describes, and
+source changed, while v4 went 12.7 to 12.2. That is the link-order effect the top-level Notes.md describes, and
 it is why the per-core binaries are the ones to read a change from. It is also why "which core is
-fastest" depends on the machine: v4 led the combined binary on the Intel desktop in Notes.md, and
+fastest" depends on the machine: v4 led the combined binary on the Intel desktop in the top-level Notes.md, and
 v2 leads it on this laptop and on an AMD desktop.

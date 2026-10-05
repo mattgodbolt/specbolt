@@ -100,7 +100,7 @@ TEST_CASE("A trailing backslash joins a line to the next") {
   SECTION("A chain of them joins as one") {
     CHECK(numbers_and_text("a \\\nb \\\nc\nd") == Lines{{1, "a \\\nb \\\nc"}, {4, "d"}});
   }
-  SECTION("The backslash need not be the last character, because the line is trimmed first") {
+  SECTION("The backslash need not be the last character: blanks after it are skipped") {
     CHECK(numbers_and_text("a \\  \nb") == Lines{{1, "a \\  \nb"}});
   }
   SECTION("A backslash on the last line has nothing to join to, and the text survives to be diagnosed") {

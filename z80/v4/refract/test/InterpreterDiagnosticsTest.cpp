@@ -175,8 +175,8 @@ TEST_CASE("A displaced row is checked against what its machine can do") {
       "plain.cpu:7: this row is displaced, so the machine needs displaced_address and displacement_window_bytes "
       "(DisplacingMachine in Machine.hpp)"));
   STATIC_CHECK(throws_with([] { Generator<Displacing, Operations>::check_machine_displaces(1, 7); },
-      "plain.cpu:7: this row reads 1 byte(s) inside the window that forms its displaced address, which is more than "
-      "this machine's window holds"));
+      "plain.cpu:7: this row reads 1 byte(s) after its displacement and before its address is formed, which is more "
+      "than this machine's displacement_window_bytes allows"));
   STATIC_CHECK(!throws_with([] { Generator<Displacing, Operations>::check_machine_displaces(0, 7); }, ""));
 }
 

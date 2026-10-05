@@ -35,13 +35,14 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
   and `body_key` all became immediate functions and TableTest, which calls `body_key` at run time, stopped
   compiling. The fix is the same as for `parameters_of`: do the reflection in a `static constexpr` data member's
   initialiser, which is a constant-expression context, and read the result at run time. Found 2026-09-21.
+  *(`slices_read_by` is now `bits_read_by`, and returns a mask with no local container at all.)*
 - **`access_context::current()` at namespace scope excludes private members.** This is why `Ops` is a
   struct with a private section rather than a namespace: access control gates which names the table
   may use as verbs. Deliberate and worth keeping. *(2026-10-03: `Ops` is now `Operations`, a palette
   with no private section. The fact stands: `Interpreter` asks `members_of` with
   `access_context::current()`, which is its own scope, so a private helper in a palette cannot be
   named by a row.)*
-- **Released clang has no reflection at all**, 22.1 and trunk both lack `<meta>`. The wasm build is
+- **Released clang has no reflection at all**: 22.1 and trunk both lacked `<meta>` as of 2026-08-16. The wasm build is
   clang, so v4 is excluded in CMake via `if (SPECBOLT_HAS_REFLECTION)` rather than by `#ifdef`s in
   source. The P2996 forks are a different matter: MEASUREMENTS.md, "The other implementations: two
   clang forks". *(2026-10-03: v4 now builds for wasm too, through Barry Revzin's fork; the stock wasm
@@ -99,7 +100,8 @@ Hard-won and easy to forget. Each of these cost a debugging cycle.
 ### Library, on libstdc++ 16
 
 - `std::function_ref` and `std::copyable_function` are there. `disassemble` took the former until 2026-10-04, when it
-  became a constrained `auto` everywhere because libc++ lacks it (WASM.md, item 3).
+  took a constrained `auto` on every compiler: libc++ lacks `function_ref`, so the `auto` was needed there anyway, and
+  an `#if` inside a parameter list bought nothing a template does not (WASM.md, item 3).
 - `std::optional<T&>` is there, which an earlier note here had said it was not. `Description::row_for`
   and `rule_for` still return pointers and could return one.
 - `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`, and refract builds its
@@ -117,7 +119,7 @@ limits, fails two requirements this library has. One is permanent and one is tem
 fall on different uses.
 
 **Requirement 1, structural: permanent.** `Call` in Execute.hpp is a non-type template parameter:
-every generated step is `apply<Fn, Call>`, and the `Call` holds its operands and destinations as
+every generated step is `run_step<Fn, Call>`, and the `Call` holds its operands and destinations as
 `Vector<Resolved, max_operands>`. A class type used that way must be *structural* ([temp.param]/7):
 every base and every non-static data member public, non-mutable, and itself structural,
 recursively. `std::inplace_vector` keeps its storage and its size private, so it is not structural
@@ -279,6 +281,8 @@ as good as run time: an implementation's library can be written for run-time spe
 evaluate, and the budget that catches runaway evaluation also catches honest work.
 
 ### Compile time, and where it went when it moved
+
+*First written 2026-09-21; the names and counts below are that day's.*
 
 Every figure here is one compile of `z80/v4/Z80.cpp` at `RelWithDebInfo` with gcc 16.2, taken
 with `/usr/bin/time` on the same laptop within one afternoon. The baseline, the commit before any
@@ -442,7 +446,8 @@ of a template that is instantiated only where it is called.
   template parameter object needs nothing. This is why `execute_one`'s `row` is `static`: expanding
   over `row.steps` directly is what lets the step be the loop variable rather than an index into it.
   (Since 2026-09-27 a row's steps are one alternative of `row.action`, and `execute_one` expands
-  over a `static constexpr const auto &` bound to them, for the same reason.)
+  over a `constexpr const auto &` bound to them. The reference needs no `static` of its own: what it
+  binds to is part of `row`, which has static storage, so its address is already a constant.)
 - **There is no `template switch`.** The body of an expansion statement is control-flow-limited
   ([stmt.expand]/2), so a `case` label inside it can only belong to a `switch` that is also inside
   it ([stmt.label]/3), and a 256-way dispatch cannot be expanded into one. gcc says "jump to case
@@ -463,12 +468,13 @@ of a template that is instantiated only where it is called.
 
 ### Toolchain
 
-- gcc 16.2 from the compiler-explorer tarball. No distro packages gcc 16; CI pulls the same tarball.
+- gcc 16.2 from the compiler-explorer tarball. No distro packaged gcc 16 as of 2026-08-16; CI pulls the same
+  tarball.
 - Binaries built with an out-of-prefix toolchain bind to the distro's `libstdc++` unless an rpath is
   embedded, resolve the standard library actually being linked and add its directory.
 - **ccache's direct mode does not track `#embed` dependencies** and serves stale objects when only
   the embedded file changes. Worked around with `CCACHE_DEPEND=1`. Upstream fix is PR ccache#1765,
-  merged 2026-07-19 but not in any release yet; delete the workaround when it ships.
+  merged 2026-07-19 but in no release as of 2026-08-16; delete the workaround when it ships.
 - gcc enforces several module rules clang lets through: every interface partition must be re-exported
   from the primary module interface; textual `#include`s must precede all `import`s in a TU; and code
   `#include`d into a module interface partition must not put entities named by module-attached

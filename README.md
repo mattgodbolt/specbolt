@@ -50,7 +50,8 @@ Reflection (P2996) needs **gcc 16+**, or one of the clang forks that implement i
 automatic, including whichever extra flags the compiler wants, so any other compiler simply builds without the
 reflective code. The `debug-reflection` and `release-reflection` presets require it and fail to configure otherwise.
 
-No distro packages gcc 16, so grab a [Compiler Explorer](https://compiler-explorer.com/) build, the same one CI uses:
+If your distro has no gcc 16 package, grab a [Compiler Explorer](https://compiler-explorer.com/) build, the same one
+CI uses:
 
 ```bash
 mkdir -p ~/opt

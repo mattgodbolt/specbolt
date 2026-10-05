@@ -82,7 +82,8 @@ aaa11110 n n | {rmw:a} $nnnn,x          | index_store ea <- n x ; {rmw:a} (ea)/d
 # The branches, all eight in one row. Two cycles untaken; the machine charges for taking it and for a page crossed.
 fff10000 n   | {cond:f} $e              | {cond:f} p ; branch pc <- pc n
 
-# The single-byte instructions. Every one takes two cycles, the second a dummy read.
+# The single-byte instructions. Each takes at least two cycles, the second a dummy read; a push or pull adds its stack
+# access and the dummy cycles before it.
 fff11000     | {flagop:f}               | {flagop:f} p <- p ; delay 1
 101010r0     | ta{xy:r}                 | load8 {xy:r}, p <- a p ; delay 1
 10011000     | tya                      | load8 a, p <- y p ; delay 1

@@ -56,7 +56,8 @@ constexpr void check_row_precedence(const Description &description, const std::s
 // encoding still has an effect, so a table that declines to say is an incomplete description rather than a permissive
 // one. A catch-all row is how a table says "and everything else does this".
 //
-// Requiring it here is what lets the dispatch loop call without checking.
+// Requiring it here is what lets every entry of a table's dispatch array be filled, so a handler is called through it
+// without a check.
 constexpr void check_tables_total(const Description &description) {
   for (std::size_t table = 0; table < description.tables.size(); ++table)
     for (std::size_t opcode = 0; opcode < 256; ++opcode)

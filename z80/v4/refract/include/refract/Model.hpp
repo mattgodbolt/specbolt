@@ -70,6 +70,7 @@ inline constexpr Location location{};
 //
 //   enum class Direction { Up [[=Spelling{"i"}]], Down [[=Spelling{"d"}]] };
 //
+// which is the Z80's block direction, spelled as `ldi` and `ldd` end.
 // The spelling is a fact about the machine's assembly syntax, so it lives on the declaration. An annotation's type must
 // be structural, which `Name` is and `std::string_view` is not.
 struct Spelling {
@@ -96,8 +97,7 @@ struct Access {
   bool displaced{};
   std::uint8_t write_back_delay{};
   // The operand says which parameter it feeds rather than relying on where it sits, as `value=(hl)` does in the Z80's
-  // description. Empty when the row wrote it positionally, which is almost always. See `operand_for_parameter` in
-  // Execute.hpp.
+  // description. Empty when the row wrote it positionally. See `operand_for_parameter` in Execute.hpp.
   Name parameter{};
   constexpr bool operator==(const Access &) const = default;
 };
@@ -200,8 +200,8 @@ struct Resolved : Access {
 }
 
 // One part of an instruction's text, with the values it carries taken out: a literal chunk, a vocabulary member to look
-// up, a value read from the encoding, or the displacement an indexed addressing mode carries. Each kind holds only what
-// it needs, so a piece with no text cannot be asked for its text.
+// up, a value read from the encoding, or the displacement a displaced addressing mode carries. Each kind holds only
+// what it needs, so a piece with no text cannot be asked for its text.
 struct Piece {
   // Text rendered as written.
   struct Literal {
@@ -220,7 +220,7 @@ struct Piece {
   struct Imm16 {
     constexpr bool operator==(const Imm16 &) const = default;
   };
-  // The displacement an indexed mode carries, rendered as one signed byte, which is the format's choice and not the
+  // The displacement a displaced mode carries, rendered as one signed byte, which is the format's choice and not the
   // machine's.
   struct Displacement {
     constexpr bool operator==(const Displacement &) const = default;
@@ -249,8 +249,8 @@ struct Member {
 
   static constexpr std::size_t max_pieces = 3;
   std::string_view display{};
-  // The display, split around whatever it renders from the instruction: an indexed mode writes its displacement inline,
-  // so the disassembler renders rather than parses.
+  // The display, split around whatever it renders from the instruction: a displaced mode writes its displacement
+  // inline, so the disassembler renders rather than parses.
   Vector<Piece, max_pieces> pieces{};
   // An operand's text is the display itself, parsed once here.
   std::variant<Operand, Operation, Hole> kind{};
@@ -261,8 +261,9 @@ struct Vocabulary {
   static constexpr std::size_t max_members = 8;
   std::string_view name{};
   // Which scope its members are looked up in, named by the `:` clause of a declaration such as the Z80's `vocab pair :
-  // R16 = bc de hl sp`. Empty means the CPU's locations, which is what most of them are. Compared exactly, unlike a
-  // member, because it names a C++ type rather than something written the way assembly is written.
+  // R16 = bc de hl sp`. Empty means a member is looked up as any other name is: among the machine's locations, or in
+  // the enum of the parameter it feeds. Compared exactly, unlike a member, because it names a C++ type rather than
+  // something written the way assembly is written.
   std::string_view scope{};
   Vector<Member, max_members> members{};
   // Whether member n is the number n, worked out once when the vocabulary is parsed (see `is_numeric`), because every
@@ -276,7 +277,8 @@ struct Vocabulary {
 // One renaming a derived table applies: the member of this vocabulary whose display is `from` reads as `to` instead. A
 // derived table re-reads its parent's rows with some vocabulary members renamed; the Z80's `indexed` table is `base`
 // read with `pair.hl -> {index:view}`. A rule names the vocabulary as well as the member, because the same text means
-// different things in different vocabularies: `reg.h` is renamed by a view and the `real.h` of an indexed load is not.
+// different things in different vocabularies: in the Z80's, `reg.h` is renamed and `real.h` is not, which is how
+// `ld h, (ix+d)` keeps a real `h`.
 // The right side is a whole member, so a substitute may bring its own addressing mode and write-back delay.
 struct Rule {
   // A replacement chosen by the table's view rather than fixed: whichever member of this vocabulary the view selects.

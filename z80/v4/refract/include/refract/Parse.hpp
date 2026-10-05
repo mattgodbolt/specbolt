@@ -1,8 +1,9 @@
 #pragma once
 
-// The three kinds of declaration a description contains, each reading the whole text and returning what it found. Each
-// returns a `std::vector`: nothing here knows how many of anything a description holds, and nothing has to. See
-// ToArray.hpp for where that becomes a size.
+// The three kinds of declaration a description contains, each reading the whole text and returning what it found, and
+// the checks that belong to one line or one row: that every line means something, that a view's vocabulary is all of
+// one shape, and that a row's immediates agree with its encoding. Each parser returns a `std::vector`: nothing here
+// knows how many of anything a description holds, and nothing has to. See ToArray.hpp for where that becomes a size.
 
 #include "refract/Lexical.hpp"
 #include "refract/Model.hpp"
@@ -392,7 +393,8 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
     if (token == "d") {
       if (row.reads_displacement)
         throw std::runtime_error("a row reads at most one displacement");
-      // The column lists bytes in the order they are fetched, and the displacement is always fetched first.
+      // The column lists bytes in the order they are fetched, and the format fetches a displacement before any
+      // immediate, as the Z80's `ld (ix+d), n` does.
       if (row.immediate_bytes != 0)
         throw std::runtime_error("'d' must come before 'n': the displacement is fetched before the immediate");
       row.reads_displacement = true;
@@ -527,8 +529,8 @@ constexpr void parse_encoding(Parser encoding, Row &row) {
         throw std::runtime_error("row has no action");
       const auto is_goto = [](const std::string_view step) { return Parser(step).next_word() == "goto"; };
       if (std::ranges::any_of(steps, is_goto)) {
-        // The disassembler renders nothing for a goto row and stops, so a goto has to be the whole row or the two would
-        // disagree about what an opcode means.
+        // The disassembler follows a goto row straight into its target and renders nothing of the row itself, so a goto
+        // has to be the whole row, or the interpreter would run steps the listing never shows.
         if (steps.size() != 1)
           throw std::runtime_error("a goto is the whole of its row, so it cannot share one with another step");
         row.action = parse_transfer(Parser(steps.front()), vocabularies, tables, tables[*current]);

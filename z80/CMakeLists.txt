@@ -7,8 +7,8 @@ if (NOT SPECBOLT_WASM)
 endif ()
 # v4 builds for wasm too, given a clang with reflection; see z80/v4/notes/WASM.md.
 if (SPECBOLT_HAS_REFLECTION AND SPECBOLT_MODULES)
-    # v4's table is a header included into more than one module partition,
-    # which duplicates its definitions. The reflection presets keep the two
+    # v4's compiled description, Target.hpp, is a header a modules build would
+    # include into more than one partition, duplicating its definitions. The reflection presets keep the two
     # axes separable on purpose; see z80/v4/NOTES.md.
     message(STATUS "specbolt: v4 needs reflection without modules, so it is not being built")
 elseif (SPECBOLT_HAS_REFLECTION)

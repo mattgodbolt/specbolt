@@ -6,9 +6,9 @@
 // The parser reads whatever description it is handed, so these drive it with their own tables rather than damaging the
 // real one to see what it says. Every message the *parse* can produce should have a case here.
 //
-// The generator's messages are not tested here: `find_location`, `find_operation` and `operand_for_parameter` are
-// `consteval`, so a description they reject is a compile error rather than a throw at run time. Their messages are
-// covered by the real description compiling at all, and by reading them.
+// The interpreter's messages are not tested here: its lookups are `consteval`, so a description they reject is a
+// compile error rather than a throw at run time. InterpreterDiagnosticsTest.cpp pins them during constant evaluation
+// instead.
 
 namespace specbolt::v4 {
 

@@ -1,8 +1,8 @@
 # refract, the library that turns a `.cpu` description into an interpreter. It is
 # part of v4, whose Z80 is the machine it was built for, but it knows nothing of
 # the Z80, and is a target of its own so that the build says so rather than a
-# review. Header-only: everything it does happens at compile time, in whatever
-# translation unit includes it.
+# review. Header-only: what it generates is generated in whatever translation
+# unit includes it.
 
 # The repository root is on every target's include path (the top-level
 # CMakeLists.txt). Taken off here, before the tests are added, so that what

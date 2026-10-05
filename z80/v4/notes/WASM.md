@@ -80,8 +80,9 @@ bugs we work around on our side.
 - **v4 is built under `SPECBOLT_WASM` whenever the compiler has reflection** (`z80/CMakeLists.txt`); v3 still is not.
   The stock wasm build has no reflection, so it is unaffected.
 - **The web front end uses v4 when the build has it**, and v2 otherwise (`web/CMakeLists.txt`, `web/main.cpp`). Its
-  stand-ins for `__cxa_allocate_exception` and `__cxa_throw` now apply only without `__cpp_exceptions`: with
-  exceptions the real ones are linked, and the stand-ins would take their place.
+  stand-ins for `__cxa_allocate_exception` and `__cxa_throw` now apply only without `__wasm_exception_handling__`,
+  which `-fwasm-exceptions` sets: with it the real ones are linked, and the stand-ins would take their place. Not
+  `__cpp_exceptions`, which clang defines for wasm whether or not anything can catch what is thrown.
 - **The top-level `-target wasm32-wasi --sysroot` applies only without a toolchain file.** It is added before
   `project()`, so it overrode the toolchain's `wasm32-wasip1`, and wasi-sdk 34 keeps its libraries under
   `wasm32-wasip1`.
@@ -156,8 +157,8 @@ With those, `z80_v4_test` passes every assertion under the fork natively, and un
 
 Every change made for clang's sake that is not simply better code is behind `REFRACT_CLANG_WORKAROUNDS`, defined in
 `refract/Workarounds.hpp` as whether the compiler is clang, with the straightforward code in the other branch, so a
-single search finds all of them. Build with `-DREFRACT_CLANG_WORKAROUNDS=0` to try the straightforward code on a newer
-fork.
+single search finds all of them. Add `-DREFRACT_CLANG_WORKAROUNDS=0` to `CMAKE_CXX_FLAGS` to try the straightforward
+code on a newer fork; it is a preprocessor definition, and nothing in CMake reads it.
 
 | where | what it avoids | gone when |
 |---|---|---|

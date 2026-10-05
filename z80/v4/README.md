@@ -1,8 +1,8 @@
 # v4
 
 v4 is a Z80 core whose instruction set is not written in C++. It is a text file,
-[`z80.cpu`](z80.cpu), and a C++26 reflection library, refract, `#embed`s it, parses and checks it during
-constant evaluation, and generates both an interpreter and a disassembler from it. A malformed
+[`z80.cpu`](z80.cpu), which `Target.hpp` `#embed`s, and refract, a C++26 reflection library, parses and
+checks it during constant evaluation and generates both an interpreter and a disassembler from it. A malformed
 description is a compile error naming its line.
 
 ## What is where
@@ -62,4 +62,5 @@ to compile; [notes/MEASUREMENTS.md](notes/MEASUREMENTS.md) says why.
 | [notes/MEASUREMENTS.md](notes/MEASUREMENTS.md) | speed, build cost and what accuracy buys, each dated with its method |
 | [notes/PREFIXES.md](notes/PREFIXES.md) | a dated record of how the prefix design was reached |
 | [notes/WASM.md](notes/WASM.md) | getting v4 into the browser |
+| [notes/6502.md](notes/6502.md) | the 6502, refract's second machine, as a test of the format |
 | [notes/JOURNAL.md](notes/JOURNAL.md) | what was decided and why, in order |

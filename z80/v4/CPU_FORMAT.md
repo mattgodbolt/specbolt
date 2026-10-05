@@ -26,8 +26,9 @@ into the extensions directory and reload the window:
 ln -s "$PWD/tools/vscode-cpu" ~/.vscode/extensions/cpu-instruction-table
 ```
 
-Over a remote connection a grammar still runs locally, so it has to be packaged
-and installed on that end; the extension's README says how.
+Over a remote connection a grammar still runs locally, so it has to be installed
+on the local machine, from a checkout there or as a package; the extension's
+README says how.
 
 ---
 
@@ -38,9 +39,9 @@ build, parsed during constant evaluation, and used to generate two things: a
 disassembler and an interpreter. Nothing in it is read at run time. By the time
 the program starts, the file has become code.
 
-Examples are drawn from `z80.cpu`, the only description this repository has,
-except where one is marked as a counter-example or as a spelling `z80.cpu` does
-not use. Where a passage explains *why* a feature exists it usually cites the
+Examples are drawn from `z80.cpu`, the description v4 runs, except where one is
+marked as the 6502's (`refract/test/m6502/6502.cpu`), as a counter-example, or
+as a spelling `z80.cpu` does not use. Where a passage explains *why* a feature exists it usually cites the
 Z80, but the feature itself is stated generally and the paragraph will say which
 is which.
 
@@ -136,10 +137,10 @@ awkward remainder: the block moves, the exchanges, the flag minutiae.
 | a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, and `read_memory16` / `write_memory16` |
 | an **immediate**: `n` | `fetch_immediate`, once per byte, low byte first |
-| any **opcode fetch** | `fetch_opcode` |
+| any **opcode fetch** | `fetch_opcode`, except a latched table's, which is `fetch_immediate` |
 | the start of every instruction | `start_instruction`, which answers whether to run another; where a machine takes an interrupt or idles a halt |
 | `delay`, and any `/delay=` | `delay`, published as an operation too if rows write `delay` steps |
-| a **displacement**: `(ix+d)` | `displaced_address`, given the offset as a signed byte and told how many bytes were already read, and `displacement_window_bytes`; only a machine with displaced rows needs either |
+| a **displacement**: `(ix+d)` | `displaced_address`, given the offset as a signed byte and told how many bytes were read after it, and `displacement_window_bytes`; only a machine with displaced rows needs either |
 
 An operation's signature is the interface:
 
@@ -156,8 +157,8 @@ An operation's signature is the interface:
 - its **return type decides destinations**, as described under
   [the action column](#the-action-column), and whether it is a condition: one
   that returns `refract::Continue` decides whether the rest of its row runs,
-  and must not be a member of the machine, so that the row states everything
-  the branch depends on. `refract::continue_if(bool)` makes one.
+  and must not reach the machine (be a non-static member of it, or take it), so
+  that the row states everything the branch depends on. `refract::continue_if(bool)` makes one.
 
 Everything the format leaves unsaid is settled there: how wide a location is,
 what endianness a 16-bit memory access uses, what a "cycle" counts in, and how
@@ -219,7 +220,7 @@ carriage return. After trimming:
 
 > **Every line must mean something.** A line that is none of the above is a
 > mistyped one of them, so it is rejected rather than skipped: *this is not a
-> comment, a declaration, or a row; a row needs its `|` separators*. A row that
+> comment, a declaration, or a row; a row needs its '|' separators*. A row that
 > loses its separators is the case this is for.
 
 ---
@@ -263,8 +264,8 @@ steps           = step , { ";" , step } ;
 step            = operation , [ { operand } , "<-" ] , { operand } ;
 operation       = identifier | reference ;
 
-operand         = [ identifier , "=" ] , operand-body , [ "/" , attribute ] ;
-operand-body    = "-" | "n" | number | reference | indirect | name ;
+operand         = [ parameter-name , "=" ] , ( reference | simple-operand ) ;
+simple-operand  = ( "-" | "n" | number | indirect | name ) , [ "/" , attribute ] ;
 indirect        = "(" , ( "n" | number | name ) , [ "+d" ] , ")" ;
 attribute       = "delay" , "=" , digit ;
 number          = digit , { digit } | "0x" , hex-digit , { hex-digit } ;
@@ -282,6 +283,9 @@ name            = ? no space, and no longer than `Name::capacity` characters.
                     parameter's enum, ignoring case ? ;
 identifier      = ? no space. Resolved against the CPU's operations, ignoring
                     case ? ;
+parameter-name  = ? letters, digits and "_", no longer than `Name::capacity`
+                    characters, matched against the operation's declared
+                    parameter names ? ;
 table-name      = ? no space ? ;
 display-text    = ? a member's text as the vocabulary writes it, up to the ":"
                     or "/", so a rule matches `arith.adc`, not
@@ -290,7 +294,7 @@ display-text    = ? a member's text as the vocabulary writes it, up to the ":"
 literal         = ? mnemonic text containing no "{", "$" or "+d" ? ;
 ```
 
-Four things the grammar is stricter about than it may look:
+Some things the grammar is stricter about than it may look:
 
 - **A reference must be a whole operand.** `{reg:z}` is fine and `({reg:z})` is not;
   indirection through a vocabulary comes from the *member* being written `(hl)`,
@@ -306,8 +310,9 @@ Four things the grammar is stricter about than it may look:
   carries an operation or a delay, never both. An empty attribute (`b/`) or an
   empty operation (`add:`) is an error.
 
-Commas mean something only in a member's argument list; in a step they are
-decoration (see [the action column](#the-action-column)).
+Commas mean something only in a member's argument list and between a derived
+table's rules; in a step they are decoration (see
+[the action column](#the-action-column)).
 
 ---
 
@@ -317,7 +322,8 @@ decoration (see [the action column](#the-action-column)).
 vocab pair = bc de hl sp
 ```
 
-A vocabulary's name is a word. Its members are listed in the order
+A vocabulary's name is a word. (The real `pair` also names its scope, `: R16`,
+described below.) Its members are listed in the order
 the opcode bits select them, so a vocabulary of four members belongs to a
 two-bit slice and one of eight members to a three-bit slice. A mismatch is a
 compile error.
@@ -335,8 +341,9 @@ one of its enumerators is an error naming the line, and a name that means two
 things elsewhere means only one thing here.
 
 The scope may be an enum of the machine's locations, one a marked `read` takes, or
-an enum some operation takes as a parameter, which is how a vocabulary can
-select between values rather than places:
+an enum some operation takes as a parameter, which pins a vocabulary of values
+to that enum. (What makes a name a value rather than a place is the type of the
+parameter it reaches, not the scope; see [spellings](#spellings).)
 
 ```
 vocab dir : BlockDirection = i d
@@ -369,8 +376,8 @@ write-back through an operand costs.
 | hole | `-` | **the row does not cover that opcode at all** |
 
 A hole is how a general row leaves room for a specific one. Slot 3 of `logic` is
-`cp`, which returns flags only, so the general row leaves it to a row of its
-own:
+`cp`, which writes only the flags (its row discards `cmp8`'s result with `-`),
+so the general row leaves it to a row of its own:
 
 ```
 vocab logic = and:and8 xor:xor8 or:or8 -
@@ -417,7 +424,8 @@ costs what one costs.
 
 On the Z80 that is four T-states and a refresh-register increment, which is why
 `cb` costs four cycles before the instruction it introduces has been read at
-all, and why `dd dd dd 23` is a legal instruction costing four cycles a byte.
+all, and why `dd dd dd 23` is a legal instruction, each extra `dd` costing four
+cycles.
 
 (A *latched* table, below, is the exception: its opcode arrives by an operand
 read rather than an instruction fetch.)
@@ -488,7 +496,7 @@ table is then decoded once *per member* without being generated once per
 member: the parameter is a run-time value the prefix supplies, so `ix` and `iy`
 share every function between them.
 
-Three things follow, and they are the whole feature:
+What follows is the whole feature:
 
 - **A reference may be selected by the view instead of by opcode bits.**
   `{index:view}` reads "the member of `index` that this table's view picked".
@@ -606,7 +614,7 @@ Literal text, plus:
 | `{reg:z}` | the vocabulary member the slice selects |
 | `$nn` | an 8-bit immediate, as `0x3f` |
 | `$nnnn` | a 16-bit immediate, as `0x1234` |
-| `$e` | a **relative** target: the address the jump lands on, not the offset. Measured from the end of the instruction, so it must be the last byte the row reads, which is not checked |
+| `$e` | a **relative** target: the address the jump lands on, not the offset. Measured from the end of the instruction, so it must be the last byte the row reads, which it always is: `$e` counts as the row's one immediate byte, and a displacement is read before it |
 | `+d` | an index displacement, as `+0x02` or `-0x01` |
 
 The mnemonic is lowered into a fixed array of pieces at parse time, so the
@@ -709,9 +717,9 @@ list because nothing else here says so.
 | what | charged by |
 |---|---|
 | the opcode fetch, including every prefix byte | the CPU's `fetch_opcode` |
-| each byte of an immediate, and any displacement | the CPU's `fetch_immediate` |
+| each byte of an immediate, any displacement, and a latched table's opcode | the CPU's `fetch_immediate` |
 | each read or write through an indirect operand | the CPU's `read_memory` / `write_memory`, or their 16-bit forms |
-| forming an indexed address | the CPU's `displaced_address` |
+| forming a displaced address | the CPU's `displaced_address` |
 | an explicit `delay` step, or a `/delay=` on an addressing mode | the CPU's `delay` |
 
 **The unit is whatever the CPU counts in.** The format has none of its own:
@@ -761,9 +769,11 @@ stands.
 ### What this model does not cover at all
 
 Interrupts, reset, wait states and bus arbitration are **outside the format**.
-There is no way to write a row for an interrupt-acknowledge sequence, no way to
-say that an instruction affects whether the *next* one can be interrupted (the
-Z80's `EI`), and no "wait here until something external happens" step. All of it
+There is no way to write a row for an interrupt-acknowledge sequence, no
+construct for an instruction that changes whether the *next* one can be
+interrupted (the Z80's `ei` says so only by writing a location of the machine's,
+`deferred`, and `start_instruction` decides what that means), and no "wait here
+until something external happens" step. All of it
 belongs to the machine that drives the decoder, through `start_instruction`, not
 to the table. The one thing the table does contribute is that a repeating
 instruction is written as a rewind rather than a loop, so it re-enters the
@@ -823,8 +833,8 @@ Operands are still resolved in the order the row writes them, which matters
 because resolving one can read memory and move the address bus.
 
 A keyword is an identifier followed by `=`, and nothing else is, which is what
-keeps `(hl)/delay=1` from looking like one: everything before its `=` is
-punctuation.
+keeps `(hl)/delay=1` from looking like one: what precedes its `=` is not an
+identifier.
 
 ### Displacement
 
@@ -840,10 +850,12 @@ checked per opcode too: a row must render `+d` exactly when the opcode it
 renders is displaced, so neither a missing nor a spurious `+d` survives.
 
 The CPU description decides how a base and an offset combine *and what forming
-the address costs*. A processor that wraps within a page for one mode and
-charges for crossing one in another says so there, not here. It is told how many
-bytes the instruction has already read, because on some machines those reads
-happen inside the same window. (That is why the Z80's `ld (ix+d), n` is 19
+the address costs*. A machine has one `displaced_address`, so every displaced
+mode combines alike; a processor whose modes wrap or charge differently forms
+those addresses in steps, as the 6502 description does through `ea`. It is told
+how many bytes were read after the displacement and before the address is formed
+(the row's immediates, and a latched table's opcode), because on some machines
+those reads happen inside the same window. (That is why the Z80's `ld (ix+d), n` is 19
 T-states and not 22.) The machine also says how many bytes its window holds,
 as `displacement_window_bytes`, and a row that reads more is the error.
 
@@ -954,8 +966,8 @@ actual match sets, so a row with holes is compared by what it really covers.
 ## Limits
 
 Fixed capacities, chosen to fit what exists rather than on principle. Each one
-reports its own limit when reached, so raising it is a change to the constant
-named here, made in response to a message rather than a guess. The figures are
+reports its own limit when reached, so raising it is a change to what is named
+here, made in response to a message rather than a guess. The figures are
 the constants' values as this is written; the constants are the authority.
 
 | | | constant |
@@ -970,18 +982,18 @@ the constants' values as this is written; the constants are the authority.
 | pieces per vocabulary member | 3 | `Member::max_pieces` |
 | arguments a member may fix | 3 | `Member::Operation::max_arguments` |
 | slices per opcode pattern | 4 | `Pattern::max_slices` |
-| immediate bytes per row | 2 | `parse_encoding` (Parse.hpp) |
+| immediate bytes per row | 2 | `parse_encoding` (Parse.hpp), and the 16-bit immediate a handler carries |
 | characters in a name | 15 | `Name::capacity` |
 
 The vocabulary and table counts are held in a byte wherever one is referred to,
 so those two are bounded by the byte rather than by a judgement, and raising
 them means widening it. A name here is an operand, a parameter, a scope or a
-spelling; the longest `z80.cpu` writes is the scope `BlockDirection`.
+spelling.
 
 One limit is not a capacity but a shape: **an opcode is eight bits**
 (`Pattern::num_bits`). A pattern is always eight characters and a table always
-has 256 entries. The Z80 is a byte-opcode machine, so this has never been tested
-against anything else.
+has 256 entries. Both machines described so far have byte opcodes, so this has
+never been tested against one that does not.
 
 ---
 
@@ -1042,7 +1054,11 @@ Seven T-states not taken, twelve taken.
 **A view.**
 
 ```
-table indexed(view:index) = base with pair.hl -> {index:view}, reg.h -> {index_hi:view}, reg.(hl) -> {index_mem:view}
+table indexed(view:index) = base with pair.hl  -> {index:view}, \
+                                      spair.hl -> {index:view}, \
+                                      reg.h    -> {index_hi:view}, \
+                                      reg.l    -> {index_lo:view}, \
+                                      reg.(hl) -> {index_mem:view}
 
 01yyy110 | ld {real:y}, {index_mem:view} | ld8 {real:y} <- {index_mem:view}
 ```
@@ -1062,8 +1078,9 @@ vocab dir : BlockDirection = i d
 
 One row for `ldir` and `lddr` both. Bit 3 *is* the direction, so the row hands
 it to the operation rather than spelling out two rows that differ in an
-argument, and the scope clause says the two members are `BlockDirection`
-values, by their [spellings](#spellings), rather than places to read from.
+argument. The parameter's type makes the two members values rather than places
+to read from, and the scope clause pins them to `BlockDirection`, by their
+[spellings](#spellings).
 
 The rewind is what the chip actually does, re-executing the opcode, which is why
 an interrupt can land in the middle of an `ldir`.

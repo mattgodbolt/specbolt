@@ -4,8 +4,9 @@
 // same rows and vocabularies. Nothing here parses anything: a mnemonic was split into `Piece`s at parse time, so
 // rendering one is walking a list. All a machine supplies is where the bytes come from.
 //
-// A few choices are the format's rather than the machine's: a displacement is one signed byte, a relative jump lands a
-// signed byte from the end of the instruction, and a sixteen-bit immediate is assembled low byte first.
+// A few choices are the format's rather than the machine's: a displacement is one signed byte and comes before any
+// immediate, a relative jump lands a signed byte from the end of the instruction, and a sixteen-bit immediate is
+// assembled low byte first.
 
 #include "refract/Decode.hpp"
 #include "refract/Model.hpp"
@@ -82,7 +83,7 @@ inline constexpr std::size_t max_instruction_bytes = 8;
       .opcode = opcode,
       .view = view};
   std::string result;
-  // Renders one piece. A vocabulary member renders its own pieces, because an indexed mode writes its displacement in
+  // Renders one piece. A vocabulary member renders its own pieces, because a displaced mode writes its displacement in
   // the middle of its own text.
   const auto render = [&](this const auto &self, const Piece &piece) -> void {
     refract::visit(Overloaded{

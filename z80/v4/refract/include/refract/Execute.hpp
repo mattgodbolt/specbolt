@@ -132,7 +132,8 @@ struct Interpreter {
   }
 
   // The enums a location name may come from: the one each of the machine's `[[=refract::location]]` overloads takes.
-  // An enum no marked overload takes is not a location, however public a `read` of it is: the Z80's `Bus` is one.
+  // An enum no marked overload takes is not a location, however public a `read` of it may be; the Z80's `Bus`, which
+  // only `Z80::bus` takes, is not one.
   //
   // The scan sees private members too, so that a mark on something the generated code could not call is an error rather
   // than silently ignored: a location is read and written by calling `read` and `write` on it, so the mark belongs only
@@ -156,9 +157,9 @@ struct Interpreter {
     return scopes;
   }
 
-  // The enums a vocabulary may name as its scope: the location scopes, and any enum an operation takes as a parameter.
-  // Derived the same way and for the same reason, from what the CPU can be asked to do rather than from anything it
-  // declares about itself.
+  // The enums a vocabulary may name as its scope: those the machine's marked `read` overloads take, and any enum an
+  // operation takes as a parameter. Nothing is declared a scope as such: an enum is one because a location or an
+  // operation uses it.
   [[nodiscard]] static consteval std::vector<std::meta::info> named_scopes() {
     auto scopes = location_scopes();
     for (const auto candidate: operations())
@@ -296,9 +297,10 @@ struct Interpreter {
       for (const auto enumerator: std::meta::enumerators_of(everywhere))
         if (same_ignoring_case(std::meta::identifier_of(enumerator), name))
           candidates.push_back(enumerator);
-    // A spelling is consulted only when no identifier matched: almost every name is an identifier, and reading every
-    // enumerator's annotations on every lookup was measured to cost more than it is worth (notes/FINDINGS.md, "Compile
-    // time, and where it went when it moved").
+    // Identifiers are searched first and spellings only if none matched. The order cannot change the answer, since
+    // `check_location_names_unique` refuses a machine where a name is both; it is chosen because reading every
+    // enumerator's annotations is the expensive half (notes/FINDINGS.md, "Compile time, and where it went when it
+    // moved").
     if (candidates.empty())
       for (const auto everywhere: location_scopes())
         for (const auto enumerator: std::meta::enumerators_of(everywhere))
@@ -809,9 +811,9 @@ struct Interpreter {
     // points at has static storage and `members[at]` is a constant expression a splice can use.
     static constexpr auto members = decomposes_into(^^Result, C.line);
     consteval { check_destinations_fit<Fn, C, Result>(members); }
-    // Gated on the arity as well as checked, so that a wrong count is one message rather than one followed by twenty:
-    // reading the operands instantiates a parameter type per operand, and an operand with no parameter would index past
-    // the end of the parameter list.
+    // Gated on the arity as well as checked, so that a wrong count is one message rather than one followed by a
+    // cascade: reading the operands instantiates a parameter type per operand, and an operand with no parameter would
+    // index past the end of the parameter list.
     if constexpr (C.operands.size() != arity_of<Fn>)
       return;
     else if constexpr (std::is_void_v<Result>)
@@ -967,8 +969,8 @@ struct Interpreter {
 
   // One row, fully unrolled: every step spliced in, in order, with nothing of the table surviving into the generated
   // code. There is one of these per *body*, a row together with the slices it reads, so every opcode of a row that
-  // reads none of its variable bits shares one; `body_key` is what decides. Each is typically a handful of
-  // instructions, because every choice below is made at compile time.
+  // reads none of its variable bits shares one; `body_key` is what decides. Every choice below is made at compile
+  // time, so what survives is the row's own work.
   //
   // `Table`, `BodyKey` and `Index` are template parameters rather than arguments precisely so that
   // `Compiled::rows()[Index]`, the vocabulary lookups, and the renaming rules are all constants here. `BodyKey` is not
@@ -1006,8 +1008,8 @@ struct Interpreter {
       // is part of it rather than a choice of what to run. What that saves is the machine's business (on the Z80, a
       // cycle and a refresh).
       const auto next_opcode = Compiled::latched()[next_table] ? machine.fetch_immediate() : machine.fetch_opcode();
-      // A mandatory tail call, spelt `[[clang::musttail]]` because clang knows no other spelling and gcc accepts this
-      // one.
+      // A mandatory tail call, in the one spelling both compilers accept (notes/WASM.md, "The fork on the host, first",
+      // item 2).
       [[clang::musttail]] return dispatch<next_table>[next_opcode](machine, displacement, next_view, next_opcode);
     }
     else if constexpr (std::holds_alternative<Row::Steps>(row.action)) {
@@ -1028,19 +1030,19 @@ struct Interpreter {
       // What the instruction carries, gathered once its bytes are fetched, for every operand to read.
       const Decoded decoded{.immediate = immediate, .view = view, .opcode = opcode};
       // The displaced address, formed once after both fetches and handed to every operand displaced through it. The
-      // machine is told how many bytes were read before the address is formed: the row's immediate bytes, and a
-      // latched table's opcode, which was read after the displacement. Whether those reads overlap the forming is the
+      // machine is told how many bytes were read after the displacement and before the address is formed: the row's
+      // immediate bytes, and a latched table's opcode. Whether those reads overlap the forming is the
       // machine's call (on the Z80 they do), and how many its window holds is the machine's to say. Assigned rather
       // than formed by a lambda, which would capture `decoded` and `displacement` by reference and so take their
       // addresses, refusing the tail call below in any build that does not inline it.
       std::uint16_t indexed = 0;
       if constexpr (displaced) {
-        constexpr std::uint8_t read_inside = row.immediate_bytes + (entered_latched ? 1 : 0);
-        consteval { check_machine_displaces(read_inside, row.line); }
+        constexpr std::uint8_t read_after = row.immediate_bytes + (entered_latched ? 1 : 0);
+        consteval { check_machine_displaces(read_after, row.line); }
         // Asked again, so that a machine that cannot displace is told so above and not by a failed call besides.
         if constexpr (DisplacingMachine<Machine>)
           indexed = machine.displaced_address(direct_value_of<*displaced, row.line, std::uint16_t>(machine, decoded),
-              static_cast<std::int8_t>(displacement), read_inside);
+              static_cast<std::int8_t>(displacement), read_after);
       }
       // Expanded, not looped: the body is instantiated once per step, and `step` is `constexpr` inside it, which is
       // what lets its contents be template arguments. A `return` here leaves `execute_one`, not the expansion.
@@ -1103,7 +1105,8 @@ struct Interpreter {
   // The encoding with every unread variable bit cleared, which names the body this opcode wants: two opcodes of one row
   // share a body exactly when this agrees. The slices `bits_read_by` leaves out must be exactly the ones the generated
   // code does not branch on; a new kind of reference the code branches on has to be noted there, or two opcodes would
-  // share a body they disagree about. TableTest checks that every opcode of every body agrees with its key.
+  // share a body they disagree about. Nothing in the library checks that every opcode of every body agrees with its
+  // key, since doing so is slow; the Z80's TableTest does, for its description.
   [[nodiscard]] static constexpr std::uint8_t body_key(const Row &row, const std::uint8_t opcode) {
     return static_cast<std::uint8_t>(row.matched.opcode_bits | (opcode & bits_read_by(row)));
   }
@@ -1177,17 +1180,17 @@ struct Interpreter {
     [[clang::musttail]] return dispatch<Compiled::entry_table>[opcode](machine, 0, 0, opcode);
   }
 
-  // Checks that a displaced row's machine can form its address, and that the bytes the row reads inside the window
-  // that forms it are no more than the machine says the window holds. Either is a diagnostic against the row, rather
-  // than a failed call or a machine asked to spend time it does not have.
+  // Checks that a displaced row's machine can form its address, and that the bytes the row reads after its
+  // displacement are no more than the machine's `displaced_address` accounts for. Either is a diagnostic against the
+  // row, rather than a failed call or a machine asked to account for bytes it was not written for.
   static consteval void check_machine_displaces(const std::uint8_t bytes_read, const std::size_t line) {
     if constexpr (!DisplacingMachine<Machine>)
       throw error(line, "this row is displaced, so the machine needs displaced_address and displacement_window_bytes "
                         "(DisplacingMachine in Machine.hpp)");
     else if (bytes_read > Machine::displacement_window_bytes)
       throw error(line, "this row reads " + decimal(bytes_read) +
-                            " byte(s) inside the window that forms its displaced address, which is more than this "
-                            "machine's window holds");
+                            " byte(s) after its displacement and before its address is formed, which is more than "
+                            "this machine's displacement_window_bytes allows");
   }
 
   // Starts the run. The handlers tail-call each other from here on, so this is the only frame the run keeps.

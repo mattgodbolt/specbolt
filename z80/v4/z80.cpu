@@ -13,7 +13,7 @@ vocab reg = b c d e h l (hl)/delay=1 a
 # `add8` with the carry flag on the end.
 vocab arith = add:add8(0) adc:add8(carry) sub:sub8(0) sbc:sub8(carry)
 
-# The logical group. `cp` shares their encoding but returns flags only, so it has its own rows and leaves a hole here.
+# The logical group. `cp` shares their encoding but writes only the flags, so it has its own rows and leaves a hole here.
 vocab logic = and:and8 xor:xor8 or:or8 -
 
 # Which bit `bit`, `res` and `set` work on: the number is the operand.

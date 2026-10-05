@@ -106,7 +106,7 @@ and the groundwork is this, roughly in the order it has to happen:
 
    *2026-10-03: `Next` and the loop have gone too. Every handler now ends in a `[[clang::musttail]]`
    call, a prefix's to the next table's handler and anything else's to the next instruction's, so a
-   run of prefixes is a run of jumps and still cannot grow the stack. Notes.md, "Attempted, and it is
+   run of prefixes is a run of jumps and still cannot grow the stack. The top-level Notes.md, "Attempted, and it is
    worth more than the estimate", has why and what it bought.*
 2. ~~**`goto` learns `with view=`.**~~ **Not needed, the item dissolved.** The sketch below spelled
    the same idea twice: `goto base with view=ix` *and* `table ix = base with hl->ix, …`. Only the
@@ -127,8 +127,10 @@ and the groundwork is this, roughly in the order it has to happen:
      itself, so an override row is just a row and first-match-wins does the rest. A parent must be
      declared above its children, which makes the derivation a forest and lets declaration order
      resolve a chain.
-   - `member_of` applies the renaming, and it is still the only place a reference is followed. That
-     is the whole of the mechanism: **a view is a function from member to member, applied at the one
+   - `member_of` applies the renaming, and it is still the only place a reference is followed. *(It
+     shares that now with `view_vocabulary_of`, which follows a reference the same way, through the
+     same `rule_for`, to say whether the view chose the member; both are reached only through a
+     `{field}`.)* That is the whole of the mechanism: **a view is a function from member to member, applied at the one
      point a `{field}` is resolved.** Literal text is untouched by construction, which is the rule
      stated below, now enforced by there being nowhere else for a rule to act.
    - A derived table with no rows of its own is legal (it *is* its parent, renamed) so
@@ -208,7 +210,11 @@ interpreter reports the row that wanted it (`Z80.hpp`, `refract/Machine.hpp`).*
 
 *2026-10-04: back to an ordinary argument, `displaced_address(base, offset, bytes_read)`. The machine
 states the capacity as data, `displacement_window_bytes`, and the interpreter checks each displaced
-row against it, with the same diagnostic and no probe of a constraint.*
+row against it, with the same diagnostic and no probe of a constraint. The same day the offset became
+a `std::int8_t`, and the two moved out of `MachineLike` into `DisplacingMachine`, asked only of a
+machine with displaced rows. The 6502 that is now refract's second machine has none: it wraps within
+page zero and charges for page crossings in ordinary marked operations (`zp_index`, `index`,
+`index_store`), so the cost lives in the machine without this function at all.*
 
 Verified in `ExecuteTest.cpp` against the counts `OpcodeTests.cpp` asserts of v1/v2/v3: 19 for
 `ld r,(ix+d)`, `ld (ix+d),r`, `ld (ix+d),n` and `add a,(ix+d)`; 23 for `inc (ix+d)`; 8 for a DD that
@@ -229,8 +235,8 @@ because it precedes any immediate, which also makes the reported length right. *
    limit before something reaches it is guessing.
 
    What was actually missing was any evidence about the edge, so every fixed capacity now has a case
-   in `DiagnosticsTest`: steps, operands, destinations, mnemonic pieces, substitutions. All five
-   report the table's limit rather than corrupting quietly, so raising one when DDCB needs it is a
+   in `DiagnosticsTest` (CPU_FORMAT.md, "Limits", lists them). Each reports the table's limit rather
+   than corrupting quietly, so raising one when DDCB needs it is a
    one-line change made in response to a message rather than to a guess.
 
 Nothing in 1–4 is a syntax question. The table language for prefixes is already written down below;
@@ -295,8 +301,8 @@ views made it fewer declared tables plus a run-time view, and `z80.cpu` writes t
 **One rule to keep: only `{field}` references are rewritten; literal text never is.** `ex de, hl`
 written literally is therefore immune by construction. Substitution-by-default would reproduce the
 exact bug v2 and v3 both have. *(2026-10-03: fixed in both, #43.)* This is now structural rather
-than a rule to remember: `member_of` is the only place a rule is consulted, and it is only reachable
-through a `{field}`.
+than a rule to remember: rules are consulted only through `rule_for`, which `member_of` and
+`view_vocabulary_of` share, and both are reachable only through a `{field}`.
 
 Naming a different vocabulary *is* enough, now that a rule carries the vocabulary it rewrites; it
 was not when rules matched on member text alone, and `ExecuteTest` caught the difference. What stays

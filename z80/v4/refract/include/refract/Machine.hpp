@@ -2,8 +2,8 @@
 
 // What this library needs from a machine, and from the target that names it, written down in one place.
 //
-// A `.cpu` description names operations and locations; this says how the framework fetches, accesses memory, forms an
-// indexed address and spends time. Operation names resolve against the palettes the target lists and the members the
+// A `.cpu` description names operations and locations; this says how the framework fetches, accesses memory, forms a
+// displaced address and spends time. Operation names resolve against the palettes the target lists and the members the
 // machine marks with `[[=refract::operation]]`, and location names against the `read` overloads it marks with
 // `[[=refract::location]]` (both in Model.hpp).
 //
@@ -57,9 +57,10 @@ concept MachineLike =
 
 // What a machine adds when its description has displaced rows, such as the Z80's `(ix+d)`: how a base and a signed
 // offset combine, and what that costs, which is the machine's business rather than the format's. It is told how many
-// bytes were already read inside whatever window it spends forming the address, and states how many that window holds.
-// Asked only of a machine whose description has a displaced row, and then against that row's line; a machine without
-// one, such as a 6502, need not provide it.
+// instruction bytes were fetched after the displacement and before it was asked, so a machine whose address arithmetic
+// overlaps those fetches can charge only what is left; `displacement_window_bytes` is the most it accounts for, and a
+// row that fetches more is refused. Asked only of a machine whose description has a displaced row, and then against
+// that row's line; a machine without one, such as a 6502, need not provide it.
 template<typename M>
 concept DisplacingMachine =
     requires(M &machine, const std::uint16_t base, const std::int8_t offset, const std::uint8_t bytes_read) {

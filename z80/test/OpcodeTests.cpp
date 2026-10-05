@@ -1519,8 +1519,9 @@ struct OpcodeTester {
 };
 
 // The implementations every suite runs against. v1 times some indexed
-// instructions wrongly, and the `use_new_code` guards in the indexed suites skip
-// exactly those cycle counts for it; everything else it is held to.
+// instructions wrongly and does not run a few prefixed forms; the `use_new_code`
+// guards in the indexed suites skip those checks for it, and everything else it
+// is held to.
 #ifdef SPECBOLT_HAS_V4
 #define SPECBOLT_ALL_IMPLEMENTATIONS v1::Z80, v2::Z80, v3::Z80, v4::Z80
 #else

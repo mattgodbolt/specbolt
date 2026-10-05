@@ -30,7 +30,7 @@ SPECBOLT_EXPORT enum class Bus : std::uint8_t {
 // `write` below by overload resolution, so the framework never knows what kind of location it holds. A name is found by
 // walking `enumerators_of`, so even a lone location is an enumerator.
 
-// The same register taken whole, distinct from R8::F so that only a Flags-shaped value can be written to it.
+// The flags register taken whole, distinct from R8::F so that only a Flags-shaped value can be written to it.
 SPECBOLT_EXPORT enum class FlagWord : std::uint8_t { flags };
 
 // The one-bit state the chip keeps outside any register. The two interrupt enables are flip-flops in Zilog's own words
@@ -53,7 +53,7 @@ SPECBOLT_EXPORT enum class Interrupt : std::uint8_t { i, im };
 SPECBOLT_EXPORT enum class Refresh : std::uint8_t { r };
 
 // Which way the block operations walk memory. The annotations are what `z80.cpu` calls each direction: `i` and `d`, the
-// letters `ldi` and `ldd` end in. The description names a direction; nothing reads the values.
+// letters `ldi` and `ldd` end in. The description names a direction; nothing depends on their numeric values.
 SPECBOLT_EXPORT enum class BlockDirection : std::uint8_t {
   Up[[= refract::Spelling{"i"}]],
   Down[[= refract::Spelling{"d"}]],
