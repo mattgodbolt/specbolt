@@ -1,0 +1,274 @@
+#pragma once
+
+// Everything that parses a fragment of text without needing the whole description: which kind of line this is, what an
+// operand says, what a vocabulary member says. Each takes text and returns a value, so each is testable a line at a
+// time; none knows which line it is reading, since `at_line` names that when one of them throws.
+
+#include "refract/Model.hpp"
+#include "refract/Parser.hpp"
+#include "refract/Visit.hpp"
+
+#include <charconv>
+#include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <variant>
+#include <vector>
+
+namespace specbolt::refract {
+
+// `text` without a trailing comma, if it had one.
+[[nodiscard]] constexpr std::string_view trim_comma(std::string_view text) {
+  if (text.ends_with(','))
+    text.remove_suffix(1);
+  return text;
+}
+
+// The fields of `text` that any character of `delims` separates, blanks trimmed and empty ones dropped: a list's items
+// with `","`, or a line's words with `Parser::blanks`. Each is a `std::string_view` into `text`.
+[[nodiscard]] constexpr std::vector<std::string_view> fields(std::string_view text, const std::string_view delims) {
+  std::vector<std::string_view> result;
+  while (true) {
+    const auto end = text.find_first_of(delims);
+    if (const auto field = Parser::trim(text.substr(0, end)); !field.empty())
+      result.push_back(field);
+    if (end == std::string_view::npos)
+      return result;
+    text.remove_prefix(end + 1);
+  }
+}
+
+// Whether the line opens with `keyword` as a whole word. A keyword on its own is still that keyword, so `table` with no
+// name reaches the diagnostic that says so rather than being silently ignored.
+[[nodiscard]] constexpr bool is_directive(const std::string_view line, const std::string_view keyword) {
+  return line.starts_with(keyword) &&
+         (line.size() == keyword.size() || line[keyword.size()] == ' ' || line[keyword.size()] == '\t');
+}
+[[nodiscard]] constexpr bool is_vocabulary(const std::string_view line) { return is_directive(line, "vocab"); }
+[[nodiscard]] constexpr bool is_table(const std::string_view line) { return is_directive(line, "table"); }
+// Whether the line is a row: not blank, a comment or a declaration, and with a `|` in it.
+[[nodiscard]] constexpr bool is_row(const std::string_view line) {
+  return !line.empty() && line.front() != '#' && !is_vocabulary(line) && !is_table(line) && line.contains('|');
+}
+
+// The count of idle cycles a `delay=` attribute gives, which is one digit.
+[[nodiscard]] constexpr std::uint8_t parse_delay(const std::string_view value) {
+  if (value.size() != 1 || value.front() < '0' || value.front() > '9')
+    throw std::runtime_error("delay must be a single digit");
+  return static_cast<std::uint8_t>(value.front() - '0');
+}
+
+// Splits `text/delay=n` into the text and the delay it gives, or returns the word whole with no delay. Members and row
+// operands both write the attribute, and both read it here so that they accept and refuse the same spellings.
+[[nodiscard]] constexpr std::pair<std::string_view, std::optional<std::uint8_t>> split_delay(
+    const std::string_view word) {
+  const auto slash = word.find('/');
+  if (slash == std::string_view::npos)
+    return {word, std::nullopt};
+  Parser attribute(word.substr(slash + 1));
+  if (attribute.take_until('=') != "delay")
+    throw std::runtime_error("expected 'delay=n' after '/' in '" + std::string(word) + "'");
+  return {word.substr(0, slash), parse_delay(attribute.rest())};
+}
+
+// Parses an operand as a row or a member writes it: `-`, `n`, a number, or a name, any of which may be wrapped `(...)`
+// as an address, with `+d` inside the parentheses for a displaced one, and `/delay=n` on the end for the idle cycles a
+// write back through it costs. Anything in braces is a vocabulary reference, which is `parse_operand`'s business.
+[[nodiscard]] constexpr Operand parse_simple_operand(std::string_view word, const std::uint8_t immediate_bytes) {
+  if (word.empty())
+    throw std::runtime_error("empty operand in action");
+  // An addressing mode written out in a row says what it costs the same way a vocabulary member does.
+  if (const auto [text, delay] = split_delay(word); delay) {
+    auto attributed = parse_simple_operand(text, immediate_bytes);
+    attributed.write_back_delay = *delay;
+    return attributed;
+  }
+  if (word == "-")
+    return Operand::discard();
+  if (word.starts_with('(')) {
+    if (!word.ends_with(')'))
+      throw std::runtime_error("unterminated '(' in operand '" + std::string(word) + "'");
+    word = word.substr(1, word.size() - 2);
+    const auto displaced = word.ends_with("+d");
+    if (displaced)
+      word.remove_suffix(2);
+    auto addressed = parse_simple_operand(word, immediate_bytes);
+    if (addressed.indirect)
+      throw std::runtime_error("an address cannot itself be indirect");
+    addressed.indirect = true;
+    addressed.displaced = displaced;
+    return addressed;
+  }
+  if (word.ends_with("+d"))
+    throw std::runtime_error("a displacement only makes sense inside '(...)'");
+  if (word == "n")
+    return Operand::immediate(immediate_bytes);
+  if (word == "nn")
+    throw std::runtime_error("write 'n'; the encoding column says how many bytes it occupies");
+  if (word.front() >= '0' && word.front() <= '9') {
+    const auto hex = word.starts_with("0x");
+    const auto digits = hex ? word.substr(2) : word;
+    std::uint16_t value = 0;
+    const auto [end, failure] = std::from_chars(digits.data(), digits.data() + digits.size(), value, hex ? 16 : 10);
+    if (failure == std::errc::result_out_of_range)
+      throw std::runtime_error("constant '" + std::string(word) + "' does not fit in 16 bits");
+    if (failure != std::errc{} || end != digits.data() + digits.size())
+      throw std::runtime_error("malformed constant '" + std::string(word) + "'");
+    return Operand::literal(value);
+  }
+  if (word.size() > Name::capacity)
+    throw std::runtime_error("operand name '" + std::string(word) + "' is too long");
+  return Operand::named(Name{word});
+}
+
+// Splits display text around the values it renders rather than spells: `$nn`, `$nnnn` and `$e` come from the encoding,
+// and `+d` is the displacement a displaced mode carries. Both a row's mnemonic and a vocabulary member's text are
+// lowered with this, so neither is parsed at runtime.
+[[nodiscard]] constexpr std::vector<Piece> pieces_of(Parser text) {
+  std::vector<Piece> pieces;
+
+  const auto lower_immediates = [&](Parser chunk) {
+    while (!chunk.eof()) {
+      if (!chunk.rest().contains('$')) {
+        if (!chunk.rest().empty())
+          pieces.push_back({Piece::Literal{chunk.rest()}});
+        return;
+      }
+      if (const auto literal = chunk.take_until('$'); !literal.empty())
+        pieces.push_back({Piece::Literal{literal}});
+      if (chunk.rest().starts_with('e')) {
+        chunk = Parser(chunk.rest().substr(1));
+        if (chunk.rest().starts_with('e'))
+          throw std::runtime_error("expected $nn, $nnnn or $e in mnemonic");
+        pieces.push_back({Piece::Relative{}});
+        continue;
+      }
+      const auto before = chunk.rest().size();
+      chunk.skip_any("n");
+      switch (before - chunk.rest().size()) {
+        case 2: pieces.push_back({Piece::Imm8{}}); break;
+        case 4: pieces.push_back({Piece::Imm16{}}); break;
+        default: throw std::runtime_error("expected $nn, $nnnn or $e in mnemonic");
+      }
+    }
+  };
+
+  while (!text.eof()) {
+    const auto at = text.rest().find("+d");
+    if (at == std::string_view::npos) {
+      lower_immediates(text);
+      return pieces;
+    }
+    lower_immediates(Parser(text.rest().substr(0, at)));
+    pieces.push_back({Piece::Displacement{}});
+    text = Parser(text.rest().substr(at + 2));
+  }
+  return pieces;
+}
+
+// Splits `name=rest` into the parameter an operand names and the operand, or returns the word whole with an empty name.
+// A keyword is an identifier followed by `=`, which is what keeps an attributed operand such as `(name)/delay=1` from
+// looking like one: what precedes its `=` is not an identifier.
+[[nodiscard]] constexpr std::pair<Name, std::string_view> split_keyword(const std::string_view word) {
+  const auto at = word.find('=');
+  if (at == std::string_view::npos || at == 0)
+    return {{}, word};
+  const auto keyword = word.substr(0, at);
+  const auto in_identifier = [](const char c) {
+    return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+  };
+  if (!std::ranges::all_of(keyword, in_identifier))
+    return {{}, word};
+  if (keyword.size() > Name::capacity)
+    throw std::runtime_error("'" + std::string(keyword) + "' is too long to be a parameter name");
+  if (at + 1 == word.size())
+    throw std::runtime_error("'" + std::string(keyword) + "=' names a parameter but gives it no operand");
+  return {Name{keyword}, word.substr(at + 1)};
+}
+
+// Splits `name(inner)` into the name and what its parentheses hold, or returns the word whole with nothing inside. A
+// table declaration writes its view this way, and a goto the view it enters with; `what` says which, for the error.
+[[nodiscard]] constexpr std::pair<std::string_view, std::optional<std::string_view>> split_parenthesised(
+    const std::string_view word, const std::string_view what) {
+  const auto open = word.find('(');
+  if (open == std::string_view::npos)
+    return {word, std::nullopt};
+  if (!word.ends_with(')'))
+    throw std::runtime_error("unterminated '(' in " + std::string(what));
+  return {word.substr(0, open), word.substr(open + 1, word.size() - open - 2)};
+}
+
+// Parses one vocabulary member, written `display[:operation[(argument, ...)]][/delay=n]`, or `-` for a hole. The
+// display is itself an operand, and the arguments are operands the member appends to the row's, each of which may be
+// `name=`d.
+[[nodiscard]] constexpr Member parse_member(const std::string_view text) {
+  const auto [body, delay_attribute] = split_delay(text);
+  Parser parser(body);
+  Member member{.display = parser.take_until(':')};
+  const auto bound_text = parser.rest();
+  if (member.display.empty())
+    throw std::runtime_error("a vocabulary member has no name");
+  if (member.display.contains('$'))
+    throw std::runtime_error("a vocabulary member cannot render an immediate; only the encoding fetches those");
+  // Asked of `body`, because `take_until` hands back the same empty rest whether or not it found the `:`.
+  if (bound_text.empty() && body.contains(':'))
+    throw std::runtime_error("':' introduces the operation a member binds, and none was given");
+  if (member.display == "-") {
+    member.kind = Member::Hole{};
+    return member;
+  }
+  for (const auto &piece: pieces_of(Parser(member.display)))
+    member.pieces.push_back(piece);
+  if (bound_text.empty()) {
+    // An operand: the display is its text.
+    auto operand = parse_simple_operand(member.display, 0);
+    operand.write_back_delay = delay_attribute.value_or(0);
+    refract::visit(Overloaded{
+                       [](const OneOf<Operand::Immediate, Operand::Discard> auto &) {
+                         throw std::runtime_error("a vocabulary member must name something the CPU can resolve");
+                       },
+                       [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
+                   },
+        operand.kind);
+    member.kind = operand;
+    return member;
+  }
+  if (delay_attribute)
+    throw std::runtime_error(
+        "a delay is what a write back through an operand costs, and this member names an operation");
+  Parser bound(bound_text);
+  Member::Operation bound_operation{.name = bound.take_until('(')};
+  if (auto arguments = bound.rest(); !arguments.empty()) {
+    if (bound_operation.name.empty())
+      throw std::runtime_error("a member's argument list needs an operation to hand them to");
+    if (!arguments.ends_with(')'))
+      throw std::runtime_error("a member's argument list is not closed");
+    arguments.remove_suffix(1);
+    for (const auto word: fields(arguments, ",")) {
+      const auto [parameter, rest] = split_keyword(word);
+      auto argument = parse_simple_operand(rest, 0);
+      argument.parameter = parameter;
+      refract::visit(Overloaded{
+                         [](const Operand::Immediate &) {
+                           throw std::runtime_error(
+                               "a member cannot pass an immediate; only the encoding fetches those");
+                         },
+                         [](const Operand::Discard &) {
+                           throw std::runtime_error(
+                               "'-' discards a result, and a member's argument is something the operation is given");
+                         },
+                         [](const OneOf<Operand::Constant, Operand::Named, Operand::Vocabulary> auto &) {},
+                     },
+          argument.kind);
+      bound_operation.arguments.push_back(argument);
+    }
+    if (bound_operation.arguments.empty())
+      throw std::runtime_error("a member's argument list is empty; leave it off rather than writing '()'");
+  }
+  member.kind = bound_operation;
+  return member;
+}
+
+} // namespace specbolt::refract

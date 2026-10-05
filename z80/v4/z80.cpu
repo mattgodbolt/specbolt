@@ -1,0 +1,221 @@
+# The vocabularies. Each names one value per bit pattern of the slice that selects it, so a vocabulary of eight members
+# belongs to a three-bit slice and one of four to a two-bit slice. A `-` member is a hole: the row does not cover that
+# opcode at all, which is how a general row leaves room for a specific one.
+
+# The sixteen-bit pairs, as most of the opcode space spells them.
+vocab pair : R16 = bc de hl sp
+
+# The eight-bit registers. Slot 6 is not a register but an addressing mode, and it carries the idle cycle a
+# read-modify-write through it costs.
+vocab reg = b c d e h l (hl)/delay=1 a
+
+# The arithmetic group. Each member binds the primitive that does the work and appends the carry it wants, so `adc` is
+# `add8` with the carry flag on the end.
+vocab arith = add:add8(0) adc:add8(carry) sub:sub8(0) sbc:sub8(carry)
+
+# The logical group. `cp` shares their encoding but writes only the flags, so it has its own rows and leaves a hole here.
+vocab logic = and:and8 xor:xor8 or:or8 -
+
+# Which bit `bit`, `res` and `set` work on: the number is the operand.
+vocab bit = 0 1 2 3 4 5 6 7
+
+# The rotates and shifts of the cb table. `rl` and `rr` take the carry in the same way the arithmetic group does. `sll`
+# is undocumented, and shifts a one in where `sla` shifts a zero.
+vocab shift = rlc:rotate_circular8(left)  rrc:rotate_circular8(right) \
+              rl:rotate8(left,carry)      rr:rotate8(right,carry) \
+              sla:shift_arithmetic8(left) sra:shift_arithmetic8(right) \
+              sll:shift_logical8(left)    srl:shift_logical8(right)
+
+# The accumulator-only rotates, which keep sign, zero and parity where the cb forms above recompute them.
+vocab arot = rlca:fast_rotate_circular8(direction=left)  rrca:fast_rotate_circular8(direction=right) \
+             rla:fast_rotate8(direction=left)            rra:fast_rotate8(direction=right)
+
+# The real eight-bit registers, which no view renames: in `ld r, (ix+d)` the register half is the true h or l. A rule
+# names the vocabulary it rewrites, and no rule names this one. Slot 6 is a hole so these rows leave `halt` alone.
+vocab real : R8 = b c d e h l - a
+
+# The stack's view of the pairs, which puts af where sp would be.
+vocab spair : R16 = bc de hl af
+
+# The two index registers, as a vocabulary rather than as two tables. A `dd` or `fd` prefix decodes the same rows under
+# a different *view*, and these four parallel vocabularies are what a view selects between: one set of rows, one set of
+# handlers.
+#
+# A view is an ordinal into all four at once, so they must list their registers in the same order as each other: `ixh`
+# has to sit where `ix` sits. Nothing can check that, because only the Z80 knows the two are halves of a pair.
+vocab index     : R16 = ix              iy
+vocab index_hi  : R8  = ixh             iyh
+vocab index_lo  : R8  = ixl             iyl
+vocab index_mem : R16 = (ix+d)/delay=1  (iy+d)/delay=1
+
+# Where each `rst` goes. The member is the constant itself.
+vocab rst = 0x00 0x08 0x10 0x18 0x20 0x28 0x30 0x38
+
+# The conditions. Each binds a test and appends the flag it asks about, so the vocabulary is the whole of what `nz`
+# means.
+vocab cond = nz:is_clear(zero)   z:is_set(zero) \
+             nc:is_clear(carry)  c:is_set(carry) \
+             po:is_clear(parity) pe:is_set(parity) \
+             p:is_clear(sign)    m:is_set(sign)
+
+# The four conditions a relative jump has room to encode.
+vocab jcond = nz:is_clear(zero) z:is_set(zero) nc:is_clear(carry) c:is_set(carry)
+
+# Which way a block operation walks memory. Its members are neither locations nor constants but the spellings
+# `BlockDirection` declares for itself.
+vocab dir : BlockDirection = i d
+
+# The interrupt modes, as the three-bit slice of the ed table spells them: every mode has two encodings and mode 0 has
+# four.
+vocab imode = 0 0 1 2 0 0 1 2
+
+# Decoding starts in the first table declared, whatever it is called. Everything not reached by a prefix lives here.
+
+table base
+
+00000000     | nop                  | nop
+01110110     | halt                 | ld8 halted <- 1
+00pp0001 n n | ld {pair:p}, $nnnn   | ld16 {pair:p} <- n
+00yyy110 n   | ld {reg:y}, $nn      | ld8 {reg:y} <- n
+00000010     | ld (bc), a           | ld8 (bc) <- a
+00010010     | ld (de), a           | ld8 (de) <- a
+00001010     | ld a, (bc)           | ld8 a <- (bc)
+00011010     | ld a, (de)           | ld8 a <- (de)
+00pp0011     | inc {pair:p}         | inc16 {pair:p} <- {pair:p} ; delay 2
+00pp1011     | dec {pair:p}         | dec16 {pair:p} <- {pair:p} ; delay 2
+000ff111     | {arot:f}             | {arot:f} a, flags <- lhs=a flags=flags
+00100111     | daa                  | daa a, flags <- a flags
+00101111     | cpl                  | cpl a, flags <- a flags
+00110111     | scf                  | scf -, flags <- a flags
+00111111     | ccf                  | ccf -, flags <- a flags
+00yyy100     | inc {reg:y}          | inc8 {reg:y}, flags <- {reg:y} flags
+00yyy101     | dec {reg:y}          | dec8 {reg:y}, flags <- {reg:y} flags
+01yyyzzz     | ld {reg:y}, {reg:z}  | ld8 {reg:y} <- {reg:z}
+100qqzzz     | {arith:q} a, {reg:z} | {arith:q} a, flags <- a {reg:z}
+101wwzzz     | {logic:w} {reg:z}    | {logic:w} a, flags <- a {reg:z}
+10111zzz     | cp {reg:z}           | cmp8 -, flags <- a {reg:z}
+110qq110 n   | {arith:q} a, $nn     | {arith:q} a, flags <- a n
+111ww110 n   | {logic:w} $nn        | {logic:w} a, flags <- a n
+11111110 n   | cp $nn               | cmp8 -, flags <- a n
+00100010 n n | ld ($nnnn), hl       | ld16 (n) <- hl
+00101010 n n | ld hl, ($nnnn)       | ld16 hl <- (n)
+00110010 n n | ld ($nnnn), a        | ld8 (n) <- a
+00111010 n n | ld a, ($nnnn)        | ld8 a <- (n)
+00pp1001     | add hl, {pair:p}     | add16 hl, flags <- hl {pair:p} flags ; delay 7
+00001000     | ex af, af'           | ex_af
+11011001     | exx                  | exx
+11101011     | ex de, hl            | ex_de_hl
+11101001     | jp (hl)              | ld16 pc <- hl
+11111001     | ld sp, hl            | ld16 sp <- hl ; delay 2
+11110011     | di                   | ld8 iff1 <- 0 ; ld8 iff2 <- 0
+11111011     | ei                   | ld8 iff1 <- 1 ; ld8 iff2 <- 1 ; ld8 deferred <- 1
+11000011 n n | jp $nnnn             | ld16 pc <- n
+11kk0101     | push {spair:k}       | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- {spair:k}
+11kk0001     | pop {spair:k}        | ld16 {spair:k} <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11001101 n n | call $nnnn           | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- n
+11001001     | ret                  | ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11yyy111     | rst {rst:y}          | delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; ld16 pc <- {rst:y}
+00010000 n   | djnz $e              | delay 1 ; dec8_no_flags b <- b ; nonzero b ; delay 5 ; relative pc <- pc n
+00011000 n   | jr $e                | delay 5 ; relative pc <- pc n
+001jj000 n   | jr {jcond:j}, $e     | {jcond:j} ; delay 5 ; relative pc <- pc n
+11yyy010 n n | jp {cond:y}, $nnnn   | {cond:y} ; ld16 pc <- n
+11yyy100 n n | call {cond:y}, $nnnn | {cond:y} ; delay 1 ; dec16 sp <- sp ; dec16 sp <- sp ; ld16 (sp) <- pc ; \
+                                      ld16 pc <- n
+11yyy000     | ret {cond:y}         | delay 1 ; {cond:y} ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+11010011 n   | out ($nn), a         | out_n n a
+11011011 n   | in a, ($nn)          | in_n a <- n a
+11100011     | ex (sp), hl          | ex_sp_hl hl <- hl
+11101101     | (ed)                 | goto ed
+11001011     | (cb)                 | goto cb
+11011101     | (dd)                 | goto indexed(ix)
+11111101     | (fd)                 | goto indexed(iy)
+
+# `cb` is a plain table switch: one more opcode fetch, decoded here instead. Bit operations and the rotate family that
+# `rlca` only hints at.
+
+table cb
+
+00yyyzzz | {shift:y} {reg:z}    | {shift:y} {reg:z}, flags <- {reg:z}
+# `bit b, (hl)` takes flags 3 and 5 from the high byte of the address on the bus, which after reading through hl is h.
+01bbb110 | bit {bit:b}, (hl)    | test_bit flags <- value=(hl) bit={bit:b} flags=flags bus=h ; delay 1
+01bbbzzz | bit {bit:b}, {reg:z} | test_bit flags <- value={reg:z} bit={bit:b} flags=flags bus={reg:z}
+10bbbzzz | res {bit:b}, {reg:z} | res {reg:z} <- {reg:z} {bit:b}
+11bbbzzz | set {bit:b}, {reg:z} | set {reg:z} <- {reg:z} {bit:b}
+
+# `dd` and `fd` are not table switches but *views*: they re-read the base table with hl renamed, which is why two thirds
+# of their entries are the base instruction untouched. The rows below are the ones a rename alone gets wrong; a table's
+# own rows win over everything it inherits, wherever they are written.
+
+table indexed(view:index) = base with pair.hl  -> {index:view}, \
+                                      spair.hl -> {index:view}, \
+                                      reg.h    -> {index_hi:view}, \
+                                      reg.l    -> {index_lo:view}, \
+                                      reg.(hl) -> {index_mem:view}
+
+00pp1001     | add {index:view}, {pair:p}    | add16 {index:view}, flags <- {index:view} {pair:p} flags ; delay 7
+00100010 n n | ld ($nnnn), {index:view}      | ld16 (n) <- {index:view}
+00101010 n n | ld {index:view}, ($nnnn)      | ld16 {index:view} <- (n)
+11101001     | jp ({index:view})             | ld16 pc <- {index:view}
+11111001     | ld sp, {index:view}           | ld16 sp <- {index:view} ; delay 2
+11100011     | ex (sp), {index:view}         | ex_sp_hl {index:view} <- {index:view}
+01yyy110     | ld {real:y}, {index_mem:view} | ld8 {real:y} <- {index_mem:view}
+01110zzz     | ld {index_mem:view}, {real:z} | ld8 {index_mem:view} <- {real:z}
+11001011 d   | (dd cb)                       | goto indexed_cb(view)
+
+# `dd cb d op` is the one encoding whose opcode is not its last byte, so the `d` in the row above says the displacement
+# is read here and handed on.
+#
+# These rows are emphatically not `cb` renamed: every one of them works on memory, and the low bits name a register the
+# result is *also* copied into. Reading them as a view is wrong for most of the table (notes/PREFIXES.md).
+
+table indexed_cb(view:index)
+
+00yyy110 | {shift:y} {index_mem:view}              | {shift:y} {index_mem:view}, flags <- {index_mem:view}
+00yyyzzz | {shift:y} {index_mem:view}, {real:z}    | {shift:y} {real:z}, flags <- {index_mem:view} ; delay 1 ; \
+                                                     ld8 {index_mem:view} <- {real:z}
+01bbbzzz | bit {bit:b}, {index_mem:view}           | test_bit flags <- value={index_mem:view} bit={bit:b} flags=flags bus=wzh ; \
+                                                     delay 1
+10bbb110 | res {bit:b}, {index_mem:view}           | res {index_mem:view} <- {index_mem:view} {bit:b}
+10bbbzzz | res {bit:b}, {index_mem:view}, {real:z} | res {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
+11bbb110 | set {bit:b}, {index_mem:view}           | set {index_mem:view} <- {index_mem:view} {bit:b}
+11bbbzzz | set {bit:b}, {index_mem:view}, {real:z} | set {index_mem:view} {real:z} <- {index_mem:view} {bit:b}
+
+# `ed` is the second instruction set the Z80 grew, and the only place `ld (nn), rr` exists for every pair rather than
+# for hl alone. Its block operations are the one family that repeats: they rewind the program counter so the chip
+# re-executes the opcode, which is what lets an interrupt land in the middle of an `ldir`.
+
+table ed
+
+# `in (c)` and `out (c), 0` are their own rows because slot 6 of `reg` is `(hl)`, and neither touches memory.
+01110000     | in (c)               | in_c -, flags <- bc flags
+01yyy000     | in {reg:y}, (c)      | in_c {reg:y}, flags <- bc flags
+01110001     | out (c), 0           | out_c bc 0
+01yyy001     | out (c), {reg:y}     | out_c bc {reg:y}
+01pp0010     | sbc hl, {pair:p}     | sbc16 hl, flags <- hl {pair:p} carry ; delay 7
+01pp1010     | adc hl, {pair:p}     | adc16 hl, flags <- hl {pair:p} carry ; delay 7
+01pp0011 n n | ld ($nnnn), {pair:p} | ld16 (n) <- {pair:p}
+01pp1011 n n | ld {pair:p}, ($nnnn) | ld16 {pair:p} <- (n)
+01yyy100     | neg                  | neg8 a, flags <- a
+01000111     | ld i, a              | ld8 i <- a ; delay 1
+01001111     | ld r, a              | ld8 r <- a ; delay 1
+01010111     | ld a, i              | ld_a_special a, flags <- i flags ; delay 1
+01011111     | ld a, r              | ld_a_special a, flags <- r flags ; delay 1
+01001101     | reti                 | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+01yyy101     | retn                 | ld8 iff1 <- iff2 ; ld16 pc <- (sp) ; inc16 sp <- sp ; inc16 sp <- sp
+01yyy110     | im {imode:y}         | ld8 im <- {imode:y}
+01100111     | rrd                  | rrd8 (hl), flags <- (hl) flags
+01101111     | rld                  | rld8 (hl), flags <- (hl) flags
+1010w000     | ld{dir:w}            | block_load flags <- {dir:w} flags
+1010w001     | cp{dir:w}            | block_compare flags <- {dir:w} flags
+1010w010     | in{dir:w}            | block_in flags <- {dir:w} flags
+1010w011     | out{dir:w}           | block_out flags <- {dir:w} flags
+1011w000     | ld{dir:w}r           | block_load flags <- {dir:w} flags ; nonzero16 bc ; delay 5 ; \
+                                      relative pc <- pc 0xfe
+1011w001     | cp{dir:w}r           | block_compare flags <- {dir:w} flags ; nonzero16 bc ; is_clear zero ; \
+                                      delay 5 ; relative pc <- pc 0xfe
+1011w010     | in{dir:w}r           | block_in flags <- {dir:w} flags ; nonzero b ; delay 5 ; relative pc <- pc 0xfe
+1011w011     | ot{dir:w}r           | block_out flags <- {dir:w} flags ; nonzero b ; delay 5 ; relative pc <- pc 0xfe
+
+# Everything the chip does not define in this table is a two-byte nop, which is a row like any other and has to come
+# last so the rest shadow it.
+xxxxxxxx     | nop                  | nop

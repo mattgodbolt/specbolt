@@ -67,6 +67,10 @@ import z80_v3;
 #if BENCH_V3
 #include "z80/v3/Z80.hpp"
 #endif
+// v4 is never built with modules, so it is only ever a header.
+#if BENCH_V4
+#include "z80/v4/Z80.hpp"
+#endif
 #endif
 
 namespace specbolt {
@@ -167,7 +171,7 @@ struct Bench {
                      | lyra::help(need_help) //
                      | lyra::opt(instructions, "NUM")["-n"]["--instructions"]("Instructions to run per repetition.") //
                      | lyra::opt(reps, "NUM")["-r"]["--reps"]("Repetitions; the best of these is reported.") //
-                     | lyra::opt(only, "impl")["--impl"]("Benchmark only this implementation.").choices(1, 2, 3) //
+                     | lyra::opt(only, "impl")["--impl"]("Benchmark only this implementation.").choices(1, 2, 3, 4) //
                      | lyra::opt(snapshot, "FILE")["-s"]["--snapshot"]("Run a game instead of zexdoc.") //
                      | lyra::opt(frames, "NUM")["-f"]["--frames"]("Frames per repetition, with --snapshot.");
     if (const auto parsed = cli.parse({argc, argv}); !parsed) {
@@ -192,6 +196,10 @@ struct Bench {
 #if BENCH_V3
     if (wants(3))
       results.push_back({.name = "v3"});
+#endif
+#if BENCH_V4
+    if (wants(4))
+      results.push_back({.name = "v4"});
 #endif
 
     // A per-implementation binary holds exactly one, so asking it for another
@@ -240,6 +248,10 @@ struct Bench {
 #if BENCH_V3
     if (name == "v3")
       return run.template operator()<v3::Z80>();
+#endif
+#if BENCH_V4
+    if (name == "v4")
+      return run.template operator()<v4::Z80>();
 #endif
     return {};
   }

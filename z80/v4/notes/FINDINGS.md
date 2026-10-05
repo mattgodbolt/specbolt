@@ -1,0 +1,483 @@
+# C++26, as found
+
+What the language actually did when v4 leaned on it, all verified on gcc 16.2 rather than
+read in a paper. **New language facts go here**, whether or not they changed the design.
+
+Part of [v4's notes](../NOTES.md).
+
+---
+
+## C++26 findings (all verified on gcc 16.2)
+
+Hard-won and easy to forget. Each of these cost a debugging cycle.
+
+### Reflection
+
+- **`-freflection` is a language dialect switch, not a per-target option.** gcc cannot merge a module
+  built without it into a TU built with it, importing one fails with conflicting declarations for
+  types reachable both textually and through the module. It also requires `-std=c++26`. It therefore
+  lives on `opt::c++26`, which every specbolt target links; applying it globally instead breaks
+  third-party targets that build at the default standard.
+- **`std::meta::info` is a consteval-only type.** It cannot be stored in anything that survives to
+  runtime, a struct containing one becomes consteval-only, so *any* runtime use of that struct
+  (including reading an unrelated `int` member) is ill-formed. Resolve reflections **inside** the
+  splice: `[: find_operation(name, line) :]`, never `[: stored.fn :]`.
+- **`identifier_of` throws on members without identifiers** (constructors, etc). Guard with
+  `has_identifier` before comparing names, or the exception pre-empts your own diagnostic.
+- **Reflection must live in template arguments and alias templates, never in a local.** A
+  `constexpr auto parameters = define_static_array(parameters_of(Fn));` inside a function body is an
+  immediate-escalating expression: it promotes the enclosing function to `consteval`, which then
+  cannot be called with runtime CPU state. Use `template<info Fn> constexpr auto arity_of = …` and
+  `template<info Fn, size_t I> using parameter_type = typename[:type_of(parameters_of(Fn)[I]):]`
+  instead. This is the sharp edge of the consteval-only rule and it is easy to trip over twice.
+- **A reflection call in a `constexpr` function body makes the function `consteval`.** `identifier_of(^^T)` inside
+  `Vector::push_back` (for a diagnostic) was an immediate-escalating expression, so `push_back`, `slices_read_by`
+  and `body_key` all became immediate functions and TableTest, which calls `body_key` at run time, stopped
+  compiling. The fix is the same as for `parameters_of`: do the reflection in a `static constexpr` data member's
+  initialiser, which is a constant-expression context, and read the result at run time. Found 2026-09-21.
+  *(`slices_read_by` is now `bits_read_by`, and returns a mask with no local container at all.)*
+- **`access_context::current()` at namespace scope excludes private members.** This is why `Ops` is a
+  struct with a private section rather than a namespace: access control gates which names the table
+  may use as verbs. Deliberate and worth keeping. *(2026-10-03: `Ops` is now `Operations`, a palette
+  with no private section. The fact stands: `Interpreter` asks `members_of` with
+  `access_context::current()`, which is its own scope, so a private helper in a palette cannot be
+  named by a row.)*
+- **Released clang has no reflection at all**: 22.1 and trunk both lacked `<meta>` as of 2026-08-16. The wasm build is
+  clang, so v4 is excluded in CMake via `if (SPECBOLT_HAS_REFLECTION)` rather than by `#ifdef`s in
+  source. The P2996 forks are a different matter: MEASUREMENTS.md, "The other implementations: two
+  clang forks". *(2026-10-03: v4 now builds for wasm too, through Barry Revzin's fork; the stock wasm
+  build still has no reflection and still leaves v4 out. See WASM.md.)*
+- Reflection works inside module interface units, including `template for` in a module purview and
+  exported templates that reflect on their own parameters and are instantiated in importing TUs.
+- **`^^std::uint8_t` is ill-formed.** A reflect-expression may not name a using-declarator, and
+  libstdc++ brings the fixed-width integers into `std` with `using ::uint8_t;`. gcc 16.2 says
+  "'^^' cannot be applied to a using-declaration". Reflect an alias of your own instead
+  (`using Byte = std::uint8_t; ^^Byte`) and compare after `dealias` on both sides, since the alias
+  reflects as itself and `type_of` a parameter may answer with `unsigned char`. Found 2026-09-21
+  moving the bus-width checks into `destinations_fit`.
+
+### Annotations on member functions
+
+- **An annotation goes on a member function as readily as on an enumerator**, in its own attribute
+  list after `[[nodiscard]]`, and `annotations_of` finds it. `[[=refract::operation]]` is how a
+  machine publishes a member a description may name. `parameters_of` a non-static member does not
+  count the implicit object, and `machine.[:Fn:](args...)` calls it; `is_class_member` with
+  `is_static_member` says which of the two call forms a function wants. A namespace-scope constant
+  named for the annotation must not share its name with any local, since `-Wshadow` sees through
+  the attribute. `members_of` does not walk base classes, so a marked member of a base is not found.
+- **`annotations_of_with_type(r, ^^T)` is in gcc 16.2 and not in Barry's clang fork** (2026-10-04), which has only
+  `annotation_of_type<T>`. It would replace the scan in `Interpreter::is_marked`, which the fork keeps for now.
+- **`^^Alias` reflects the alias, not what it names.** `parent_of(^^Z80::delay) == ^^Machine` is
+  false when `Machine` is `using Machine = Z80;`, and quietly so; `dealias(^^Machine)` is what to
+  compare against. `members_of` dealiases for itself, which is why the same alias works there and
+  hides the mistake next door.
+- **`a == ^^T && b` does not mean what it says.** The line was
+
+  ```cpp
+  static constexpr bool machine_member = std::meta::parent_of(Fn) == ^^Machine && !std::meta::is_static_member(Fn);
+  ```
+
+  and gcc said `expected ';' before '!' token`. `^^` takes a type-id and the grammar reads
+  `Machine &&` as one, an rvalue reference to `Machine`, so the `&&` that was meant to join two
+  comparisons is eaten and the parse fails at the `!`. A reflection is not a `bool` and never
+  converts to one, so nothing was being tested for truth; parenthesise the comparison.
+
+### Constant evaluation can catch
+
+- **`try`/`catch` works in constant evaluation on gcc 16.2** (P3068), including throwing a new
+  exception from the handler. `Compiled` uses it to put the description's file name in front of a
+  message the parser threw with only a line, so the library never has to know what file it is
+  reading. The idiom that a mistake in the description is a thrown `consteval` exception survives:
+  nothing catches the rethrow.
+- **It is also how the interpreter's diagnostics are tested** (2026-10-04). Its lookups are `consteval`, so
+  `CHECK_THROWS_WITH` cannot call them; a test-only `consteval` helper catches what one throws and compares the
+  message under `STATIC_CHECK` (`refract/test/InterpreterDiagnosticsTest.cpp`). gcc 16.2 defines
+  `__cpp_constexpr_exceptions` as 202411L. Barry's clang fork (2026-09-22) defines neither it nor
+  `__cpp_lib_constexpr_exceptions`, and refuses any throw during constant evaluation, caught or not, so those tests
+  are guarded on the language macro and skipped there. It still reports a description's mistake, by pointing at the
+  `throw` with the message unevaluated.
+
+### Library, on libstdc++ 16
+
+- `std::function_ref` and `std::copyable_function` are there. `disassemble` took the former until 2026-10-04, when it
+  took a constrained `auto` on every compiler: libc++ lacks `function_ref`, so the `auto` was needed there anyway, and
+  an `#if` inside a parameter list bought nothing a template does not (WASM.md, item 3).
+- `std::optional<T&>` is there, which an earlier note here had said it was not. `Description::row_for`
+  and `rule_for` still return pointers and could return one.
+- `std::format` is not usable in constant evaluation, so `decimal` stays on `std::to_chars`, and refract builds its
+  diagnostics by concatenation: `"has no member '" + std::string(name) + "'"`, with a `std::string` around every
+  `string_view` and a `decimal` around every number. Checked 2026-09-29: gcc trunk's libstdc++ does evaluate
+  `std::format` in a constant expression (https://compiler-explorer.com/z/avo378TcT, against gcc 16.2 failing at
+  https://compiler-explorer.com/z/YbYen74Kn), so it should arrive with gcc 17. The libc++ that Barry's fork builds
+  against for WASM does not have it yet.
+
+### Why refract has its own `Vector`, and what it would take to use `std::inplace_vector`
+
+`Vector<T, N>` in Vector.hpp is a `std::array<T, N>` and a count, with a `push_back` that throws when full. It exists
+because `std::inplace_vector`, which is exactly the right container for a parser that knows its
+limits, fails two requirements this library has. One is permanent and one is temporary, and they
+fall on different uses.
+
+**Requirement 1, structural: permanent.** `Call` in Execute.hpp is a non-type template parameter:
+every generated step is `run_step<Fn, Call>`, and the `Call` holds its operands and destinations as
+`Vector<Resolved, max_operands>`. A class type used that way must be *structural* ([temp.param]/7):
+every base and every non-static data member public, non-mutable, and itself structural,
+recursively. `std::inplace_vector` keeps its storage and its size private, so it is not structural
+and no paper proposes that it should be.
+
+A function parameter will not do instead: it is never a constant expression, even in a `consteval`
+function (P1045, `constexpr` function parameters, was not adopted). The handler needs the `Call` as
+a constant to size a pack from `operands.size()`, to branch with `if constexpr` on each operand, to
+splice a location's name, and to hand each operand on as a template argument of its own.
+
+**The other channels, tried 2026-09-25** on gcc 16.2 and Barry's fork, with a `Call` deliberately
+made non-structural (private members, a `std::string_view`, and on gcc a `std::inplace_vector`):
+
+- *`template<const Call &C>`, the object held in a variable template keyed on table, body key, row
+  and step.* Works on both compilers, and a prototype in the tree passed every test with a
+  `std::string_view` in `Call`. The cost is sharing: a reference argument is identified by its
+  object's address, so equal steps in different bodies of a row stop sharing instantiations. One
+  compile of `Z80.cpp` without LTO: text grew by about a tenth, from 152 KB to 170 KB, and compile
+  time from 83 s to 95 s; `apply` instantiations, counted with `-fno-inline`, roughly doubled.
+  Pointing each step at the first equal `Call` won the sharing back but the search took the compile
+  to 212 s on gcc and the test build to 17.5 minutes on the fork; a per-row table built once would
+  be cheaper and was not tried.
+- *Keep the `Call` a `constexpr` local in the handler and pass it nowhere.* The checks become
+  `consteval` functions taking it as an ordinary argument inside a `static_assert` (a `consteval {}`
+  block cannot name an enclosing local), and the operand expansion moves into lambdas in
+  `execute_one`. Correct on both compilers with nothing structural, but `apply`, `value_of` and
+  `store` stop being named templates, which is the part of the generator a reader can follow.
+- *`std::meta::reflect_object` of a static object, spliced inside.* The reference form again, with
+  the same identity by address, and harder to read.
+- *Indices passed all the way down* (`value_of<Table, Body, Step, I>` looking the operand up).
+  What the reference form amounts to, spelled longhand.
+- *A closure type carrying the value.* gcc accepts it; the fork crashes compiling a lambda inside
+  `template for`.
+- *`std::meta::reflect_constant(call)` and `std::define_static_object(call)`.* gcc rejects both:
+  "'Call' must be a cv-unqualified structural type that is not a reference type". They ask for the
+  very property being avoided.
+
+So passing the `Call` by value stays. It is what makes "equal steps, same code" the compiler's job:
+two `Call`s that compare equal are the same template argument wherever they came from, and the
+reference forms have to rebuild that by hand. None of the alternatives would let `Call` hold a
+`std::inplace_vector` today in any case, for requirement 2 and because the fork's libc++ has none.
+
+**Requirement 2, constant evaluation of a non-trivial element type: temporary.** Most of the
+uses hold `Piece`, `Operand`, `Member`, `Rule` or `Step`, each of which carries a
+`std::string_view` into the description or a `Name`, so none is trivial. They are built during the
+parse and fixed into `Compiled`'s arrays, which the disassembler walks at run time. The history:
+
+- C++26 as first adopted, P0843R14, [inplace.vector.overview]/4: "For any N > 0, if
+  `is_trivial_v<T>` is false, then no `inplace_vector<T, N>` member functions are usable in constant
+  expressions." So at that point the standard itself forbade this use.
+- P3074R7, trivial unions, adopted February 2025, struck that sentence and added the feature-test
+  macro `__cpp_lib_constexpr_inplace_vector` at `202502L`. Since then the standard permits it.
+- libstdc++ 16.2 defines `__cpp_lib_inplace_vector` at `202603L` and does not define
+  `__cpp_lib_constexpr_inplace_vector`. Its `inplace_vector` header carries the reason in its own
+  words: `// TODO: use new(_M_elems) _Tp[_Nm]() once PR121068 is fixed`, above
+  `__builtin_unreachable(); // only trivial types are supported at compile time`. GCC PR 121068 is
+  constexpr placement-new of an array. A `constexpr` `inplace_vector<Piece, N>` reaches that line
+  and the build fails with "`__builtin_unreachable()` is not a constant expression", which does not
+  say why.
+
+So this half is a conformance gap with a bug number, not a bug and not a prohibition. The test
+that it has closed is `#ifdef __cpp_lib_constexpr_inplace_vector`, and on the day it does, the
+uses above could become `std::inplace_vector` with `push_back` unchanged: both throw when
+full, though `std::inplace_vector` throws `std::bad_alloc`.
+
+**What is left over, tried 2026-09-25.** An earlier version of this note said `Pattern::slices` and the local in
+`slices_read_by` were trivial already and could be `std::inplace_vector` today. Only the second was. `BitSlice`
+gave its members `{}` default initialisers, which make its default constructor non-trivial, and with
+`std::inplace_vector<BitSlice, Pattern::max_slices>` every `static_assert` in PatternTest failed on the
+`__builtin_unreachable()` above. Dropping the initialisers makes it trivial, and then gcc 16.2 compiles both uses and
+every test passes save one: a slice past the limit reports `std::bad_alloc`, which names neither what overflowed nor
+the limit, where `Vector`'s message names both.
+
+What stops it is the other compiler. The fork's libc++, which the wasm build needs (WASM.md), has no
+`<inplace_vector>` at all; its `<version>` has `__cpp_lib_inplace_vector` commented out. So `Pattern` keeps `Vector`
+for three reasons, in the order they bite: libc++ has no `std::inplace_vector`; libstdc++'s works in constant
+evaluation only for trivial element types, which `BitSlice` is not while it has default initialisers; and a full one
+throws `std::bad_alloc` with no message, so a malformed pattern would lose its diagnostic. None of those is a rule of
+the language. `Call`'s uses stay on `Vector` regardless, for requirement 1, which is why "eventually
+`inplace_vector`" is true of most of the parser and false of the generator.
+
+### Interning in place of a structural string and a structural `Vector`, spiked 2026-10-03
+
+`Name` (a `std::array<char, 15>` and a length) and the structural half of `Vector` exist for one reason: a handler's
+template argument carries names and lists, and `std::string_view` and `std::span` are not structural. C++26 has
+another answer. `std::define_static_string` and `std::define_static_array` copy their contents into static storage
+during constant evaluation and hand back the same object for the same contents, and a pointer to that object may be
+part of a template argument. Anything holding only that pointer and a count, both public, is structural.
+
+The spike is commit 38af817 on the branch `mg/v4_static_spike`, pushed and not for merging. It adds `Interned<T>`, that
+pointer and count, and with it:
+
+- `Name` is gone. The parser's names are `std::string_view`; the ones a template argument carries (`Resolved::name`
+  and `scope`, `Access::parameter`, `Spelling::text`) are `Interned<char>`, which interns during constant evaluation
+  and, at run time, where the parser tests build them, points into the description. Empty is always a null pointer, so
+  an empty name made at compile time and a default one are the same argument. There is no length limit, so the three
+  "too long" diagnostics go.
+- `Call` holds `Interned<Resolved>` lists. `call_for` returns the same step in `std::vector`s, because TableTest builds
+  and compares them at run time, where there is nowhere for an interned copy to live; `Call`'s `consteval`
+  constructor interns them.
+- `Vector` loses its structural duty and becomes an ordinary container with private members, standing in for
+  `std::inplace_vector` in the parse only.
+
+Sharing survives, which was the open question: the reference forms tried above lost it, because they identify a step
+by its object's address, and interning makes equal contents one object. `Z80.cpp` without LTO has the same 105 KB of
+text and the same 747 handlers either way, and with `-fno-inline` the same counts of `value_of` and `store`.
+
+The cost, gcc 16.2 Release, CPU time per file, alternating baseline and spike on a loaded machine: `Z80.cpp` went from
+84.8-87.7 s (four runs) to 92.4-96.6 s (four runs), about 8 s or a tenth. `Disassembler.cpp` and `TableTest.cpp` went
+up by about a second, within their spread; every other file and peak memory were unchanged. Not profiled: the likely
+cost is a `define_static_array` for each step's lists and a `define_static_string` for each name, during a parse that
+runs twice. Not tried on the fork.
+
+What interning cannot reach is the parsed table. It outlives the evaluation that built it, so it cannot hold a
+`std::vector`; its elements hold `std::string_view`s and variants, so `define_static_array` refuses them; and
+`std::inplace_vector` is blocked for the reasons above. So the end state is no string type of refract's own, and one
+container standing in for a standard one, for a tenth more compile time in the interpreter.
+
+*2026-10-04: decided against merging; the branch stays as the record. It adds more than it removes, including a second
+form of `Call` and a guarantee (equal contents are one object) a reader has to know about, where `Name` is read at a
+glance. It costs compile time in the file that already dominates the build, it was never tried on the fork the wasm
+build needs, and the limit it lifts, fifteen characters to a name, is one no description has come near.*
+
+### `std::visit` is dear during constant evaluation
+
+Found 2026-09-27, turning `Operand` and `Member` into variants decided by exhaustive visits. refract visits in its
+hottest compile-time loops: resolving every operand of every row at every opcode, and asking whether every member a row
+names is live. Two things followed.
+
+- **gcc's budget ran out.** The checks `Compiled` runs in its `consteval {}` block went past gcc's default of 33,554,432
+  operations ("'constexpr' evaluation operation count exceeds limit"), once from asking whether a vocabulary is numeric
+  per reference, and again from one extra `at_line` wrapper. The first was a real waste and is fixed: whether a
+  vocabulary is its own slice is now worked out once, when it is parsed (`Vocabulary::numeric`). The second showed
+  how little headroom the checks have.
+- **libstdc++'s `std::visit` costs more than the work it dispatches to.** It builds a table of function pointers per
+  visitor and variant; evaluating that is cheap at run time and not during constant evaluation. `refract::visit`, in
+  Visit.hpp, asks `index()` of each alternative in turn instead. It is still exhaustive, because every
+  alternative's overload is instantiated, so a missing case is a compile error.
+
+One compile of `Z80.cpp` with gcc 16.2 at `RelWithDebInfo`, two adjacent runs each, same machine:
+
+| | compile | peak memory |
+|---|---:|---:|
+| before the variants | 80.0 s | 2.04 GB |
+| variants, `std::visit` | 87.4 s | 2.36 GB |
+| variants, `refract::visit` | 84.5 s | 2.18 GB |
+
+2026-09-29: `refract::visit` was a recursion, one instantiation per alternative, with an `if constexpr` base case at the
+last. It is now one `template for` over the alternatives' indices, which reads as what it does. Measured the same way,
+at the commit before and after, two runs each: 85.9 and 87.9 s at 2.22 GB before, 85.7 and 85.7 s at 2.24 GB after, so
+the two spellings cost the same. (The before figures are about 2 s above the table's; the tree has moved on since,
+through the `Continue` change.)
+
+So `refract::visit` saves about 3 s and 180 MB a unit over `std::visit`, and the variants cost about 4.5 s over the
+flat structs either way; what is left is probably the larger `Member` copied by value in `member_of` and `resolve`,
+which has not been profiled. **Under review:** a hand-rolled `visit` is a surprise for the reader in exchange for about
+3 s, and the standard one may come back. For the talk this belongs with the other places constant evaluation is not yet
+as good as run time: an implementation's library can be written for run-time speed in ways that make it slow to
+evaluate, and the budget that catches runaway evaluation also catches honest work.
+
+### Compile time, and where it went when it moved
+
+*First written 2026-09-21; the names and counts below are that day's.*
+
+Every figure here is one compile of `z80/v4/Z80.cpp` at `RelWithDebInfo` with gcc 16.2, taken
+with `/usr/bin/time` on the same laptop within one afternoon. The baseline, the commit before any
+of this, is **68.5s and 1.83 GB**, twice, with the load average below two. Each lesson was learned
+by adding something and watching the number, and the comparisons that matter were taken again on
+the quiet machine, alternating the two builds.
+
+- **One constant evaluation cannot be collected; many can.** A check that compared the resolved
+  operands of every opcode sharing a generated body was first written inside `decoding_for`, the
+  one `consteval` call that lays out a table: **7.8 GB**, and over 180s on a loaded machine. Moved
+  into a `static_assert` per body inside the expansion that builds the dispatch table, so that each
+  body's share ran as its own instantiation: **1.9 GB, and 85s to 87s quiet.** The same work, four
+  times the memory, because gcc reclaims between template instantiations and never inside one
+  evaluation. This is the mechanism behind the `Compiled` figures in MEASUREMENTS.md too, seen
+  from the other side.
+- **A 256-entry scan of a constant array per body is not free.** The per-body check with its
+  comparison switched off, leaving only a loop reading `fill_of<Table>[opcode]` 256 times for each
+  of 757 bodies, cost about 6s, back to back with and without: some 194,000 reads of a
+  namespace-scope `constexpr` array at 30 microseconds a read. The evaluator does not index a
+  constant the way a running program does.
+- **Resolving a step is a few milliseconds.** The comparison itself, `call_for` for every opcode
+  that shares a body, roughly 2,500 evaluations, was the other 8s to 10s. Hoisting the key's own
+  call out of the loop changed nothing, which says the cost is per call, not per pair.
+- **A check that costs a sixth of the build had better be worth it.** It guards a library
+  invariant against a future edit, not a description against its author. It is now a unit test
+  over every opcode of every table, at no compile cost, and `body_key` and `call_for` became
+  `constexpr` rather than `consteval` so that a test can call them. The file with everything else
+  in this pass and without the check: 71s to 76s.
+- **Reading every enumerator's annotations on every lookup costs about 6s.** Honouring `Spelling`
+  in the unscoped location lookup, by comparing `spelling_of` for each of the machine's fifty-odd
+  enumerators on each of several thousand lookups, was a 6s difference back to back. Comparing
+  identifiers first and consulting spellings only when nothing matched costs nothing measurable.
+- **Copying a `Row` into a `static constexpr` per body costs nothing.** Binding a
+  `static constexpr const auto &` into the compiled array instead, to save the copy, measured the
+  same to the second and the megabyte. gcc shares the constant either way.
+- **Check the load average before believing a number.** The same file compiled in 55s and in 71s
+  an hour apart with no change to it; the difference was three browser processes at 85% each,
+  load average 15. Peak memory is unaffected by load and time is not, so a time from a loaded
+  machine is a bound at best. Every time above was taken with the load below two, alternating
+  the two builds, or says so.
+
+### Structural types and static promotion
+
+The single most useful architectural fact:
+
+- **`define_static_array` requires *structural* types.** `std::string_view` is not (private members),
+  nor is `std::span`, nor anything holding a `std::vector`.
+- **A pointer *into* another constexpr array is not an acceptable reflected constant.** Building
+  `{const char*, size_t}` pointing into the `#embed`ed blob fails with `reflect_constant failed`.
+  Each string needs its own storage via `define_static_string`.
+- **But `constexpr std::array<T, N>` needs no structural type at all.** Structural is a
+  `define_static_array` requirement, not a constexpr one, so an array sidesteps the whole problem and
+  lets `Row`/`Vocabulary` keep plain `string_view`s into the blob.
+- Transient allocation is fine: a `std::vector` may be created and destroyed inside one constant
+  evaluation and passed between `consteval` functions freely. It just cannot escape into a
+  namespace-scope `constexpr` variable.
+- **So the parse works in `std::vector` throughout and an array is made of the answer at the end.**
+  Getting the size means evaluating the whole parse twice, once for `.size()`, once for the contents,
+  which is `to_array` in `ToArray.hpp`, and it is the only place in the pipeline that knows a count.
+  The earlier arrangement counted matching lines in a cheap pre-pass and passed the count as a
+  template argument to each parse function; that had to be right in two places, and it made every
+  parse function a template with a capacity check nobody could reach. **What the second parse costs,
+  measured** (alternating A/B, twice each side, gcc 16.2 `-O0`): on `Disassembler.cpp`, which is the
+  parse plus every check and nothing else, this one change took 9.3s/387MB to 12.6s/570MB, about
+  **+3.2s and +180MB**. On `Z80.cpp`, which was then the same parse plus 1792 handler instantiations,
+  75.4s became 73.2s: the same work, lost in the noise of what dominates that TU. Three seconds for a
+  pipeline in which one function knows a count. (For where those absolutes stood after the rest of
+  the clarity work, see MEASUREMENTS.md, "Compile time, measured".)
+- **Growing a `std::vector` during constant evaluation is much dearer than growing one at run time.**
+  `instructions_of` builds a vector of every (table, opcode) the description decodes, for the checks
+  to walk; adding a `reserve` for it
+  took about a second off `Disassembler.cpp`. The evaluator has no `realloc`, every growth copies
+  every element through the interpreter, so `reserve` is worth writing wherever the size is known,
+  which in a parse it usually is.
+- `define_static_string` still earns its place for *generated* text, where the bytes must outlive the
+  evaluation.
+
+Note the contrast with advice that a `string_view` into the `#embed`ed blob "is trivially structural
+and survives promotion". It is neither, and both halves were verified false.
+
+### Which types need `==`, and why a defaulted one spread
+
+Found 2026-10-03. Every model type had a defaulted `operator==`, empty tags such as `Piece::Imm8` included. Few need
+one, and none for being a template argument: template-argument equivalence compares a structural type member by member
+and never calls `==`. What does need one:
+
+- **The library compares `Name` and `BitSlice`.** `same_address` decides whether two indirect operands are the same
+  place, which is what makes a write-back one, and `displaced_through` checks an instruction is displaced through one
+  base. Those comparisons are what the types mean.
+- **Tests compare exact values.** `Piece` (and so its alternatives and `Reference`) and `Operand::Kind` (and so
+  `Operand`'s alternatives), in TableTest. And `Call`, so `Vector`, `Resolved` and `Access` too, for the check that
+  opcodes sharing a `body_key` produce equal calls (since 2026-10-05 `Interpreter::disagreements`, which both
+  machines' tests run): a run-time version of the equivalence the compiler applies to the template arguments.
+- **Nothing else.** `Member`, its `Operation` and `Hole`, `Operand` itself, `Rule`, `Transfer` and `Step` had one only
+  because each sits in a `Vector`, and those are gone.
+
+They spread because gcc instantiates a defaulted `operator==` of a class template when the class is instantiated, even
+under a `requires` clause the element type fails (https://compiler-explorer.com/z/PWohe4bd5; gcc 16.2 and trunk both
+do it, clang does not). `Vector`'s compared a `std::array`, whose `==` is unconstrained, so every element type needed
+an `==` whether or not any `Vector` of it was ever compared. `Vector`'s is now written out, an ordinary member function
+of a template that is instantiated only where it is called.
+
+### `consteval {}` blocks (P3289)
+
+- **gcc 16.2 implements them, at namespace, class and block scope.** A block runs its statements during constant
+  evaluation; a throw that escapes it is reported as "uncaught exception ... what(): file.cpu:7: the message" with
+  nothing else in front, where `static_assert(f())` on a throwing `f` first says "non-constant condition for static
+  assertion" and then the same. Every check in refract that used to be `static_assert(check_x())` with `check_x`
+  returning `true` is now a `void` function called from a block.
+- **A block at class scope in a class template runs when the class is instantiated**, as a class-scope
+  `static_assert` does. `Compiled<Source>` runs the whole-description checks that way, so a description is checked
+  wherever its `Compiled` is first named and there is no `check()` for a consumer to forget. Member functions
+  declared earlier in the class can be called from the block; the `steps::` variable templates can too.
+- **A block in a class template is instantiated whole before any of it runs** (2026-10-04). Anything its statements
+  name whose type depends on the template, such as a `std::array` sized by the description, is worked out first, so
+  the order of the statements cannot make one check run before another's inputs are computed. `Compiled` checks
+  every line for meaning something inside the `vocabularies` step instead, which every other step depends on, so a
+  typo is reported at the typo.
+- **`[[nodiscard]]` still applies inside a block.** `naming(file, check)` returned the check's `true` and every call
+  in the block tripped `-Werror=unused-result`; the checks return `void` now, which is what they meant.
+
+### Expansion statements
+
+- **`template for` + `-Wshadow` is a gcc bug, half fixed** ([PR c++/124197][pr124197]). Each expanded
+  copy is reported as shadowing the previous, though nothing is shadowed: every copy is its own scope.
+
+  16.2 fixed it **in dependent contexts only**. An expansion statement inside a template is clean; the
+  same statement in a non-dependent context still errors. Verified on the gcc 16.2 this builds
+  against, one file, both forms, `-Wshadow -Werror`:
+
+  ```cpp
+  inline constexpr auto non_dependent = [] {                      // 4 errors
+    std::array<int, 4> out{};
+    template for (constexpr auto at: std::views::iota(0uz, 4uz)) out[at] = static_cast<int>(at);
+    return out;
+  }();
+
+  template<int N> constexpr auto dependent() {                    // clean
+    std::array<int, 4> out{};
+    template for (constexpr auto at: std::views::iota(0uz, 4uz)) out[at] = static_cast<int>(at) + N;
+    return out;
+  }
+  ```
+
+  **An earlier version of this note said it was fixed outright**, on the evidence that removing all six
+  `#pragma GCC diagnostic ignored "-Wshadow"` lines rebuilt clean. That evidence was real and the
+  conclusion was wrong: all six were inside templates. `-Wshadow -Werror` is exactly this project's
+  setting, which is why the pragmas existed at all, and it is still why `all_dispatches` is a pack
+  rather than an expansion statement, that one initialiser is not dependent. `Execute.hpp` said so
+  all along; this file contradicted it.
+
+  *2026-10-03: `all_dispatches` has gone. The per-table `dispatch` is now a static member variable
+  template of `Interpreter<Target>`, a dependent context, and fills its table with a `template for`;
+  the bug itself is as described.*
+
+  [pr124197]: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=124197
+- The range must be a constant expression, and for a range that means a constant *address*, not
+  merely a constant value. A plain `constexpr auto row = …;` local does not qualify, gcc says so
+  precisely: "address of non-static constexpr variable may differ on each invocation of the enclosing
+  function; add `static`". `static constexpr` fixes it, and a namespace-scope `inline constexpr` or a
+  template parameter object needs nothing. This is why `execute_one`'s `row` is `static`: expanding
+  over `row.steps` directly is what lets the step be the loop variable rather than an index into it.
+  (Since 2026-09-27 a row's steps are one alternative of `row.action`, and `execute_one` expands
+  over a `constexpr const auto &` bound to them. The reference needs no `static` of its own: what it
+  binds to is part of `row`, which has static storage, so its address is already a constant.)
+- **There is no `template switch`.** The body of an expansion statement is control-flow-limited
+  ([stmt.expand]/2), so a `case` label inside it can only belong to a `switch` that is also inside
+  it ([stmt.label]/3), and a 256-way dispatch cannot be expanded into one. gcc says "jump to case
+  label ... enters 'template for' statement" (https://compiler-explorer.com/z/bbecnYhzP). The
+  generated forms available are a table of function pointers (what `dispatch` does) or a chain of
+  `if (opcode == N)`s. Checked 2026-10-03 at 256 cases, each calling its own handler: gcc 16.2
+  turns the chain into one jump table from `-O1`, the same code as a hand-written `switch`
+  (https://compiler-explorer.com/z/8n4enqveP), for a few tens of milliseconds more compilation.
+  The P2996 clang leaves it a linear compare chain at `-O1` and makes a cascade of jump tables at
+  `-O2` (https://compiler-explorer.com/z/4vj1ce5fT), and its compile time grows much faster with
+  the case count than a `switch`'s. Neither makes a table at `-O0`, where gcc leaves even a real
+  `switch` linear. The function-pointer table is one indexed jump at every level
+  (https://compiler-explorer.com/z/6zEdnTWre). So the chain is not ruled out by codegen on gcc; it
+  is ruled out by threading. A table gives every handler its own function with one signature, so
+  each can end in a tail call through the table, where a chain is one dispatch point. CE's "clang
+  (reflection)" compiler accepts the `case` inside a `template for`, against the wording, and the
+  local build of the same fork crashes on it.
+
+### Toolchain
+
+- gcc 16.2 from the compiler-explorer tarball. No distro packaged gcc 16 as of 2026-08-16; CI pulls the same
+  tarball.
+- Binaries built with an out-of-prefix toolchain bind to the distro's `libstdc++` unless an rpath is
+  embedded, resolve the standard library actually being linked and add its directory.
+- **ccache's direct mode does not track `#embed` dependencies** and serves stale objects when only
+  the embedded file changes. Worked around with `CCACHE_DEPEND=1`. Upstream fix is PR ccache#1765,
+  merged 2026-07-19 but in no release as of 2026-08-16; delete the workaround when it ships.
+- gcc enforces several module rules clang lets through: every interface partition must be re-exported
+  from the primary module interface; textual `#include`s must precede all `import`s in a TU; and code
+  `#include`d into a module interface partition must not put entities named by module-attached
+  templates in an anonymous namespace.
+
+---

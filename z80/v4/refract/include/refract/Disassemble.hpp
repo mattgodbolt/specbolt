@@ -1,0 +1,123 @@
+#pragma once
+
+// Renders a description's instructions as text: its other artefact, beside the interpreter `Execute.hpp` makes from the
+// same rows and vocabularies. Nothing here parses anything: a mnemonic was split into `Piece`s at parse time, so
+// rendering one is walking a list. All a machine supplies is where the bytes come from.
+//
+// A few choices are the format's rather than the machine's: a displacement is one signed byte and comes before any
+// immediate, a relative jump lands a signed byte from the end of the instruction, and a sixteen-bit immediate is
+// assembled low byte first.
+
+#include "refract/Decode.hpp"
+#include "refract/Model.hpp"
+#include "refract/Visit.hpp"
+
+#include <concepts>
+#include <cstdint>
+#include <format>
+#include <optional>
+#include <string>
+#include <utility>
+#include <variant>
+
+namespace specbolt::refract {
+
+// One instruction rendered: its text, and how many bytes it occupied.
+struct Disassembly {
+  std::string text;
+  // In bytes, which is how far the caller advances to reach the next one.
+  std::size_t length{};
+};
+
+// How far a chain of table transfers is followed before the answer is "??". Nothing in the description bounds one,
+// since a table may reach itself, and a listing that walks a kilobyte before rendering a line is no use to the caller
+// even where it terminates. (On the Z80 the unbounded chain is a run of `0xdd`.)
+inline constexpr std::size_t max_instruction_bytes = 8;
+
+// Renders the instruction at `address` as text, and says how many bytes it occupies. `byte_at(n)` is the nth byte of
+// the instruction, counting from `address`; `address` itself is needed because a relative jump renders where it lands
+// rather than how far it goes.
+[[nodiscard]] Disassembly disassemble(
+    const Description &description, const std::uint16_t address, std::invocable<std::size_t> auto &&byte_at) {
+  // Follow prefixes until a row that renders something is reached. An encoding may take its displacement between the
+  // prefix and the byte that says what to do (the Z80's `dd cb d op`), so the latch is filled inside this loop rather
+  // than after it.
+  std::size_t offset = 0;
+  auto table = description.entry;
+  const Row *row = nullptr;
+  std::optional<std::uint8_t> latch;
+  // The view a prefix chose, carried for the same reason the interpreter carries it: the row is decoded under it and
+  // the text depends on it.
+  std::uint8_t view = 0;
+  std::uint8_t opcode = 0;
+  while (true) {
+    opcode = byte_at(offset);
+    row = description.row_for(table, opcode);
+    ++offset;
+    if (!row)
+      return {"??", offset};
+    if (row->reads_displacement)
+      latch = byte_at(offset++);
+    const auto next = transfer_of(*row);
+    if (!next)
+      break;
+    if (offset >= max_instruction_bytes)
+      return {"??", offset};
+    view = next->forwards_view ? view : next->target_view;
+    table = next->target;
+  }
+
+  // The table a row was *decoded in* owns the renaming, which is why this asks the table index rather than
+  // `row->table`: an inherited row renders under the rules of whoever inherited it.
+  const auto &rules = description.rules_for(table);
+  // The displacement precedes any immediate, so it is taken before the pieces are walked and whatever they read follows
+  // it, unless a prefix already did.
+  const auto displaced = displaced_through(description.vocabularies, *row, opcode, rules);
+  const auto displacement = static_cast<std::int8_t>(latch ? *latch : displaced ? byte_at(offset) : 0);
+  if (displaced && !latch)
+    ++offset;
+
+  const Resolution at{.vocabularies = description.vocabularies,
+      .matched = row->matched,
+      .rules = rules,
+      .opcode = opcode,
+      .view = view};
+  std::string result;
+  // Renders one piece. A vocabulary member renders its own pieces, because a displaced mode writes its displacement in
+  // the middle of its own text.
+  const auto render = [&](this const auto &self, const Piece &piece) -> void {
+    refract::visit(Overloaded{
+                       [&](const Piece::Literal &literal) { result += literal.text; },
+                       [&](const Piece::Vocabulary &vocabulary) {
+                         for (const auto &inner: member_of(at, vocabulary.reference).pieces)
+                           self(inner);
+                       },
+                       // Signed, and always with its sign: `+0x05`, `-0x80`.
+                       [&](const Piece::Displacement) { result += std::format("{:+#05x}", displacement); },
+                       [&](const Piece::Imm8) {
+                         result += std::format("0x{:02x}", byte_at(offset));
+                         offset += 1;
+                       },
+                       [&](const Piece::Relative) {
+                         // Measured from the end of the instruction: a row carries one immediate and any
+                         // displacement comes before it, so the offset is the last byte. The sum wraps at the
+                         // sixteen bits of an address.
+                         const auto to = static_cast<std::int8_t>(byte_at(offset));
+                         offset += 1;
+                         const auto end_of_instruction = static_cast<std::uint16_t>(address + offset);
+                         result += std::format("0x{:04x}", static_cast<std::uint16_t>(end_of_instruction + to));
+                       },
+                       [&](const Piece::Imm16) {
+                         result += std::format(
+                             "0x{:04x}", static_cast<std::uint16_t>(byte_at(offset) | byte_at(offset + 1) << 8));
+                         offset += 2;
+                       },
+                   },
+        piece.kind);
+  };
+  for (const auto &piece: row->pieces)
+    render(piece);
+  return {std::move(result), offset};
+}
+
+} // namespace specbolt::refract

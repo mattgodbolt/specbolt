@@ -1,0 +1,484 @@
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
+
+#include "refract/Compiled.hpp"
+
+// The parser reads whatever description it is handed, so these drive it with their own tables rather than damaging the
+// real one to see what it says. Every message the *parse* can produce should have a case here.
+//
+// The interpreter's messages are not tested here: its lookups are `consteval`, so a description they reject is a
+// compile error rather than a throw at run time. InterpreterDiagnosticsTest.cpp pins them during constant evaluation
+// instead.
+
+namespace specbolt::v4 {
+
+using namespace refract;
+namespace {
+
+struct Parsed {
+  std::vector<Vocabulary> vocabularies;
+  std::vector<TableDecl> tables;
+  std::vector<Row> rows;
+  std::vector<DecodeTable> decoded;
+};
+
+// Runs the whole pipeline, in the order `Compiled` does, including the checks it runs in a `consteval` block against
+// the real description. Nothing here is `constexpr`: the same functions serve a test that wants a message and a build
+// that wants a diagnostic.
+Parsed parse(const std::string_view text) {
+  Parsed parsed;
+  check_every_line_means_something(text);
+  parsed.vocabularies = parse_vocabularies(text);
+  parsed.tables = parse_tables(text, parsed.vocabularies);
+  parsed.rows = parse_rows(text, parsed.vocabularies, parsed.tables);
+  static_cast<void>(latched_tables(parsed.rows, parsed.tables.size()));
+  const auto opcodes = opcodes_of_each(parsed.vocabularies, parsed.rows);
+  parsed.decoded = decode_tables(parsed.rows, opcodes, parsed.tables);
+
+  const Description description{parsed.vocabularies, parsed.rows, parsed.tables, parsed.decoded, 0};
+  check_row_precedence(description, opcodes);
+  check_derived_rows_override(description, opcodes);
+  check_tables_used(description);
+  check_inherited_literals(description);
+  check_displacement_rendered(description);
+  return parsed;
+}
+
+// Totality is the one check a description here has to opt into: a table is only total once it answers for all 256
+// opcodes, and a case making some other point would have to say so in full before it could say anything else.
+void check_total(const std::string_view text) {
+  const auto parsed = parse(text);
+  check_tables_total({parsed.vocabularies, parsed.rows, parsed.tables, parsed.decoded, 0});
+}
+
+} // namespace
+
+TEST_CASE("A description's file is named by whoever knows it") {
+  // The parser reports a line; the compiled description puts its file in front.
+  STATIC_CHECK(naming("toy.cpu", [] { return 1; }) == 1);
+  CHECK_THROWS_WITH(naming("toy.cpu",
+                        [] {
+                          throw table_error(3, "a row has no action");
+                          return 0;
+                        }),
+      "toy.cpu:3: a row has no action");
+}
+
+TEST_CASE("A description's line is named by whoever is reading it") {
+  // Nothing under the parser knows its line; `at_line` puts it in front of whatever they throw.
+  STATIC_CHECK(at_line(3, [] { return 1; }) == 1);
+  CHECK_THROWS_WITH(at_line(3,
+                        [] {
+                          throw std::runtime_error("a row has no action");
+                          return 0;
+                        }),
+      "3: a row has no action");
+}
+
+TEST_CASE("Table diagnostics") {
+  SECTION("A line that is not a comment, a declaration or a row is a mistake") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 nop nop\n"),
+        "2: this is not a comment, a declaration, or a row; a row needs its '|' separators");
+    CHECK_THROWS_WITH(parse("vocabularies r = a b\ntable t\n"),
+        "1: this is not a comment, a declaration, or a row; a row needs its '|' separators");
+  }
+  SECTION("Rows must live in a table") {
+    CHECK_THROWS_WITH(
+        parse("00000000 | nop | nop\n"), "1: this row is not in any table; declare one with `table <name>` first");
+  }
+  SECTION("Opcode patterns") {
+    CHECK_THROWS_WITH(parse("table t\n0101 | nop | nop\n"), "2: opcode pattern must be 8 characters");
+    CHECK_THROWS_WITH(parse("table t\n011011011 | nop | nop\n"), "2: opcode pattern must be 8 characters");
+    CHECK_THROWS_WITH(
+        parse("table t\n00pp0p01 | nop | nop\n"), "2: opcode pattern has non-contiguous bits for a slice");
+    CHECK_THROWS_WITH(parse("table t\nabcde001 | nop | nop\n"), "2: more than 4 BitSlice");
+  }
+  SECTION("The three columns must agree about immediates") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | ld a, $nnnn | ld8 a <- n\n"),
+        "2: the mnemonic renders a different number of immediate bytes than the encoding fetches");
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | ld a, $nn | ld8 a <- a\n"),
+        "2: the action and the encoding disagree about whether there is an immediate");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- nn\n"),
+        "2: write 'n'; the encoding column says how many bytes it occupies");
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 x | nop | nop\n"), "2: 'x' is not an encoding byte; expected 'n' or 'd'");
+    CHECK_THROWS_WITH(parse("table t\n00000000 d d | nop | nop\n"), "2: a row reads at most one displacement");
+    // The displacement is always fetched first, so an encoding that writes it later would be read out of order.
+    CHECK_THROWS_WITH(parse("table t\n00110110 n d | nop | nop\n"),
+        "2: 'd' must come before 'n': the displacement is fetched before the immediate");
+  }
+  SECTION("Row precedence") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\n00000000 | also nop | nop\n"),
+        "3: an earlier row shadows this one completely");
+    CHECK_THROWS_WITH(parse("vocab r = b c d e h l m a\ntable t\n001101xx | frob | nop\n00yyy100 | inc {r:y} | nop\n"),
+        "3: this row overlaps a later one without being contained by it");
+    CHECK_THROWS_WITH(
+        parse("vocab w = - - - -\ntable t\n101wwzzz | {w:w} | nop\n"), "3: this row matches no opcode at all");
+  }
+  SECTION("Vocabularies") {
+    CHECK_THROWS_WITH(parse("vocab\ntable t\n"), "1: vocabulary declaration has no name");
+    CHECK_THROWS_WITH(parse("vocab r\ntable t\n"), "1: expected '=' in vocabulary declaration");
+    CHECK_THROWS_WITH(parse("vocab r =\ntable t\n"), "1: vocabulary declares no members");
+    CHECK_THROWS_WITH(parse("vocab r = a b\nvocab r = c d\ntable t\n"), "2: duplicate vocabulary name");
+    CHECK_THROWS_WITH(parse("vocab r = a b c d e f g h i\ntable t\n"), "1: more than 8 Member");
+    CHECK_THROWS_WITH(parse("vocab r = a/wat=1 b\ntable t\n"), "1: expected 'delay=n' after '/' in 'a/wat=1'");
+    // A `/` or a `:` with nothing after it is a mistake, not a member that leaves the attribute or operation off.
+    CHECK_THROWS_WITH(parse("vocab r = b/ c\ntable t\n"), "1: expected 'delay=n' after '/' in 'b/'");
+    CHECK_THROWS_WITH(
+        parse("vocab r = add: b\ntable t\n"), "1: ':' introduces the operation a member binds, and none was given");
+    CHECK_THROWS_WITH(parse("vocab r = a/delay=xx b\ntable t\n"), "1: delay must be a single digit");
+    CHECK_THROWS_WITH(parse("vocab r = a:add8(n) b\ntable t\n"),
+        "1: a member cannot pass an immediate; only the encoding fetches those");
+    CHECK_THROWS_WITH(parse("vocab r = a:add8(0 b\ntable t\n"), "1: a member's argument list is not closed");
+    CHECK_THROWS_WITH(parse("vocab r = a:add8() b\ntable t\n"),
+        "1: a member's argument list is empty; leave it off rather than writing '()'");
+    CHECK_THROWS_WITH(parse("vocab r = a:add8/delay=1 b\ntable t\n"),
+        "1: a delay is what a write back through an operand costs, and this member names an operation");
+    CHECK_THROWS_WITH(parse("vocab o = x:add8 y:add8\ntable t\n0000000o | {o:o} | ld8 a <- {o:o}\n"),
+        "3: 'x' is an operation, and this row names it where an operand belongs");
+  }
+  SECTION("References") {
+    CHECK_THROWS_WITH(
+        parse("table t\n00yyy000 | inc {q:y} | nop\n"), "2: reference names a vocabulary that does not exist");
+    CHECK_THROWS_WITH(parse("vocab r = a b\ntable t\n00000000 | inc {r:y} | nop\n"),
+        "3: reference names a slice the opcode pattern does not define");
+    CHECK_THROWS_WITH(parse("vocab r = a b\ntable t\n00yyy000 | inc {r:y} | nop\n"),
+        "3: vocabulary has the wrong number of members for its opcode bits");
+    CHECK_THROWS_WITH(
+        parse("vocab r = a b\ntable t\n00000000 | inc {r | nop\n"), "3: unterminated vocabulary reference in mnemonic");
+  }
+  SECTION("Tables") {
+    CHECK_THROWS_WITH(parse("table\n"), "1: table declaration has no name");
+    CHECK_THROWS_WITH(parse("table t u\n"), "1: expected '= <parent> with <substitutions>' after the table name");
+    CHECK_THROWS_WITH(parse("table t\ntable t\n"), "2: duplicate table name");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | goto elsewhere\n"), "2: no table named 'elsewhere'");
+  }
+  SECTION("Derived tables") {
+    constexpr std::string_view base = "vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n";
+    CHECK_NOTHROW(parse(std::string(base) + "table u = t with r.b -> c\n"));
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = nowhere with r.b -> c\n"),
+        "5: no table named 'nowhere' is declared above this one");
+    // A parent must come first, so that a chain resolves in declaration order.
+    CHECK_THROWS_WITH(parse("table u = t with r.b -> c\ntable t\n00000000 | nop | nop\n"),
+        "1: no table named 't' is declared above this one");
+    CHECK_THROWS_WITH(
+        parse(std::string(base) + "table u = u with r.b -> c\n"), "5: no table named 'u' is declared above this one");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t\n"), "5: expected 'with' after the parent table name");
+    CHECK_THROWS_WITH(
+        parse(std::string(base) + "table u = t with r.b\n"), "5: expected '->' in table substitution 'r.b'");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b ->\n"),
+        "5: a table substitution needs a name on each side of '->'");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> -\n"),
+        "5: a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> n\n"),
+        "5: a vocabulary member must name something the CPU can resolve");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with q.b -> c\n"),
+        "5: substitution names a vocabulary that does not exist");
+    CHECK_THROWS_WITH(
+        parse(std::string(base) + "table u = t with r.b - c\n"), "5: expected '->' in table substitution 'r.b - c'");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with rb -> c\n"),
+        "5: a table substitution names the vocabulary it rewrites, as in "
+        "'vocabulary.member -> replacement'");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with r.b -> {r:y}\n"),
+        "5: only a table that takes a view may substitute a view reference");
+    CHECK_THROWS_WITH(parse(std::string(base) + "table u = t with\n"),
+        "5: a derived table declares no substitutions, so it is its parent");
+    // A substitution's right side is parsed against an empty pattern, so a reference that is not the table's view fails
+    // for want of a slice.
+    CHECK_THROWS_WITH(parse("vocab r = b c\nvocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n"
+                            "table u(view:i) = t with r.b -> {r:y}\n0000000y | ld {r:y} | nop\n"),
+        "5: reference names a slice the opcode pattern does not define");
+  }
+  SECTION("A view's own row must fit inside the row it displaces") {
+    // The row in `u` claims both opcodes; the parent keeps one for itself, and swallowing it would take that
+    // instruction off the prefixed page entirely.
+    constexpr std::string_view shared = "vocab r = b c\ntable t\n11011101 | (dd) | goto u\n";
+    CHECK_NOTHROW(parse(std::string(shared) + "0000000y | ld {r:y} | ld8 {r:y} <- a\n"
+                                              "table u = t with r.b -> ixh\n0000000y | frob | nop\n"));
+    CHECK_THROWS_WITH(parse(std::string(shared) + "00000000 | special | nop\n0000000y | ld {r:y} | nop\n"
+                                                  "table u = t with r.b -> ixh\n0000000y | frob | nop\n"),
+        "7: this row overlaps one it inherits from 't' without replacing it or fitting inside it, "
+        "so it takes opcodes that row meant to keep");
+    // The same through a grandparent: `v` inherits the row from `t` by way of `u`, and is held to it just the same.
+    CHECK_THROWS_WITH(parse(std::string(shared) + "00000000 | special | nop\n0000000y | ld {r:y} | nop\n"
+                                                  "table u = t with r.b -> ixh\n"
+                                                  "table v = u with r.c -> ixl\n0000000y | frob | nop\n"),
+        "8: this row overlaps one it inherits from 'u' without replacing it or fitting inside it, "
+        "so it takes opcodes that row meant to keep");
+  }
+  SECTION("A view must not silently inherit a row that spells the renamed name out") {
+    constexpr std::string_view shared = "vocab p = bc hl\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | ";
+    // Naming the vocabulary is fine: a rule reaches it.
+    CHECK_NOTHROW(parse(std::string(shared) + "ld16 {p:y} <- {p:y}\ntable u = t with p.hl -> ix\n"));
+    // A rule whose left side is parenthesised has to match the same way.
+    CHECK_THROWS_WITH(parse("vocab p = bc (hl)\ntable t\n11011101 | (dd) | goto u\n0000000y | ld {p:y} | "
+                            "ld16 {p:y} <- (hl)\ntable u = t with p.(hl) -> (ix+d)\n"),
+        "4: table 'u' renames '(hl)', and this row names it literally where a rule cannot reach it; "
+        "give that table its own row, or name a vocabulary");
+    // Spelling it out is not, because a rule never rewrites literal text.
+    CHECK_THROWS_WITH(parse(std::string(shared) + "ld16 {p:y} <- hl\ntable u = t with p.hl -> ix\n"),
+        "4: table 'u' renames 'hl', and this row names it literally where a rule cannot reach it; "
+        "give that table its own row, or name a vocabulary");
+  }
+  SECTION("A derived table decodes its parent's rows, renamed") {
+    const auto parsed = parse("vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"
+                              "table u = t with r.b -> ixh\n00000000 | frob | nop\n");
+    const auto &derived = parsed.tables[1];
+    const auto &row = parsed.rows[1];
+    const auto reference = std::get<Piece::Vocabulary>(row.pieces[1].kind).reference;
+
+    // The substitution reaches whatever the row names, and only that member.
+    CHECK(member_of({.vocabularies = parsed.vocabularies, .matched = row.matched, .opcode = 0x00}, //
+              reference)
+              .display == "b");
+    CHECK(
+        member_of({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x00},
+            reference)
+            .display == "ixh");
+    CHECK(
+        member_of({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x01},
+            reference)
+            .display == "c");
+    CHECK(resolve({.vocabularies = parsed.vocabularies, .matched = row.matched, .rules = derived.rules, .opcode = 0x00},
+              steps_of(row)[0].destinations[0])
+              .name == Name{"ixh"});
+
+    // Opcode 0 is the derived table's own row; 1 it inherits; 0xdd it inherits, which is what makes `dd dd` re-enter.
+    CHECK(parsed.decoded[1][0x00].value() == 2);
+    CHECK(parsed.decoded[1][0x01].value() == 1);
+    CHECK(parsed.decoded[1][0xdd].value() == 0);
+    CHECK_FALSE(parsed.decoded[1][0x02].has_value());
+  }
+  SECTION("Operands") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- (hl\n"), "2: unterminated '(' in operand '(hl'");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- 0xzz\n"), "2: malformed constant '0xzz'");
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | ld8 a <- 70000\n"), "2: constant '70000' does not fit in 16 bits");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- averyverylongname\n"),
+        "2: operand name 'averyverylongname' is too long");
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | ld8 a <- -\n"), "2: '-' discards a result, so it can only be a destination");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- ((hl))\n"), "2: an address cannot itself be indirect");
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | ld8 a <- hl+d\n"), "2: a displacement only makes sense inside '(...)'");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- (hl)/wobble=1\n"),
+        "2: expected 'delay=n' after '/' in '(hl)/wobble=1'");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- (hl)/delay=12\n"), "2: delay must be a single digit");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | \n"), "2: row has no action");
+  }
+  SECTION("Steps") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | goto t u\n"), "2: goto takes a single table name");
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix\ntable u(view:i)\n"
+                            "00000000 | frob | nop\n"),
+        "3: unterminated '(' in goto");
+    // A goto shares its row with nothing, whichever side of it the other step is on.
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop ; goto t\n"),
+        "2: a goto is the whole of its row, so it cannot share one with another step");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | goto t ; nop\n"),
+        "2: a goto is the whole of its row, so it cannot share one with another step");
+    // A trailing `;` is an empty step, not a second one.
+    CHECK_NOTHROW(parse("table t\n00000000 | (t) | goto t ;\n"));
+  }
+  SECTION("Mnemonics") {
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 n | ld a, $x | ld8 a <- n\n"), "2: expected $nn, $nnnn or $e in mnemonic");
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 n | jr $ee | relative pc <- pc n\n"), "2: expected $nn, $nnnn or $e in mnemonic");
+    CHECK_THROWS_WITH(parse("table t\n00000000 n n | ld ($nnnn), $nnnn | ld8 (n) <- n\n"),
+        "2: a row renders at most one immediate; the encoding only fetches one");
+  }
+  SECTION("Vocabulary members and their scopes") {
+    CHECK_THROWS_WITH(parse("vocab r = b :add8\ntable t\n"), "1: a vocabulary member has no name");
+    // The scope is the next word, so this only fires when the `:` ends the line; `vocab r : = b c` takes `=` for the
+    // scope and complains about the missing one.
+    CHECK_THROWS_WITH(parse("vocab r :\ntable t\n"),
+        "1: ':' introduces the scope a vocabulary's members come from, and none was given");
+    CHECK_THROWS_WITH(parse("vocab r : = b c\ntable t\n"), "1: expected '=' in vocabulary declaration");
+    // A scope is checked where it is read, because `Name` has no line to complain with.
+    CHECK_THROWS_WITH(
+        parse("vocab r : AVeryLongScopeName = b c\ntable t\n"), "1: scope name 'AVeryLongScopeName' is too long");
+    CHECK_THROWS_WITH(parse("vocab r = b:add8(0,1,2,3)\ntable t\n"), "1: more than 3 Operand");
+  }
+  SECTION("Immediates and displacements are counted, not guessed") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 n n n | ld a, $nnnn | ld8 a <- n\n"),
+        "2: an instruction may carry at most two immediate bytes");
+    CHECK_THROWS_WITH(parse("vocab m = (ix+d) (iy+d)\ntable t\n0000000y | ld {m:y} | ld8 {m:y} <- (hl+d)\n"),
+        "3: an instruction may only be displaced through one base");
+    // Constant bases have no name to tell them apart, so two of them are told apart by where they point.
+    CHECK_THROWS_WITH(parse("table t\n00000000 | ld (1+d), (2+d) | ld8 (1+d) <- (2+d)\n"),
+        "2: an instruction may only be displaced through one base");
+    CHECK_THROWS_WITH(parse("vocab r = b $nn\ntable t\n"),
+        "1: a vocabulary member cannot render an immediate; only the encoding fetches those");
+    CHECK_THROWS_WITH(parse("vocab r = b (a+d)+d\ntable t\n"), "1: more than 3 Piece");
+  }
+  SECTION("Immediates count wherever they appear") {
+    // An immediate destination is how `ld (nn), a` is written, so a destination uses the immediate as much as an
+    // operand does.
+    CHECK_NOTHROW(parse("table t\n00110010 n n | ld ($nnnn), a | ld8 (n) <- a\n"));
+    CHECK_THROWS_WITH(parse("table t\n00000000 | ld (hl), a | ld8 (n) <- a\n"),
+        "2: the action and the encoding disagree about whether there is an immediate");
+  }
+  SECTION("A vocabulary member must name something resolvable") {
+    CHECK_THROWS_WITH(
+        parse("vocab s = bc de hl n\ntable t\n"), "1: a vocabulary member must name something the CPU can resolve");
+  }
+  SECTION("Every opcode of every table must decode to something") {
+    CHECK_THROWS_WITH(check_total("table t\n00000000 | nop | nop\n"),
+        "1: table 't' does not say what opcode 1 does; add a row, or `xxxxxxxx` last to catch the "
+        "rest");
+    CHECK_NOTHROW(check_total("table t\n00000000 | nop | nop\nxxxxxxxx | ?? | nop\n"));
+  }
+  SECTION("Tables must be reachable and non-empty") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\ntable dead\n"), "3: this table has no rows");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | nop\ntable dead\n00000000 | frob | nop\n"),
+        "3: no goto reaches this table, so nothing in it is ever exercised");
+  }
+  SECTION("A latched table must be reached the same way every time") {
+    CHECK_NOTHROW(parse("table t\n11001011 d | (cb) | goto u\n00000000 | nop | nop\n"
+                        "table u\n00000000 | frob | nop\n"));
+    CHECK_THROWS_WITH(parse("table t\n11001011 d | (cb) | goto u\n11011101 | (dd) | goto u\n"
+                            "table u\n00000000 | frob | nop\n"),
+        "3: this table is reached both with and without a displacement");
+  }
+  SECTION("Gotos may form a cycle") {
+    // Decoding is a loop, and every turn of it fetches a byte, so a table that reaches itself makes progress rather
+    // than recursing. `dd dd dd ...` needs exactly this.
+    CHECK_NOTHROW(parse("table t\n11011101 | (t) | goto t\n00000000 | nop | nop\n"));
+    CHECK_NOTHROW(parse("table t\n11001011 | (u) | goto u\ntable u\n00000000 | back | goto t\n"));
+  }
+  SECTION("Every fixed capacity says so when it is reached") {
+    // Each is a `Vector` whose overflow names the limit and what it holds, on the line that reached it.
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | nop ; nop ; nop ; nop ; nop ; nop ; nop\n"), "2: more than 6 Step");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- a a a a a\n"), "2: more than 4 Operand");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a a a a a <- a\n"), "2: more than 4 Operand");
+    CHECK_THROWS_WITH(parse("vocab r = b c\ntable t\n0000000y | {r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x{r:y}x | nop\n"),
+        "3: more than 12 Piece");
+    CHECK_THROWS_WITH(parse("vocab r = b c\ntable t\n11011101 | (u) | goto u\n0000000y | ld {r:y} | nop\n"
+                            "table u = t with r.b->c, r.c->b, r.b->c, r.c->b, r.b->c, r.c->b, r.b->c\n"),
+        "5: more than 6 Rule");
+  }
+  SECTION("A table's view is declared with itself and a vocabulary") {
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view)\n"),
+        "4: a table view names itself and a vocabulary, as in 'name(view:vocabulary)'");
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view:i\n"),
+        "4: unterminated '(' in table view");
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\ntable u(view:nope)\n"),
+        "4: table view names a vocabulary that does not exist");
+  }
+  SECTION("A view reference must line up with the view it is selected by") {
+    // `r` has three members and the view has two, so no opcode could pick between them: the reference has nothing to
+    // mean.
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\nvocab r = b c d\ntable t\n11011101 | (dd) | goto u(ix)\n"
+                            "table u(view:i)\n00000000 | ld {r:view} | ld8 {r:view} <- a\n"),
+        "6: vocabulary has a different number of members than the table's view");
+    CHECK_THROWS_WITH(parse("vocab i = ix iy\nvocab r = b c\ntable t\n11011101 | (dd) | goto u\n"
+                            "0000000y | ld {r:y} | ld8 {r:y} <- a\ntable u = t with r.b -> {i:view}\n"),
+        "6: only a table that takes a view may substitute a view reference");
+  }
+  SECTION("A goto says which view the table it enters is decoded under") {
+    constexpr std::string_view vocabs = "vocab i = ix iy\nvocab j = bc de\n";
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t\n11011101 | (dd) | goto u\ntable u(view:i)\n"
+                                                  "00000000 | frob {i:view} | ld16 {i:view} <- {i:view}\n"),
+        "4: this table takes a view, so the goto must say which");
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t\n11011101 | (dd) | goto u(ix)\ntable u\n"
+                                                  "00000000 | frob | nop\n"),
+        "4: this table takes no view, so the goto may not supply one");
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t\n11011101 | (dd) | goto u(nope)\ntable u(view:i)\n"
+                                                  "00000000 | frob {i:view} | ld16 {i:view} <- {i:view}\n"),
+        "4: goto names a view that is not a member of that table's view vocabulary");
+    // Handing a view on rather than choosing one: the two tables have to agree about what the value means, which is the
+    // vocabulary it is drawn from.
+    CHECK_THROWS_WITH(parse(std::string(vocabs) + "table t(view:i)\n11001011 | (cb) | goto u(view)\n"
+                                                  "00000000 | frob {i:view} | ld16 {i:view} <- {i:view}\n"
+                                                  "table u(view:j)\n"
+                                                  "00000000 | frob {j:view} | ld16 {j:view} <- {j:view}\n"),
+        "4: the view being handed on is drawn from a different vocabulary");
+  }
+  SECTION("Every member of a vocabulary a view selects must have the same shape") {
+    // Nothing that runs at compile time can know which member a view will pick, so every check resolves at member 0 and
+    // applies the answer to all of them. Members that disagree would make that silently wrong rather than wrong out
+    // loud: one addressing mode executed and another printed.
+    constexpr std::string_view prefix = "vocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n"
+                                        "table u(view:i)\n00000000 | ld {m:view} | ld8 {m:view} <- a\n";
+    CHECK_NOTHROW(parse("vocab m = (ix+d)/delay=1 (iy+d)/delay=1\n" + std::string(prefix)));
+    // The mistake this exists for: one member displaced and the other not, so the `fd` page would run `(iy+d)` and
+    // print `(iy)`. Line 6 is the row that selects it by a view, without which the declaration would be fine; line 1 is
+    // the declaration, which is what has to change.
+    CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy)\n" + std::string(prefix)),
+        "6: vocabulary 'm' (declared at line 1) is selected by a view here, so all of its members must have the "
+        "same shape as '(ix+d)'; '(iy)' does not");
+    // Disagreeing about the idle cycle a write-back costs is just as silent.
+    CHECK_THROWS_WITH(parse("vocab m = (ix+d)/delay=1 (iy+d)\n" + std::string(prefix)),
+        "6: vocabulary 'm' (declared at line 1) is selected by a view here, so all of its members must have the "
+        "same shape as '(ix+d)'; '(iy+d)' does not");
+    // A hole cannot be one of them either: a view has no opcode bits to leave room for a more specific row in.
+    CHECK_THROWS_WITH(parse("vocab m = ix -\n" + std::string(prefix)),
+        "6: vocabulary 'm' (declared at line 1) is selected by a view here, so all of its members must have the "
+        "same shape as 'ix'; '-' does not");
+    // And a member may not bring an operation at all. The operation is spliced from member 0, so two that disagree
+    // would run the first one's for every view: the `fd` page would execute `ld16` where the row said `inc16`.
+    CHECK_THROWS_WITH(parse("vocab m = ix:ld16 iy:inc16\n" + std::string(prefix)),
+        "6: vocabulary 'm' (declared at line 1) is selected by a view here, so each of its members may only name "
+        "a location, since a view is chosen long after the operation has been spliced; 'ix' does not");
+    // Agreeing about the operation is not enough either: the arguments a member fixes are spliced from member 0 in the
+    // same way.
+    CHECK_THROWS_WITH(parse("vocab m = ix:add8(0) iy:add8(carry)\n" + std::string(prefix)),
+        "6: vocabulary 'm' (declared at line 1) is selected by a view here, so each of its members may only name "
+        "a location, since a view is chosen long after the operation has been spliced; 'ix' does not");
+  }
+  SECTION("A view named like a slice letter is an ambiguity, not a silent win") {
+    // The view is matched by name before a slice is looked for, so `{r:y}` in a table whose view is `y` would resolve
+    // to the view: the opcode's `y` bits would be read by nothing, the row would still claim both opcodes, and both
+    // would decode to whichever member the prefix chose.
+    constexpr std::string_view prefix = "vocab r = b c\nvocab i = ix iy\ntable t\n11011101 | (dd) | goto u(ix)\n";
+    CHECK_THROWS_WITH(parse(std::string(prefix) + "table u(y:i)\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"),
+        "6: 'y' is this table's view and also a slice of this opcode, so this reference could mean "
+        "either; rename one of them");
+    // Naming the view something no pattern uses is what the Z80's own table does.
+    CHECK_NOTHROW(parse(std::string(prefix) + "table u(view:i)\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
+    // A view may still share its name with a slice the *pattern does not define*: nothing is ambiguous there, and the
+    // reference means the view.
+    CHECK_NOTHROW(parse(std::string(prefix) + "table u(y:i)\n00000000 | ld {r:y} | ld8 {r:y} <- a\n"));
+  }
+  SECTION("A mistyped step is caught where it is written, not inside the generator") {
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 a <- b <- c\n"),
+        "2: a step has one '<-', between its destinations and its operands");
+    CHECK_THROWS_WITH(
+        parse("table t\n00000000 | nop | nop | extra\n"), "2: a row has three columns; a fourth '|' is one too many");
+    CHECK_THROWS_WITH(parse("table t\n00000000 | nop | ld8 5 <- a\n"),
+        "2: '5' is a value, not somewhere a result can go; a destination is a location, or an address in "
+        "parentheses");
+    CHECK_THROWS_WITH(parse("table t\n00000000 n | ld $nn | ld8 n <- a\n"),
+        "2: 'n' is a value, not somewhere a result can go; a destination is a location, or an address in "
+        "parentheses");
+    CHECK_NOTHROW(parse("table t\n00000000 n | ld $nn | ld8 (n) <- a\n"));
+    CHECK_THROWS_WITH(parse("vocab r = a:add8(-) b\ntable t\n"),
+        "1: '-' discards a result, and a member's argument is something the operation is given");
+    CHECK_THROWS_WITH(
+        parse("vocab r = a:(0) b\ntable t\n"), "1: a member's argument list needs an operation to hand them to");
+    CHECK_THROWS_WITH(parse("vocab r = a -\ntable t\n0000000y | ld {r:y} | nop\ntable u = t with r.- -> b\n"),
+        "4: a hole is not a member; a substitution cannot rename one");
+  }
+  SECTION("A vocabulary that is its own slice cannot be renamed") {
+    // The interpreter reads such a member straight out of the opcode and would never see the rule; the disassembler
+    // would. Refused rather than left to disagree.
+    CHECK_THROWS_WITH(parse("vocab bit = 0 1\ntable t\n0000000b | bit {bit:b} | nop\ntable u = t with bit.0 -> 1\n"),
+        "4: vocabulary 'bit' is its own slice, its members being the numbers the opcode carries, so a "
+        "substitution cannot rename one");
+  }
+  SECTION("A vocabulary is its own slice only when every member is plainly its own index") {
+    CHECK(parse_vocabularies("vocab v = 0 1\n")[0].numeric);
+    // An address names the memory there, so the opcode's bits cannot stand in for it.
+    CHECK_FALSE(parse_vocabularies("vocab v = 0 (1)\n")[0].numeric);
+    CHECK_FALSE(parse_vocabularies("vocab v = (0) (1)\n")[0].numeric);
+  }
+  SECTION("A tab is a blank") {
+    CHECK_NOTHROW(parse("vocab\tr\t=\tb\tc\ntable\tt\n0000000y\t| ld {r:y}\t| ld8 {r:y}\t<-\ta\n"));
+  }
+  SECTION("A well-formed table raises nothing") {
+    CHECK_NOTHROW(parse("vocab r = b c\ntable t\n0000000y | ld {r:y} | ld8 {r:y} <- a\n"));
+  }
+}
+
+} // namespace specbolt::v4

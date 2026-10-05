@@ -173,6 +173,12 @@ import peripherals;
   };
   ```
 
+  The exception is an enumerator a `.cpu` description names. `Flags::Bit::carry`
+  and `FlipFlop::iff1` are lowercase so that they read the way the row does, and
+  a row is written the way assembly is written. refract matches names regardless
+  of case, so this is a convention rather than a necessity, but the identifier is
+  data there, not just a name.
+
 ### Class Members
 
 - Use trailing underscores for private/protected class member variables:

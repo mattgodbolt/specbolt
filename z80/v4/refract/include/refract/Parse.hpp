@@ -1,0 +1,552 @@
+#pragma once
+
+// The three kinds of declaration a description contains, each reading the whole text and returning what it found, and
+// the checks that belong to one line or one row: that every line means something, that a view's vocabulary is all of
+// one shape, and that a row's immediates agree with its encoding. Each parser returns a `std::vector`: nothing here
+// knows how many of anything a description holds, and nothing has to. See ToArray.hpp for where that becomes a size.
+
+#include "refract/Lexical.hpp"
+#include "refract/Model.hpp"
+#include "refract/Parser.hpp"
+#include "refract/Pattern.hpp"
+#include "refract/TableError.hpp"
+#include "refract/Visit.hpp"
+
+#include <algorithm>
+#include <optional>
+#include <span>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <variant>
+#include <vector>
+
+namespace specbolt::refract {
+
+// How many vocabularies, and how many tables, a description may declare. Both are held as a `std::uint8_t` wherever one
+// is referred to, which is what bounds them rather than any judgement about how many a description needs.
+inline constexpr std::size_t max_vocabularies = 256;
+inline constexpr std::size_t max_tables = 256;
+
+// Parses every `vocab name [: scope] = member member...` line of the text, in the order they appear.
+[[nodiscard]] constexpr std::vector<Vocabulary> parse_vocabularies(const std::string_view description) {
+  std::vector<Vocabulary> result;
+  for (const auto [at, text]: lines_of(description)) {
+    if (!is_vocabulary(text))
+      continue;
+    at_line(at, [&] {
+      Parser parser(text);
+      parser.skip_word();
+      Vocabulary vocabulary;
+      vocabulary.line = at;
+      vocabulary.name = parser.next_word();
+      if (vocabulary.name.empty())
+        throw std::runtime_error("vocabulary declaration has no name");
+      auto next = parser.next_word();
+      // A `:` clause names the scope this vocabulary's members are looked up in, rather than every location the CPU
+      // offers.
+      if (next == ":") {
+        vocabulary.scope = parser.next_word();
+        if (vocabulary.scope.empty())
+          throw std::runtime_error("':' introduces the scope a vocabulary's members come from, and none was given");
+        // Checked here rather than where it becomes a `Name`, which is inside `resolve`, long after anyone could act
+        // on it.
+        if (vocabulary.scope.size() > Name::capacity)
+          throw std::runtime_error("scope name '" + std::string(vocabulary.scope) + "' is too long");
+        next = parser.next_word();
+      }
+      if (next != "=")
+        throw std::runtime_error("expected '=' in vocabulary declaration");
+      for (const auto value: fields(parser.rest(), Parser::blanks))
+        vocabulary.members.push_back(parse_member(value));
+      if (vocabulary.members.empty())
+        throw std::runtime_error("vocabulary declares no members");
+      vocabulary.numeric = is_numeric(vocabulary);
+      if (std::ranges::contains(result, vocabulary.name, &Vocabulary::name))
+        throw std::runtime_error("duplicate vocabulary name");
+      // A reference holds its vocabulary as a byte, so this is a real capacity like the rest, and says so rather than
+      // wrapping.
+      if (result.size() == max_vocabularies)
+        throw std::runtime_error("too many vocabularies");
+      result.push_back(vocabulary);
+    });
+  }
+  return result;
+}
+
+// Checks that every line is blank, a comment, a declaration or a row. A line that is none of those is a mistyped one of
+// them (a row that lost its separators, or `vocabularies` for `vocab`) and would otherwise be skipped in silence,
+// surfacing much later as an opcode nothing decodes.
+constexpr void check_every_line_means_something(const std::string_view description) {
+  for (const auto [at, text]: lines_of(description)) {
+    if (text.empty() || text.front() == '#' || is_vocabulary(text) || is_table(text) || is_row(text))
+      continue;
+    throw table_error(at, "this is not a comment, a declaration, or a row; a row needs its '|' separators");
+  }
+}
+
+// The index into `vocabularies` of the one called `name`; an error saying that `named_by` names one that does not exist
+// if there is none.
+[[nodiscard]] constexpr std::uint8_t find_vocabulary(
+    const std::span<const Vocabulary> vocabularies, const std::string_view name, const std::string_view named_by) {
+  const auto found = std::ranges::find(vocabularies, name, &Vocabulary::name);
+  if (found == vocabularies.end())
+    throw std::runtime_error(std::string(named_by) + " names a vocabulary that does not exist");
+  return static_cast<std::uint8_t>(found - vocabularies.begin());
+}
+
+// The index into `matched.slices` of the slice lettered `name`, or nothing if the pattern has no such slice.
+[[nodiscard]] constexpr std::optional<std::size_t> find_slice(const Pattern &matched, const char name) {
+  const auto found = std::ranges::find(matched.slices, name, &BitSlice::name);
+  if (found == matched.slices.end())
+    return std::nullopt;
+  return static_cast<std::size_t>(found - matched.slices.begin());
+}
+
+// Checks that every member of a vocabulary a view selects shares one shape, as `shape_of` below defines it, and brings
+// no operation. A view is chosen by a prefix at run time, so every compile-time check resolves such a reference at
+// member 0 and trusts the answer for all of them (`displaced_through` takes no view at all); a member that differed
+// would run one addressing mode while printing another.
+//
+// Reported against the line that selects it, which made it a requirement, naming the declaration, which is the line to
+// edit: a vocabulary nothing selects by a view may hold whatever it likes.
+constexpr void check_view_vocabulary(const Vocabulary &vocabulary) {
+  const auto &first = vocabulary.members[0];
+  // What kind of member, and for an operand, how it is reached and which kind it is.
+  const auto shape_of = [](const Member &member) {
+    return refract::visit(
+        Overloaded{
+            [&](const Operand &operand) {
+              return std::tuple{member.kind.index(), operand.indirect, operand.displaced, operand.write_back_delay,
+                  operand.kind.index(), member.pieces.size()};
+            },
+            [&](const OneOf<Member::Operation, Member::Hole> auto &) {
+              return std::tuple{member.kind.index(), false, false, std::uint8_t{}, std::size_t{}, member.pieces.size()};
+            },
+        },
+        member.kind);
+  };
+  const auto complaint = [&](const std::string_view what, const std::string_view because) {
+    return std::runtime_error("vocabulary '" + std::string(vocabulary.name) + "' (declared at line " +
+                              decimal(vocabulary.line) + ") is selected by a view here, so " + std::string(because) +
+                              "; '" + std::string(what) + "' does not");
+  };
+  for (const auto &member: vocabulary.members) {
+    // The operation is spliced from member 0, so a member that brought its own would be ignored for every view but the
+    // first: a member a view selects names a location and nothing else.
+    refract::visit(Overloaded{
+                       [&](const Member::Operation &) {
+                         throw complaint(member.display,
+                             "each of its members may only name a location, since a view is "
+                             "chosen long after the operation has been spliced");
+                       },
+                       [](const OneOf<Operand, Member::Hole> auto &) {},
+                   },
+        member.kind);
+    if (shape_of(member) != shape_of(first))
+      throw complaint(
+          member.display, "all of its members must have the same shape as '" + std::string(first.display) + "'");
+    // The same kinds of piece in the same order; the literal text may differ, which is what a view is for.
+    const auto kind_of = [](const Piece &piece) { return piece.kind.index(); };
+    if (!std::ranges::equal(member.pieces, first.pieces, {}, kind_of, kind_of))
+      throw complaint(
+          member.display, "all of its members must render the same way as '" + std::string(first.display) + "'");
+  }
+}
+
+// Parses the inside of a `{...}` reference: `vocabulary:slice` binds a vocabulary to a slice of the opcode; in a table
+// that takes a view, `vocabulary:view` binds it to the view instead, which the opcode does not carry and a prefix
+// chose.
+[[nodiscard]] constexpr Reference parse_reference(const std::span<const Vocabulary> vocabularies,
+    const std::string_view inner, const Pattern &matched, const TableDecl &table) {
+  Parser parser(inner);
+  const auto name = parser.take_until(':');
+  const auto slice = parser.rest();
+  if (name.empty() || slice.empty())
+    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:s}");
+  const auto field = find_vocabulary(vocabularies, name, "reference");
+  if (table.takes_view() && slice == table.view_name) {
+    // A view is matched by name before a slice is looked for, so a view named like a slice letter would take every
+    // reference meant for the opcode's bits, and take them in silence: the bits would be read by nothing and the prefix
+    // would answer for all of them. Neither reading is obviously right, so neither is chosen.
+    if (slice.size() == 1 && find_slice(matched, slice.front()))
+      throw std::runtime_error("'" + std::string(slice) +
+                               "' is this table's view and also a slice of this opcode, so this reference could "
+                               "mean either; rename one of them");
+    if (vocabularies[field].members.size() != vocabularies[table.view_vocabulary].members.size())
+      throw std::runtime_error("vocabulary has a different number of members than the table's view");
+    check_view_vocabulary(vocabularies[field]);
+    return {.vocabulary_index = field, .from_view = true};
+  }
+  if (slice.size() != 1)
+    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:s}");
+  const auto found = find_slice(matched, slice.front());
+  if (!found)
+    throw std::runtime_error("reference names a slice the opcode pattern does not define");
+  if (vocabularies[field].members.size() != std::size_t{matched.slices[*found].mask} + 1)
+    throw std::runtime_error("vocabulary has the wrong number of members for its opcode bits");
+  return {.vocabulary_index = field, .slice_index = static_cast<std::uint8_t>(*found)};
+}
+
+// Parses a `{vocabulary:slice}` reference, braces included.
+[[nodiscard]] constexpr Reference reference_from_braces(const std::span<const Vocabulary> vocabularies,
+    const std::string_view text, const Pattern &matched, const TableDecl &table) {
+  if (!text.starts_with('{') || !text.ends_with('}'))
+    throw std::runtime_error("a reference names a vocabulary and one slice letter, as in {vocabulary:s}");
+  return parse_reference(vocabularies, text.substr(1, text.size() - 2), matched, table);
+}
+
+// Parses a derived table's substitution list into `table.rules`: `vocabulary.member -> replacement`, comma separated,
+// with either spacing. A right side written as a view reference substitutes whichever member the table's view selects,
+// as the Z80's `pair.hl -> {index:view}` does.
+constexpr void parse_substitutions(
+    const std::string_view text, const std::span<const Vocabulary> vocabularies, TableDecl &table) {
+  for (const auto rule: fields(text, ",")) {
+    const auto arrow = rule.find("->");
+    if (arrow == std::string_view::npos)
+      throw std::runtime_error("expected '->' in table substitution '" + std::string(rule) + "'");
+    const auto left = Parser::trim(rule.substr(0, arrow));
+    const auto to = Parser::trim(rule.substr(arrow + 2));
+    if (left.empty() || to.empty())
+      throw std::runtime_error("a table substitution needs a name on each side of '->'");
+    const auto dot = left.find('.');
+    if (dot == std::string_view::npos)
+      throw std::runtime_error(
+          "a table substitution names the vocabulary it rewrites, as in 'vocabulary.member -> replacement'");
+    const auto vocabulary = left.substr(0, dot);
+    const auto named = find_vocabulary(vocabularies, vocabulary, "substitution");
+    const auto from = left.substr(dot + 1);
+    if (from.empty())
+      throw std::runtime_error("a table substitution needs a name on each side of '->'");
+    if (!std::ranges::contains(vocabularies[named].members, from, &Member::display))
+      throw std::runtime_error(
+          "vocabulary '" + std::string(vocabulary) + "' has no member '" + std::string(from) + "'");
+    if (from == "-")
+      throw std::runtime_error("a hole is not a member; a substitution cannot rename one");
+    // The generated code reads such a vocabulary's value straight out of the opcode, so a rule renaming one of its
+    // members would be honoured by the disassembler and ignored by the interpreter.
+    if (vocabularies[named].numeric)
+      throw std::runtime_error("vocabulary '" + std::string(vocabulary) +
+                               "' is its own slice, its members being the numbers the opcode carries, so a "
+                               "substitution cannot rename one");
+    Rule substitution{.vocabulary_index = named, .from = from};
+    if (to.starts_with('{')) {
+      if (!table.takes_view())
+        throw std::runtime_error("only a table that takes a view may substitute a view reference");
+      // Parsed against an empty pattern: a substitution has no opcode, so the view is the only thing that can select
+      // its member, and any other reference fails for want of a slice.
+      substitution.to = Rule::FromView{reference_from_braces(vocabularies, to, Pattern{}, table).vocabulary_index};
+    }
+    else {
+      // What a row claims is worked out before any rule is applied, so a row renamed to nothing would still claim its
+      // opcodes and then resolve to a default zero.
+      const auto member = parse_member(to);
+      refract::visit(Overloaded{
+                         [](const Member::Hole &) {
+                           throw std::runtime_error(
+                               "a substitution cannot rename something to nothing; a hole belongs in a vocabulary");
+                         },
+                         [](const OneOf<Operand, Member::Operation> auto &) {},
+                     },
+          member.kind);
+      substitution.to = member;
+    }
+    table.rules.push_back(substitution);
+  }
+}
+
+// Parses every `table name[(view:vocabulary)] [= parent with substitutions]` line of the text, in the order they
+// appear.
+[[nodiscard]] constexpr std::vector<TableDecl> parse_tables(
+    const std::string_view description, const std::span<const Vocabulary> vocabularies) {
+  std::vector<TableDecl> result;
+  for (const auto [at, text]: lines_of(description)) {
+    if (!is_table(text))
+      continue;
+    at_line(at, [&] {
+      Parser parser(text);
+      parser.skip_word();
+      const auto word = parser.next_word();
+      if (word.empty())
+        throw std::runtime_error("table declaration has no name");
+      const auto [name, view] = split_parenthesised(word, "table view");
+      TableDecl table{.name = name, .line = at};
+      // `t(view:v)`: the table is decoded once per member of `v`, and a row writes `view` where a slice letter would
+      // go.
+      if (view) {
+        Parser inner(*view);
+        table.view_name = inner.take_until(':');
+        const auto vocabulary = inner.rest();
+        if (table.view_name.empty() || vocabulary.empty())
+          throw std::runtime_error("a table view names itself and a vocabulary, as in 'name(view:vocabulary)'");
+        table.view_vocabulary = find_vocabulary(vocabularies, vocabulary, "table view");
+      }
+      if (std::ranges::contains(result, name, &TableDecl::name))
+        throw std::runtime_error("duplicate table name");
+      if (const auto equals = parser.next_word(); !equals.empty()) {
+        if (equals != "=")
+          throw std::runtime_error("expected '= <parent> with <substitutions>' after the table name");
+        // Only a table already declared, which makes the derivation a forest: a parent's own rows are resolved before
+        // anything inherits them. `result` holds exactly those, this one not being in it yet.
+        const auto parent = parser.next_word();
+        const auto found = std::ranges::find(result, parent, &TableDecl::name);
+        if (found == result.end())
+          throw std::runtime_error("no table named '" + std::string(parent) + "' is declared above this one");
+        table.parent = static_cast<std::uint8_t>(found - result.begin());
+        if (parser.next_word() != "with")
+          throw std::runtime_error("expected 'with' after the parent table name");
+        parse_substitutions(parser.rest(), vocabularies, table);
+        if (table.rules.empty())
+          throw std::runtime_error("a derived table declares no substitutions, so it is its parent");
+      }
+      // A goto holds its target as a byte, as a row holds the table it is in.
+      if (result.size() == max_tables)
+        throw std::runtime_error("too many tables");
+      result.push_back(table);
+    });
+  }
+  return result;
+}
+
+// The index into `tables` of the one called `name`; an error if there is none.
+[[nodiscard]] constexpr std::uint8_t find_table(const std::span<const TableDecl> tables, const std::string_view name) {
+  const auto found = std::ranges::find(tables, name, &TableDecl::name);
+  if (found == tables.end())
+    throw std::runtime_error("no table named '" + std::string(name) + "'");
+  return static_cast<std::uint8_t>(found - tables.begin());
+}
+
+// Parses one operand of a step: a `{...}` vocabulary reference, or anything `parse_simple_operand` accepts, either with
+// an optional `name=` in front saying which parameter it feeds.
+[[nodiscard]] constexpr Operand parse_operand(const std::span<const Vocabulary> vocabularies,
+    const std::string_view word, const Pattern &matched, const std::uint8_t immediate_bytes, const TableDecl &table) {
+  const auto [parameter, text] = split_keyword(word);
+  auto operand = text.starts_with('{') ? Operand::vocabulary(reference_from_braces(vocabularies, text, matched, table))
+                                       : parse_simple_operand(text, immediate_bytes);
+  operand.parameter = parameter;
+  return operand;
+}
+
+// Splits the row's mnemonic into `row.pieces`: literal text, the values it renders from the encoding, and its
+// vocabulary references.
+constexpr void lower_mnemonic(const std::span<const Vocabulary> vocabularies, Row &row, const TableDecl &table) {
+  const auto add_text = [&](const Parser text) {
+    for (const auto &piece: pieces_of(text))
+      row.pieces.push_back(piece);
+  };
+
+  Parser parser(row.mnemonic);
+  while (!parser.eof()) {
+    if (!parser.rest().contains('{')) {
+      add_text(parser);
+      return;
+    }
+    add_text(Parser(parser.take_until('{')));
+    if (!parser.rest().contains('}'))
+      throw std::runtime_error("unterminated vocabulary reference in mnemonic");
+    row.pieces.push_back(
+        {Piece::Vocabulary{parse_reference(vocabularies, parser.take_until('}'), row.matched, table)}});
+  }
+}
+
+// Checks that a row's three columns agree about its immediate: the encoding says what is fetched, the mnemonic must
+// render exactly that, and the action must use it, or one of the three is lying.
+constexpr void check_immediates(const Row &row) {
+  // Counted rather than summed: summing widths would let `$nn $nn` pass against `n n`, and then disassemble as two
+  // bytes where the machine read one sixteen-bit value.
+  std::size_t rendered = 0;
+  std::size_t width = 0;
+  const auto immediate_width = [](const Piece &piece) {
+    return refract::visit(
+        Overloaded{
+            [](const OneOf<Piece::Imm8, Piece::Relative> auto &) { return 1uz; },
+            [](const Piece::Imm16 &) { return 2uz; },
+            [](const OneOf<Piece::Literal, Piece::Vocabulary, Piece::Displacement> auto &) { return 0uz; },
+        },
+        piece.kind);
+  };
+  for (const auto &piece: row.pieces)
+    if (const auto bytes = immediate_width(piece); bytes != 0) {
+      ++rendered;
+      width = bytes;
+    }
+  if (rendered > 1)
+    throw std::runtime_error("a row renders at most one immediate; the encoding only fetches one");
+  if (width != row.immediate_bytes)
+    throw std::runtime_error("the mnemonic renders a different number of immediate bytes than the encoding fetches");
+
+  const auto immediate = [](const Operand &operand) {
+    return std::holds_alternative<Operand::Immediate>(operand.kind);
+  };
+  const auto uses_immediate = std::ranges::any_of(steps_of(row), [&](const Step &step) {
+    return std::ranges::any_of(step.operands, immediate) || std::ranges::any_of(step.destinations, immediate);
+  });
+  if (uses_immediate != (row.immediate_bytes != 0))
+    throw std::runtime_error("the action and the encoding disagree about whether there is an immediate");
+}
+
+// Parses the first column into `row`: the opcode pattern, then whichever bytes the instruction carries after it.
+constexpr void parse_encoding(Parser encoding, Row &row) {
+  row.matched = parse_pattern(encoding.next_word());
+  for (const auto token: fields(encoding.rest(), Parser::blanks)) {
+    if (token == "d") {
+      if (row.reads_displacement)
+        throw std::runtime_error("a row reads at most one displacement");
+      // The column lists bytes in the order they are fetched, and the format fetches a displacement before any
+      // immediate, as the Z80's `ld (ix+d), n` does.
+      if (row.immediate_bytes != 0)
+        throw std::runtime_error("'d' must come before 'n': the displacement is fetched before the immediate");
+      row.reads_displacement = true;
+      continue;
+    }
+    if (token != "n")
+      throw std::runtime_error("'" + std::string(token) + "' is not an encoding byte; expected 'n' or 'd'");
+    ++row.immediate_bytes;
+  }
+  if (row.immediate_bytes > 2)
+    throw std::runtime_error("an instruction may carry at most two immediate bytes");
+}
+
+// Parses a row that hands decoding to another table: `goto name`, or, for a table that takes a view, `goto
+// name(member)` to pick a member of its view vocabulary, or `goto name(p)`, where `p` is the current table's own view
+// parameter, to hand on the view it was decoded under. `action` starts with the word `goto`, which the caller has
+// already recognised.
+[[nodiscard]] constexpr Transfer parse_transfer(Parser action, const std::span<const Vocabulary> vocabularies,
+    const std::span<const TableDecl> tables, const TableDecl &table) {
+  action.skip_word();
+  const auto [destination, view] = split_parenthesised(action.next_word(), "goto");
+  const auto supplied = view.value_or("");
+  Transfer transfer{.target = find_table(tables, destination)};
+  if (!action.next_word().empty())
+    throw std::runtime_error("goto takes a single table name");
+  const auto &target = tables[transfer.target];
+  if (target.takes_view() && supplied.empty())
+    throw std::runtime_error("this table takes a view, so the goto must say which");
+  if (!target.takes_view() && !supplied.empty())
+    throw std::runtime_error("this table takes no view, so the goto may not supply one");
+  if (!supplied.empty()) {
+    if (table.takes_view() && supplied == table.view_name) {
+      if (table.view_vocabulary != target.view_vocabulary)
+        throw std::runtime_error("the view being handed on is drawn from a different vocabulary");
+      transfer.forwards_view = true;
+    }
+    else {
+      const auto &members = vocabularies[target.view_vocabulary].members;
+      const auto found = std::ranges::find(members, supplied, &Member::display);
+      if (found == members.end())
+        throw std::runtime_error("goto names a view that is not a member of that table's view vocabulary");
+      transfer.target_view = static_cast<std::uint8_t>(found - members.begin());
+    }
+  }
+  return transfer;
+}
+
+// Parses one step of the third column: an operation, the destinations written before `<-`, and the operands after it.
+// Whether the step is a condition is not written here: it is one if its operation returns `Continue`, which only the
+// generator can see.
+[[nodiscard]] constexpr Step parse_step(
+    Parser action, const std::span<const Vocabulary> vocabularies, const Row &row, const TableDecl &table) {
+  Step step{.operation = action.next_word()};
+  if (step.operation.starts_with('{'))
+    step.operation_reference = reference_from_braces(vocabularies, step.operation, row.matched, table);
+  // `operation dest <- args...`; the destination is optional
+  auto writing_destination = action.rest().contains("<-");
+  for (const auto written: fields(action.rest(), Parser::blanks)) {
+    const auto word = trim_comma(written);
+    if (word.empty())
+      continue;
+    if (word == "<-") {
+      if (!writing_destination)
+        throw std::runtime_error("a step has one '<-', between its destinations and its operands");
+      writing_destination = false;
+      continue;
+    }
+    const auto operand = parse_operand(vocabularies, word, row.matched, row.immediate_bytes, table);
+    // A value can be handed to an operation but cannot be written to, unless it is an address.
+    const auto is_value = refract::visit(
+        Overloaded{
+            [](const OneOf<Operand::Constant, Operand::Immediate> auto &) { return true; },
+            [](const OneOf<Operand::Named, Operand::Vocabulary, Operand::Discard> auto &) { return false; },
+        },
+        operand.kind);
+    if (writing_destination) {
+      if (!operand.indirect && is_value)
+        throw std::runtime_error("'" + std::string(word) +
+                                 "' is a value, not somewhere a result can go; a "
+                                 "destination is a location, or an address in parentheses");
+      if (!operand.parameter.empty())
+        throw std::runtime_error("'" + std::string(operand.parameter.view()) +
+                                 "=' names a parameter, and a destination is not one: it is where the result "
+                                 "goes, not something handed to the operation");
+      step.destinations.push_back(operand);
+    }
+    else {
+      refract::visit(
+          Overloaded{
+              [](const Operand::Discard &) {
+                throw std::runtime_error("'-' discards a result, so it can only be a destination");
+              },
+              [](const OneOf<Operand::Constant, Operand::Named, Operand::Immediate, Operand::Vocabulary> auto &) {},
+          },
+          operand.kind);
+      step.operands.push_back(operand);
+    }
+  }
+  return step;
+}
+
+// Parses every row of the text, `encoding | mnemonic | step ; step...`, in the order they appear. A row belongs to the
+// nearest `table` line above it, which is why this pass tracks the current table where the vocabulary and table passes
+// read the whole file flat.
+[[nodiscard]] constexpr std::vector<Row> parse_rows(const std::string_view description,
+    const std::span<const Vocabulary> vocabularies, const std::span<const TableDecl> tables) {
+  std::vector<Row> result;
+  std::optional<std::uint8_t> current;
+  for (const auto [at, text]: lines_of(description)) {
+    if (!is_table(text) && !is_row(text))
+      continue;
+    at_line(at, [&] {
+      if (is_table(text)) {
+        Parser declaration(text);
+        declaration.skip_word();
+        // Its view, if it takes one, is `parse_tables`' business, and that has already read this line.
+        current = find_table(tables, split_parenthesised(declaration.next_word(), "table view").first);
+        return;
+      }
+      if (!current)
+        throw std::runtime_error("this row is not in any table; declare one with `table <name>` first");
+      // Three columns, separated by `|`: what is encoded, how it reads, what it does.
+      Parser parser(text);
+      Row row{.table = *current, .line = at};
+      parse_encoding(Parser(parser.next_field('|')), row);
+      row.mnemonic = parser.next_field('|');
+      if (parser.rest().contains('|'))
+        throw std::runtime_error("a row has three columns; a fourth '|' is one too many");
+      // The action is a transfer, or steps that run in order, separated by `;`. Empty steps are skipped.
+      const auto steps = fields(parser.rest(), ";");
+      if (steps.empty())
+        throw std::runtime_error("row has no action");
+      const auto is_goto = [](const std::string_view step) { return Parser(step).next_word() == "goto"; };
+      if (std::ranges::any_of(steps, is_goto)) {
+        // The disassembler follows a goto row straight into its target and renders nothing of the row itself, so a goto
+        // has to be the whole row, or the interpreter would run steps the listing never shows.
+        if (steps.size() != 1)
+          throw std::runtime_error("a goto is the whole of its row, so it cannot share one with another step");
+        row.action = parse_transfer(Parser(steps.front()), vocabularies, tables, tables[*current]);
+      }
+      else {
+        Row::Steps parsed;
+        for (const auto step: steps)
+          parsed.push_back(parse_step(Parser(step), vocabularies, row, tables[*current]));
+        row.action = parsed;
+      }
+      lower_mnemonic(vocabularies, row, tables[*current]);
+      check_immediates(row);
+      result.push_back(row);
+    });
+  }
+  return result;
+}
+
+} // namespace specbolt::refract

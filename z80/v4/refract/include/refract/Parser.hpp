@@ -1,0 +1,111 @@
+#pragma once
+
+#include <ranges>
+#include <string_view>
+#include <utility>
+#include <vector>
+
+namespace specbolt::refract {
+
+// A cursor over one line of the description, consuming it from the front. Ordinary text handling: everything it hands
+// back is a `std::string_view` into the original, and the position is the whole of its state.
+class Parser {
+public:
+  constexpr explicit Parser(const std::string_view buf) : buf_(buf) {}
+
+  // What separates one word from the next. A newline and a backslash are in here because a logical line may span
+  // several physical ones: the text still holds the `\` and the newline it was joined at, and neither is a word.
+  static constexpr std::string_view blanks = " \t\r\n\\";
+
+  // Text with leading and trailing blanks removed.
+  [[nodiscard]] static constexpr std::string_view trim(const std::string_view text) {
+    const auto first = text.find_first_not_of(blanks);
+    if (first == std::string_view::npos)
+      return {};
+    return text.substr(first, text.find_last_not_of(blanks) + 1 - first);
+  }
+
+  // Everything up to the next `delim`, which is consumed with it; the whole of what is left if there is none.
+  [[nodiscard]] constexpr std::string_view take_until(const char delim) {
+    const auto pos = buf_.find(delim);
+    if (pos == std::string_view::npos)
+      return std::exchange(buf_, {});
+    const auto result = buf_.substr(0, pos);
+    buf_.remove_prefix(pos + 1);
+    return result;
+  }
+
+  // The next `delim`-separated field, blanks removed. A row is three of these.
+  [[nodiscard]] constexpr std::string_view next_field(const char delim) { return trim(take_until(delim)); }
+
+  // The next word, or empty at the end. Any blank ends a word, so a tab separates as a space does.
+  [[nodiscard]] constexpr std::string_view next_word() {
+    skip_any(blanks);
+    const auto word = buf_.substr(0, buf_.find_first_of(blanks));
+    buf_.remove_prefix(word.size());
+    return word;
+  }
+
+  // Discards the next word: one that has already been recognised, such as the keyword a declaration opens with.
+  constexpr void skip_word() { static_cast<void>(next_word()); }
+
+  // Discards every leading character that is in `skip`.
+  constexpr void skip_any(const std::string_view skip) {
+    const auto pos = buf_.find_first_not_of(skip);
+    buf_.remove_prefix(pos == std::string_view::npos ? buf_.size() : pos);
+  }
+
+  [[nodiscard]] constexpr bool eof() const { return buf_.empty(); }
+  // Everything not yet consumed.
+  [[nodiscard]] constexpr std::string_view rest() const { return buf_; }
+
+private:
+  std::string_view buf_;
+};
+
+// A line, and the number a diagnostic names it by.
+struct Line {
+  std::size_t number{};
+  std::string_view text{};
+};
+
+// Splits a description into its logical lines, each numbered from one. This is the only place that knows lines are
+// numbered. A line ending in `\` continues onto the next. The description is one buffer, so a joined line is still one
+// `std::string_view` into it, holding the `\` and the newline, which are blanks to `Parser`. A continued line is
+// reported at the number it started on.
+[[nodiscard]] constexpr std::vector<Line> lines_of(const std::string_view description) {
+  // Asked of the untrimmed text, because `trim` would take the `\` away.
+  const auto continues = [](const std::string_view raw) {
+    const auto last = raw.find_last_not_of(" \t\r");
+    return last != std::string_view::npos && raw[last] == '\\';
+  };
+
+  std::vector<Line> lines;
+  const char *begin = nullptr;
+  std::size_t started_at = 0;
+  for (const auto [index, part]: description | std::views::split('\n') | std::views::enumerate) {
+    const auto number = static_cast<std::size_t>(index) + 1;
+    const std::string_view raw{part};
+    const auto text = Parser::trim(raw);
+    if (!begin) {
+      if (text.empty()) {
+        lines.push_back({number, {}});
+        continue;
+      }
+      begin = text.data();
+      started_at = number;
+    }
+    if (continues(raw))
+      continue;
+    // The join runs to the end of the untrimmed line, which may be blank or end in blanks, so it is trimmed again.
+    lines.push_back({started_at, Parser::trim({begin, raw.data() + raw.size()})});
+    begin = nullptr;
+  }
+  // A `\` on the last line has nothing to join to. The text is kept rather than dropped, so whatever is wrong with it
+  // is diagnosed by whoever reads it.
+  if (begin)
+    lines.push_back({started_at, Parser::trim({begin, description.data() + description.size()})});
+  return lines;
+}
+
+} // namespace specbolt::refract

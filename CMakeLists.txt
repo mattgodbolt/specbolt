@@ -8,8 +8,10 @@ option(SPECBOLT_WASM "Compile for WebAssembly" OFF)
 set(SPECBOLT_WASI_SYSROOT "" CACHE STRING "Wasi root")
 
 if (SPECBOLT_WASM)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target wasm32-wasi --sysroot=${SPECBOLT_WASI_SYSROOT}")
-    set(SPECBOLT_TESTS OFF)
+    # A toolchain file names its own target and sysroot (the reflective one in z80/v4/notes/WASM.md does).
+    if (NOT CMAKE_TOOLCHAIN_FILE)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -target wasm32-wasi --sysroot=${SPECBOLT_WASI_SYSROOT}")
+    endif ()
     set(SPECBOLT_CONSOLE OFF)
 endif ()
 
@@ -25,6 +27,15 @@ endif ()
 set(CMAKE_COLOR_DIAGNOSTICS ON)
 
 project(specbolt VERSION 0.1 LANGUAGES CXX)
+
+# What a wasm build makes, tests and benchmarks included, runs under Node's WASI, so ctest works on one as it does
+# natively. Set before any target exists, since each target takes its emulator from this when it is created.
+if (SPECBOLT_WASM)
+    find_program(SPECBOLT_NODE node)
+    if (SPECBOLT_NODE)
+        set(CMAKE_CROSSCOMPILING_EMULATOR ${SPECBOLT_NODE} --no-warnings ${CMAKE_SOURCE_DIR}/web/tools/run-wasi.mjs)
+    endif ()
+endif ()
 
 # The modules build targets libc++; gcc has no such switch and uses libstdc++.
 # This has to live after project() as it needs the detected compiler id.
@@ -75,7 +86,10 @@ endif ()
 
 find_program(CCACHE ccache)
 if(CCACHE)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CCACHE}")
+    # Depend mode keys off the compiler's depfile, which lists #embed resources;
+    # direct mode only tracks includes and serves stale objects when they change.
+    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE
+            "${CMAKE_COMMAND} -E env CCACHE_DEPEND=1 ${CCACHE}")
 endif()
 
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
@@ -88,16 +102,19 @@ endif ()
 specbolt_dependency(Lyra "gh:bfgroup/Lyra@1.8.0#4186a07f52392aaac31726c64c574d3496cdc13a")
 include_directories(${PROJECT_SOURCE_DIR})
 
+add_subdirectory(peripherals)
+add_subdirectory(spectrum)
+
+# Before the front ends: which CPU implementations exist is decided here, and
+# they ask with `if (TARGET ...)`, which is answered when the line is read.
+add_subdirectory(z80)
+
 if (SPECBOLT_CONSOLE)
     add_subdirectory(console)
 endif ()
-
-add_subdirectory(peripherals)
 if (NOT SPECBOLT_WASM)
     add_subdirectory(sdl)
 endif ()
-add_subdirectory(spectrum)
-add_subdirectory(z80)
 
 if (SPECBOLT_WASM)
     add_subdirectory(web)

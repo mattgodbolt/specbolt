@@ -162,3 +162,199 @@ answers before they were fixed: never run it while anything else is on the
 machine, and never run the implementations in a fixed order within a repetition,
 since whoever goes last meets the hottest core and the coldest caches. The
 harness alternates direction and reports the best repetition for that reason.
+
+#### What changes when v4 is in the link
+
+Everything above was measured with three implementations sharing the combined
+binary, which is what that binary held at the time. v4 changes it, and the point
+of the section above is that what else is linked beside an implementation moves
+its numbers, so the combined column has to be read as "whatever this binary
+held".
+
+With v4 present the ranking inverts across the two links: v4 is fastest in the
+combined binary and v2 is fastest when each is built alone. That inversion is
+the finding the rest of this section rests on, and it does not appear at all in
+a three-implementation build, where v2 leads both columns.
+
+One number is unexplained and left standing rather than quietly dropped. An
+earlier laptop run recorded v3 at 58.6 cycles per emulated instruction in its
+own binary; a later re-measurement of the same configuration, on the same
+machine and compiler, gave 88.7. That is far outside the couple of per cent
+cycles usually vary by here. The candidate is that a build with v4 in it has
+`-freflection` on `opt::c++26`, so every target is built with it where a build
+without v4 is not, but nobody has checked. The laptop's cycle counts are not to
+be relied on for that reason; the comparison that settles the ranking is the
+desktop's, in nanoseconds, below.
+
+#### Confirmed on a machine that can actually be measured
+
+All of the above was found on a thermally limited laptop (i7-10510U). Repeating it
+on a quiet desktop (i9-9980XE, 18 cores and 36 threads, 24.75MB L3) with the same
+compiler:
+
+Retired instructions came back **identical to within 0.03%** on every
+implementation (v1 +0.02%, v2 -0.03%, v3 -0.01%, v4 -0.02%). That is the
+expected result for deterministic work and the same compiler, and it is why the
+instruction-count half of this investigation could be trusted from the laptop at
+all.
+
+Wall clock became usable for the first time: spreads of 0.5-1.5% against 24-45%
+on the laptop. Nanoseconds per emulated Z80 instruction:
+
+| | four in one binary | one binary each |
+|---|---|---|
+| v1 | 22.09 | 21.71 |
+| v2 | 10.21 | **9.84** |
+| v3 | 10.61 | 10.38 |
+| v4 | **10.05** | 10.42 |
+
+So the inversion is real and reproduces on different hardware: v4 is fastest in
+the binary the emulator actually ships, v2 is fastest when each is built alone,
+and the difference either way is under 6%. Cycle counts agree with the clock on
+this machine, which they did not on the laptop: that disagreement was the
+laptop, not the code.
+
+The headline is that the original 20% gap is entirely gone. What is left is a few
+per cent that changes sign depending on the link, which is not a number to design
+against.
+
+#### Real games, and two traps in measuring them
+
+`z80_bench --snapshot FILE --frames N` runs a `.sna`/`.z80` through the whole
+`Spectrum` (ULA, display and all) instead of running zexdoc through the bare
+CPU. Milliseconds per emulated frame, 300 frames, on the quiet desktop:
+
+| game | v1 | v2 | v3 | v4 |
+|---|---|---|---|---|
+| elite | 0.2497 | 0.1247 | 0.1262 | **0.1177** |
+| manic miner | 0.2027 | 0.1030 | 0.1093 | **0.1005** |
+| atic atac | 0.2324 | **0.1039** | 0.1091 | 0.1134 |
+| dizzy 2 | 0.2481 | 0.1067 | 0.1194 | **0.1018** |
+| jetpac | 0.2023 | 0.1903 | 0.1519 | **0.0651** |
+
+A real 48K frame is 19.97ms, so all four emulate at 80-300x real speed. v2, v3
+and v4 sit within about 10% of each other with the lead changing by game; v1 is
+2.0-2.4x behind everywhere. That agrees with what zexdoc says, so as a *ranking*
+the exerciser was not misleading.
+
+**Trap one: jetpac is not measuring what the others measure.** It spends most of
+each frame halted waiting for the frame interrupt, and the implementations model
+`halt` at different granularities:
+
+    v1, v2, v3:  if (halted_) { pass_time(1); return; }
+    v4:          if (halted_) { bus(Bus::opcode, pc()); refresh(); return; }
+
+So v1-v3 go round `execute_one` four times per four T-states where v4 goes round
+once, and jetpac's 3x is that ratio rather than anything about dispatch. Chronos
+behaves the same way. Two of five games sampled, so idling is a real part of
+emulator performance rather than an outlier to discard, but it must not be read
+as a dispatch result.
+
+There is a correctness difference hiding in the same lines: a halted Z80 keeps
+fetching, so R keeps counting. v1-v3 freeze it. A program that reads R for
+randomness or timing sees a stopped counter across a HALT.
+
+**Trap two: a snapshot dropped in and run is in an attract loop.** Mispredict
+rates are flat from 300 frames to 3000 (6.6% to 6.8% on elite, 2.0% to 2.1% on
+manic miner), so ten times the emulated time is the same behaviour repeated.
+These numbers describe title screens and demo modes, not play. Getting to
+gameplay needs keyboard input driven into `Spectrum::keyboard()`, which has not
+been done.
+
+#### What the games say about the dispatch indirect
+
+Mispredicts split with `br_misp_retired.conditional` against
+`br_misp_retired.all_branches`: the difference is indirect branches and
+returns, and returns are predicted almost perfectly by the return stack, so it is
+mostly the dispatch. As a share of cycles at an 18-cycle Skylake penalty, v4:
+
+| workload | non-conditional misp | % of cycles |
+|---|---|---|
+| zexdoc | 959K | 2.0% |
+| manic miner | 167K | 2.1% |
+| dizzy 2 | 276K | 3.4% |
+| elite | 633K | 6.8% |
+
+Both columns overstate what the dispatch costs: "non-conditional" includes
+returns, and 18 cycles is the textbook penalty, some of which out-of-order
+execution hides.
+
+**zexdoc understates this by up to 3x.** Its instruction mix runs in tight loops
+that the indirect predictor learns; elite's attract mode is a rotating wireframe
+with real line drawing and matrix work, and it mispredicts three times as often.
+The ordering across games tracks how much the loop actually does, which is what
+it should track if the number means anything.
+
+v2 measures the same rate as v4 (6.3% against 6.6% on elite). Both dispatch
+through a function-pointer table, so this is a property of the shape they share,
+not of v4's generated one.
+
+So a threaded interpreter, each handler ending in a `[[clang::musttail]]` call to
+the next rather than returning to a loop, is competing for **2-7% and probably
+more in real play**, not the ~3% zexdoc alone suggests. The cost is that handlers
+stop returning per instruction, so `execute_one()` becomes a run loop and the
+`Spectrum` and scheduler integration changes with it.
+
+#### Attempted, and it is worth more than the estimate
+
+Done, on gcc 16.2. Five interleaved rounds per workload on an idle machine with 36
+hardware threads, best of three repetitions each, v4 against v4:
+
+| workload | returning | threaded | |
+|---|---:|---:|---:|
+| manic miner | 0.0891 | **0.0743** | **17% faster** |
+| elite | 0.1085 | **0.0924** | **15% faster** |
+| zexdoc, driven per instruction | 10.22 ns | **9.41 ns** | 8% faster |
+
+The prediction held in both directions: the games gain about twice what zexdoc
+shows, and they gain it in the order the mispredict counts said they would.
+
+**How you drive it decides what you collect.** Threading only the prefix chain,
+so a `dd` hands to the next handler but an instruction still returns, was worth
+9.6% on zexdoc. Threading whole runs is worth *less* on that same workload, 8%,
+because `z80_bench` calls `execute_one()` per instruction to watch for CP/M
+calls, so it pays to set a one-instruction budget and collects nothing between
+instructions. The games go through `Spectrum::run_cycles`, which hands over a
+whole frame, and that is where the 15-17% is. An interpreter that cannot be
+given a long run cannot be threaded, whatever the handlers do.
+
+#### What gcc had to say about it
+
+All three of its objections are the same objection: **a tail call abandons the
+frame, so nothing the compiler believes lives there may still be addressable.**
+`-Werror=maybe-musttail-local-addr` is unusually good about saying so.
+
+- The lambda that forms the indexed address captured `[&]`, which takes the
+  address of every local it touches. Explicit captures fixed it.
+- The `constexpr` locals had to become `static constexpr`, exactly as `row`
+  already was for an unrelated reason.
+- **A tail call cannot be made from inside a `template for` at all**, because the
+  expansion's own induction variable lives in that frame. This one has no
+  workaround and shapes the code: a row that abandons its remaining steps
+  `break`s out and hands on at the end rather than handing on where it stopped.
+
+The first two are worth knowing before starting; the third is worth knowing
+because it is not obvious that an expansion statement should constrain calling
+convention, and it does.
+
+2026-10-03: "at all" was too strong. The third is the frame rule above, applied
+to the induction variable: it blocks a tail call only once its address may
+escape. The correction is in z80/v4/notes/JOURNAL.md, under "Done: an expansion
+statement constrains the calling convention".
+
+#### The bug that only a long run could show
+
+An untaken conditional used to `return`. Under threading a `return` ends the
+*run*, not the row, so the machine stopped at the first `jr nz` that was not
+taken. Every unit test passed: they drive `execute_one()`, and with one
+instruction budgeted, stopping the row and stopping the run are the same thing.
+Booting the ROM found it immediately, at **1558 cycles where 14 million were
+due**. A test that runs one instruction cannot distinguish the two, and after
+this change they are no longer the same thing.
+
+### Compile time
+
+The measurements above are all about how fast the emulator runs. The other half of the trade (how
+long v4 takes to *build*, where that time goes, how it scales, and what two different reflection
+implementations cost) is in [z80/v4/notes/MEASUREMENTS.md](z80/v4/notes/MEASUREMENTS.md) under "Compile time,
+measured", because it is a fact about v4 rather than about the emulator.

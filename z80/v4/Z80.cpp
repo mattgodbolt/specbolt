@@ -1,0 +1,270 @@
+#include "z80/v4/Z80.hpp"
+
+#include "Target.hpp"
+#include "refract/Execute.hpp"
+
+#include <utility>
+
+namespace specbolt::v4 {
+
+void Z80::run_until(const std::size_t cycle_count) {
+  until_ = cycle_count;
+  refract::Interpreter<Target>::run(*this);
+}
+
+// Runs one instruction, by setting a deadline one cycle away. An instruction that starts before the deadline runs to
+// its end, and the cheapest one takes longer than a cycle, so a deadline one cycle away is exactly one instruction. A
+// halted chip spends a fetch per turn of the loop below, so it stops after one of those too.
+void Z80::execute_one() { run_until(cycle_count() + 1); }
+
+bool Z80::start_instruction() {
+  while (true) {
+    if (cycle_count() >= until_)
+      return false;
+    if (const auto deferred = std::exchange(interrupts_deferred_, false); irq_pending_ && !deferred) [[unlikely]]
+      handle_interrupt();
+    if (!halted_) [[likely]]
+      return true;
+    // A halted Z80 is executing internal NOPs, not stopped: it still fetches at the address it parked on, without
+    // advancing, so it still spends an opcode cycle on the bus and still refreshes.
+    bus(Bus::opcode, pc());
+    refresh();
+  }
+}
+
+void Z80::handle_interrupt() {
+  // The request is a level the device holds until it is acknowledged, so one arriving while interrupts are off waits
+  // rather than being lost.
+  if (!iff1_)
+    return;
+  irq_pending_ = false;
+  if (halted_) {
+    halted_ = false;
+    // `halt` parks the program counter on itself; step off it.
+    regs_.pc(static_cast<std::uint16_t>(regs_.pc() + 1));
+  }
+  iff1_ = iff2_ = false;
+  // The acknowledge is an opcode fetch stretched by two wait states, during which the device would put a vector on the
+  // bus. Those seven, then two writes, make the documented thirteen for modes 0 and 1 and nineteen for mode 2.
+  delay(7);
+  // The acknowledge is an M1 cycle, and every M1 refreshes.
+  refresh();
+  regs_.sp(static_cast<std::uint16_t>(regs_.sp() - 2));
+  write_memory16(regs_.sp(), regs_.pc());
+  switch (irq_mode_) {
+    case 2: {
+      const auto vector = static_cast<std::uint16_t>(0xff | regs_.i() << 8);
+      regs_.pc(read_memory16(vector));
+      break;
+    }
+    case 0: // Nothing drives the bus, so the byte reads as 0xff: `rst 0x38`.
+    case 1:
+    default: // The chip has three modes; a value that is none of them behaves as mode 1.
+      regs_.pc(0x38);
+      break;
+  }
+}
+
+namespace {
+
+// What each kind of access costs on a Z80 with nothing extending it.
+[[nodiscard]] constexpr std::size_t cost_of(const Bus kind) {
+  switch (kind) {
+    case Bus::opcode: return 4;
+    case Bus::operand:
+    case Bus::read:
+    case Bus::write: return 3;
+    case Bus::io_read:
+    case Bus::io_write: return 4; // three, plus the wait state the Z80 always inserts
+    case Bus::internal: return 1;
+  }
+  return 0;
+}
+
+// `execute_one` relies on this: a deadline one cycle away is one instruction only while every instruction passes time.
+static_assert(cost_of(Bus::opcode) >= 1);
+
+// The address a block operation moves on to from `address`: the next byte up or down.
+[[nodiscard]] constexpr std::uint16_t next_address(const std::uint16_t address, const BlockDirection direction) {
+  return static_cast<std::uint16_t>(direction == BlockDirection::Up ? address + 1 : address - 1);
+}
+
+} // namespace
+
+void Z80::bus(const Bus kind, const std::uint16_t address) {
+  // Not modelled: contention, such as the Spectrum's on 0x4000-0x7fff while the display is drawn, which belongs here.
+  pass_time(cost_of(kind));
+  bus_address_ = address;
+}
+
+// Steps r. The refresh counter is seven bits; the top bit is whatever was last written to it and does not count.
+void Z80::refresh() { regs_.r(static_cast<std::uint8_t>((regs_.r() & 0x80) | ((regs_.r() + 1) & 0x7f))); }
+
+// Spends `cycles` internal cycles in one go. An internal cycle presents the address the last access left on the bus, so
+// a run of them only moves the clock, and spending them in one go is equivalent: `pass_time(n)` fires the same tasks at
+// the same cycles as n calls of one. A machine that contends each internal cycle separately would loop here.
+void Z80::delay(const std::uint8_t cycles) { pass_time(cycles * cost_of(Bus::internal)); }
+
+std::uint16_t Z80::read_memory16(const std::uint16_t address) {
+  // Two accesses, low byte first, because that is what the bus sees.
+  const auto low = read_memory(address);
+  return static_cast<std::uint16_t>(read_memory(static_cast<std::uint16_t>(address + 1)) << 8 | low);
+}
+
+// Writes a word, low byte first, as `ld (nn), hl` does. A push writes high to sp-1 then low to sp-2 on the chip and
+// gets this order instead; the bytes land in the same places, so only contention or a watchpoint could tell
+// (notes/PREFIXES.md).
+void Z80::write_memory16(const std::uint16_t address, const std::uint16_t value) {
+  write_memory(address, static_cast<std::uint8_t>(value));
+  write_memory(static_cast<std::uint16_t>(address + 1), static_cast<std::uint8_t>(value >> 8));
+}
+
+std::uint8_t Z80::read_memory(const std::uint16_t address) {
+  bus(Bus::read, address);
+  return memory_.read(address);
+}
+
+void Z80::write_memory(const std::uint16_t address, const std::uint8_t value) {
+  bus(Bus::write, address);
+  memory_.write(address, value);
+}
+
+std::uint8_t Z80::read_port(const std::uint16_t port) {
+  bus(Bus::io_read, port);
+  return in(port);
+}
+
+void Z80::write_port(const std::uint16_t port, const std::uint8_t value) {
+  bus(Bus::io_write, port);
+  out(port, value);
+}
+
+void Z80::halted(const bool value) {
+  if (value)
+    halt();
+  else
+    halted_ = false;
+}
+
+
+// ---------------------------------------------------------------------------
+// The verbs marked as operations
+// ---------------------------------------------------------------------------
+
+void Z80::out_n(const std::uint8_t port, const std::uint8_t value) {
+  write_port(static_cast<std::uint16_t>(value << 8 | port), value);
+}
+
+std::uint8_t Z80::in_n(const std::uint8_t port, const std::uint8_t high) {
+  return read_port(static_cast<std::uint16_t>(high << 8 | port));
+}
+
+Alu::R8 Z80::in_c(const std::uint16_t port, const Flags flags) {
+  const auto value = read_port(port);
+  return {value, Alu::parity_flags_for(value) | (flags & Flags::Carry())};
+}
+
+void Z80::out_c(const std::uint16_t port, const std::uint8_t value) { write_port(port, value); }
+
+std::uint16_t Z80::ex_sp_hl(const std::uint16_t value) {
+  const auto sp = regs_.sp();
+  const auto old = read_memory16(sp);
+  delay(1);
+  // High byte first, the reverse of `write_memory16`.
+  write_memory(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(value >> 8));
+  write_memory(sp, static_cast<std::uint8_t>(value));
+  delay(2);
+  return old;
+}
+
+void Z80::exx() { regs_.exx(); }
+void Z80::ex_de_hl() { regs_.ex(RegisterFile::R16::DE, RegisterFile::R16::HL); }
+void Z80::ex_af() { regs_.ex(RegisterFile::R16::AF, RegisterFile::R16::AF_); }
+
+Alu::R8 Z80::ld_a_special(const std::uint8_t value, const Flags flags) const {
+  return {value, Alu::iff2_flags_for(value, flags, iff2())};
+}
+
+Alu::R8 Z80::nibble(const std::uint8_t value, const Flags flags, const Alu::Direction direction) {
+  const auto a = regs_.get(RegisterFile::R8::A);
+  const bool right = direction == Alu::Direction::Right;
+  const auto updated =
+      static_cast<std::uint8_t>(right ? (a & 0xf0) | (value & 0x0f) : (a & 0xf0) | (value >> 4 & 0x0f));
+  const auto written = static_cast<std::uint8_t>(right ? value >> 4 | (a & 0x0f) << 4 : value << 4 | (a & 0x0f));
+  delay(4);
+  regs_.set(RegisterFile::R8::A, updated);
+  return {written, (flags & Flags::Carry()) | Alu::parity_flags_for(updated)};
+}
+
+Alu::R8 Z80::rrd8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, Alu::Direction::Right); }
+Alu::R8 Z80::rld8(const std::uint8_t value, const Flags flags) { return nibble(value, flags, Alu::Direction::Left); }
+
+Flags Z80::counted(const Flags flags, const std::uint16_t bc, const std::uint8_t noise) {
+  auto result = flags & ~(Flags::Subtract() | Flags::HalfCarry() | Flags::Overflow() | Flags::Flag3() | Flags::Flag5());
+  // `bc` is the value before this step's decrement, so this is "bc is nonzero after it".
+  if (bc != 1)
+    result = result | Flags::Overflow();
+  if (noise & 0x08)
+    result = result | Flags::Flag3();
+  if (noise & 0x02)
+    result = result | Flags::Flag5();
+  return result;
+}
+
+Flags Z80::stepped(const Flags flags) {
+  const auto b = static_cast<std::uint8_t>(regs_.get(RegisterFile::R8::B) - 1);
+  regs_.set(RegisterFile::R8::B, b);
+  return Alu::parity_flags_for(b) | Flags::Subtract() | (flags & Flags::Carry());
+}
+
+Flags Z80::block_load(const BlockDirection direction, const Flags flags) {
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  const auto de = regs_.get(RegisterFile::R16::DE);
+  const auto bc = regs_.get(RegisterFile::R16::BC);
+  const auto byte = read_memory(hl);
+  write_memory(de, byte);
+  delay(2);
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
+  regs_.set(RegisterFile::R16::DE, next_address(de, direction));
+  regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+  // Flags 3 and 5 come from the byte plus the accumulator; `counted` says which bits.
+  return counted(flags, bc, static_cast<std::uint8_t>(byte + regs_.get(RegisterFile::R8::A)));
+}
+
+Flags Z80::block_compare(const BlockDirection direction, const Flags flags) {
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  const auto bc = regs_.get(RegisterFile::R16::BC);
+  const auto byte = read_memory(hl);
+  delay(5);
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
+  regs_.set(RegisterFile::R16::BC, static_cast<std::uint16_t>(bc - 1));
+  const auto compared = Alu::sub8(regs_.get(RegisterFile::R8::A), byte, false);
+  // Flags 3 and 5 come from the difference, less one where it borrowed.
+  const auto noise = static_cast<std::uint8_t>(compared.flags.half_carry() ? compared.result - 1 : compared.result);
+  // The comparison's own sign, zero, half-carry and subtract go on last: the count clears two of them, and a compare is
+  // entitled to say otherwise.
+  constexpr auto compared_flags = Flags::HalfCarry() | Flags::Zero() | Flags::Sign() | Flags::Subtract();
+  return (counted(flags, bc, noise) & ~compared_flags) | (compared.flags & compared_flags);
+}
+
+Flags Z80::block_in(const BlockDirection direction, const Flags flags) {
+  delay(1);
+  const auto value = read_port(regs_.get(RegisterFile::R16::BC));
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  write_memory(hl, value);
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
+  return stepped(flags);
+}
+
+Flags Z80::block_out(const BlockDirection direction, const Flags flags) {
+  delay(1);
+  const auto hl = regs_.get(RegisterFile::R16::HL);
+  const auto value = read_memory(hl);
+  regs_.set(RegisterFile::R16::HL, next_address(hl, direction));
+  // B is counted down before the port goes on the bus, so it addresses with the new value.
+  const auto result = stepped(flags);
+  write_port(regs_.get(RegisterFile::R16::BC), value);
+  return result;
+}
+
+} // namespace specbolt::v4

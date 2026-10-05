@@ -26,7 +26,7 @@
       "name": "debug-modules",
       "inherits": "_base",
       "displayName": "Debug with C++ modules",
-      "description": "Requires clang-20+ and libc++.",
+      "description": "C++ modules: clang 20+ with libc++, or gcc 16+.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "SPECBOLT_MODULES": "ON"
@@ -46,7 +46,7 @@
       "name": "release-modules",
       "inherits": "_base",
       "displayName": "RelWithDebInfo with C++ modules",
-      "description": "Requires clang-20+ and libc++.",
+      "description": "C++ modules: clang 20+ with libc++, or gcc 16+.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SPECBOLT_MODULES": "ON"
@@ -56,7 +56,7 @@
       "name": "debug-reflection",
       "inherits": "_base",
       "displayName": "Debug with C++26 reflection",
-      "description": "Requires gcc 16+. Fails to configure if reflection is unavailable.",
+      "description": "Requires gcc 16+ or a P2996 clang fork. Fails to configure if reflection is unavailable.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "SPECBOLT_MODULES": "OFF",
@@ -67,7 +67,7 @@
       "name": "release-reflection",
       "inherits": "_base",
       "displayName": "RelWithDebInfo with C++26 reflection",
-      "description": "Requires gcc 16+. Fails to configure if reflection is unavailable.",
+      "description": "Requires gcc 16+ or a P2996 clang fork. Fails to configure if reflection is unavailable.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SPECBOLT_MODULES": "OFF",
@@ -82,6 +82,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "SPECBOLT_MODULES": "OFF",
+        "SPECBOLT_TESTS": "OFF",
         "SPECBOLT_WASM": "ON"
       }
     }

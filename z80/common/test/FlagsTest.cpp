@@ -21,6 +21,13 @@ TEST_CASE("Flags tests") {
     CHECK(Flags::Subtract().to_u8() == 0x02);
     CHECK(Flags::Carry().to_u8() == 0x01);
   }
+  SECTION("a single bit can be tested, and is what the factories are made of") {
+    STATIC_CHECK(Flags(Flags::Bit::carry).test(Flags::Bit::carry));
+    STATIC_CHECK(!Flags(Flags::Bit::carry).test(Flags::Bit::zero));
+    STATIC_CHECK(Flags(Flags::Bit::carry) == Flags::Carry());
+    STATIC_CHECK(Flags(0xff).test(Flags::Bit::flag5));
+    STATIC_CHECK(!Flags().test(Flags::Bit::sign));
+  }
   SECTION("ors") { CHECK((Flags::Sign() | Flags::HalfCarry()).to_u8() == 0x90); }
   SECTION("ands") {
     CHECK((Flags::Sign() & Flags::HalfCarry()) == Flags());
