@@ -52,13 +52,21 @@ struct Bare {
   void delay(std::uint8_t) {}
 };
 
+// A machine whose one kind of location can be read and not written.
 struct Plain : Bare {
-  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Reg) const { return 0; }
 };
 
 struct Shadowing : Bare {
-  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
-  [[nodiscard]][[= refract::location]] std::uint8_t read(Other) const { return 0; }
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Other) const { return 0; }
+};
+
+// Accessors named as the machine pleases, and a location that can be written and not read.
+struct Renamed : Bare {
+  [[nodiscard]][[= refract::location.read]] std::uint8_t peek(Reg) const { return 0; }
+  [[= refract::location.write]] void poke(Reg, std::uint8_t) {}
+  [[= refract::location.write]] void latch(Other, std::uint8_t) {}
 };
 
 // A machine whose description may have displaced rows, with a window that holds no bytes.
@@ -67,12 +75,31 @@ struct Displacing : Plain {
   std::uint16_t displaced_address(const std::uint16_t base, std::int8_t, std::uint8_t) { return base; }
 };
 
-struct Mismarked : Bare {
-  [[nodiscard]][[= refract::location]] std::uint8_t peek(Reg) const { return 0; }
+// Machines whose locations are marked wrongly, one way each.
+struct Unspecified : Bare {
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+};
+struct MisshapenRead : Bare {
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Reg, int) const { return 0; }
+};
+struct MisshapenWrite : Bare {
+  [[= refract::location.write]] void write(Reg) {}
+};
+struct PrivateRead : Bare {
+private:
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Reg) const { return 0; }
+};
+struct TwoReads : Bare {
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location.read]] std::uint8_t peek(Reg) const { return 0; }
+};
+struct Disagreeing : Bare {
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Reg) const { return 0; }
+  [[= refract::location.write]] void write(Reg, std::uint16_t) {}
 };
 
 struct Secretive : Bare {
-  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location.read]] std::uint8_t read(Reg) const { return 0; }
 
 private:
   [[nodiscard]][[= refract::operation]] static std::uint8_t secret(const std::uint8_t value) { return value; }
@@ -162,12 +189,45 @@ TEST_CASE("A name that means two things, or one the description cannot reach, is
       "plain.cpu:4: 'secret' is marked as an operation but is not public, so a description cannot reach it"));
 }
 
+TEST_CASE("A location is reached through the members the machine marks, whatever they are called") {
+  using Lookups = Generator<Renamed, Operations>;
+  STATIC_CHECK(Lookups::accessor_for(^^Reg, Location::Access::Role::read, "a", 1) == ^^Renamed::peek);
+  STATIC_CHECK(Lookups::accessor_for(^^Reg, Location::Access::Role::write, "a", 1) == ^^Renamed::poke);
+  STATIC_CHECK(Lookups::accessor_for(^^Other, Location::Access::Role::write, "y", 1) == ^^Renamed::latch);
+  // A location with only one of the two is a location all the same, and its names are found.
+  STATIC_CHECK(Lookups::find_location("y", 1) == ^^Other::y);
+}
+
+TEST_CASE("A row reaching a location in a way the machine does not offer is reported against its line") {
+  STATIC_CHECK(throws_with(
+      [] { return Generator<Plain, Operations>::accessor_for(^^Reg, Location::Access::Role::write, "a", 4); },
+      "plain.cpu:4: this row writes 'a', and nothing taking Reg is marked [[=refract::location.write]]"));
+  STATIC_CHECK(throws_with(
+      [] { return Generator<Renamed, Operations>::accessor_for(^^Other, Location::Access::Role::read, "y", 6); },
+      "plain.cpu:6: this row reads 'y', and nothing taking Other is marked [[=refract::location.read]]"));
+}
+
 TEST_CASE("A machine whose locations are marked wrongly is reported") {
   STATIC_CHECK(throws_with([] { Generator<Shadowing, Operations>::check_location_names_unique(); },
-      "two of this machine's readable locations are spelled 'a' (in Reg and Other), so a description could not say "
-      "which it meant"));
-  STATIC_CHECK(throws_with([] { return Generator<Mismarked, Operations>::scan_location_scopes(); },
-      "'peek' is marked [[=refract::location]], so it must be a public `read` taking one enum, the location it reads"));
+      "two of this machine's locations are spelled 'a' (in Reg and Other), so a description could not say which it "
+      "meant"));
+  STATIC_CHECK(throws_with([] { return Generator<Unspecified, Operations>::scan_locations(); },
+      "'read' is marked [[=refract::location]]; mark it [[=refract::location.read]] or [[=refract::location.write]], "
+      "for the access it gives"));
+  STATIC_CHECK(throws_with([] { return Generator<MisshapenRead, Operations>::scan_locations(); },
+      "'read' is marked [[=refract::location.read]], so it must be a public member function taking one enum, the "
+      "location it reads, and returning what it holds"));
+  STATIC_CHECK(throws_with([] { return Generator<PrivateRead, Operations>::scan_locations(); },
+      "'read' is marked [[=refract::location.read]], so it must be a public member function taking one enum, the "
+      "location it reads, and returning what it holds"));
+  STATIC_CHECK(throws_with([] { return Generator<MisshapenWrite, Operations>::scan_locations(); },
+      "'write' is marked [[=refract::location.write]], so it must be a public member function taking an enum, the "
+      "location it writes, and the value to write"));
+  STATIC_CHECK(throws_with([] { return Generator<TwoReads, Operations>::scan_locations(); },
+      "'read' and 'peek' are both marked [[=refract::location.read]] for Reg, so there is no saying which to call"));
+  STATIC_CHECK(throws_with([] { return Generator<Disagreeing, Operations>::scan_locations(); },
+      "Reg is read as unsigned char by 'read' and written as short unsigned int by 'write'; a location holds one "
+      "type"));
 }
 
 TEST_CASE("A displaced row is checked against what its machine can do") {

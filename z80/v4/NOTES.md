@@ -88,8 +88,8 @@ else:
 - `Target`: which machine, which description, and which palettes
 - `Z80`, the machine state, marking with `[[=refract::operation]]` the verbs that touch it
 - `Operations`, a palette of verbs that touch nothing (the shared `Alu` is the other palette)
-- `read`/`write` overloads: how to touch storage, and, by marking each `read` with
-  `[[=refract::location]]`, what storage a description may name
+- location accessors: how to touch storage, and, by marking each with `[[=refract::location.read]]`
+  or `[[=refract::location.write]]`, what storage a description may name and how it may reach it
 - `read_memory`/`write_memory` and their 16-bit forms: how to touch memory through an address
 - `fetch_opcode`/`fetch_immediate`: how to read the instruction stream
 - `displaced_address` and `displacement_window_bytes`, for a description with displaced rows: how a
@@ -106,7 +106,8 @@ CPU description must supply", says what each construct in a row needs.
 A verb that needs the machine is a member of it, called on it; a verb that does not is a static
 function of a palette, called on nothing. The machine's public interface is larger than its
 vocabulary, so it publishes its verbs one by one, and its locations the same way, by marking the
-`read` of each; a palette is built to be named, so everything public in it counts.
+member that reads each and the one that writes it; a palette is built to be named, so everything
+public in it counts. Nothing is found by its name: the generator calls the members it finds marked.
 
 The framework names no CPU type at all: not `RegisterFile`, not `Alu`, not `Flags`. It knows only
 that a row has a verb, some operands and some destinations, and that the CPU can resolve a name.
