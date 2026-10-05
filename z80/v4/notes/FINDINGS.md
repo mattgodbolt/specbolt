@@ -236,6 +236,11 @@ What interning cannot reach is the parsed table. It outlives the evaluation that
 `std::inplace_vector` is blocked for the reasons above. So the end state is no string type of refract's own, and one
 container standing in for a standard one, for a tenth more compile time in the interpreter.
 
+*2026-10-04: decided against merging; the branch stays as the record. It adds more than it removes, including a second
+form of `Call` and a guarantee (equal contents are one object) a reader has to know about, where `Name` is read at a
+glance. It costs compile time in the file that already dominates the build, it was never tried on the fork the wasm
+build needs, and the limit it lifts, fifteen characters to a name, is one no description has come near.*
+
 ### `std::visit` is dear during constant evaluation
 
 Found 2026-09-27, turning `Operand` and `Member` into variants decided by exhaustive visits. refract visits in its
