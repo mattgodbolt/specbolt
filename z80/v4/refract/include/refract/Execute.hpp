@@ -162,8 +162,8 @@ struct Interpreter {
   }
 
   // Scans the machine for its locations: each enum taken by a member marked `[[=refract::location]]`, with the members
-  // that read and write it. An enum no marked member takes is not a location, however many public functions take it;
-  // the Z80's `Bus`, which only `Z80::bus` takes, is not one.
+  // that read and write it. An enum no marked member takes is not a location, however many public functions take it:
+  // the Z80's `Bus` is taken by the public `Z80::bus`, which is unmarked, so it is not one.
   //
   // The scan sees private members too, so that a mark on something the generated code could not call is an error rather
   // than silently ignored. So is a mark on something of neither shape, a second reader or writer for one enum, and a

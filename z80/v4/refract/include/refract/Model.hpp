@@ -57,7 +57,7 @@ inline constexpr Operation operation{};
 // Marks the member functions through which a description reads and writes a machine's locations. Each takes an enum,
 // the kind of location it reaches, and every enumerator of an enum a marked function takes is a name a description may
 // write. Its shape says which access it gives: one taking only the enum and returning a value reads the location, and
-// one taking the enum and the value to store writes it:
+// one taking the enum and the value to store, and returning nothing, writes it:
 //
 //   [[=refract::location]] std::uint8_t get(Register which) const;
 //   [[=refract::location]] void set(Register which, std::uint8_t value);
