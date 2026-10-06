@@ -410,7 +410,7 @@ struct Interpreter {
   [[nodiscard]] static consteval std::string_view location_named(const Member &member, const std::size_t line) {
     const auto not_a_location = [&] {
       return error(line, "'" + std::string(member.display) +
-                             "' is selected by a view, so it must name a location the machine can read");
+                             "' is selected by a view, so it must name one of the machine's locations");
     };
     return refract::visit(
         Overloaded{
@@ -429,7 +429,7 @@ struct Interpreter {
 
   // The locations a view selects between, in the order its vocabulary lists them, so that the view *is* the index.
   // Every member must name a location of the same type, which the first loop below checks (`check_view_vocabulary` has
-  // only made them operands of one shape), so the machine is handed a location it already knows how to read and needs
+  // only made them operands of one shape), so the machine is handed a location it already knows how to reach and needs
   // no notion of a view.
   //
   // `template for` rather than a loop, because a splice needs a constant operand and an expansion statement's induction
@@ -1316,9 +1316,9 @@ struct Interpreter {
 
   // Starts the run. The handlers tail-call each other from here on, so this is the only frame the run keeps.
   //
-  // The checks that need this class's own scan of the machine run here rather than in `TargetLike`: that its readable
-  // locations have distinct names, and that each vocabulary's operations agree about being conditions. This is the one
-  // entry point, so they run once regardless. The description on its own was checked when `Compiled` was instantiated.
+  // The checks that need this class's own scan of the machine run here rather than in `TargetLike`: that its locations
+  // have distinct names, and that each vocabulary's operations agree about being conditions. This is the one entry
+  // point, so they run once regardless. The description on its own was checked when `Compiled` was instantiated.
   static void run(Machine &machine) {
     consteval {
       check_location_names_unique();
