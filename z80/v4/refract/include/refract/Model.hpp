@@ -54,14 +54,18 @@ struct Name {
 struct Operation {};
 inline constexpr Operation operation{};
 
-// Marks one of a machine's `read` overloads as reading a location, which publishes every enumerator of the enum it
-// takes as a name a description may write:
+// Marks the member functions through which a description reads and writes a machine's locations. Each takes an enum,
+// the kind of location it reaches, and every enumerator of an enum a marked function takes is a name a description may
+// write. Its shape says which access it gives: one taking only the enum and returning a value reads the location, and
+// one taking the enum and the value to store, and returning nothing, writes it:
 //
-//   [[=refract::location]] std::uint8_t read(Register which) const;
+//   [[=refract::location]] std::uint8_t get(Register which) const;
+//   [[=refract::location]] void set(Register which, std::uint8_t value);
 //
-// Marked rather than found by name, so that a machine may have a public `read` of its own, for a debugger say, without
-// its enum becoming part of the language. A row's location is still read and written by calling `read` and `write`, so
-// the mark goes only on a `read` taking one enum.
+// The generator calls the function it finds marked, so the names are the machine's own, and a machine may have other
+// functions taking the same enum, for a debugger say, without their becoming part of the language. A kind of location
+// may have a read, a write or both; a row that writes one with no write, or reads one with no read, is an error against
+// its line. Where it has both, they agree on the type the location holds.
 struct Location {};
 inline constexpr Location location{};
 

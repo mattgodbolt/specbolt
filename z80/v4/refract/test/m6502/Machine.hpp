@@ -65,7 +65,7 @@ struct Machine {
     }
     return 0;
   }
-  void write(const R8 which, const std::uint8_t value) {
+  [[= refract::location]] void write(const R8 which, const std::uint8_t value) {
     switch (which) {
       case R8::a: a = value; break;
       case R8::x: x = value; break;
@@ -75,7 +75,9 @@ struct Machine {
     }
   }
   [[nodiscard]][[= refract::location]] std::uint16_t read(const R16 which) const { return which == R16::pc ? pc : ea; }
-  void write(const R16 which, const std::uint16_t value) { (which == R16::pc ? pc : ea) = value; }
+  [[= refract::location]] void write(const R16 which, const std::uint16_t value) {
+    (which == R16::pc ? pc : ea) = value;
+  }
 
   // Operations a description may name that need the machine: time, the stack, and the addressing modes whose cost
   // depends on the data.

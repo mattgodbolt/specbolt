@@ -4,8 +4,8 @@
 //
 // A `.cpu` description names operations and locations; this says how the framework fetches, accesses memory, forms a
 // displaced address and spends time. Operation names resolve against the palettes the target lists and the members the
-// machine marks with `[[=refract::operation]]`, and location names against the `read` overloads it marks with
-// `[[=refract::location]]` (both in Model.hpp).
+// machine marks with `[[=refract::operation]]`, and location names against the enums its accessors take, the members it
+// marks `[[=refract::location]]` (both in Model.hpp).
 //
 // This is what the *framework* calls, not everything the machine is asked for: an operation is free to use whatever the
 // machine offers, and the Z80's use `bus`, `in`, `out` and the register file besides, which are between the description
@@ -13,23 +13,16 @@
 // concept means a machine that is missing one, or has one with the wrong shape, is told so here rather than through a
 // failure deep inside a generated instruction.
 //
-// The `read` and `write` overloads for a machine's locations cannot be written down here: how many there are, and what
-// they take and return, is whatever the machine declares. A row naming a location the machine cannot reach is
-// diagnosed where it is spliced instead.
+// The accessors for a machine's locations cannot be written down here: how many there are, what they are called, and
+// what they take and return, is whatever the machine declares and marks. The interpreter finds them by their marks, and
+// a row reaching a location in a way the machine does not offer is diagnosed against its line.
 
 #include <concepts>
 #include <cstdint>
 #include <meta>
-#include <string_view>
 #include <vector>
 
 namespace specbolt::refract {
-
-// The name of the overloads a machine marks `[[=refract::location]]`: the generator reads a location by calling it, so
-// `scan_location_scopes` in Execute.hpp refuses a mark on anything else. Named here because this is the file stating
-// what a machine must provide. `write` needs no such constant: nothing is marked with it, and the generator spells it
-// at the calls it splices.
-inline constexpr std::string_view read_verb = "read";
 
 // Everything the framework does *to* every machine. `delay` is separate from the accesses because an idle cycle is not
 // a transfer. A machine whose description has displaced rows owes `DisplacingMachine` below as well.
