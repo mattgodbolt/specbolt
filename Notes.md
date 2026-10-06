@@ -352,6 +352,80 @@ Booting the ROM found it immediately, at **1558 cycles where 14 million were
 due**. A test that runs one instruction cannot distinguish the two, and after
 this change they are no longer the same thing.
 
+#### The scheduler's slow path, and the `[[unlikely]]` that moved it
+
+*First written 2026-10-05, at `3322924`, on the quiet desktop.* Two server nodes
+had put v4 behind v2 and v3 in the combined binary
+(z80/v4/notes/MEASUREMENTS.md, "Two server nodes, and v4 no longer leading"),
+and the desktop agreed. Built alone, v4 was still the fastest of the three. Each
+binary pinned to one core, the bench's best of five, three rounds interleaving
+the builds, and the mean of the three bests; spreads within a repetition were
+mostly under 3%.
+
+**Every core paid for a function it hardly ever runs.** In the combined binary
+each core executed 16% to 25% more instructions than it did alone. gcc had
+inlined `Scheduler::tick_with_tasks`, the path for a task falling due, which
+erases from a vector and calls the task through a virtual function, into the
+hottest callers of `tick`, v4's `fetch_immediate` among them. They then saved
+and restored registers on every call for code they almost never ran. The
+per-core binaries left it out of line. It is the lottery of "The two functions
+every implementation waits on", drawn again with v4 in the link.
+
+**Marking the branch `[[unlikely]]` keeps it out of line**, in standard C++.
+`[[gnu::noinline]]` on `tick_with_tasks` does the same, and was measured first.
+Nanoseconds per emulated instruction, zexdoc:
+
+| | main | `noinline` | `[[unlikely]]` |
+|---|---:|---:|---:|
+| v1, four in one binary | 27.0 | 25.3 | 29.8 |
+| v2, four in one binary | 11.8 | 10.45 | 9.6 |
+| v3, four in one binary | 12.4 | 10.25 | 11.2 |
+| v4, four in one binary | 12.4 | 11.2 | 10.3 |
+| v2 alone | 9.15 | 9.2 | 9.2 |
+| v3 alone | 10.75 | 10.8 | 10.1 |
+| v4 alone | **8.95** | **8.95** | 9.8 |
+
+**This CPU hid what the change did.** v4 alone was 9% slower with `[[unlikely]]`
+while its call graph was identical. The i9-9980XE is a Skylake-family part
+carrying the microcode fix for its jump erratum, under which a jump that crosses
+or ends on a 32-byte boundary is not served from the micro-op cache. In the
+slower build that cache delivered 1.16G micro-ops against 2.12G, legacy decode
+delivered 1.26G against 0.45G, and micro-op cache misses went from 1.7M to
+19.5M. The assembler can pad jumps off those boundaries:
+`-Wa,-mbranches-within-32B-boundaries`, in the link flags as well as the compile
+flags, since LTO assembles at link time. With every build padded, and two
+separate runs agreeing to within 1%:
+
+| padded | main | `[[unlikely]]` | `[[unlikely]]`, `always_inline` |
+|---|---:|---:|---:|
+| v1, four in one binary | 26.7 | 28.4 | 28.8 |
+| v2, four in one binary | 11.45 | 10.1 | 10.1 |
+| v3, four in one binary | 11.9 | 10.3 | 10.4 |
+| v4, four in one binary | 11.8 | 9.7 | **8.8** |
+| v2 alone | 9.9 | 9.8 | **8.4** |
+| v3 alone | 10.3 | 10.4 | 10.6 |
+| v4 alone | 8.8 | **8.4** | 9.3 |
+
+**Padded, `[[unlikely]]` is as fast or faster for v2, v3 and v4 everywhere**,
+and the combined binary, the one the emulator ships, gains 12% to 18%. v1 loses
+6% in the combined binary, 10% unpadded, as it did in every variant tried. Not
+chased.
+
+**`always_inline` on `Memory::read`, `Memory::write` and `tick` as well only
+moves the gains around.** v4 combined and v2 alone get faster, and v4 alone gets
+10% slower from 6% more instructions and 10% more branch misses, with the
+micro-op cache feeding both builds alike. Not adopted.
+
+**Nor is the padding.** It slows v2 alone on main from 9.15 to 9.9, and a part
+without the erratum, AMD's among them, would pay for it and get nothing. It is a
+way to compare two builds on this machine, not a build setting.
+
+**Which core is fastest is still not a number to design against.** Unpadded, as
+built, v2 leads both columns: 9.6 to v4's 10.3 combined, 9.2 to 9.8 alone.
+Padded, v4 leads both: 9.7 to 10.1, and 8.4 to 9.8. The gap between the
+generated core and the hand-written ones is smaller than what inlining and code
+layout move, which on this machine is about 10% either way.
+
 ### Compile time
 
 The measurements above are all about how fast the emulator runs. The other half of the trade (how

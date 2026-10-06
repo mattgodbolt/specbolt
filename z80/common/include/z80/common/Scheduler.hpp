@@ -33,15 +33,16 @@ public:
     task.scheduled_ = true;
   }
 
-  // The overwhelmingly common case: no task is due inside this span, so time
-  // just advances. Kept small and separate so it inlines into the callers that
-  // matter: every memory access and every idle cycle reaches here.
+  // Advances time by `cycles`, running each task that falls due along the way. Almost always none does, so this half is
+  // kept small enough to inline into every memory access and every idle cycle, and `tick_with_tasks` does the rest.
   void tick(const size_t cycles) {
-    if (cycles < headroom()) {
-      cycles_ += cycles;
+    // A task falls due only rarely. Saying so keeps the code that runs tasks out of line, instead of inlined with the
+    // fast path into every caller (Notes.md, "The scheduler's slow path, and the [[unlikely]] that moved it").
+    if (cycles >= headroom()) [[unlikely]] {
+      tick_with_tasks(cycles);
       return;
     }
-    tick_with_tasks(cycles);
+    cycles_ += cycles;
   }
 
   void tick_with_tasks(const size_t cycles) {
