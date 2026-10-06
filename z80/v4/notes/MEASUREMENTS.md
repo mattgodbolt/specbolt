@@ -740,6 +740,12 @@ v2 leads it on this laptop and on an AMD desktop.
 
 *First written 2026-10-05, at `260c0bf`. Matt's runs; the build and the bench's flags were not recorded.*
 
+*Later the same day: most of the combined binary's deficit was the scheduler's slow path, inlined into
+every core's hottest functions, and marking it `[[unlikely]]` won back 12% to 18% for v2, v3 and v4 on
+the desktop (the top-level Notes.md, "The scheduler's slow path, and the `[[unlikely]]` that moved it").
+Pick a game for `--snapshot` that keeps the CPU busy: one that sits halted measures how each core models
+`halt` (the top-level Notes.md, "Real games, and two traps in measuring them").*
+
 `z80_bench` with all four cores in one binary, zexdoc, nanoseconds per emulated instruction, best of the
 bench's repetitions.
 
