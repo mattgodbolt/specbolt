@@ -69,6 +69,11 @@ struct Renamed : Bare {
   [[= refract::location]] void latch(Other, std::uint8_t) {}
 };
 
+// An accessor that is an operator, and so has no name.
+struct Indexed : Bare {
+  [[nodiscard]][[= refract::location]] std::uint8_t operator[](Reg) const { return 0; }
+};
+
 // A machine whose description may have displaced rows, with a window that holds no bytes.
 struct Displacing : Plain {
   static constexpr std::uint8_t displacement_window_bytes = 0;
@@ -98,6 +103,14 @@ struct TwoReads : Bare {
 };
 struct Disagreeing : Bare {
   [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+  [[= refract::location]] void write(Reg, std::uint16_t) {}
+};
+struct TwoReadsOneIndexed : Bare {
+  [[nodiscard]][[= refract::location]] std::uint8_t operator[](Reg) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+};
+struct DisagreeingIndexed : Bare {
+  [[nodiscard]][[= refract::location]] std::uint8_t operator[](Reg) const { return 0; }
   [[= refract::location]] void write(Reg, std::uint16_t) {}
 };
 
@@ -197,6 +210,8 @@ TEST_CASE("A location is reached through the members the machine marks, whatever
   STATIC_CHECK(Lookups::accessor_for(^^Reg, Lookups::Access::read, "a", 1) == ^^Renamed::peek);
   STATIC_CHECK(Lookups::accessor_for(^^Reg, Lookups::Access::write, "a", 1) == ^^Renamed::poke);
   STATIC_CHECK(Lookups::accessor_for(^^Other, Lookups::Access::write, "y", 1) == ^^Renamed::latch);
+  using Operator = Generator<Indexed, Operations>;
+  STATIC_CHECK(Operator::accessor_for(^^Reg, Operator::Access::read, "a", 1) == ^^Indexed::operator[]);
   // A location with only one of the two is a location all the same, and its names are found.
   STATIC_CHECK(Lookups::find_location("y", 1) == ^^Other::y);
 }
@@ -234,6 +249,12 @@ TEST_CASE("A machine whose locations are marked wrongly is reported") {
   STATIC_CHECK(throws_with([] { return Generator<Disagreeing, Operations>::scan_locations(); },
       "Reg is read as unsigned char by 'read' and written as short unsigned int by 'write'; a location holds one "
       "type"));
+  // An operator has no identifier, so it is named by its symbol.
+  STATIC_CHECK(throws_with([] { return Generator<TwoReadsOneIndexed, Operations>::scan_locations(); },
+      "'operator[]' and 'read' both read Reg, so there is no saying which to call"));
+  STATIC_CHECK(throws_with([] { return Generator<DisagreeingIndexed, Operations>::scan_locations(); },
+      "Reg is read as unsigned char by 'operator[]' and written as short unsigned int by 'write'; a location holds "
+      "one type"));
 }
 
 TEST_CASE("A displaced row is checked against what its machine can do") {

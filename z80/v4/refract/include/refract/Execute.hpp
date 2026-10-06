@@ -170,9 +170,12 @@ struct Interpreter {
   // reader and writer that disagree about what the location holds, since a row reads and writes a location as one
   // value.
   [[nodiscard]] static consteval std::vector<LocationAccess> scan_locations() {
+    // An operator taking an enum is an accessor like any other, and has no identifier, so it is named by its symbol.
     const auto named = [](const std::meta::info member) {
       if (std::meta::is_constructor(member))
         return std::string("a constructor");
+      if (std::meta::is_operator_function(member))
+        return "'operator" + std::string(std::meta::symbol_of(std::meta::operator_of(member))) + "'";
       return std::meta::has_identifier(member) ? quoted_name_of(member) : std::string("a member");
     };
     std::vector<LocationAccess> found;
@@ -192,8 +195,8 @@ struct Interpreter {
         entry = found.insert(found.end(), LocationAccess{.scope = scope, .reader = {}, .writer = {}});
       auto &accessor = reads ? entry->reader : entry->writer;
       if (accessor != std::meta::info{})
-        throw std::runtime_error(quoted_name_of(accessor) + " and " + named(member) + " both " +
-                                 (reads ? "read " : "write ") + std::string(std::meta::identifier_of(scope)) +
+        throw std::runtime_error(named(accessor) + " and " + named(member) + " both " + (reads ? "read " : "write ") +
+                                 std::string(std::meta::identifier_of(scope)) +
                                  ", so there is no saying which to call");
       accessor = member;
     }
@@ -204,9 +207,9 @@ struct Interpreter {
       const auto written = std::meta::remove_cvref(std::meta::type_of(std::meta::parameters_of(kind.writer)[1]));
       if (std::meta::dealias(held) != std::meta::dealias(written))
         throw std::runtime_error(std::string(std::meta::identifier_of(kind.scope)) + " is read as " +
-                                 std::meta::display_string_of(held) + " by " + quoted_name_of(kind.reader) +
-                                 " and written as " + std::meta::display_string_of(written) + " by " +
-                                 quoted_name_of(kind.writer) + "; a location holds one type");
+                                 std::meta::display_string_of(held) + " by " + named(kind.reader) + " and written as " +
+                                 std::meta::display_string_of(written) + " by " + named(kind.writer) +
+                                 "; a location holds one type");
     }
     return found;
   }
