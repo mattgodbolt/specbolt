@@ -171,8 +171,10 @@ struct Interpreter {
   }
 
   // Scans the machine and its palettes for every function a description may name: the machine's marked members, static
-  // or not, and every public static function of each palette. `has_identifier` excludes the implicitly-declared special
-  // members, which have no name to compare.
+  // or not, and every public static function of each palette. A description names a function by its identifier, so
+  // `has_identifier` leaves out what has none: operator and conversion functions, constructors and destructors. In a
+  // palette, where `is_static_member` has already removed all but the operators, that means a static `operator()` or
+  // `operator[]`, or a class's own `operator new` or `operator delete`.
   [[nodiscard]] static consteval std::vector<std::meta::info> scan_operations() {
     std::vector<std::meta::info> found;
     for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::current()))
