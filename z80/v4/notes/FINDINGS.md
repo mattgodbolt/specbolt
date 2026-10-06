@@ -519,6 +519,14 @@ of a template that is instantiated only where it is called.
   each can end in a tail call through the table, where a chain is one dispatch point. CE's "clang
   (reflection)" compiler accepts the `case` inside a `template for`, against the wording, and the
   local build of the same fork crashes on it.
+- **gcc 16.2 will not unpack an expansion statement's variable.** Checked 2026-10-05: `template for
+  (constexpr auto [at, body]: ...)` is refused, each binding "is not a constant expression", whether
+  the range is `std::views::enumerate`, `std::views::zip` or a plain array of `std::pair`s holding
+  values. The same element taken whole works (`entry.first`, `std::get<0>(entry)`), and so does a
+  `constexpr` structured binding outside an expansion statement
+  (https://compiler-explorer.com/z/bG4fWszjc). Not checked against the wording. It is what keeps
+  `dispatch` on an index: the readable form, `[at, body]` over `enumerate(bodies_of<Table>)`, is the
+  one refused, and `zip` without unpacking spells every use as a `std::get`.
 
 ### Toolchain
 
