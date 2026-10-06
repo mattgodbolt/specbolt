@@ -149,6 +149,8 @@ struct Interpreter {
   // value.
   [[nodiscard]] static consteval std::vector<LocationAccess> scan_locations() {
     const auto named = [](const std::meta::info member) {
+      if (std::meta::is_constructor(member))
+        return std::string("a constructor");
       return std::meta::has_identifier(member) ? quoted_name_of(member) : std::string("a member");
     };
     std::vector<LocationAccess> found;
@@ -163,7 +165,9 @@ struct Interpreter {
           continue;
         const auto reads = std::meta::extract<Location::Access>(annotation).role == Location::Access::Role::read;
         const auto shaped = [&] {
-          if (!std::meta::is_function(member) || !std::meta::is_public(member))
+          // A constructor is a function, and one taking an enum and a value looks like a write, but it cannot be called
+          // on a machine. Testing it first also keeps `return_type_of` from being asked about one.
+          if (!std::meta::is_function(member) || std::meta::is_constructor(member) || !std::meta::is_public(member))
             return false;
           const auto parameters = std::meta::parameters_of(member);
           return parameters.size() == (reads ? 1uz : 2uz) &&

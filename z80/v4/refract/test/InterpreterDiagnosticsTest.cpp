@@ -85,6 +85,12 @@ struct MisshapenRead : Bare {
 struct MisshapenWrite : Bare {
   [[= refract::location.writes]] void write(Reg) {}
 };
+struct ConstructorRead : Bare {
+  [[= refract::location.reads]] explicit ConstructorRead(Reg) {}
+};
+struct ConstructorWrite : Bare {
+  [[= refract::location.writes]] ConstructorWrite(Reg, std::uint8_t) {}
+};
 struct PrivateRead : Bare {
 private:
   [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg) const { return 0; }
@@ -223,6 +229,13 @@ TEST_CASE("A machine whose locations are marked wrongly is reported") {
   STATIC_CHECK(throws_with([] { return Generator<MisshapenWrite, Operations>::scan_locations(); },
       "'write' is marked [[=refract::location.writes]], so it must be a public member function taking an enum, the "
       "location it writes, and the value to write"));
+  // A constructor has the shape of an accessor, and is not one: it cannot be called on a machine.
+  STATIC_CHECK(throws_with([] { return Generator<ConstructorRead, Operations>::scan_locations(); },
+      "a constructor is marked [[=refract::location.reads]], so it must be a public member function taking one enum, "
+      "the location it reads, and returning what it holds"));
+  STATIC_CHECK(throws_with([] { return Generator<ConstructorWrite, Operations>::scan_locations(); },
+      "a constructor is marked [[=refract::location.writes]], so it must be a public member function taking an enum, "
+      "the location it writes, and the value to write"));
   STATIC_CHECK(throws_with([] { return Generator<TwoReads, Operations>::scan_locations(); },
       "'read' and 'peek' are both marked [[=refract::location.reads]] for Reg, so there is no saying which to call"));
   STATIC_CHECK(throws_with([] { return Generator<Disagreeing, Operations>::scan_locations(); },
