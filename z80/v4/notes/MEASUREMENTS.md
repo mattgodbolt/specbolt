@@ -746,6 +746,8 @@ the desktop (the top-level Notes.md, "The scheduler's slow path, and the `[[unli
 Pick a game for `--snapshot` that keeps the CPU busy: one that sits halted measures how each core models
 `halt` (the top-level Notes.md, "Real games, and two traps in measuring them").*
 
+*2026-10-06: the same nodes after that change are in the section below, and v4 leads on one of them.*
+
 `z80_bench` with all four cores in one binary, zexdoc, nanoseconds per emulated instruction, best of the
 bench's repetitions.
 
@@ -774,3 +776,36 @@ through frames, and is the mode in which to look.
 **Read the spreads first.** v2's 28% on the shared node says its best may be a lucky repetition, and 7%
 to 10% on a dedicated node is wide against the desktop's 0.5% to 1.5%. Neither node is comparable with
 the desktop's absolute figures.
+
+### The same nodes after `[[unlikely]]`, with v4 leading one
+
+*2026-10-06, after `fdee005` (#54), which marked the scheduler's slow path `[[unlikely]]`. Matt's runs
+again: `z80_bench` on zexdoc with the four cores in one binary, the bench's best of its repetitions. The
+build and the bench's flags were not recorded. The change is the time per instruction against the table
+above, so a minus is faster.*
+
+| | AMD node | spread | change | Intel node | spread | change |
+|---|---:|---:|---:|---:|---:|---:|
+| v1 | 26.74 | 1.6% | +8% | 17.88 | 3.8% | +17% |
+| v2 | 11.17 | 0.6% | +27% | **5.41** | 5.1% | -8% |
+| v3 | 9.61 | 0.4% | +3% | 6.78 | 1.9% | +7% |
+| v4 | **8.38** | 1.2% | -13% | 5.59 | 1.5% | -14% |
+
+**v4 gained 13% to 14% on both**, as it did on the desktop, where it gained 17% to 18% in the combined
+binary. That is the one result all three machines agree on.
+
+**On the AMD node v4 now leads**, with v3 15% behind and v2 33%. Every spread there is under 2%, where
+the first run had v2 at 28% and v4 at 12%, so this is the run to believe. On the Intel node v2 leads by
+3%, inside its own 5% spread, in the desktop's unpadded order: v2, v4, v3, v1.
+
+**v2 and v3 did not move as they did on the desktop**, where both gained. v3 lost 3% and 7%, and v2
+gained 8% on Intel and lost 27% on AMD. The AMD figure v2 lost against is the one its 28% spread said
+might be a lucky repetition, and with the build changed in between, the two cannot be separated. Not
+chased.
+
+**v1 lost on both**, 8% and 17%, as it lost 6% to 10% on the desktop. It has lost wherever this change
+has been measured.
+
+**For the talk this is still parity.** v4 in the combined binary is first on one machine, second by 3%
+on another, and second by 7% on the desktop unpadded. None of those gaps is larger than what inlining
+and code layout move.
