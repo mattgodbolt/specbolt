@@ -5,7 +5,7 @@
 // A `.cpu` description names operations and locations; this says how the framework fetches, accesses memory, forms a
 // displaced address and spends time. Operation names resolve against the palettes the target lists and the members the
 // machine marks with `[[=refract::operation]]`, and location names against the enums its accessors take, the members it
-// marks `[[=refract::location.reads]]` and `[[=refract::location.writes]]` (both in Model.hpp).
+// marks `[[=refract::location]]` (both in Model.hpp).
 //
 // This is what the *framework* calls, not everything the machine is asked for: an operation is free to use whatever the
 // machine offers, and the Z80's use `bus`, `in`, `out` and the register file besides, which are between the description

@@ -151,25 +151,25 @@ public:
   // enumerators to descriptions and tell the framework which member to call; the names are this class's own.
   // `Flags::Bit` and `AddressLatch` have no write, so a row writing `carry` or `wzh` is an error against its line;
   // nothing is marked for `Bus`, so `opcode` and the rest are not names a row can write.
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(const RegisterFile::R8 location) const {
+  [[nodiscard]][[= refract::location]] std::uint8_t read(const RegisterFile::R8 location) const {
     return get(location);
   }
-  [[nodiscard]][[= refract::location.reads]] std::uint16_t read(const RegisterFile::R16 location) const {
+  [[nodiscard]][[= refract::location]] std::uint16_t read(const RegisterFile::R16 location) const {
     return get(location);
   }
-  [[= refract::location.writes]] void write(const RegisterFile::R8 location, const std::uint8_t value) {
+  [[= refract::location]] void write(const RegisterFile::R8 location, const std::uint8_t value) {
     set(location, value);
   }
-  [[= refract::location.writes]] void write(const RegisterFile::R16 location, const std::uint16_t value) {
+  [[= refract::location]] void write(const RegisterFile::R16 location, const std::uint16_t value) {
     set(location, value);
   }
 
-  [[nodiscard]][[= refract::location.reads]] bool read(const Flags::Bit which) const { return flags().test(which); }
+  [[nodiscard]][[= refract::location]] bool read(const Flags::Bit which) const { return flags().test(which); }
 
-  [[nodiscard]][[= refract::location.reads]] Flags read(FlagWord) const { return flags(); }
-  [[= refract::location.writes]] void write(FlagWord, const Flags value) { flags(value); }
+  [[nodiscard]][[= refract::location]] Flags read(FlagWord) const { return flags(); }
+  [[= refract::location]] void write(FlagWord, const Flags value) { flags(value); }
 
-  [[nodiscard]][[= refract::location.reads]] bool read(const FlipFlop which) const {
+  [[nodiscard]][[= refract::location]] bool read(const FlipFlop which) const {
     switch (which) {
       case FlipFlop::halted: return halted();
       case FlipFlop::iff1: return iff1();
@@ -178,7 +178,7 @@ public:
     }
     std::unreachable();
   }
-  [[= refract::location.writes]] void write(const FlipFlop which, const bool value) {
+  [[= refract::location]] void write(const FlipFlop which, const bool value) {
     switch (which) {
       case FlipFlop::iff1: iff1(value); return;
       case FlipFlop::iff2: iff2(value); return;
@@ -187,25 +187,25 @@ public:
     }
   }
 
-  [[nodiscard]][[= refract::location.reads]] std::uint16_t read(ProgramCounter) const { return pc(); }
-  [[= refract::location.writes]] void write(ProgramCounter, const std::uint16_t value) { regs().pc(value); }
+  [[nodiscard]][[= refract::location]] std::uint16_t read(ProgramCounter) const { return pc(); }
+  [[= refract::location]] void write(ProgramCounter, const std::uint16_t value) { regs().pc(value); }
 
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(AddressLatch) const {
+  [[nodiscard]][[= refract::location]] std::uint8_t read(AddressLatch) const {
     return static_cast<std::uint8_t>(bus_address() >> 8);
   }
 
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(const Interrupt which) const {
+  [[nodiscard]][[= refract::location]] std::uint8_t read(const Interrupt which) const {
     return which == Interrupt::i ? regs().i() : irq_mode();
   }
-  [[= refract::location.writes]] void write(const Interrupt which, const std::uint8_t value) {
+  [[= refract::location]] void write(const Interrupt which, const std::uint8_t value) {
     if (which == Interrupt::i)
       regs().i(value);
     else
       irq_mode(value);
   }
 
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Refresh) const { return regs().r(); }
-  [[= refract::location.writes]] void write(Refresh, const std::uint8_t value) { regs().r(value); }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Refresh) const { return regs().r(); }
+  [[= refract::location]] void write(Refresh, const std::uint8_t value) { regs().r(value); }
 
   // Advances time for one access, before the transfer happens, so anything scheduled sees the machine as it was at that
   // moment.

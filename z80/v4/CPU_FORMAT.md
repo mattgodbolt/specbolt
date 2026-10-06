@@ -121,20 +121,21 @@ supply is a compile error naming the line that asked for it.
 This document describes the table; the other half of the contract is the CPU
 description, and a `.cpu` file means nothing without it. That half says what a
 row's operations mean, what its names mean, and how the framework drives the
-chip. `Machine.hpp` states the last of these as a concept. Locations are
-marked, as the machine's operations are: a location is an enumerator of an enum
-taken by a member marked `[[=refract::location.reads]]` or
-`[[=refract::location.writes]]`, and the generator reads and writes it by calling
-those members, whatever they are called. For the Z80 the palettes
-are `Operations.hpp` and the shared `Alu`, and the machine itself, in `Z80.hpp`,
-supplies the rest. Be warned that the operations are not a small file: the easy
-majority of an instruction set becomes rows, and what stays behind is the
-awkward remainder: the block moves, the exchanges, the flag minutiae.
+chip. `Machine.hpp` states the last of these as a concept. Locations are marked,
+as the machine's operations are: a location is an enumerator of an enum taken by
+a member marked `[[=refract::location]]`. A marked member taking only the enum
+and returning a value reads the location, one taking the value to store as well
+and returning nothing writes it, and the generator calls those members, whatever
+they are called. For the Z80 the palettes are `Operations.hpp` and the shared
+`Alu`, and the machine itself, in `Z80.hpp`, supplies the rest. Be warned that
+the operations are not a small file: the easy majority of an instruction set
+becomes rows, and what stays behind is the awkward remainder: the block moves,
+the exchanges, the flag minutiae.
 
 | the table writes | the CPU supplies |
 |---|---|
 | an **operation**: `inc8`, `add16` | a static function of that name in a palette the target lists, or a member the machine publishes with `[[=refract::operation]]` |
-| a **location**: `a`, `hl`, `pc` | an enumerator of that name, in an enum a public member marked `[[=refract::location.reads]]` takes, if a row reads it, and one marked `[[=refract::location.writes]]` takes, if a row writes it; either mark is what makes it a location, and a read and a write of one enum agree on its type |
+| a **location**: `a`, `hl`, `pc` | an enumerator of that name, in an enum taken by public members marked `[[=refract::location]]`: one taking only the enum and returning a value, if a row reads it, and one taking the enum and a value and returning nothing, if a row writes it; the mark is what makes it a location, and a read and a write of one enum agree on its type |
 | a **value** an operation takes as an enum: `left`, `i` | an enumerator of the parameter's enum, under its [spelling](#spellings) |
 | a **view reference**: `{index:view}` | nothing of its own: every member is a location, and the view picks between them |
 | an **indirect operand**: `(hl)` | `read_memory` / `write_memory`, and `read_memory16` / `write_memory16` |

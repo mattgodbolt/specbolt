@@ -16,7 +16,7 @@
 //
 // A palette is a type every public static function of which is a verb. The machine's own verbs are the members it
 // publishes with `[[=refract::operation]]`, static or not, and its locations the enums taken by the members it marks
-// `[[=refract::location.reads]]` and `[[=refract::location.writes]]`; see Model.hpp.
+// `[[=refract::location]]`; see Model.hpp.
 //
 // `Interpreter<Target>::run` then runs the machine until it says stop.
 
@@ -131,20 +131,42 @@ struct Interpreter {
     });
   }
 
-  // A kind of location the machine offers, and the members that reach it: the enum, the member marked to read it and
-  // the one marked to write it. Either member may be a null reflection, where the machine offers no such access.
+  // Which of the two ways a row reaches a location: reading what it holds, or writing a value to it.
+  enum class Access : std::uint8_t { read, write };
+
+  // A kind of location the machine offers, and the members that reach it: the enum, the member that reads it and the
+  // one that writes it. Either member may be a null reflection, where the machine offers no such access.
   struct LocationAccess {
     std::meta::info scope;
     std::meta::info reader;
     std::meta::info writer;
   };
 
-  // Scans the machine for its locations: each enum taken by a member marked `[[=refract::location.reads]]` or
-  // `[[=refract::location.writes]]`, with the members that read and write it. An enum no marked member takes is not a
-  // location, however many public functions take it; the Z80's `Bus`, which only `Z80::bus` takes, is not one.
+  // Which access a member marked `[[=refract::location]]` gives, as its shape says: taking only an enum and returning
+  // a value reads, and taking an enum and a value and returning nothing writes. Nothing for a member of neither shape,
+  // or one the generated code could not call. A constructor is a function, and one taking an enum and a value looks
+  // like a write, but it cannot be called on a machine; testing it first also keeps `return_type_of` from being asked
+  // about one.
+  [[nodiscard]] static consteval std::optional<Access> access_of(const std::meta::info member) {
+    if (!std::meta::is_function(member) || std::meta::is_constructor(member) || !std::meta::is_public(member))
+      return std::nullopt;
+    const auto parameters = std::meta::parameters_of(member);
+    if (parameters.empty() || !std::meta::is_enum_type(std::meta::type_of(parameters[0])))
+      return std::nullopt;
+    const auto returns_nothing = std::meta::return_type_of(member) == ^^void;
+    if (parameters.size() == 1 && !returns_nothing)
+      return Access::read;
+    if (parameters.size() == 2 && returns_nothing)
+      return Access::write;
+    return std::nullopt;
+  }
+
+  // Scans the machine for its locations: each enum taken by a member marked `[[=refract::location]]`, with the members
+  // that read and write it. An enum no marked member takes is not a location, however many public functions take it;
+  // the Z80's `Bus`, which only `Z80::bus` takes, is not one.
   //
   // The scan sees private members too, so that a mark on something the generated code could not call is an error rather
-  // than silently ignored. So is a mark on something of the wrong shape, a second reader or writer for one enum, and a
+  // than silently ignored. So is a mark on something of neither shape, a second reader or writer for one enum, and a
   // reader and writer that disagree about what the location holds, since a row reads and writes a location as one
   // value.
   [[nodiscard]] static consteval std::vector<LocationAccess> scan_locations() {
@@ -154,45 +176,27 @@ struct Interpreter {
       return std::meta::has_identifier(member) ? quoted_name_of(member) : std::string("a member");
     };
     std::vector<LocationAccess> found;
-    for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::unchecked()))
-      for (const auto annotation: std::meta::annotations_of(member)) {
-        const auto mark = std::meta::remove_cv(std::meta::type_of(annotation));
-        if (mark == ^^Location)
-          throw std::runtime_error(named(member) +
-                                   " is marked [[=refract::location]]; mark it [[=refract::location.reads]] or "
-                                   "[[=refract::location.writes]], for the access it gives");
-        if (mark != ^^Location::Access)
-          continue;
-        const auto reads = std::meta::extract<Location::Access>(annotation).role == Location::Access::Role::read;
-        const auto shaped = [&] {
-          // A constructor is a function, and one taking an enum and a value looks like a write, but it cannot be called
-          // on a machine. Testing it first also keeps `return_type_of` from being asked about one.
-          if (!std::meta::is_function(member) || std::meta::is_constructor(member) || !std::meta::is_public(member))
-            return false;
-          const auto parameters = std::meta::parameters_of(member);
-          return parameters.size() == (reads ? 1uz : 2uz) &&
-                 std::meta::is_enum_type(std::meta::type_of(parameters[0])) &&
-                 (!reads || std::meta::return_type_of(member) != ^^void);
-        };
-        if (!shaped())
-          throw std::runtime_error(
-              named(member) + (reads ? " is marked [[=refract::location.reads]], so it must be a public member "
-                                       "function taking one enum, the location it reads, and returning what it "
-                                       "holds"
-                                     : " is marked [[=refract::location.writes]], so it must be a public member "
-                                       "function taking an enum, the location it writes, and the value to write"));
-        const auto scope = std::meta::type_of(std::meta::parameters_of(member)[0]);
-        auto entry = std::ranges::find(found, scope, &LocationAccess::scope);
-        if (entry == found.end())
-          entry = found.insert(found.end(), LocationAccess{.scope = scope, .reader = {}, .writer = {}});
-        auto &accessor = reads ? entry->reader : entry->writer;
-        if (accessor != std::meta::info{})
-          throw std::runtime_error(quoted_name_of(accessor) + " and " + named(member) + " are both marked " +
-                                   (reads ? "[[=refract::location.reads]]" : "[[=refract::location.writes]]") +
-                                   " for " + std::string(std::meta::identifier_of(scope)) +
-                                   ", so there is no saying which to call");
-        accessor = member;
-      }
+    for (const auto member: std::meta::members_of(^^Machine, std::meta::access_context::unchecked())) {
+      if (!is_marked(member, ^^Location))
+        continue;
+      const auto access = access_of(member);
+      if (!access)
+        throw std::runtime_error(named(member) +
+                                 " is marked [[=refract::location]], so it must be a public member function taking an "
+                                 "enum, the location it reaches, and either returning what the location holds, to read "
+                                 "it, or taking the value to store and returning nothing, to write it");
+      const auto reads = *access == Access::read;
+      const auto scope = std::meta::type_of(std::meta::parameters_of(member)[0]);
+      auto entry = std::ranges::find(found, scope, &LocationAccess::scope);
+      if (entry == found.end())
+        entry = found.insert(found.end(), LocationAccess{.scope = scope, .reader = {}, .writer = {}});
+      auto &accessor = reads ? entry->reader : entry->writer;
+      if (accessor != std::meta::info{})
+        throw std::runtime_error(quoted_name_of(accessor) + " and " + named(member) + " both " +
+                                 (reads ? "read " : "write ") + std::string(std::meta::identifier_of(scope)) +
+                                 ", so there is no saying which to call");
+      accessor = member;
+    }
     for (const auto &kind: found) {
       if (kind.reader == std::meta::info{} || kind.writer == std::meta::info{})
         continue;
@@ -373,15 +377,15 @@ struct Interpreter {
   // The member that reads, or writes, a location of the kind `scope`: the one the machine marked for it. An error
   // against `line`, naming what the row wrote as `name`, if the machine marks none, which is how a row writing a
   // location that can only be read is told so.
-  [[nodiscard]] static consteval std::meta::info accessor_for(const std::meta::info scope,
-      const Location::Access::Role role, const std::string_view name, const std::size_t line) {
-    const auto reads = role == Location::Access::Role::read;
+  [[nodiscard]] static consteval std::meta::info accessor_for(
+      const std::meta::info scope, const Access access, const std::string_view name, const std::size_t line) {
+    const auto reads = access == Access::read;
     const auto kind = std::ranges::find(location_accessors, scope, &LocationAccess::scope);
     const auto accessor = kind == location_accessors.end() ? std::meta::info{} : reads ? kind->reader : kind->writer;
     if (accessor == std::meta::info{})
       throw error(line, std::string("this row ") + (reads ? "reads" : "writes") + " '" + std::string(name) +
-                            "', and nothing taking " + std::string(std::meta::identifier_of(scope)) + " is marked " +
-                            (reads ? "[[=refract::location.reads]]" : "[[=refract::location.writes]]"));
+                            "', and nothing marked [[=refract::location]] " + (reads ? "reads " : "writes ") +
+                            std::string(std::meta::identifier_of(scope)));
     return accessor;
   }
 
@@ -584,8 +588,8 @@ struct Interpreter {
       // splice. See `locations_of_view`.
       static constexpr auto locations = locations_of_view<Op, Line>();
       using Kind = std::remove_cvref_t<decltype(locations[0])>;
-      constexpr auto reader = accessor_for(std::meta::dealias(^^Kind), Location::Access::Role::read,
-          Compiled::vocabularies()[Op.view_vocabulary].name, Line);
+      constexpr auto reader = accessor_for(
+          std::meta::dealias(^^Kind), Access::read, Compiled::vocabularies()[Op.view_vocabulary].name, Line);
       return machine.[:reader:](locations[decoded.view]);
     }
     else if constexpr (std::is_enum_v<Parameter>)
@@ -599,8 +603,7 @@ struct Interpreter {
       // The enum the name was found in says which accessor reads it: on the Z80, `a` and `carry` are read by different
       // members returning different types. The location itself is an *enumerator* splice, a prvalue of that enum.
       constexpr auto named = find_location(Op.name.view(), Line, Op.scope.view());
-      constexpr auto reader =
-          accessor_for(std::meta::type_of(named), Location::Access::Role::read, Op.name.view(), Line);
+      constexpr auto reader = accessor_for(std::meta::type_of(named), Access::read, Op.name.view(), Line);
       return machine.[:reader:]([:named:]);
     }
   }
@@ -654,14 +657,13 @@ struct Interpreter {
       if constexpr (Op.from_view) {
         static constexpr auto locations = locations_of_view<Op, Line>();
         using Kind = std::remove_cvref_t<decltype(locations[0])>;
-        constexpr auto writer = accessor_for(std::meta::dealias(^^Kind), Location::Access::Role::write,
-            Compiled::vocabularies()[Op.view_vocabulary].name, Line);
+        constexpr auto writer = accessor_for(
+            std::meta::dealias(^^Kind), Access::write, Compiled::vocabularies()[Op.view_vocabulary].name, Line);
         machine.[:writer:](locations[decoded.view], value);
       }
       else {
         constexpr auto named = find_location(Op.name.view(), Line, Op.scope.view());
-        constexpr auto writer =
-            accessor_for(std::meta::type_of(named), Location::Access::Role::write, Op.name.view(), Line);
+        constexpr auto writer = accessor_for(std::meta::type_of(named), Access::write, Op.name.view(), Line);
         machine.[:writer:]([:named:], value);
       }
     }

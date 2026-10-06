@@ -56,24 +56,17 @@ inline constexpr Operation operation{};
 
 // Marks the member functions through which a description reads and writes a machine's locations. Each takes an enum,
 // the kind of location it reaches, and every enumerator of an enum a marked function takes is a name a description may
-// write:
+// write. Its shape says which access it gives: one taking only the enum and returning a value reads the location, and
+// one taking the enum and the value to store writes it:
 //
-//   [[=refract::location.reads]] std::uint8_t get(Register which) const;
-//   [[=refract::location.writes]] void set(Register which, std::uint8_t value);
+//   [[=refract::location]] std::uint8_t get(Register which) const;
+//   [[=refract::location]] void set(Register which, std::uint8_t value);
 //
 // The generator calls the function it finds marked, so the names are the machine's own, and a machine may have other
 // functions taking the same enum, for a debugger say, without their becoming part of the language. A kind of location
 // may have a read, a write or both; a row that writes one with no write, or reads one with no read, is an error against
 // its line. Where it has both, they agree on the type the location holds.
-struct Location {
-  // The annotation itself: which of the two accesses the function it marks provides.
-  struct Access {
-    enum class Role : std::uint8_t { read, write };
-    Role role;
-  };
-  Access reads{Access::Role::read};
-  Access writes{Access::Role::write};
-};
+struct Location {};
 inline constexpr Location location{};
 
 // How a `.cpu` file spells an enumerator, when that differs from its C++ name, as a C++26 annotation (P3394) on the

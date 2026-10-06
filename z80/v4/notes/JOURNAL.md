@@ -1239,20 +1239,24 @@ reason, so the two now work alike. This marks what a thing is, where the
 annotation tried above marked what it is not, and a mark on anything but a
 public `read` of one enum is an error.*
 
-*2026-10-05: the mark grew a read and a write. `[[=refract::location]]` sat on
-a `read` but described the enum it took; the generator still called `read` and
-`write` by name; and nothing checked a `write`, so a row writing a location that
-can only be read, such as the Z80's `wzh`, failed as an overload error inside a
-splice with no line. Each accessor is now marked for the access it gives,
-`[[=refract::location.reads]]` or `[[=refract::location.writes]]`, and the scan
-groups them by the enum they take, so a kind of location has a read, a write or
-both. The generator splices the member it found rather than spelling a name, so
-`read_verb` is gone and the machine names its accessors as it likes. A row that
-reads or writes a location in a way the machine does not offer is a diagnostic
-against its line, and a read and a write that disagree about what the location
-holds are refused. The marks stay on functions rather than moving to the enums
-because some of the Z80's, `RegisterFile::R8` and `Flags::Bit`, live in
-z80/common, which also builds without reflection.*
+*2026-10-05: the mark moved onto every accessor, read and write alike.
+`[[=refract::location]]` sat on a `read` but described the enum it took; the
+generator still called `read` and `write` by name; and nothing checked a
+`write`, so a row writing a location that can only be read, such as the Z80's
+`wzh`, failed as an overload error inside a splice with no line. Now each
+accessor carries the mark, and its shape says which access it gives: taking only
+the enum and returning a value reads, and taking the enum and a value and
+returning nothing writes. The scan groups them by the enum they take, so a kind
+of location has a read, a write or both. The generator splices the member it
+found rather than spelling a name, so `read_verb` is gone and the machine names
+its accessors as it likes. A row that reads or writes a location in a way the
+machine does not offer is a diagnostic against its line, and a read and a write
+that disagree about what the location holds are refused. Separate
+`location.reads` and `location.writes` marks were tried first and dropped: the
+two shapes cannot be confused, so a mark naming the access could only agree with
+the signature or contradict it. The marks stay on functions rather than moving
+to the enums because some of the Z80's, `RegisterFile::R8` and `Flags::Bit`,
+live in z80/common, which also builds without reflection.*
 
 ## Done: a diagnostic names the line you have to edit
 

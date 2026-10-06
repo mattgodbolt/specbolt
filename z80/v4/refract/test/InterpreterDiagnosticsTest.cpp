@@ -54,19 +54,19 @@ struct Bare {
 
 // A machine whose one kind of location can be read and not written.
 struct Plain : Bare {
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
 };
 
 struct Shadowing : Bare {
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg) const { return 0; }
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Other) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Other) const { return 0; }
 };
 
 // Accessors named as the machine pleases, and a location that can be written and not read.
 struct Renamed : Bare {
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t peek(Reg) const { return 0; }
-  [[= refract::location.writes]] void poke(Reg, std::uint8_t) {}
-  [[= refract::location.writes]] void latch(Other, std::uint8_t) {}
+  [[nodiscard]][[= refract::location]] std::uint8_t peek(Reg) const { return 0; }
+  [[= refract::location]] void poke(Reg, std::uint8_t) {}
+  [[= refract::location]] void latch(Other, std::uint8_t) {}
 };
 
 // A machine whose description may have displaced rows, with a window that holds no bytes.
@@ -76,36 +76,33 @@ struct Displacing : Plain {
 };
 
 // Machines whose locations are marked wrongly, one way each.
-struct Unspecified : Bare {
-  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
-};
 struct MisshapenRead : Bare {
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg, int) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg, int) const { return 0; }
 };
 struct MisshapenWrite : Bare {
-  [[= refract::location.writes]] void write(Reg) {}
+  [[= refract::location]] void write(Reg) {}
 };
 struct ConstructorRead : Bare {
-  [[= refract::location.reads]] explicit ConstructorRead(Reg) {}
+  [[= refract::location]] explicit ConstructorRead(Reg) {}
 };
 struct ConstructorWrite : Bare {
-  [[= refract::location.writes]] ConstructorWrite(Reg, std::uint8_t) {}
+  [[= refract::location]] ConstructorWrite(Reg, std::uint8_t) {}
 };
 struct PrivateRead : Bare {
 private:
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
 };
 struct TwoReads : Bare {
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg) const { return 0; }
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t peek(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t peek(Reg) const { return 0; }
 };
 struct Disagreeing : Bare {
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg) const { return 0; }
-  [[= refract::location.writes]] void write(Reg, std::uint16_t) {}
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
+  [[= refract::location]] void write(Reg, std::uint16_t) {}
 };
 
 struct Secretive : Bare {
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t read(Reg) const { return 0; }
+  [[nodiscard]][[= refract::location]] std::uint8_t read(Reg) const { return 0; }
 
 private:
   [[nodiscard]][[= refract::operation]] static std::uint8_t secret(const std::uint8_t value) { return value; }
@@ -197,47 +194,43 @@ TEST_CASE("A name that means two things, or one the description cannot reach, is
 
 TEST_CASE("A location is reached through the members the machine marks, whatever they are called") {
   using Lookups = Generator<Renamed, Operations>;
-  STATIC_CHECK(Lookups::accessor_for(^^Reg, Location::Access::Role::read, "a", 1) == ^^Renamed::peek);
-  STATIC_CHECK(Lookups::accessor_for(^^Reg, Location::Access::Role::write, "a", 1) == ^^Renamed::poke);
-  STATIC_CHECK(Lookups::accessor_for(^^Other, Location::Access::Role::write, "y", 1) == ^^Renamed::latch);
+  STATIC_CHECK(Lookups::accessor_for(^^Reg, Lookups::Access::read, "a", 1) == ^^Renamed::peek);
+  STATIC_CHECK(Lookups::accessor_for(^^Reg, Lookups::Access::write, "a", 1) == ^^Renamed::poke);
+  STATIC_CHECK(Lookups::accessor_for(^^Other, Lookups::Access::write, "y", 1) == ^^Renamed::latch);
   // A location with only one of the two is a location all the same, and its names are found.
   STATIC_CHECK(Lookups::find_location("y", 1) == ^^Other::y);
 }
 
 TEST_CASE("A row reaching a location in a way the machine does not offer is reported against its line") {
-  STATIC_CHECK(throws_with(
-      [] { return Generator<Plain, Operations>::accessor_for(^^Reg, Location::Access::Role::write, "a", 4); },
-      "plain.cpu:4: this row writes 'a', and nothing taking Reg is marked [[=refract::location.writes]]"));
-  STATIC_CHECK(throws_with(
-      [] { return Generator<Renamed, Operations>::accessor_for(^^Other, Location::Access::Role::read, "y", 6); },
-      "plain.cpu:6: this row reads 'y', and nothing taking Other is marked [[=refract::location.reads]]"));
+  using ReadOnly = Generator<Plain, Operations>;
+  using Named = Generator<Renamed, Operations>;
+  STATIC_CHECK(throws_with([] { return ReadOnly::accessor_for(^^Reg, ReadOnly::Access::write, "a", 4); },
+      "plain.cpu:4: this row writes 'a', and nothing marked [[=refract::location]] writes Reg"));
+  STATIC_CHECK(throws_with([] { return Named::accessor_for(^^Other, Named::Access::read, "y", 6); },
+      "plain.cpu:6: this row reads 'y', and nothing marked [[=refract::location]] reads Other"));
 }
 
 TEST_CASE("A machine whose locations are marked wrongly is reported") {
   STATIC_CHECK(throws_with([] { Generator<Shadowing, Operations>::check_location_names_unique(); },
       "two of this machine's locations are spelled 'a' (in Reg and Other), so a description could not say which it "
       "meant"));
-  STATIC_CHECK(throws_with([] { return Generator<Unspecified, Operations>::scan_locations(); },
-      "'read' is marked [[=refract::location]]; mark it [[=refract::location.reads]] or [[=refract::location.writes]], "
-      "for the access it gives"));
-  STATIC_CHECK(throws_with([] { return Generator<MisshapenRead, Operations>::scan_locations(); },
-      "'read' is marked [[=refract::location.reads]], so it must be a public member function taking one enum, the "
-      "location it reads, and returning what it holds"));
-  STATIC_CHECK(throws_with([] { return Generator<PrivateRead, Operations>::scan_locations(); },
-      "'read' is marked [[=refract::location.reads]], so it must be a public member function taking one enum, the "
-      "location it reads, and returning what it holds"));
-  STATIC_CHECK(throws_with([] { return Generator<MisshapenWrite, Operations>::scan_locations(); },
-      "'write' is marked [[=refract::location.writes]], so it must be a public member function taking an enum, the "
-      "location it writes, and the value to write"));
+  // Neither shape: two parameters and a result, one parameter and no result, or not callable on the machine at all.
+  constexpr auto neither = " is marked [[=refract::location]], so it must be a public member function taking an enum, "
+                           "the location it reaches, and either returning what the location holds, to read it, or "
+                           "taking the value to store and returning nothing, to write it";
+  STATIC_CHECK(throws_with(
+      [] { return Generator<MisshapenRead, Operations>::scan_locations(); }, std::string("'read'") + neither));
+  STATIC_CHECK(throws_with(
+      [] { return Generator<MisshapenWrite, Operations>::scan_locations(); }, std::string("'write'") + neither));
+  STATIC_CHECK(throws_with(
+      [] { return Generator<PrivateRead, Operations>::scan_locations(); }, std::string("'read'") + neither));
   // A constructor has the shape of an accessor, and is not one: it cannot be called on a machine.
-  STATIC_CHECK(throws_with([] { return Generator<ConstructorRead, Operations>::scan_locations(); },
-      "a constructor is marked [[=refract::location.reads]], so it must be a public member function taking one enum, "
-      "the location it reads, and returning what it holds"));
+  STATIC_CHECK(throws_with(
+      [] { return Generator<ConstructorRead, Operations>::scan_locations(); }, std::string("a constructor") + neither));
   STATIC_CHECK(throws_with([] { return Generator<ConstructorWrite, Operations>::scan_locations(); },
-      "a constructor is marked [[=refract::location.writes]], so it must be a public member function taking an enum, "
-      "the location it writes, and the value to write"));
+      std::string("a constructor") + neither));
   STATIC_CHECK(throws_with([] { return Generator<TwoReads, Operations>::scan_locations(); },
-      "'read' and 'peek' are both marked [[=refract::location.reads]] for Reg, so there is no saying which to call"));
+      "'read' and 'peek' both read Reg, so there is no saying which to call"));
   STATIC_CHECK(throws_with([] { return Generator<Disagreeing, Operations>::scan_locations(); },
       "Reg is read as unsigned char by 'read' and written as short unsigned int by 'write'; a location holds one "
       "type"));

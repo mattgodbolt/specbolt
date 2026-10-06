@@ -48,13 +48,9 @@ struct Renamed {
   void write_memory16(std::uint16_t, std::uint16_t) {}
   void delay(std::uint8_t) {}
 
-  [[nodiscard]][[= refract::location.reads]] std::uint8_t peek(const Reg which) const {
-    return which == Reg::a ? a : x;
-  }
-  [[= refract::location.writes]] void poke(const Reg which, const std::uint8_t value) {
-    (which == Reg::a ? a : x) = value;
-  }
-  [[= refract::location.writes]] void send(Port, const std::uint8_t value) { sent.push_back(value); }
+  [[nodiscard]][[= refract::location]] std::uint8_t peek(const Reg which) const { return which == Reg::a ? a : x; }
+  [[= refract::location]] void poke(const Reg which, const std::uint8_t value) { (which == Reg::a ? a : x) = value; }
+  [[= refract::location]] void send(Port, const std::uint8_t value) { sent.push_back(value); }
 };
 
 struct Operations {
