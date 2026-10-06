@@ -406,10 +406,10 @@ separate runs agreeing to within 1%:
 | v3 alone | 10.3 | 10.4 | 10.6 |
 | v4 alone | 8.8 | **8.4** | 9.3 |
 
-**Padded, `[[unlikely]]` is as fast or faster for v2, v3 and v4 everywhere**,
-and the combined binary, the one the emulator ships, gains 12% to 18%. v1 loses
-6% in the combined binary, 10% unpadded, as it did in every variant tried. Not
-chased.
+**Padded, `[[unlikely]]` is within 1% or faster for v2, v3 and v4
+everywhere**, and the combined binary, the one the emulator ships, gains 12% to
+18%. v1 loses 6% in the combined binary, 10% unpadded, as it did in every
+variant tried. Not chased.
 
 **`always_inline` on `Memory::read`, `Memory::write` and `tick` as well only
 moves the gains around.** v4 combined and v2 alone get faster, and v4 alone gets
