@@ -2,7 +2,9 @@ import {SpectrumShift, SymbolShift, Spectrum} from "./spectrum";
 
 export class Typist {
     private readonly spectrum: Spectrum;
-    private readonly onFrame: Map<number, { code: number, pressed: boolean }>;
+    // Several events can share a frame: a SYMBOL SHIFT release and the
+    // release of the key it shifted land on the same one.
+    private readonly onFrame: Map<number, { code: number, pressed: boolean }[]>;
     private frameCounter: number;
 
     constructor(spectrum: Spectrum, text: string) {
@@ -10,33 +12,37 @@ export class Typist {
         this.frameCounter = 0;
         let index = 0;
         this.onFrame = new Map();
+        const at = (frame: number, code: number, pressed: boolean) => {
+            const events = this.onFrame.get(frame) ?? [];
+            events.push({code, pressed});
+            this.onFrame.set(frame, events);
+        };
         let frameToSchedule = 10;
         while (index < text.length) {
             let code = text.charCodeAt(index++);
             if (code >= "A".charCodeAt(0) && code <= "Z".charCodeAt(0)) {
-                this.onFrame.set(frameToSchedule, {code: SpectrumShift, pressed: true});
-                this.onFrame.set(frameToSchedule + 7, {code: SpectrumShift, pressed: false});
+                at(frameToSchedule, SpectrumShift, true);
+                at(frameToSchedule + 7, SpectrumShift, false);
                 frameToSchedule += 2;
                 code = code + 32;
             }
             if (code === "^".charCodeAt(0)) {
-                this.onFrame.set(frameToSchedule, {code: SymbolShift, pressed: true});
-                this.onFrame.set(frameToSchedule + 5, {code: SymbolShift, pressed: false});
+                at(frameToSchedule, SymbolShift, true);
+                at(frameToSchedule + 5, SymbolShift, false);
                 frameToSchedule += 2;
                 continue;
             }
             if (code === "$".charCodeAt(0))
                 code = 13;
-            this.onFrame.set(frameToSchedule, {code: code, pressed: true});
-            this.onFrame.set(frameToSchedule + 3, {code: code, pressed: false});
+            at(frameToSchedule, code, true);
+            at(frameToSchedule + 3, code, false);
             frameToSchedule += 15;
         }
     }
 
     type() {
         this.frameCounter++;
-        const todo = this.onFrame.get(this.frameCounter);
-        if (todo)
-            this.spectrum.setKeyState(todo.code, todo.pressed);
+        for (const {code, pressed} of this.onFrame.get(this.frameCounter) ?? [])
+            this.spectrum.setKeyState(code, pressed);
     }
 }
