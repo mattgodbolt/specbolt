@@ -426,6 +426,11 @@ Padded, v4 leads both: 9.7 to 10.1, and 8.4 to 9.8. The gap between the
 generated core and the hand-written ones is smaller than what inlining and code
 layout move, which on this machine is about 10% either way.
 
+**The server nodes agree about v4.** Measured again after the change
+(z80/v4/notes/MEASUREMENTS.md, "The same nodes after `[[unlikely]]`, with v4
+leading one"), v4 in the combined binary gained 13% to 14% on both, and leads on
+the AMD node by 15%. v2 and v3 did not repeat their desktop gains there.
+
 ### Compile time
 
 The measurements above are all about how fast the emulator runs. The other half of the trade (how
