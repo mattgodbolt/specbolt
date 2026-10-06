@@ -170,7 +170,8 @@ struct Interpreter {
   // reader and writer that disagree about what the location holds, since a row reads and writes a location as one
   // value.
   [[nodiscard]] static consteval std::vector<LocationAccess> scan_locations() {
-    // An operator taking an enum is an accessor like any other, and has no identifier, so it is named by its symbol.
+    // How the scan's diagnostics name a marked member. An operator, which may be an accessor like any other, has no
+    // identifier, so it is named by its symbol; a constructor, or anything else without one, by what it is.
     const auto named = [](const std::meta::info member) {
       if (std::meta::is_constructor(member))
         return std::string("a constructor");
@@ -754,7 +755,7 @@ struct Interpreter {
     }(std::make_index_sequence<C.operands.size()>{});
   }
 
-  // An operation's name as a diagnostic quotes it.
+  // A function's name, as a diagnostic quotes it.
   [[nodiscard]] static consteval std::string quoted_name_of(const std::meta::info fn) {
     return "'" + std::string(std::meta::identifier_of(fn)) + "'";
   }

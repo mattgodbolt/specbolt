@@ -69,7 +69,7 @@ struct Renamed : Bare {
   [[= refract::location]] void latch(Other, std::uint8_t) {}
 };
 
-// An accessor that is an operator, and so has no name.
+// An accessor that is an operator, and so has no identifier.
 struct Indexed : Bare {
   [[nodiscard]][[= refract::location]] std::uint8_t operator[](Reg) const { return 0; }
 };
