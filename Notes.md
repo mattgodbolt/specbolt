@@ -147,11 +147,47 @@ stingier `max-inline-insns-auto` applies to everything else. `Memory::read` has
 thousands of call sites, so `inline-unit-growth` vetoes it under the auto
 budget.
 
+Measured, rather than argued. Four builds, the first three of the *unmodified*
+source, differing only in flags. Retired instructions per emulated Z80
+instruction, combined binary, taken on the quiet desktop (i9-9980XE) where the
+spread is small enough to trust:
+
+| build | v1 | v2 | v3 |
+|---|---:|---:|---:|
+| default `-flto=auto` | 361.2 | 182.2 | 191.1 |
+| `-flto-partition=one` | 359.7 | 182.1 | 190.9 |
+| `--param max-inline-insns-auto=200 --param inline-unit-growth=200` | 299.6 | **121.4** | **127.8** |
+| header `inline` + tick fast path, default LTO | 313.3 | 146.6 | 146.3 |
+
+`-flto-partition=one` changes nothing at all: 0.05% on v2, 0.1% on v3. Whole
+program, one partition, every definition visible, and gcc still declines to
+inline `Memory::read`. So this was never the visibility problem LTO exists to
+solve.
+
+Raising the budget alone does not merely recover the win, it **beats the source
+change**, 121.4 against 146.6 on v2. The compiler could have gone further than
+we did and declined on budget, with no source change at all.
+
 So the claim survives as a statement about *capability* and fails as one about
 *policy*. Nobody has to arrange code for the linker's benefit any more, but
 `inline` is still a hint to the cost model, and for a couple of tiny leaf
 functions on the hot path with a thousand callers it is the difference between a
 call and no call.
+
+The flag is the blunt instrument, though, and which one wins depends on the
+link. In v3's *own* binary the source change wins instead, 123.5 against the
+flag's 168.1, because a raised budget has less cross-implementation code to work
+on there. A whole-program flag also re-ranks everything else in the build, where
+two `inline` keywords do not.
+
+#### Confirmed on a second machine
+
+The tables above were taken on the laptop. Repeating the pre-fix measurement on
+the desktop gives v3 at **210.5** retired instructions per emulated instruction
+against the laptop's **210.4**, which is agreement to 0.05% and the expected
+result for deterministic work and the same compiler. Cycles do not travel as
+well: the same configuration is 82.9 cycles per instruction there and 88.7 here.
+Read the instruction counts as the finding and the cycle counts as the weather.
 
 #### Reading the benchmark
 
