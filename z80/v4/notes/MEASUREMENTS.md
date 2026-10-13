@@ -53,6 +53,8 @@ under-reports dispatch cost relative to a program doing more loads and jumps.
 
 ## Compile time, measured
 
+*Remeasured on 2026-10-13 at the preset's own flags: see "Compile time, remeasured, and what an edit costs", below.*
+
 *First written 2026-08-13, when v4 generated one handler per (table, opcode) over seven tables, 1792
 in all, and dispatched through `all_dispatches` and an `execute_instruction` loop. Views, generation
 per body and a vocabulary that is its own slice have cut the handlers a long way since, and the
@@ -373,6 +375,96 @@ To regenerate: add `-ftime-trace -ftime-trace-granularity=200` to the clang buil
 - **Peak memory is the real ceiling.** 1.35 GB for one TU, growing 0.12 GB per table, is what stops
   this scaling, a CI box running several of these in parallel runs out of memory long before it
   runs out of patience.
+
+## Compile time, remeasured, and what an edit costs
+
+*2026-10-13, specbolt `210fc0a`. The section above is the 13 August build at `-O0`; this is the code as it stands, at the flags
+the `release-reflection` preset uses.*
+
+**Machine and flags.** Intel i9-9980XE (18 cores, 36 threads), Linux 7.0.0-30, gcc 16.2.0 (the Compiler Explorer build).
+`build/release-reflection`: `-O2 -g -DNDEBUG -std=gnu++26 -freflection -flto=auto -fno-fat-lto-objects` and the project's
+warnings with `-Werror`. ccache is not involved.
+
+**Per unit.** Every translation unit compiled on its own, with the command taken from `compile_commands.json`, the object
+sent to a scratch file and `/usr/bin/time` around it. Four sweeps: the preset's flags in two orders (v1 to v4, then the
+reverse), and the same two orders with `-flto=auto -fno-fat-lto-objects` removed, so that code generation happens in the
+compile as it did in the August run. The figure is the lower of the two orders. The orders agree to within 6% at worst and
+mostly within 2%. The load average was between 1.7 and 2.6 before each unit: the desktop's own browser and other users'
+processes, plus the compile itself. v3's generator is `MakeZ80.cpp` compiled, linked and run, because the generated file
+cannot be compiled without it.
+
+| | unit | as built (LTO objects) | no LTO | peak RSS (no LTO) |
+|---|---|---:|---:|---:|
+| v1 | `Disassembler.cpp` | 2.2s | 5.1s | 335 MB |
+| v1 | `Instruction.cpp` | 1.7s | 1.8s | 263 MB |
+| v1 | `Decoder.cpp` | 1.8s | 5.0s | 304 MB |
+| v1 | `Z80.cpp` | 1.7s | 2.0s | 265 MB |
+| v2 | `Disassembler.cpp` | 6.2s | 9.0s | 493 MB |
+| v2 | `Z80.cpp` | 2.6s | 4.0s | 333 MB |
+| v2 | `Z80Impl.cpp` | 5.3s | 10.7s | 455 MB |
+| v3 | `Disassembler.cpp` | 2.1s | 5.0s | 340 MB |
+| v3 | `Z80.cpp` | 1.7s | 1.8s | 255 MB |
+| v3 | `MakeZ80.cpp`: compile, link, run | 5.3s | 6.8s | 349 MB |
+| v3 | `Z80Generated.cpp` | 2.8s | 8.8s | 407 MB |
+| v4 | `Disassembler.cpp` | 23.0s | 25.9s | 2,315 MB |
+| v4 | `Z80.cpp` | 125.4s | 130.1s | 4,588 MB |
+
+The serial total for an implementation is the sum of its units:
+
+| | as built | no LTO | no LTO, against v3 |
+|---|---:|---:|---:|
+| v1 | 7.5s | 13.9s | 0.6x |
+| v2 | 14.1s | 23.7s | 1.1x |
+| v3 | 11.9s | 22.4s | 1.0x |
+| v4 | 148.4s | 156.0s | 7.0x |
+
+- **v4 against v3 is 7.0 times at full code generation**, where the August section had 7.5 times at `-O0`. The others
+  look about half as dear as built, because LTO moves code generation to the link; v4 barely moves, because its cost is in the
+  front end.
+- **`Z80.cpp` is nearly all of v4:** 125 to 130 seconds and about 4.6 GB, on one core. `Disassembler.cpp`, which is the parse and the
+  checks with no handlers, is a further 23 to 26 seconds and 2.3 GB, and runs beside it.
+- **The earlier talk table** (14.0, 23.6, 22.0 and 152.5 seconds, with no recorded method) agrees with these no-LTO serial
+  totals (13.9, 23.7, 22.4 and 156.0) to within 2.3%, so it was almost certainly a full-code-generation serial compile.
+
+### A clean build, and a trivial edit
+
+**Clean build of one implementation.** Its own objects and archive deleted, then `ninja z80_vN` with ninja's default
+parallelism (about 38 jobs). The shared libraries underneath are not rebuilt. Three runs for v1 to v3. v4 is the
+`z80.cpu` rebuild below, which recompiles both of its units.
+
+| | wall, three runs | steps | CPU | peak RSS |
+|---|---|---:|---:|---:|
+| v1 | 2.3s to 2.5s | 5 | 8s | 265 MB |
+| v2 | 6.3s in all three | 4 | 14s | 474 MB |
+| v3 | 8.2s to 8.3s | 7 | 14s | 300 MB |
+| v4 | 124.5s to 125.3s (two runs, from the `z80.cpu` rebuild below) | 3 | 148s | 4,561 MB |
+
+**A whitespace edit inside one opcode.** One space on the line that defines `inc` in each version, in the place where that
+version's machinery handles it: a trailing space on the line of C++, or a space before the first `|` of the `.cpu` row.
+Then `ninja z80_vN`, then `ninja specbolt_console` (an LTO link of all four cores in one binary). Then the file is put back
+with `git checkout`, which is a second rebuild of the same size, so each case has two samples, and they agree to under 2%.
+Ninja goes by modification time, so a whitespace edit costs what any edit to that file does.
+
+| | where the space went | rebuild the library | link `specbolt_console` | total |
+|---|---|---:|---:|---:|
+| v1 | the `Inc8` case of the executor (`v1/Instruction.cpp`) | 1.8s | 4.8s | 6.6s |
+| v2 | the `inc r` opcode template (`v2/Z80Impl.hpp`) | 6.5s | 4.9s | 11.4s |
+| v3 | the generator's `inc`/`dec` branch (`v3/MakeZ80.cpp`) | 8.2s | 4.8s | 13.0s |
+| v4 | the `inc {reg:y}` row (`v4/z80.cpu`) | 124.9s | 4.8s | 129.7s |
+| v4 | the engine header (`v4/refract/include/refract/Execute.hpp`) | 124.6s | 4.8s | 129.4s |
+
+- **The link is a floor of 4.7 to 5.0 seconds**, whichever core changed, which fits an LTO link that redoes code generation
+  for all four cores every time.
+- **One row of `z80.cpu` costs a whole `Z80.cpp`.** The edit changes the embedded text, and `Z80.cpp` is one translation unit
+  that instantiates every handler. It costs the same as a clean build of v4, and the same as one line of `Execute.hpp`.
+- **That is one core.** The two units ran in parallel for 148 CPU seconds over 125 seconds of wall clock, so for about
+  100 of those seconds 35 of the 36 hardware threads were idle. The floor for any unit that includes the description is the
+  parse alone, which `Disassembler.cpp` measures at 23 to 26 seconds, so each piece of a split `Z80.cpp` would pay that again.
+  What a split would get to is not measured.
+
+**Caveats.** One machine, a desktop that was also running a browser and another user's processes; frequencies were not pinned.
+Two samples per rebuild and three per clean build. The link was measured for one executable, `specbolt_console`. One row of
+`z80.cpu` and one line of `Execute.hpp`, not every row. Treat the ratios as firmer than the absolutes, as above.
 
 ## What the real Z80 buys, measured
 
