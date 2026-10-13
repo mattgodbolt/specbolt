@@ -24,6 +24,7 @@
 #include "refract/Machine.hpp"
 #include "refract/Model.hpp"
 #include "refract/TableError.hpp"
+#include "refract/ToArray.hpp"
 #include "refract/Visit.hpp"
 #include "refract/Workarounds.hpp"
 
@@ -680,7 +681,7 @@ struct Interpreter {
   // position is a silent coupling: an operation taking several parameters of one type, as the Z80's `test_bit(value,
   // bit, flags, bus)` does, lets a row swap two and still compile. Naming is all or nothing within a step, so there is
   // no rule about what "the next one" means.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> operand_for_parameter() {
     std::array<std::size_t, C.operands.size()> written{};
     const auto is_named = [](const Resolved &operand) { return !operand.parameter.empty(); };
@@ -717,7 +718,7 @@ struct Interpreter {
   // The inverse: for each operand, in the order the row wrote it, the index of the parameter of `Fn` it ends up
   // feeding. Needed because an operand is *read* where the row put it and *passed* where the signature wants it, and
   // its type comes from the latter.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   [[nodiscard]] static consteval std::array<std::size_t, C.operands.size()> parameter_for_operand() {
     constexpr auto operand = operand_for_parameter<Fn, C>();
     std::array<std::size_t, C.operands.size()> parameter{};
@@ -733,7 +734,7 @@ struct Interpreter {
   // an operand becomes, never when it is read.
   //
   // A pack rather than `template for`: an expansion statement produces statements, and an argument list needs a pack.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   [[nodiscard]] static auto operands_of(
       Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     constexpr auto parameter = parameter_for_operand<Fn, C>();
@@ -746,7 +747,7 @@ struct Interpreter {
   // Calls `Fn` with the values in `arguments` and returns whatever it returns. This is where the row's order and the
   // signature's order are reconciled: the tuple holds the values in the order they were read, and this hands them over
   // in the order the parameters want them.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   [[nodiscard]] static auto call_with(Machine &machine, const auto &arguments) {
     constexpr auto operand = operand_for_parameter<Fn, C>();
     return [&]<std::size_t... S>(std::index_sequence<S...>) {
@@ -776,7 +777,7 @@ struct Interpreter {
 
   // Checks one operand against the parameter it feeds: the parameter takes it by value, a number is not passed to an
   // enum, a constant the row wrote fits, and an address is read at a width the machine has.
-  template<std::meta::info Fn, Call C, std::size_t I>
+  template<std::meta::info Fn, const Call &C, std::size_t I>
   static consteval void check_operand_fits() {
     constexpr auto operand = C.operands[I];
     constexpr auto at = parameter_for_operand<Fn, C>()[I];
@@ -809,14 +810,14 @@ struct Interpreter {
   }
 
   // Checks every operand against the parameter it feeds.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   static consteval void check_each_operand_fits() {
     template for (constexpr auto at: std::views::iota(0uz, C.operands.size())) { check_operand_fits<Fn, C, at>(); }
   }
 
   // Checks a step against the operation it applies: the row supplies every parameter the operation has, and each
   // operand suits its parameter.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   static consteval void check_operands_fit() {
     if (asks_for_machine<Fn>)
       throw error(C.line, quoted_name_of(Fn) + " takes the machine as a parameter; an operation that needs the "
@@ -832,7 +833,7 @@ struct Interpreter {
   // one part is refused rather than guessed at: it describes one value as well as it describes a bundle holding one,
   // and a row would be written differently depending on which was meant. Then each destination must be able to take
   // what it is handed.
-  template<std::meta::info Fn, Call C, typename Result>
+  template<std::meta::info Fn, const Call &C, typename Result>
   static consteval void check_destinations_fit(const std::span<const std::meta::info> parts) {
     const auto name = quoted_name_of(Fn);
     const auto destinations = C.destinations.size();
@@ -884,7 +885,7 @@ struct Interpreter {
   // supplied every parameter, and names no destination. A condition tests only what the row hands it, so that the row
   // says everything the branch depends on; that rules out a member of the machine, even a `const` one, since a machine
   // in hand can be asked anything.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   static consteval void check_condition_fits() {
     const auto name = quoted_name_of(Fn);
     if (machine_member<Fn> || asks_for_machine<Fn>)
@@ -902,7 +903,7 @@ struct Interpreter {
   // Runs one step: reads its operands, calls the operation, and stores what it returns in the step's destinations.
   // Arguments are supplied positionally, or by name where the row said so; destinations destructure the result in
   // declaration order.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   static void apply(Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     consteval { check_operands_fit<Fn, C>(); }
     using Result = [:std::meta::remove_cvref(std::meta::return_type_of(Fn)):];
@@ -971,7 +972,7 @@ struct Interpreter {
 
   // Runs one condition and returns its answer. A condition is applied like any other operation; only what is done with
   // the answer differs.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   [[nodiscard]] static Continue evaluate(
       Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     consteval { check_condition_fits<Fn, C>(); }
@@ -985,7 +986,7 @@ struct Interpreter {
 
   // Runs one step and says whether the row goes on: a condition's answer, or `Continue::yes` from any other step once
   // it has done its work.
-  template<std::meta::info Fn, Call C>
+  template<std::meta::info Fn, const Call &C>
   [[nodiscard]] static Continue run_step(
       Machine &machine, const Decoded decoded, const std::uint16_t displaced_address) {
     if constexpr (returns_continue(Fn))
@@ -1151,14 +1152,17 @@ struct Interpreter {
       // A reference into `row`, which has static storage, so the expansion statement below can walk it as a range: a
       // range's *address* has to be a constant, and a local copy's would not be.
       constexpr const auto &steps = std::get<Row::Steps>(row.action);
-      template for (constexpr auto step: steps) {
+      constexpr auto placed = placed_at<Table, BodyKey, Index>();
+      template for (constexpr auto at: std::views::iota(0uz, steps.size())) {
+        constexpr auto step = steps[at];
         constexpr auto verb = verb_for(step, row.matched, BodyKey, row.line, rules);
-        constexpr auto call = call_for(step, row.matched, BodyKey, row.line, rules);
+        constexpr auto canonical = row_tables<Index>.index[placed * steps.size() + at];
         // After a condition that says no, the rest of the row is skipped, which is where the extra cycles of a taken
         // branch come from. `break` rather than `return`, because abandoning the rest of a row is not abandoning the
         // run: the hand-over below still has to happen, and a `return` here stops the machine at the first untaken
         // branch.
-        if (run_step<find_operation(verb, row.line), call>(machine, decoded, displaced_address) == Continue::no)
+        if (run_step<find_operation(verb, row.line), row_calls<Index>[canonical]>(
+                machine, decoded, displaced_address) == Continue::no)
           break;
       }
     }
@@ -1284,6 +1288,81 @@ struct Interpreter {
   static constexpr auto bodies_of = std::define_static_array(decoding_for(Table).bodies);
   template<std::uint8_t Table>
   static constexpr auto body_of = decoding_for(Table).body_of;
+
+  // A body placed in its table: which row, which table, and the encoding that fixes the slices the row reads.
+  struct Placed {
+    std::size_t row{};
+    std::uint8_t table{};
+    std::uint8_t opcode{};
+  };
+
+  // Every body of every table, ordered by row, so that one row's bodies are found together.
+  [[nodiscard]] static consteval std::vector<Placed> all_bodies() {
+    std::vector<Placed> result;
+    for (const auto table: std::views::iota(0uz, Compiled::tables().size()))
+      for (const auto &body: decoding_for(static_cast<std::uint8_t>(table)).bodies)
+        result.push_back({.row = body.row, .table = static_cast<std::uint8_t>(table), .opcode = body.opcode});
+    std::ranges::sort(result, {}, &Placed::row);
+    return result;
+  }
+
+  // Promoted once. A variable template only so that it is built when first used rather than with the class.
+  template<int = 0>
+  static constexpr auto placed_bodies = std::define_static_array(all_bodies());
+
+  // One row's steps, made once for every body of it in every table: the distinct calls, and for each body (in
+  // `bodies` order) and step, the index into `calls` of its own. Equal calls share a line, so a row's calls need only
+  // be compared with each other.
+  struct RowTable {
+    std::span<const Placed> bodies;
+    std::span<const Call> calls;
+    std::span<const std::uint16_t> index;
+  };
+
+  [[nodiscard]] static consteval RowTable row_table_of(const std::size_t row_index) {
+    std::vector<Call> calls;
+    std::vector<std::uint16_t> index;
+    const auto &row = Compiled::rows()[row_index];
+    const auto bodies = std::ranges::equal_range(placed_bodies<>, row_index, {}, &Placed::row);
+    for (const auto &body: bodies) {
+      const auto &rules = Compiled::tables()[body.table].rules;
+      for (const auto &step: steps_of(row)) {
+        auto call = call_for(step, row.matched, body.opcode, row.line, rules);
+        const auto found = std::ranges::find(calls, call);
+        index.push_back(static_cast<std::uint16_t>(found - calls.begin()));
+        if (found == calls.end())
+          calls.push_back(std::move(call));
+      }
+    }
+    return {.bodies = std::span<const Placed>(bodies.begin(), bodies.end()),
+        .calls = std::define_static_array(calls),
+        .index = std::define_static_array(index)};
+  }
+
+  // The one object each distinct `Call` of a row lives in. A step is handed a reference into this rather than a copy,
+  // so equal steps are the same template argument.
+  template<std::size_t Index>
+  static constexpr RowTable row_tables = row_table_of(Index);
+
+  // The same calls copied into a variable, because gcc refuses a reference into a `define_static_array` object as a
+  // template argument ("is not a variable or function"), and accepts one into a variable's array.
+  template<std::size_t Index>
+  static constexpr auto row_calls = [] {
+    std::array<Call, row_tables<Index>.calls.size()> result{};
+    std::ranges::copy(row_tables<Index>.calls, result.begin());
+    return result;
+  }();
+
+  // Where a body sits among its row's.
+  template<std::uint8_t Table, std::uint8_t BodyKey, std::size_t Index>
+  [[nodiscard]] static consteval std::size_t placed_at() {
+    const auto &bodies = row_tables<Index>.bodies;
+    const auto found =
+        std::ranges::find_if(bodies, [](const Placed &body) { return body.table == Table && body.opcode == BodyKey; });
+    if (found == bodies.end())
+      throw std::logic_error("a body is missing from its row's table");
+    return static_cast<std::size_t>(found - bodies.begin());
+  }
 
   // A table's 256 handlers, one per opcode, pointing at the bodies `bodies_of` enumerated. `execute_one` takes its row
   // and encoding as template arguments, which a `template for` can supply and a loop cannot; filling the entries from
