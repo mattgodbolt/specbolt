@@ -146,6 +146,29 @@ made non-structural (private members, a `std::string_view`, and on gcc a `std::i
   Pointing each step at the first equal `Call` won the sharing back but the search took the compile
   to 212 s on gcc and the test build to 17.5 minutes on the fork; a per-row table built once would
   be cheaper and was not tried.
+
+  *2026-10-12: the per-row table, tried on gcc 16.2 against ef929db; commit cd777dc on the branch
+  `mg/v4_reference_spike`, pushed and not for merging. Every `Call C` parameter became `const Call &C`, and each row's
+  distinct `Call`s are built once into a variable template that the steps point into, so equal steps share an address
+  again. Comparing within a row is enough because equal steps always share a description line; one pass over the
+  whole description instead stopped at gcc's limit of 33554432 constexpr operations. `Z80.cpp`, two runs each,
+  alternated with main at load below two:*
+
+  | | compile | max RSS | text, no LTO | `apply` / `run_step` | ns/instr |
+  |---|---:|---:|---:|---:|---:|
+  | by value (main) | 124-128 s | 4.67 GB | 151,723 | 598 / 632 | 9.81-9.90 |
+  | `const Call &`, plain | 201, 203 s | 7.33 GB | 168,721 | 1160 / 1228 | 10.5-11.7 |
+  | `const Call &`, per-row table | 139, 148 s | 4.24 GB | 151,723 | 598 / 632 | 9.81-9.84 |
+  | ...with a `std::string_view` in `Call` | 309, 314 s | 7.72 GB | 151,723 | 598 / 632 | not run |
+
+  *The table wins the sharing back exactly, with the same code and the same speed (level over four alternated bench
+  rounds; the other speed figures had spreads of 9% to 28% and are rough), for about 15% more compile time, less
+  memory and some eighty lines of machinery. The reason to want a reference is the expensive part: with a
+  `std::string_view` in `Call`, `define_static_array` refuses the non-structural type, each row is walked twice, and
+  the compile is two and a half times main's. And the reference frees only `Call`: `value_of`, `store` and the rest
+  take each `Resolved` by value, so `Name` would stay. Pointing a template argument straight into a
+  `define_static_array` result is refused ("is not a valid template argument of type 'const ...::Call&' because '...'
+  is not a variable or function"), which is why the calls are copied into a variable's `std::array` first.*
 - *Keep the `Call` a `constexpr` local in the handler and pass it nowhere.* The checks become
   `consteval` functions taking it as an ordinary argument inside a `static_assert` (a `consteval {}`
   block cannot name an enclosing local), and the operand expansion moves into lambdas in
