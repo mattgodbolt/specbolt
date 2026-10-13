@@ -190,6 +190,18 @@ struct App final : AppBase {
       run_frames(5);
       return 0;
     };
+    commands["tape"] = [this](const std::vector<std::string> &args) {
+      if (args.size() != 1) {
+        std::print(std::cout, "Syntax: tape <file.tap|file.tzx>\n");
+        return 0;
+      }
+      spectrum.tape().load(args[0]);
+      return 0;
+    };
+    commands["play"] = [this](const std::vector<std::string> &) {
+      spectrum.play();
+      return 0;
+    };
     commands["shot"] = [this](const std::vector<std::string> &args) {
       if (args.size() != 1) {
         std::print(std::cout, "Syntax: shot <file.ppm>\n");
