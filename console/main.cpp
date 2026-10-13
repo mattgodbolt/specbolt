@@ -2,6 +2,7 @@
 #include <cstring>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <iterator>
@@ -156,6 +157,60 @@ struct App final : AppBase {
       return 0;
     };
 
+    // Scripted capture: `specbolt_console -x "frames 100" -x "press enter" -x "shot out.ppm" game.z80 </dev/null`
+    commands["frames"] = [this](const std::vector<std::string> &args) {
+      run_frames(get_number_arg(args));
+      return 0;
+    };
+    commands["keydown"] = [this](const std::vector<std::string> &args) {
+      if (args.size() != 1) {
+        std::print(std::cout, "Syntax: keydown <key>\n");
+        return 0;
+      }
+      spectrum.keyboard().key_down(key_code_for(args[0]));
+      return 0;
+    };
+    commands["keyup"] = [this](const std::vector<std::string> &args) {
+      if (args.size() != 1) {
+        std::print(std::cout, "Syntax: keyup <key>\n");
+        return 0;
+      }
+      spectrum.keyboard().key_up(key_code_for(args[0]));
+      return 0;
+    };
+    commands["press"] = [this](const std::vector<std::string> &args) {
+      if (args.empty()) {
+        std::print(std::cout, "Syntax: press <key> [frames held, default 5]\n");
+        return 0;
+      }
+      const auto key = key_code_for(args[0]);
+      spectrum.keyboard().key_down(key);
+      run_frames(args.size() > 1 ? parse_num(args[1]) : 5);
+      spectrum.keyboard().key_up(key);
+      run_frames(5);
+      return 0;
+    };
+    commands["tape"] = [this](const std::vector<std::string> &args) {
+      if (args.size() != 1) {
+        std::print(std::cout, "Syntax: tape <file.tap|file.tzx>\n");
+        return 0;
+      }
+      spectrum.tape().load(args[0]);
+      return 0;
+    };
+    commands["play"] = [this](const std::vector<std::string> &) {
+      spectrum.play();
+      return 0;
+    };
+    commands["shot"] = [this](const std::vector<std::string> &args) {
+      if (args.size() != 1) {
+        std::print(std::cout, "Syntax: shot <file.ppm>\n");
+        return 0;
+      }
+      write_ppm(args[0]);
+      return 0;
+    };
+
     rl_attempted_completion_function = [](const char *text, const int start, int) -> char ** {
       if (start != 0)
         return nullptr;
@@ -176,6 +231,41 @@ struct App final : AppBase {
     };
   }
   ~App() { self() = nullptr; }
+
+  void run_frames(const int num_frames) {
+    for (int i = 0; i < num_frames; ++i) {
+      spectrum.run_frame();
+      // Nothing is listening, but the audio buffer expects to be drained once a frame.
+      (void)spectrum.audio().end_frame(spectrum.z80().cycle_count());
+    }
+  }
+
+  static std::int32_t key_code_for(const std::string &name) {
+    if (name == "enter")
+      return '\r';
+    if (name == "space")
+      return ' ';
+    if (name == "shift")
+      return 0x400000e1;
+    if (name == "ctrl")
+      return 0x400000e0;
+    if (name.size() != 1)
+      throw std::runtime_error("Unknown key " + name);
+    return name[0];
+  }
+
+  // Binary PPM of the whole 320x256 frame, border included. Cropping and PNG conversion is left to the caller.
+  void write_ppm(const std::filesystem::path &path) const {
+    std::vector<std::uint32_t> pixels(specbolt::Video::VisibleWidth * specbolt::Video::VisibleHeight);
+    spectrum.video().blit_to(pixels);
+    std::ofstream out(path, std::ios::binary);
+    std::print(out, "P6\n{} {}\n255\n", specbolt::Video::VisibleWidth, specbolt::Video::VisibleHeight);
+    for (const auto pixel: pixels) {
+      const char rgb[3] = {
+          static_cast<char>(pixel >> 16 & 0xff), static_cast<char>(pixel >> 8 & 0xff), static_cast<char>(pixel & 0xff)};
+      out.write(rgb, 3);
+    }
+  }
 
   bool interrupt() { return interrupted.exchange(true); }
 
